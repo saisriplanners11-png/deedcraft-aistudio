@@ -1,0 +1,37 @@
+{
+  "status": "not-verified",
+  "checkedDocuments": 0,
+  "overall": {
+    "correct": 0,
+    "populated": 0,
+    "expected": 0,
+    "precision": null,
+    "coverage": null
+  },
+  "handwriting": {
+    "correct": 0,
+    "populated": 0,
+    "expected": 0,
+    "precision": null,
+    "coverage": null
+  },
+  "criticalIdentifiers": {
+    "correct": 0,
+    "populated": 0,
+    "expected": 0,
+    "precision": null,
+    "coverage": null
+  },
+  "sufficient": false,
+  "precisionPassed": false,
+  "coveragePassed": false,
+  "medianLatencyMs": null,
+  "manualEdits": 0,
+  "requirements": {
+    "documents": 50,
+    "fields": 1000,
+    "handwrittenFields": 100,
+    "precision": 0.99,
+    "coverage": 0.95
+  }
+}

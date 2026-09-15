@@ -1,0 +1,58 @@
+import { chromium } from 'playwright';
+import { mkdir, writeFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({headless:true});
+const out = new URL('../tmp/upload-first-qa/',import.meta.url).pathname;
+await mkdir(out,{recursive:true});
+try {
+ const page=await browser.newPage({viewport:{width:1280,height:900}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const note='Seller phone: 9876543210. Seller occupation: Teacher.';
+ const candidates=[{field:'executantMobile',value:'9876543210',role:'executant',record:'primary',quote:'Seller phone: 9876543210',region:'Seller phone line',handwritten:true,historical:false},{field:'executantOccupation',value:'Teacher',role:'executant',record:'primary',quote:'Seller occupation: Teacher',region:'Seller occupation line',handwritten:true,historical:false}];
+ await page.route('**/api/anthropic/v1/messages',async route=>{
+  const body=route.request().postDataJSON();
+  const instruction=body.messages[0].content.at(-1).text;
+  let result;
+  if(instruction.includes('Independently inspect')) {
+   const json=JSON.parse(instruction.slice(instruction.indexOf('\n{"candidates"')+1));
+   result={acceptedIds:json.candidates.map(c=>c.id),planVerified:false,notes:[]};
+  } else result={candidates,plan:null,notes:[]};
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'test',type:'message',role:'assistant',model:'test',content:[{type:'text',text:JSON.stringify(result)}],stop_reason:'end_turn',stop_sequence:null,usage:{input_tokens:1,output_tokens:1}})});
+ });
+ await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
+ await page.getByRole('heading',{name:'Draft, Deed & Category',exact:true}).waitFor();
+ assert.equal(await page.locator('.rail-step').count(),11);
+ await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
+ await page.getByRole('heading',{name:'Link Deed & Enclosures',exact:true}).waitFor();
+ await page.locator('input[type=file]').first().setInputFiles({name:'seller-note.txt',mimeType:'text/plain',buffer:Buffer.from(note)});
+ await page.getByText('2 verified transcriptions',{exact:false}).waitFor();
+ await page.getByRole('button',{name:'Executant Details',exact:false}).first().click();
+ await page.getByRole('heading',{name:'Executant Details',exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Mobile',{exact:true}).inputValue(),'9876543210');
+ assert.equal(await page.getByLabel('Occupation',{exact:true}).inputValue(),'Teacher');
+ await page.getByRole('button',{name:'Remove',exact:true}).click();
+ assert.equal(await page.getByLabel('Mobile',{exact:true}).inputValue(),'');
+ await page.locator('input[type=file]').first().setInputFiles({name:'seller-note.txt',mimeType:'text/plain',buffer:Buffer.from(note)});
+ await page.getByText('2 verified transcriptions',{exact:false}).waitFor();
+ await page.getByRole('button',{name:'Generate Deed',exact:false}).first().click();
+ await page.getByRole('heading',{name:'Generate Deed',exact:true}).waitFor();
+ let wait=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).click();
+ await (await wait).saveAs(out+'blank-with-note.docx');
+ wait=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Download plan PDF',exact:true}).click();
+ await (await wait).saveAs(out+'blank-plan.pdf');
+ await page.screenshot({path:out+'desktop.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await page.screenshot({path:out+'mobile.png',fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.getByRole('button',{name:'New deed',exact:true}).click();
+ await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
+ assert.equal(await page.locator('.source').count(),0);
+ assert.equal(await page.locator('.summary-bar strong').innerText(),'0 details available');
+ await page.locator('input[type=file]').first().setInputFiles(out+'blank-plan.pdf');
+ await page.getByText('2 verified transcriptions',{exact:false}).waitFor().catch(async error => { console.error(await page.locator('.source').innerText()); throw error; });
+ await page.getByRole('button',{name:'New deed',exact:true}).click();
+ assert.deepEqual(errors,[]);
+ console.log('PASS: 11-step wizard, source removal, re-upload, blank Word/PDF downloads, mobile layout, draft reset, PDF page ingestion, no browser errors.');
+} finally {await browser.close();}

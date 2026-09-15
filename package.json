@@ -1,0 +1,38 @@
+{
+  "name": "deedcraft-aistudio",
+  "version": "1.0.0",
+  "description": "Upload-first sale-deed drafting in three screens, with source-backed AI extraction and faithful Word and plan PDF downloads.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "node qa/section-upload-flow.mjs",
+    "benchmark": "node benchmark-runner.mjs benchmarks/manifest.json benchmarks/report.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "playwright": "^1.48.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vite-node": "^6.0.0",
+    "vitest": "^5.0.0"
+  }
+}

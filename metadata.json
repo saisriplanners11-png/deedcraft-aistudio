@@ -1,0 +1,5 @@
+{
+  "name": "DeedCraft",
+  "description": "An 11-step deed drafting engine for Telangana and Andhra Pradesh registration. Upload the link deed, identity documents or a property plan and Claude transcribes them into the form across every phase \u2014 including carrying the prior deed's purchaser forward as the executant. The final Word document is produced by filling a Sale Deed template.",
+  "requestFramePermissions": []
+}

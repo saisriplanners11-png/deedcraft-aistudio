@@ -1,0 +1,8 @@
+node_modules/
+dist/
+tmp/
+output/
+.env
+.env.local
+*.local
+.claude/settings.local.json

@@ -1,0 +1,4 @@
+{
+  "description": "Held-out corpus awaiting manually checked printed and handwritten source documents. An empty corpus cannot pass the accuracy release gate.",
+  "cases": []
+}

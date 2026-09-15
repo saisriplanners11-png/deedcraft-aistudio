@@ -1,0 +1,27 @@
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#EFEAE0}
+body{-webkit-font-smoothing:antialiased}
+a{color:#8A5E12;text-decoration:none;border-bottom:1px solid rgba(138,94,18,.35)}
+a:hover{color:#5E3F0A;border-bottom-color:#5E3F0A}
+input,select,textarea,button{font-family:inherit}
+input:focus,textarea:focus,select:focus{border-bottom-color:#8A5E12 !important;background:rgba(138,94,18,.045) !important}
+::selection{background:#E8D9AE;color:#16130F}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#CFC4AE;border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
+@keyframes livedot{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* style-hover rules lifted out of the design template */
+.hv1:hover{background:#2A241C}
+.hv2:hover{background:#EBC367}
+.hv3:hover{border-color:#8A5E12;color:#8A5E12}
+.hv4:hover{background:#8A5E12;color:#FFFDF8}
+.hv5:hover{border-color:#16130F;color:#16130F}
+
+/* Upload progress dialog */
+@keyframes dcspin{to{transform:rotate(360deg)}}
+@keyframes dcfade{from{opacity:0}to{opacity:1}}
+@keyframes dcrise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.dc-spin{animation:dcspin 900ms linear infinite}
+.dc-veil{animation:dcfade 140ms ease-out}
+.dc-card{animation:dcrise 180ms ease-out}
