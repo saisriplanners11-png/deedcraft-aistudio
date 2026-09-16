@@ -5,10 +5,11 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createProxyHandler, PROXY_PREFIX } from './proxy.mjs';
 
 const PORT = Number(process.env.PORT) || 4173;
-const DIST = new URL('./dist/', import.meta.url).pathname;
+const DIST = fileURLToPath(new URL('./dist/', import.meta.url));
 
 // Load .env.local without a dependency.
 try {
