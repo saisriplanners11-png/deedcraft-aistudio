@@ -17,6 +17,9 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
     "pdf-lib": "^1.17.1",
