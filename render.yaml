@@ -12,8 +12,14 @@ services:
       - key: NODE_ENV
         value: production
       - key: EXTRACTION_PROVIDER
-        value: anthropic
-      - key: ANTHROPIC_API_KEY
-        sync: false
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: GEMINI_EXTRACT_MODEL
+        value: gemini-3.6-flash
+      - key: GEMINI_VISION_MODEL
+        value: gemini-3.6-flash
+      - key: GEMINI_VERIFY_MODEL
+        value: gemini-3.6-flash
       - key: GEMINI_API_KEY
         sync: false
