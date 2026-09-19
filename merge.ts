@@ -1,8 +1,8 @@
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
-import { ALL_FIELDS, GROUPS, SCHEDULE_VARIANT } from './fields';
-import { deedDate, linkDocumentRecords, money, partyRecords, scheduleRecords, supportingRecordsForSchedule, words, toSqYards, type AppState, type SupportingRecord } from './logic';
+import { ALL_FIELDS, GROUPS, LINK_OPTIONS, SCHEDULE_VARIANT } from './fields';
+import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, words, toSqYards, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
 /** Values for every placeholder the template names. */
@@ -91,28 +91,20 @@ export function rewritesFor(state: AppState): Rewrite[] {
     find: /in the presence of the following witnesses on the afore mentioned date\./,
     replace: 'in the presence of the following witnesses on this the ____________ day of ____________, 20____.',
   });
-  const paid = state.payments;
-  if (paid.length && !(paid.length === 1 && paid[0].mode === 'cheque')) {
-    rewrites.push({ find: /^Rs\.\s+.*?through Cheque.*$/, replace: paid.map(payment => {
+  const paid = state.payments.filter(payment => payment.amount !== '');
+  if (paid.length && !(paid.length === 1 && paid[0].mode === 'cash')) {
+    rewrites.push({ find: /\(1\)\s+Amount of Rs\..*paid via Cash\./i, replace: paid.map((payment, index) => {
       // The receipt remains a deterministic template; unknown facts are blanks.
       const amount = payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '__________';
       const mode = payment.mode ? modeSpec(payment.mode).label : '__________';
       const ref = payment.refNo || '__________';
       const bank = [payment.bank, payment.branch].filter(Boolean).join(', ') || '__________';
       const date = deedDate(payment.date) || '__________';
-      return payment.mode === 'cash' ? `Rs. ${amount}/- in cash dated ${date}`
-        : `Rs. ${amount}/- through ${mode} bearing No. ${ref} drawn on ${bank} dated ${date}`;
+      const prefix = `(${index + 1}) Amount of Rs.${amount}/-`;
+      return payment.mode === 'cash' ? `${prefix} paid via cash dated ${date}.`
+        : `${prefix} paid through ${mode} bearing No. ${ref} drawn on ${bank} dated ${date}.`;
     }).join('; ') });
   }
-  const links = linkDocumentRecords(state);
-  if (links.length > 1) rewrites.push({
-    find: /^Registered Sale Deed:.*Sub-Registrar Office,.*$/,
-    replace: '',
-    records: links.map(record => ({
-      'Link Doc Type': record.values.linkDocType || '', 'Link Doct.No.': record.values.linkDocNo || '',
-      'Link Doct.Date': deedDate(record.values.linkDocDate), 'Sub Registrar': record.values.linkSro || '',
-    })),
-  });
   for (const side of ['executant', 'claimant'] as const) {
     const records = partyRecords(state, side);
     if (records.length < 2) continue;
@@ -167,14 +159,25 @@ export function propertyForm(state: AppState, values: Record<string, string>): R
 /** One filled template schedule for every property being registered together. */
 export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
   return scheduleRecords(state).map(record => {
+    const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields).map(field => [field.id, '']));
     const scheduleState: AppState = {
       ...state,
       category: record.category,
       unit: record.unit,
-      form: propertyForm(state, record.values),
+      form: { ...propertyForm(state, record.values), ...blankTitleFields },
       additionalSchedules: [],
     };
     const values = mergeValues(scheduleState);
+    const titleValues = { ...values };
+    const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
+    const registeredTitleLinks: Record<string, string>[] = [];
+    for (const titleRecord of titleLinkRecords) {
+      const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
+      for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
+      if (titleRecord.values.linkOption === 'linkDoc' || (!titleRecord.values.linkOption && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key]))) {
+        registeredTitleLinks.push(mapped);
+      }
+    }
     const extent = Number(record.values.extentSqYards || toSqYards(record.values.extentValue, record.unit));
     const rate = Number(record.values.govtRate);
     if ((record.values.extentSqYards || record.values.extentValue && record.unit) && record.values.govtRate && !Number.isNaN(extent) && !Number.isNaN(rate)) {
@@ -183,7 +186,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);
-    return { variant: variantFor(record.category), values, supportingRecords };
+    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords };
   });
 }
 

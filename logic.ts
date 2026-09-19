@@ -6,6 +6,8 @@ import { STEPS, DEEDS, DRAFTS, CATEGORIES, RULES } from './reference';
 import { ALL_FIELDS, EMPTY_FORM, SCHEDULE_VARIANT, groupsForStep } from './fields';
 import type { DocKind } from './extract';
 import { newPayment, totalOf, netTotalOf, tdsTotalOf, recitalFor, type Payment } from './payments';
+import { instrumentIdForLegacyType } from './instruments';
+import { releaseGate } from './legal-registry';
 
 
 export type UploadedDoc = {
@@ -72,6 +74,8 @@ export type AppState = {
   payments: Payment[];
   /** Additional records; the original form remains record 1 for compatibility. */
   additionalLinkDocuments: ValueRecord[];
+  /** Link/title records grouped by their owning property schedule. */
+  linkRecordsBySchedule: Record<string, ValueRecord[]>;
   additionalExecutants: ValueRecord[];
   additionalClaimants: ValueRecord[];
   additionalSchedules: ScheduleRecord[];
@@ -97,6 +101,7 @@ export const initialState: AppState = {
   conflicts: {},
   payments: [newPayment()],
   additionalLinkDocuments: [],
+  linkRecordsBySchedule: {},
   additionalExecutants: [],
   additionalClaimants: [],
   additionalSchedules: [],
@@ -174,6 +179,13 @@ export const linkDocumentRecords = (state: AppState) => {
   const ids = ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro'];
   const primary: ValueRecord = { id: 'link-primary', values: picked(state.form, ids), docNames: [] };
   return [primary, ...state.additionalLinkDocuments];
+};
+
+/** Link/title records owned by exactly one property schedule. Legacy records belong to Schedule 1. */
+export const linkDocumentRecordsForSchedule = (state: AppState, scheduleId: string): ValueRecord[] => {
+  const scoped = state.linkRecordsBySchedule[scheduleId];
+  if (scoped) return scoped;
+  return scheduleId === 'primary' ? linkDocumentRecords(state) : [];
 };
 
 export const scheduleRecords = (state: AppState): ScheduleRecord[] => {
@@ -277,8 +289,9 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     }
   };
 
-  if (state.deedType !== 'Sale') missing.push({ id: 'deedType', label: 'Sale deed', reason: 'The loaded Word template is a sale deed.', source: 'Select the deed type or upload a sale deed.', step: 0 });
-  if (!state.category) missing.push({ id: 'category', label: 'Property category', reason: 'Selects the legal schedule included in the deed.', source: 'Property plan, prior deed or manual selection.', step: 0 });
+  const legalGate = releaseGate(instrumentIdForLegacyType(state.deedType));
+  if (!legalGate.ready) missing.push({ id: 'legalReference', label: `${state.deedType || 'Selected'} deed reference`, reason: legalGate.reasons.join(' '), source: 'Approved reference DOCX and legal sign-off.', step: 0 });
+  if (!state.category) missing.push({ id: 'category', label: 'Schedule 1 property type', reason: 'Selects the legal schedule included in the deed.', source: 'Property plan, prior deed or manual selection.', step: 1 });
   if (!state.draft) missing.push({ id: 'draft', label: 'Draft form', reason: 'Identifies the sale-deed form.', source: 'Manual selection after document classification.', step: 0 });
 
   [
@@ -306,7 +319,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     ['stampValue', 'The deed header states the face value of the stamp paper.', 'Stamp paper or manual entry'],
   ].forEach(([id, reason, source]) => add(id, reason, source));
 
-  if (['Vacant Plot', 'Agricultural land', 'Demolished', 'Part open place'].includes(state.category)) {
+  if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(state.category)) {
     add('nearHNo', 'The selected schedule identifies the nearby/adjacent house number.', 'Link deed or property plan');
   }
   if (['Residential', 'Commercial', 'Flat'].includes(state.category)) {
@@ -340,7 +353,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   }
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentValue', ...BOUNDARY_IDS, 'govtRate'];
-    if (['Vacant Plot', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
+    if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
     if (['Residential', 'Commercial', 'Flat'].includes(record.category)) ids.push('bearingHNo', 'natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
     ids.forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'Every property schedule must be complete before combined registration.', 'Link deed, property record, plan or manual entry.', 3));
   });
@@ -556,7 +569,13 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const primaryPersayN = Number.isNaN(landN) ? NaN : landN + struct;
   const additionalPersay = state.additionalSchedules.map(record => {
     const extent = num(record.values.extentValue);
-    const sqy = Number.isNaN(extent) ? NaN : toSqYards(extent, record.unit);
+    // An uploaded deed can provide only the separately printed square-yard
+    // extent. Treat it exactly as we do for the primary schedule so one such
+    // schedule cannot blank the combined market value.
+    const printedSqYards = num(String(record.values.extentSqYards || '').replace(/,/g, ''));
+    const sqy = !Number.isNaN(printedSqYards) && printedSqYards > 0
+      ? printedSqYards
+      : Number.isNaN(extent) ? NaN : toSqYards(extent, record.unit);
     const scheduleRate = num(record.values.govtRate);
     if (Number.isNaN(sqy) || Number.isNaN(scheduleRate)) return NaN;
     return Math.round(sqy * scheduleRate) + (Number(record.values.structValue) || 0);
@@ -628,7 +647,8 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
 
   // ---- readiness checks ----------------------------------------------------
   const checks = [
-    { label: 'Deed type and property category chosen', ok: !!(state.deedType && state.category), note: 'Selects the schedule and duty article' },
+    { label: 'Deed setup chosen', ok: !!state.deedType, note: 'Selects the approved instrument and draft form' },
+    { label: 'Property schedules typed', ok: scheduleRecords(state).every(record => !!record.category), note: 'Each schedule selects its own legal wording and fields' },
     { label: 'Link document recited', ok: !!(f.linkDocNo && f.linkDocDate), note: 'Title flow must be traceable' },
     { label: 'Jurisdiction complete', ok: !!(f.district && f.mandal && f.village && f.sro), note: 'Determines the registering office' },
     { label: 'Extent and boundaries entered', ok: hasExtent && !!(f.boundaryNorth && f.boundarySouth && f.boundaryEast && f.boundaryWest), note: 'All four abutments are required' },

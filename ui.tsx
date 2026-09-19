@@ -350,7 +350,7 @@ export function ExtractDialog({
           <div style={css(`height:3px;width:${finished && !error ? 100 : pct}%;background:${error ? '#B4553F' : C.gold};transition:width .3s ease`)} />
         </div>
 
-        <div style={css('display:flex;flex-direction:column;gap:9px')}>
+        <div style={css('display:none')}>
           {steps.map(s => (
             <div key={s.title} style={css('display:flex;align-items:center;gap:9px')}>
               <Marker state={s.state} />
@@ -379,8 +379,8 @@ export function ExtractDialog({
             <Note tag="Filled in" tone="green">{result}</Note>
           </div>
         ) : (
-          <p style={css(`margin:16px 0 0;font-size:11px;color:${C.mutedSoft};line-height:1.6`)}>
-            Claude is transcribing the particulars. Values land in the fields below as each pass finishes.
+          <p style={css(`margin:16px 0 0;font-size:11px;color:${C.mutedSoft};line-height:1.6;text-align:center`)}>
+            {waiting ? `The service is busy — retrying in ${waiting}s…` : 'Reading and verifying the document…'}
           </p>
         )}
 

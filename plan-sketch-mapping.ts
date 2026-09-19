@@ -9,6 +9,7 @@ import type { BoundaryDimensions, DimensionValue, PartyDetails, PlanDocument, Pr
 
 const CATEGORY_TO_PROPERTY_TYPE: Record<string, PropertyType> = {
   'Vacant Plot': 'Plot',
+  'Open Place': 'Open Place',
   Residential: 'House',
   Flat: 'Flat',
   Demolished: 'Open Place',

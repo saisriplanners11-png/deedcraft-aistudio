@@ -3,7 +3,7 @@
 // engine works from. Everything a user types lives in AppState.form (see fields.ts).
 
 export const STEPS = [
-    { id: 0, label: 'Draft, Deed & Category', sub: 'Instrument, category & draft form', phase: 1 },
+    { id: 0, label: 'Deed setup', sub: 'Instrument and draft form', phase: 1 },
     { id: 1, label: 'Link Deed & Enclosures', sub: 'Prior document & enclosures', phase: 1 },
     { id: 2, label: 'Jurisdiction', sub: 'State, district & SRO', phase: 2 },
     { id: 3, label: 'Property Schedules', sub: 'Identification, extent, boundaries & scheduled description', phase: 2 },
@@ -59,6 +59,7 @@ export const DRAFTS = {
 
 export const CATEGORIES = [
     { key: 'Vacant Plot', label: 'Vacant Plot', telugu: 'ఖాళీ స్థలము / ఓపెన్ ప్లాట్', badge: 'Site / land' },
+    { key: 'Open Place', label: 'Open Place', telugu: 'ఖాళీ స్థలము', badge: 'Site / land' },
     { key: 'Residential', label: 'Residential House', telugu: 'నివాస భవనము / ఇల్లు', badge: 'Structure + land' },
     { key: 'Flat', label: 'Flat / Apartment Unit', telugu: 'ఫ్లాట్ / అపార్ట్‌మెంట్ & UDS', badge: 'Apartment' },
     { key: 'Demolished', label: 'Demolished Structure', telugu: 'కూల్చివేసిన / శిథిలమైన ఇల్లు', badge: 'Site valuation' },

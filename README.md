@@ -51,6 +51,14 @@ PDFs are read by page with the full source as context. DOCX text and embedded PN
 
 The release supports the existing Sale template only. Other deed types remain future template integrations through `DEED_TEMPLATES`.
 
+## Multi-instrument foundation
+
+The product catalogue now contains versioned workflow definitions for Sale, Gift, Will, Mortgage, Partition, Release, Exchange, Lease, Power of Attorney, Rectification, Cancellation, Trust, Settlement, Agreement of Sale, Development Agreement/AGPA and Family Arrangement. Each definition declares its variants, party roles, instrument-specific facts, evidence classes, validation gates and duty-rule identifier.
+
+Legal output is fail-closed. An instrument/variant becomes generatable only after an effective advocate-approved reference and immutable template version are registered in `legal-registry.ts`. The supplied Sale DOCX is the only currently onboarded reference; selecting another instrument shows `Reference required` and cannot generate invented wording. Final Sale downloads also require a named professional to approve the exact current draft revision. Any subsequent edit invalidates that approval.
+
+`deed-compiler.ts` is the instrument-neutral compilation boundary (`compileDeed`, `renderArtifact`, and `validateTemplateContract`). New reference templates must be added through that registry and renderer rather than by branching the wizard or allowing an AI model to author legal clauses.
+
 ## Validation
 
 ```sh

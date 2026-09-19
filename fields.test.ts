@@ -67,6 +67,18 @@ describe('field mapping', () => {
     expect(buildViewModel(state, () => {}).persayINR).toBe('₹1,57,220');
   });
 
+  it('combines all schedules when an additional schedule supplies only its printed square-yard extent', () => {
+    const state = {
+      ...initialState,
+      form: { ...initialState.form, extentSqYards: '100', govtRate: '1000', structValue: '5000' },
+      additionalSchedules: [{
+        id: 'schedule-2', docNames: [], category: 'Vacant Plot', unit: 'Sq. Yards',
+        values: { extentSqYards: '200', govtRate: '1200', structValue: '0' },
+      }],
+    };
+    expect(buildViewModel(state, () => {}).persayINR).toBe('₹3,45,000');
+  });
+
   it('leaves stamp-paper value blank until supplied', () => {
     const form: Record<string, string> = { ...initialState.form, consid: '600000' };
     const state = { ...initialState, form };

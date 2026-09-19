@@ -20,10 +20,11 @@ try {
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'test',type:'message',role:'assistant',model:'test',content:[{type:'text',text:JSON.stringify(result)}],stop_reason:'end_turn',stop_sequence:null,usage:{input_tokens:1,output_tokens:1}})});
  });
  await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
- await page.getByRole('heading',{name:'Draft, Deed & Category',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'Deed setup',exact:true}).waitFor();
  assert.equal(await page.locator('.rail-step').count(),11);
  await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
  await page.getByRole('heading',{name:'Link Deed & Enclosures',exact:true}).waitFor();
+ await page.getByLabel('What is this property?').selectOption('Vacant Plot');
  await page.locator('input[type=file]').first().setInputFiles({name:'seller-note.txt',mimeType:'text/plain',buffer:Buffer.from(note)});
  await page.getByText('2 verified transcriptions',{exact:false}).waitFor();
  await page.getByRole('button',{name:'Executant Details',exact:false}).first().click();
@@ -48,6 +49,7 @@ try {
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.getByRole('button',{name:'New deed',exact:true}).click();
  await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
+ await page.getByLabel('What is this property?').selectOption('Vacant Plot');
  assert.equal(await page.locator('.source').count(),0);
  assert.equal(await page.locator('.summary-bar strong').innerText(),'0 details available');
  await page.locator('input[type=file]').first().setInputFiles(out+'blank-plan.pdf');

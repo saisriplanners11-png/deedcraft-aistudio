@@ -35,7 +35,7 @@ describe('sale deed template merge', () => {
     // fill-in-by-hand line instead of repeating "the afore mentioned date".
     expect(text).toContain('on this the ____________ day of ____________, 20____.');
     expect(text).not.toContain('on the afore mentioned date.');
-    for (let n = 2; n <= 9; n++) expect(text).toContain(`${n}. THE`);
+    for (let n = 1; n <= 8; n++) expect(text).toContain(`${n}. THE`);
     const original = await readZip(new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url))));
     const generated = await readZip(bytes);
     for (const name of ['word/styles.xml','word/numbering.xml','word/footer1.xml']) {
@@ -77,6 +77,48 @@ describe('sale deed template merge', () => {
     expect(text).toMatch(/estimate M\.V\.\s+: Rs\.10,00,000/);
   });
 
+  it('uses the new Open Place schedule and omits optional title recitals without source details', async () => {
+    const state = { ...initialState, category: 'Open Place' };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('All that the open place, admeasuring');
+    expect(text).not.toContain('Vacant Land Tax/Assessment');
+    expect(text).not.toContain('L.R.S.-2020 Application');
+  });
+
+  it('prints independently sourced flow-of-title blocks for each property schedule', async () => {
+    const state = {
+      ...initialState,
+      category: 'Open Place',
+      form: { ...initialState.form, plotNo: 'OPEN-1' },
+      additionalSchedules: [{ id: 'house-2', docNames: [], category: 'Residential', unit: 'Sq. Yards', values: { plotNo: 'HOUSE-2' } }],
+      linkRecordsBySchedule: {
+        primary: [
+          { id: 'primary-link', docNames: [], values: { linkOption: 'linkDoc', linkDocType: 'Sale Deed', linkDocNo: 'OPEN/101', linkDocDate: '2026-01-02', linkSro: 'Open SRO' } },
+          { id: 'primary-tax', docNames: [], values: { linkOption: 'houseTax', houseTaxReceiptNo: 'TAX-OPEN', taxPaidDate: '2026-01-03', localBodyName: 'Open Municipality' } },
+        ],
+        'house-2': [
+          { id: 'house-link', docNames: [], values: { linkOption: 'linkDoc', linkDocType: 'Gift Deed', linkDocNo: 'HOUSE/202', linkDocDate: '2025-02-03', linkSro: 'House SRO' } },
+          { id: 'house-permission', docNames: [], values: { linkOption: 'permissions', permBuildingPermitNo: 'PERMIT-HOUSE', permissionDate: '2025-02-03', permissionAuthorityName: 'House Municipality' } },
+        ],
+      },
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+
+    expect(text.match(/FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE \d/g)).toHaveLength(2);
+    expect(text.match(/\(a\) Registered Deed:/g)).toHaveLength(2);
+    expect(text).toContain('Document No.OPEN/101');
+    expect(text).toContain('Document No.HOUSE/202');
+    expect(text).toContain('TAX-OPEN');
+    expect(text).toContain('PERMIT-HOUSE');
+    const firstFlow = text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 1');
+    const secondFlow = text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 2');
+    expect(firstFlow).toBeLessThan(secondFlow);
+    expect(text.indexOf('TAX-OPEN')).toBeLessThan(secondFlow);
+    expect(text.indexOf('PERMIT-HOUSE')).toBeGreaterThan(secondFlow);
+  });
+
   it('does not borrow missing secondary party details from the first party', async () => {
     const state={...initialState,form:{...initialState.form,executantName:'First',executantMobile:'9876543210'},additionalExecutants:[{id:'second',docNames:[],values:{executantName:'Second'}}]};
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
@@ -102,7 +144,6 @@ describe('sale deed template merge', () => {
     expect(text).toContain('DECLARATION');
     expect(text).toContain('SIGN/S OF VENDOR/S');
     expect(text).toContain('WITNESSES:');
-    expect(text).toContain('Prepared By:');
   });
 
   it('recites each payment amount instead of assigning the combined total to the cheque', async () => {
@@ -139,9 +180,9 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
 
-    expect(text).toContain('Rs. 5,00,000/- through Cheque');
-    expect(text).toContain('Rs. 1,00,000/- in cash');
-    expect(text).not.toContain('Rs. 6,00,000/- through Cheque');
+    expect(text).toContain('Amount of Rs.5,00,000/- paid through Cheque');
+    expect(text).toContain('Amount of Rs.1,00,000/- paid via cash');
+    expect(text).not.toContain('Amount of Rs.6,00,000/- paid through Cheque');
   });
 
   it('generates every linked deed, party and property schedule', async () => {

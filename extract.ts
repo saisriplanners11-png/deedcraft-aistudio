@@ -653,7 +653,7 @@ const CLASSIFY_SCHEMA = {
     kind: { type: 'string' as const, description: 'One of link-deed, executant-id, claimant-id, plan, supporting, payment, unknown.' },
     paymentMode: { type: 'string' as const, description: 'For payment only: rtgs, cheque, dd, upi or cash. Otherwise omit.' },
     deedType: { type: 'string' as const, description: 'Return Sale only if this is clearly a sale-deed document. Otherwise omit.' },
-    category: { type: 'string' as const, description: 'Property category when clearly shown: Vacant Plot, Agricultural land, Residential, Commercial, Flat, Demolished or Part open place. Otherwise omit.' },
+    category: { type: 'string' as const, description: 'Property category when clearly shown: Vacant Plot, Open Place, Agricultural land, Residential, Commercial, Flat, Demolished or Part open place. Otherwise omit.' },
     reason: { type: 'string' as const, description: 'A short description of visible evidence supporting the classification.' },
   },
   additionalProperties: false,
@@ -661,7 +661,7 @@ const CLASSIFY_SCHEMA = {
 
 const BULK_KINDS: BulkKind[] = ['link-deed', 'executant-id', 'claimant-id', 'plan', 'supporting', 'payment', 'unknown'];
 const PAY_MODES = ['rtgs', 'cheque', 'dd', 'upi', 'cash'] as const;
-const CATEGORIES = ['Vacant Plot', 'Agricultural land', 'Residential', 'Commercial', 'Flat', 'Demolished', 'Part open place'];
+const CATEGORIES = ['Vacant Plot', 'Open Place', 'Agricultural land', 'Residential', 'Commercial', 'Flat', 'Demolished', 'Part open place'];
 
 /** Classify a single upload before extraction. Ambiguous identity documents stay unknown. */
 export async function classifyFile(file: File, signal?: AbortSignal): Promise<BulkClassification> {

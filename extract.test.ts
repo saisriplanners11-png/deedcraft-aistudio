@@ -104,6 +104,12 @@ describe('supporting property extraction mapping', () => {
       'supportingElectricityScNo', 'supportingElectricityUscNo', 'supportingDetails',
     ]);
   });
+
+  it('limits a Phase 1 permission upload to the three deed-recital details', () => {
+    expect(profileFields('phase1:permissions')).toEqual([
+      'permBuildingPermitNo', 'permissionDate', 'permissionAuthorityName',
+    ]);
+  });
 });
 
 describe('identity extraction mapping', () => {

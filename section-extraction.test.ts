@@ -69,7 +69,7 @@ describe('shared document section extraction', () => {
     // succeeds; every other chunk is unaffected — one extra call overall.
     expect(api.calls.filter(c=>c.tools[0].input_schema.properties.candidates)).toHaveLength(expectedChunks+1);
     expect(result.candidates.find(c=>c.field==='linkDocNo')).toMatchObject({value:'1263/2016',status:'accepted'});
-    expect(result.notes).toEqual([]);
+    expect(result.notes).toContain('No native schedule heading was found; examined pages 3 visually.');
   });
   it('accepts serialized, singleton and page-keyed evidence responses without discarding source text', () => {
     expect(structuredArray('[{"number":5,"text":"Schedule"}]')).toEqual([{number:5,text:'Schedule'}]);
@@ -77,25 +77,23 @@ describe('shared document section extraction', () => {
     expect(structuredArray({'5':{text:'Schedule'}})).toEqual([{number:5,text:'Schedule'}]);
     expect(structuredArray('invalid JSON')).toEqual([]);
   });
-  it('reads only pages 1-3 of a link deed, chunking the schedule fields into small concurrent calls', async () => {
+  it('falls back to every later page when a scanned link deed has no native schedule index', async () => {
     const events: ExtractionProgress[]=[]; const partial: SourceResult[]=[];
     const result=await extractSections(pages(81),[],new AbortController().signal,e=>events.push(e),r=>partial.push(r),'phase1:linkDoc');
-    // No OCR pre-pass and no independent re-check: one call for the
-    // document-details fields (pages 1-2); jurisdiction+schedule (page 3) is
-    // split into same-sized chunks so no single request pairs 30+ fields
-    // with their values, all dispatched together.
+    // The opening remains fast, while a scan with no native text gets a bounded
+    // all-later-pages schedule pass so a schedule on page 5/20/81 is not lost.
     expect(api.calls.filter(c=>c.tools[0].input_schema.properties.pages)).toHaveLength(0);
     const calls=api.calls.filter(c=>c.tools[0].input_schema.properties.candidates);
     expect(calls.every(c=>c.model==='read')).toBe(true);
     expect(calls.every(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum.length<=10)).toBe(true);
     expect(api.peak).toBeGreaterThan(1);
     const step2Call=calls.find(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum.includes('linkDocNo'))!;
-    const scheduleCalls=calls.filter(c=>c!==step2Call);
-    expect(scheduleCalls.length).toBeGreaterThan(1);
     const pageMentions=(call:any)=>[...new Set(call.messages[0].content.flatMap((p:any)=>p.type==='text'?[...p.text.matchAll(/SOURCE PAGE (\d+):/g)].map((m:any)=>Number(m[1])):[]))];
+    const scheduleCalls=calls.filter(c=>pageMentions(c).some((n:number)=>n>=3));
+    expect(scheduleCalls.length).toBeGreaterThan(1);
     expect(pageMentions(step2Call)).toEqual([1,2]);
-    expect(scheduleCalls.every(c=>pageMentions(c).length && pageMentions(c).every((n:number)=>n===3))).toBe(true);
-    expect(api.calls.every(c=>!c.messages[0].content.some((p:any)=>p.text?.includes('SOURCE PAGE 4:')))).toBe(true);
+    expect(scheduleCalls.every(c=>pageMentions(c).length && pageMentions(c).every((n:number)=>n>=3))).toBe(true);
+    expect(api.calls.some(c=>c.messages[0].content.some((p:any)=>p.text?.includes('SOURCE PAGE 81:')))).toBe(true);
     const fields=[step2Call,...scheduleCalls].flatMap(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum);
     expect(fields).not.toContain('consid'); expect(fields).not.toContain('executantName');
     expect(result.candidates.every(c=>c.status==='accepted')).toBe(true);
@@ -143,7 +141,7 @@ describe('shared document section extraction', () => {
     api.truncateOnce=true;
     const result=await extractSections(pages(3),[],new AbortController().signal,()=>{},undefined,'phase1:linkDoc');
     expect(result.candidates.filter(c=>c.role==='link').map(c=>c.field)).toEqual(expect.arrayContaining(['linkDocNo','linkDocType','linkDocDate']));
-    expect(result.notes).toEqual([]);
+    expect(result.notes).toContain('No native schedule heading was found; examined pages 3 visually.');
   });
 
   it('keeps Phase 1 property projection on the existing primary property across all document cards', () => {
@@ -156,6 +154,22 @@ describe('shared document section extraction', () => {
     expect(state.form).toMatchObject({plotNo:'16',mandal:'Sircilla'});
     expect(state.additionalSchedules).toEqual([]);
     expect(state.category).toBe('Part open place');
+  });
+
+  it('keeps a manually selected category on each property schedule independently', () => {
+    const draft = {
+      ...newDraft(),
+      propertyIds: ['house', 'flat', 'open'],
+      manual: {
+        'property|primary|category': 'Vacant Plot',
+        'property|house|category': 'Residential',
+        'property|flat|category': 'Flat',
+        'property|open|category': 'Part open place',
+      },
+    };
+    const state = appStateFor(draft);
+    expect(state.category).toBe('Vacant Plot');
+    expect(state.additionalSchedules.map(record => record.category)).toEqual(['Residential', 'Flat', 'Part open place']);
   });
 
   it('uses the appropriate own-record fields for every Phase 1 document type', () => {

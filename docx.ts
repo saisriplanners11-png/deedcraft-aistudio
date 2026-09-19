@@ -7,13 +7,14 @@
 //      like <Extent in Sq.yards> is usually spread over several runs. Only 58 of
 //      the template's 145 placeholders sit inside a single run. So each paragraph
 //      is merged, substituted, then written back into its first run.
-//   2. The template carries all four SCHEDULE OF PROPERTY variants, marked
-//      <IF OPEN PLOT>, <IF HOUSE>, <IF DIMOLISHED HOUSE> and <IF PART OPEN PLACE>.
+//   2. The template carries all five SCHEDULE OF PROPERTY variants, marked
+//      <IF OPEN PLACE>, <IF OPEN PLOT>, <IF HOUSE>, <IF DIMOLISHED HOUSE> and
+//      <IF PART OPEN PLACE>.
 //      The variant the property category selects is kept; the rest are removed.
 
 import { loadSaleDeedTemplate } from './template';
 
-const VARIANTS = ['IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
+const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 
 /** A literal phrase in the template to rewrite once the placeholders are filled. */
 export type Rewrite = { find: RegExp; replace: string; records?: Record<string, string>[] };
@@ -25,15 +26,32 @@ type Entry = { name: string; data: Uint8Array };
 const dv = (b: Uint8Array) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 
 async function inflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
-  const ds = new DecompressionStream('deflate-raw');
-  const buf = await new Response(new Blob([bytes as any]).stream().pipeThrough(ds)).arrayBuffer();
-  return new Uint8Array(buf);
+  try {
+    const ds = new DecompressionStream('deflate-raw');
+    const buf = await new Response(new Blob([bytes as any]).stream().pipeThrough(ds)).arrayBuffer();
+    return new Uint8Array(buf);
+  } catch (error) {
+    // Node 24 exposes the web stream classes but does not implement the ZIP
+    // deflate-raw format. Keep browser builds dependency-free while allowing
+    // tests and server-side rendering to use the native zlib implementation.
+    if (typeof process === 'undefined' || !process.versions?.node) throw error;
+    const moduleName = 'node:zlib';
+    const { inflateRawSync } = await import(/* @vite-ignore */ moduleName);
+    return new Uint8Array(inflateRawSync(bytes));
+  }
 }
 
 async function deflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
-  const cs = new CompressionStream('deflate-raw');
-  const buf = await new Response(new Blob([bytes as any]).stream().pipeThrough(cs)).arrayBuffer();
-  return new Uint8Array(buf);
+  try {
+    const cs = new CompressionStream('deflate-raw');
+    const buf = await new Response(new Blob([bytes as any]).stream().pipeThrough(cs)).arrayBuffer();
+    return new Uint8Array(buf);
+  } catch (error) {
+    if (typeof process === 'undefined' || !process.versions?.node) throw error;
+    const moduleName = 'node:zlib';
+    const { deflateRawSync } = await import(/* @vite-ignore */ moduleName);
+    return new Uint8Array(deflateRawSync(bytes));
+  }
 }
 
 /** Read a zip via its End of Central Directory record. */
@@ -278,6 +296,14 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   if (/sale consideration|consideration value/i.test(plainText(p))) {
     p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>');
   }
+  // The supplied template intentionally retains its source wording, including
+  // two date placeholders that are also used by the link-deed recital. Make
+  // those two occurrences unambiguous before the generic placeholder pass.
+  if (/Nala Order/i.test(plainText(p))) p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Nala Order Date>');
+  if (/Property Tax:/i.test(plainText(p))) {
+    p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Tax Paid Date>');
+    p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
+  }
   for (const rw of rewrites.filter(rw => !rw.records)) {
     p = replaceRunText(p, rw.find, () => rw.replace);
   }
@@ -293,6 +319,27 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
 function markConsiderationRows(xml: string): string {
   return xml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => /\bConsideration\b/i.test(plainText(row))
     ? row.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>')) : row);
+}
+
+/** Remove optional source-template title recitals when their source facts are absent. */
+function removeOptionalTitleRecitals(body: string, values: Map<string, string>): string {
+  const has = (...names: string[]) => names.every(name => !!values.get(norm(name)));
+  const optional: Array<{ test: RegExp; keep: () => boolean }> = [
+    { test: /Vacant Land Tax\/Assessment/i, keep: () => has('VLT No.') },
+    { test: /Approved Layout:/i, keep: () => has('Layout File No.') },
+    { test: /Title Deed:/i, keep: () => has('Pattadar Pass Book No', 'Pass Book Khata No') },
+    { test: /Nala Order:/i, keep: () => has('Nala Order No', 'Nala Order Date') },
+    { test: /Property Tax:/i, keep: () => has('House Tax Receipt', 'Tax Paid Date', 'Local Body Name') },
+    { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('BLT No.') },
+    { test: /House Permission:/i, keep: () => has('House Permission No.', 'Permission Date', 'Municipality/Gram Panchayat Name') },
+    { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.', 'Application Date') },
+    { test: /L\.R\.S\. Proceeding:/i, keep: () => has('LRS Proceeding No.', 'Proceeding Date') },
+  ];
+  return topLevelChildren(body).map(child => {
+    const chunk = body.slice(child.start, child.end);
+    const rule = optional.find(item => item.test.test(plainText(chunk)));
+    return rule && !rule.keep() ? '' : chunk;
+  }).join('');
 }
 
 // ------------------------------------------------------------------- the merge
@@ -349,7 +396,7 @@ export async function scheduleText(
   const idx = order.findIndex(o => o.v === variant);
   const start = order[idx].i + 1; // skip the <IF ...> marker paragraph itself
   const sharedTail = children.findIndex((c, i) =>
-    i > order[order.length - 1].i && plainText(body.slice(c.start, c.end)).trim() === '<FOR ALL THE DOCUMENTS>'
+    i > order[order.length - 1].i && ['<FOR ALL THE DOCUMENTS>', 'DECLARATION'].includes(plainText(body.slice(c.start, c.end)).trim())
   );
   const stop = idx + 1 < order.length ? order[idx + 1].i : sharedTail >= 0 ? sharedTail : children.length;
 
@@ -376,6 +423,9 @@ export type MergeResult = {
 export type ScheduleMerge = {
   variant: string;
   values: Record<string, string>;
+  /** Flow-of-title values and registered link deeds owned by this schedule. */
+  titleValues?: Record<string, string>;
+  titleLinkRecords?: Record<string, string>[];
   /** Source-backed recitals shown only when supporting files were uploaded. */
   supportingRecords?: string[];
 };
@@ -402,6 +452,8 @@ export async function fillSaleDeed(
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
   let body = markConsiderationRows(xml.slice(bodyStart, bodyEnd));
+  const values_ = new Map<string, string>();
+  for (const [k, v] of Object.entries(values)) values_.set(norm(k), v ?? '');
 
   // --- keep only the selected schedule variant -----------------------------
   const children = topLevelChildren(body);
@@ -419,11 +471,39 @@ export async function fillSaleDeed(
     // Without this boundary the final schedule variant incorrectly owns the
     // declaration, signatures, witnesses and prepared-by paragraphs too.
     const sharedTail = children.findIndex((c, i) =>
-      i > order[order.length - 1].i && plainText(body.slice(c.start, c.end)).trim() === '<FOR ALL THE DOCUMENTS>'
+      i > order[order.length - 1].i && ['<FOR ALL THE DOCUMENTS>', 'DECLARATION'].includes(plainText(body.slice(c.start, c.end)).trim())
     );
     const selected = schedules.length ? schedules : [{ variant, values }];
     const firstMarker = order[0].i;
-    const tailStart = sharedTail >= 0 ? sharedTail + 1 : children.length;
+    const flowStart = children.findIndex(child =>
+      plainText(body.slice(child.start, child.end)).trim().startsWith('1. FLOW OF TITLE & LINK DEED DETAILS:')
+    );
+    const flowEnd = children.findIndex((child, index) =>
+      index > flowStart && plainText(body.slice(child.start, child.end)).trim().startsWith('2. CONSIDERATION & PAYMENT TERMS:')
+    );
+    if (flowStart < 0 || flowEnd < 0 || flowEnd >= firstMarker) {
+      throw new Error('Template flow-of-title boundaries are missing or damaged.');
+    }
+    const tailIsMarker = sharedTail >= 0 && plainText(body.slice(children[sharedTail].start, children[sharedTail].end)).trim() === '<FOR ALL THE DOCUMENTS>';
+    const tailStart = sharedTail >= 0 ? sharedTail + (tailIsMarker ? 1 : 0) : children.length;
+    const titleBlocks = selected.map((schedule, scheduleIndex) => {
+      const titleValues = new Map<string, string>();
+      for (const [key, value] of Object.entries(schedule.titleValues || values)) titleValues.set(norm(key), value ?? '');
+      const titleRewrites: Rewrite[] = schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
+        ? [{ find: /\(a\) Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
+        : [];
+      let block = removeOptionalTitleRecitals(
+        children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''),
+        titleValues,
+      );
+      block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+        if (selected.length > 1 && /FLOW OF TITLE & LINK DEED DETAILS:/i.test(plainText(paragraph))) {
+          paragraph = replaceRunText(paragraph, /FLOW OF TITLE & LINK DEED DETAILS:/i, () => `FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE ${scheduleIndex + 1}`);
+        }
+        return fillParagraph(paragraph, titleValues, missing, titleRewrites);
+      });
+      return block;
+    }).join('');
     const scheduleBlocks = selected.map((schedule, scheduleIndex) => {
       const selectedIndex = order.findIndex(item => item.v === schedule.variant);
       if (selectedIndex < 0) return '';
@@ -455,15 +535,14 @@ export async function fillSaleDeed(
       }
       return block;
     }).join('');
-    body = children.slice(0, firstMarker).map(c => body.slice(c.start, c.end)).join('')
+    body = children.slice(0, flowStart).map(c => body.slice(c.start, c.end)).join('')
+      + titleBlocks
+      + children.slice(flowEnd, firstMarker).map(c => body.slice(c.start, c.end)).join('')
       + scheduleBlocks
       + children.slice(tailStart).map(c => body.slice(c.start, c.end)).join('');
   }
 
   // --- fill the placeholders ------------------------------------------------
-  const values_ = new Map<string, string>();
-  for (const [k, v] of Object.entries(values)) values_.set(norm(k), v ?? '');
-
   const kept = topLevelChildren(body);
   body = kept
     .map(c => {

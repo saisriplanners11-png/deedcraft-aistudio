@@ -3,7 +3,7 @@ import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, partyEntityFields, typ
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
-  plansFor, resolveDraft, type Role, type Source, type SourceResult, WorkQueue,
+  plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
 } from './source-draft';
 import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
 import { fillSaleDeed, saveBlob, scheduleText, type ScheduleMerge } from './docx';
@@ -16,6 +16,9 @@ import { PaymentCard, AddPayment } from './paymentui';
 import { PlanSketchStep } from './plan-sketch-step';
 import './wizard-app.css';
 import './plan-sketch.css';
+import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
+import { releaseGate } from './legal-registry';
+import { approvalAllowsGeneration, emptyApproval, type ProfessionalApproval } from './professional-review';
 
 // Raised from 4: Step 2 now lets a drafter add several document types (link
 // deed, house tax, title deed, NALA, permissions) at once, and each upload
@@ -31,6 +34,55 @@ const PARTY_FIELDS: Record<'executant' | 'claimant', string[]> = {
 };
 
 type ExtractStep = { id?: string; title: string; state: 'queued' | 'running' | 'done' | 'review' | 'error' };
+type PendingReview = { id: string; sourceName: string; assignment?: Source['assignment']; candidate: Candidate };
+
+function reviewTarget(review: PendingReview) {
+  const { candidate, assignment } = review;
+  if (candidate.role === 'unassigned' && assignment && (assignment.role === 'executant' || assignment.role === 'claimant')) {
+    return { role: assignment.role, record: assignment.record, field: candidate.field.replace(/^party/, assignment.role) };
+  }
+  if (candidate.role === 'unassigned') return null;
+  return {
+    role: candidate.role,
+    record: candidate.role === 'property'
+      ? assignment?.propertyRecord || candidate.record
+      : assignment?.role === candidate.role ? assignment.record : candidate.record,
+    field: candidate.field,
+  };
+}
+
+/** A visible-but-disputed read must be confirmed before it enters the deed. */
+function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
+  review: PendingReview | null;
+  onConfirm: (review: PendingReview, value: string) => void;
+  onDismiss: () => void;
+}) {
+  const [value, setValue] = useState('');
+  useEffect(() => setValue(review?.candidate.value || ''), [review?.id]);
+  if (!review) return null;
+  const { candidate } = review;
+  const target = reviewTarget(review);
+  const label = ALL_FIELDS.find(field => field.id === candidate.field)?.label || candidate.field;
+  return <div className="dc-veil" role="dialog" aria-modal="true" aria-labelledby="unverified-review-title"
+    style={{ position: 'fixed', inset: 0, zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(22,19,15,.44)', backdropFilter: 'blur(2px)' }}>
+    <div className="dc-card" style={{ width: 'min(540px,100%)', background: C.paper, border: `1px solid ${C.rule}`, boxShadow: '0 24px 60px rgba(22,19,15,.28)', padding: '22px 24px 20px' }}>
+      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: C.gold }}>CONFIRM SOURCE READING</p>
+      <h2 id="unverified-review-title" style={{ margin: '6px 0 8px', fontFamily: C.serif, fontSize: 21, color: C.ink }}>Verify {label}</h2>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: C.body, lineHeight: 1.55 }}>The automated reads disagreed. Check the source text before adding this value to the deed.</p>
+      <p style={{ margin: '0 0 6px', fontSize: 11, color: C.mutedSoft }}>{review.sourceName} · page {candidate.page || 'source'}</p>
+      <blockquote style={{ margin: '0 0 14px', padding: '10px 12px', borderLeft: `3px solid ${C.goldLight}`, background: C.ground, fontSize: 12, lineHeight: 1.55 }}>{candidate.quote}</blockquote>
+      <label style={{ display: 'block', fontSize: 12, color: C.body }}>Confirmed value
+        <input autoFocus value={value} onChange={event => setValue(event.target.value)}
+          style={{ display: 'block', boxSizing: 'border-box', width: '100%', marginTop: 5, padding: '9px 10px', border: `1px solid ${C.goldLight}`, background: 'transparent', color: C.ink, fontSize: 14 }} />
+      </label>
+      {!target && <p style={{ margin: '10px 0 0', fontSize: 12, color: '#8A3A2E' }}>This reading has no assigned deed role, so it cannot be added automatically.</p>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+        <Button kind="ghost" onClick={onDismiss}>Leave blank</Button>
+        <Button kind="gold" disabled={!target || !value.trim()} onClick={() => onConfirm(review, value.trim())}>Confirm and use value</Button>
+      </div>
+    </div>
+  </div>;
+}
 
 /** Keep failed and disputed reads visible after the progress indicator ends. */
 function SourceFeedback({ sources, visibleFields }: { sources: Source[]; visibleFields?: string[] }) {
@@ -301,6 +353,55 @@ function SchedulePreview({ merge }: { merge: ScheduleMerge }) {
   return <div style={{ fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap' }}>{text}</div>;
 }
 
+/** One compact, schedule-scoped type choice. It appears only until the type is
+ * known; afterwards the user sees context, not the same question again. */
+function ScheduleTypeControl({ scheduleNumber, category, onChange }: { scheduleNumber: number; category: string; onChange: (category: string) => void }) {
+  const [changing, setChanging] = useState(false);
+  const selected = CATEGORIES.find(item => item.key === category);
+  if (selected && !changing) return <div className="add-document-row" aria-label={`Schedule ${scheduleNumber} property type`}>
+    <span><b>Schedule {scheduleNumber}</b> · {selected.label}</span>
+    <button type="button" className="quiet" onClick={() => setChanging(true)}>Change type</button>
+  </div>;
+  return <div className="add-document-row" aria-label={`Schedule ${scheduleNumber} property type`}>
+    <label className="field"><span>What is this property?</span>
+      <select value={category} onChange={event => { onChange(event.target.value); setChanging(false); }}>
+        <option value="">Choose property type</option>
+        {CATEGORIES.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
+      </select>
+    </label>
+    {selected && <span style={{ fontSize: 12, color: C.muted }}>Changing type may change the fields required for this schedule.</span>}
+  </div>;
+}
+
+function ScheduleSwitcher({ records, activeId, onSelect }: { records: ReturnType<typeof scheduleRecords>; activeId: string; onSelect: (id: string) => void }) {
+  if (records.length < 2) return null;
+  return <div className="add-document-row" aria-label="Property schedules">
+    {records.map((record, index) => <button key={record.id} type="button" className={record.id === activeId ? 'primary' : 'quiet'} onClick={() => onSelect(record.id)}>
+      Schedule {index + 1}{record.category ? ` · ${record.category}` : ''}
+    </button>)}
+  </div>;
+}
+
+/** Values which are visible in a source but did not pass automatic consensus
+ * can only become deed data through an explicit drafter action. */
+function ReviewQueue({ sources, record, edit }: { sources: Source[]; record: string; edit: (role: Role, record: string, field: string, value: string) => void }) {
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const candidates = sources.flatMap(source => (source.result?.candidates || []).map(candidate => ({ source, candidate })))
+    .filter(({ candidate }) => candidate.status === 'uncertain' && candidate.role === 'property' && !dismissed.includes(candidate.id));
+  if (!candidates.length) return null;
+  return <Section title="Review visible source details">
+    <p style={{ margin: '0 0 12px', fontSize: 12, color: C.body }}>These details were read from the source but did not pass automatic verification. Confirm only what you can see in the quoted source.</p>
+    {candidates.map(({ source, candidate }) => <div key={`${source.id}:${candidate.id}`} className="source" style={{ margin: '8px 0' }}>
+      <strong>{ALL_FIELDS.find(field => field.id === candidate.field)?.label || candidate.field}: {candidate.value}</strong>
+      <small> · {source.name}, page {candidate.page || 'source'}</small>
+      <blockquote>{candidate.quote}</blockquote>
+      <button type="button" className="quiet" onClick={() => edit('property', record, candidate.field, candidate.value)}>Use this value</button>{' '}
+      <button type="button" className="quiet" onClick={() => edit('property', record, candidate.field, '')}>Edit / clear</button>{' '}
+      <button type="button" className="quiet" onClick={() => setDismissed(ids => [...ids, candidate.id])}>Leave blank</button>
+    </div>)}
+  </Section>;
+}
+
 export default function WizardApp() {
   const [draft, dispatch] = useReducer(draftReducer, undefined, newDraft);
   const current = useRef(draft); current.current = draft;
@@ -308,11 +409,14 @@ export default function WizardApp() {
   const cache = useRef(new Map<string, Promise<SourceResult>>());
   const [uploadSteps, setUploadSteps] = useState<Record<string, ExtractStep[]>>({});
   const [activeUpload, setActiveUpload] = useState<{ id: string; label: string; names: string[] } | null>(null);
+  const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
   // Record ids added via "Add another executant/claimant" before any evidence names them —
   // resolveDraft only lists a record once it has a value, so a freshly added blank/uploading
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [message, setMessage] = useState('');
+  const [reviewerName, setReviewerName] = useState('');
+  const [approval, setApproval] = useState<ProfessionalApproval>(emptyApproval);
   const [exporting, setExporting] = useState(false);
   const [download, setDownload] = useState<{ revision: number; draftId: string; docx: Blob; pdf: Blob; filename: string } | null>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
@@ -323,6 +427,11 @@ export default function WizardApp() {
   const notices = [...generationBlockers(state), ...(draft.sources.some(s=>s.status==='reading'||s.status==='queued') ? [{id:'pending-uploads',label:'Document verification',reason:'Wait for all uploads to finish verification.',source:'Uploaded documents',step:1}] : [])];
   const recordOptions = (role: Role) => [...new Set(Object.keys(resolved.values).filter(k => k.startsWith(role + '|')).map(k => k.split('|')[1]))];
   const step = draft.step;
+  const deedDefinition = definitionFor(draft.instrumentId);
+  const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
+  const snapshotHash = `${draft.id}:${draft.revision}`;
+  const warningIds = notices.map(item => item.id);
+  const generationApproved = deedRelease.ready && approvalAllowsGeneration(approval, snapshotHash, warningIds);
   const goto = (s: number) => dispatch({ type: 'step', step: s });
   const edit = (role: Role, record: string, field: string, value: string) => {
     if (field === 'consid') {
@@ -336,9 +445,13 @@ export default function WizardApp() {
     // Extent (Sq. Meters) and NALA's square-yard equivalent are computed live
     // for display (see RecordFieldGroup/LinkRecordCard) straight from their
     // source figure, whichever way it arrived — no mirrored write needed here.
-    // SRO code mirrors the Sub-Registrar Office entered in Jurisdiction, on every link record.
+    // SRO code mirrors the Sub-Registrar Office only on this property's link records.
     if (field === 'sro' && role === 'property') {
-      for (const linkRecord of recordOptions('link')) {
+      for (const linkRecord of recordOptions('link').filter(linkRecord =>
+        (draft.linkPropertyRecords[linkRecord]
+          || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === linkRecord)?.assignment?.propertyRecord
+          || 'primary') === record
+      )) {
         dispatch({ type: 'manual', key: fieldKey('link', linkRecord, 'linkSroCode'), value });
       }
     }
@@ -395,6 +508,10 @@ export default function WizardApp() {
         if (valid()) {
           setUploadSteps(s => ({ ...s, [sourceId]: (s[sourceId] || []).map(step => step.state === 'running' ? { ...step, state: 'done' as const } : step) }));
           job({ status: 'done', result, durationMs: performance.now() - started, error: undefined });
+          const uncertain = result.candidates.filter(candidate => candidate.status === 'uncertain');
+          if (uncertain.length) setPendingReviews(queue => [...queue, ...uncertain.map(candidate => ({
+            id: `${sourceId}:${candidate.id}`, sourceName: file.name, assignment, candidate,
+          }))]);
         }
       });
     } catch (error: any) {
@@ -474,14 +591,20 @@ export default function WizardApp() {
 
   function reset() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
-    setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] }); dispatch({ type: 'reset' });
+    setUploadSteps({}); setDownload(null); setMessage(''); setReviewerName(''); setApproval(emptyApproval()); setExtraPartyRecords({ executant: [], claimant: [] }); dispatch({ type: 'reset' });
   }
 
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
-  const primaryPropertyId = 'primary';
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
   const propertyRecords = scheduleRecords(state);
+  const combinedMarketStatus: LinkStageStatus = (() => {
+    const states = propertyRecords.map(record => linkStageStatus('step5', record.id));
+    if (states.includes('loading')) return 'loading';
+    if (states.includes('error')) return 'error';
+    if (states.includes('review')) return 'review';
+    return states.some(Boolean) ? 'done' : null;
+  })();
   const executantRecords = partyRecords(state, 'executant');
   const claimantRecords = partyRecords(state, 'claimant');
 
@@ -501,10 +624,13 @@ export default function WizardApp() {
     } catch (error: any) { return { id, svg: '', note: '', error: error.message }; }
   });
   const scheduleMerges = scheduleMergesFor(state);
+  const activeScheduleMerge = scheduleMerges[activePropertyIndex];
 
   async function generate(kind: 'word' | 'pdf') {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
+      if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
+      if (!generationApproved) throw new Error('Professional approval of this exact draft snapshot is required');
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision ? download : null;
       if (!artifact) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
@@ -546,6 +672,12 @@ export default function WizardApp() {
     dispatch({ type: 'add-property', id });
     goto(1);
   };
+  const confirmUnverified = (review: PendingReview, value: string) => {
+    const target = reviewTarget(review);
+    if (target) edit(target.role, target.record, target.field, value);
+    setPendingReviews(queue => queue.filter(item => item.id !== review.id));
+  };
+  const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
   return <div className="wizard-app">
     <ExtractDialog
@@ -558,7 +690,8 @@ export default function WizardApp() {
       onClose={() => setActiveUpload(null)}
       onCancel={cancelActiveUpload}
     />
-    <header className="app-top"><a href="#" className="brand">DeedCraft <span>SALE DEEDS</span></a><button className="quiet" onClick={reset}>New deed</button></header>
+    <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
+    <header className="app-top"><a href="#" className="brand">DeedCraft <span>MULTI-INSTRUMENT</span></a><button className="quiet" onClick={reset}>New deed</button></header>
     <div className="shell">
       <nav className="rail" aria-label="Deed steps">
         <button className={`rail-overview${step === -1 ? ' active' : ''}`} onClick={() => goto(-1)}>Overview</button>
@@ -576,7 +709,7 @@ export default function WizardApp() {
       <main className="stage">
         <div className="stage-head">
           <p className="eyebrow">{step < 0 ? 'OVERVIEW' : `STEP ${step + 1} OF ${STEPS.length}`}</p>
-          <h1>{step < 0 ? 'DeedCraft — Sale Deed' : STEPS[step].label}</h1>
+          <h1>{step < 0 ? `DeedCraft — ${deedDefinition.label}` : STEPS[step].label}</h1>
           {step >= 0 && <p>{STEPS[step].sub}</p>}
         </div>
 
@@ -597,34 +730,35 @@ export default function WizardApp() {
         </section>}
 
         {step === 0 && <section className="panel">
-          <Section title="Property category" telugu="ఆస్తి రకం">
-            <div className="picker-grid">{CATEGORIES.map(c => (
-              <button key={c.key} className={`picker-tile${state.category === c.key ? ' selected' : ''}`} onClick={() => edit('property', primaryPropertyId, 'category', c.key)}>
-                <b>{c.label}</b><em>{c.badge}</em>
-              </button>
-            ))}</div>
-          </Section>
           <Section title="Deed type" telugu="దస్తావేజు రకం">
-            <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>The template pipeline currently generates the <b>Sale Deed</b> only; the other instruments below are recorded for reference and are not yet wired to a template.</p>
-            <div className="picker-grid">{DEEDS.map(d => (
-              <div key={d.type} className={`picker-tile${d.type === 'Sale' ? ' selected' : ' disabled'}`}>
-                <b>{d.label}</b><em>{d.type === 'Sale' ? 'Supported' : 'Coming soon'}</em>
-              </div>
-            ))}</div>
+            <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Choose the legal instrument. Generation opens only when an effective, professionally approved reference template has been registered.</p>
+            <div className="picker-grid">{INSTRUMENT_IDS.map(id => {
+              const definition = DEED_DEFINITIONS[id];
+              const ready = releaseGate(id).ready;
+              return <button key={id} type="button" className={`picker-tile${draft.instrumentId === id ? ' selected' : ''}`} onClick={() => dispatch({ type: 'instrument', instrumentId: id })}>
+                <b>{definition.label}</b><em>{ready ? 'Approved reference available' : 'Reference required'}</em>
+              </button>;
+            })}</div>
           </Section>
           <Section title="Draft form" telugu="ముసాయిదా రూపం">
-            <div className="picker-grid">{(DRAFTS.Sale || []).map((d, i) => (
-              <div key={d.id} className={`picker-tile${i === 0 ? ' selected' : ' disabled'}`}>
-                <b>{d.title}</b><em>{i === 0 ? 'Currently generated' : 'Coming soon'}</em>
-              </div>
+            <div className="picker-grid">{deedDefinition.variants.map(variant => (
+              <button key={variant.id} type="button" className={`picker-tile${draft.variantId === variant.id ? ' selected' : ''}`} onClick={() => dispatch({ type: 'instrument', instrumentId: draft.instrumentId, variantId: variant.id })}>
+                <b>{variant.label}</b><em>{releaseGate(draft.instrumentId, variant.id).ready ? 'Approved for drafting' : 'Awaiting approved reference'}</em>
+              </button>
             ))}</div>
+            {!deedRelease.ready && <Empty>Legal reference onboarding required. {deedRelease.reasons.join(' ')}</Empty>}
           </Section>
         </section>}
 
         {step === 1 && (() => {
           const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);
           const multipleProperties = propertyRecords.length > 1;
+          const activeProperty = propertyRecords.find(record => record.id === activePropertyId);
+          const category = activeProperty?.category || '';
           return <>
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <section className="panel"><ScheduleTypeControl scheduleNumber={activePropertyIndex + 1} category={category} onChange={value => edit('property', activePropertyId, 'category', value)} /></section>
+          {!category ? <Empty>Choose this schedule's property type to add its documents.</Empty> : <>
           <section className="panel"><h2>{multipleProperties ? `Documents for Property ${activePropertyIndex + 1}` : 'Property documents'}</h2><p>Upload only the link deeds, receipts and property records for this schedule. These documents cannot alter another property’s extracted details.</p></section>
           {records.length === 0 && <Empty>No documents added{multipleProperties ? ` for Property ${activePropertyIndex + 1}` : ''} yet — click below to add one.</Empty>}
           {records.map((record, i, all) => {
@@ -638,22 +772,27 @@ export default function WizardApp() {
               busy={!!busySource} />;
           })}
           <AddLinkDocument onAdd={addLinkDocuments} />
+          </>}
         </>;
         })()}
 
         {step === 2 && <LinkStageGate status={linkStageStatus('step3')} loading="Extracting jurisdiction from the property documents…">
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="panel"><h2>{propertyRecords.length > 1 ? `Property ${activePropertyIndex + 1} — Jurisdiction` : 'Jurisdiction'}</h2><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} /><RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} /></section>
         </LinkStageGate>}
 
         {step === 3 && <LinkStageGate status={linkStageStatus('step4')} loading="Extracting the property schedule from the property documents…">
-          {propertyRecords.map((record, i) => {
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          {propertyRecords.filter(record => record.id === activePropertyId).map(record => {
             const id = record.id;
-            const merge = scheduleMerges[i];
+            const merge = activeScheduleMerge;
+            const i = activePropertyIndex;
             const multipleProperties = propertyRecords.length > 1;
             return <section className="panel" key={record.id}>
-              <h2>{multipleProperties ? `Schedule of Property ${i + 1}` : 'Property details'}{record.category ? ` — ${record.category}` : ''}</h2>
+              <h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}{record.category ? ` — ${record.category}` : ''}</h2>
               {multipleProperties && <div className="add-document-row"><button type="button" className="quiet" onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }}>Edit documents for Property {i + 1}</button></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
+              <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} resolved={resolved} edit={edit} />
               {merge && <Section title="Schedule of property" telugu="ఆస్తి వివరణ">
                 <SchedulePreview merge={merge} />
@@ -664,12 +803,17 @@ export default function WizardApp() {
           <div className="add-document-row"><button type="button" className="primary" onClick={addProperty}>+ Add another property</button></div>
         </LinkStageGate>}
 
-        {step === 4 && <LinkStageGate status={linkStageStatus('step5')} loading="Extracting market value from the property documents…">
-          <section className="panel"><h2>{propertyRecords.length > 1 ? `Property ${activePropertyIndex + 1} — Market value` : 'Market value'}</h2><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} /><RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={4} resolved={resolved} edit={edit} /></section>
+        {step === 4 && <LinkStageGate status={combinedMarketStatus} loading="Extracting market value from the property documents…">
+          <section className="panel"><h2>Combined market value</h2><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link')} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} />
+            {propertyRecords.map((record, index) => <div key={record.id} style={index ? { marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.rule}` } : undefined}>
+              {propertyRecords.length > 1 && <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {index + 1}{record.category ? ` — ${record.category}` : ''}</h3>}
+              <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} resolved={resolved} edit={edit} />
+            </div>)}
+          </section>
           <section className="panel" aria-label="Calculated market value">
             <h2>Calculated market value</h2>
-            <p>Area × verified basic rate + structure valuation. This is calculated automatically and does not replace the final sale consideration.</p>
-            <strong style={{ fontSize: 22, color: C.ink }}>{vm.persayINR || 'Enter a verified area and basic rate'}</strong>
+            <p>Total of every schedule's area × verified basic rate + structure valuation. This is calculated automatically and does not replace the final sale consideration.</p>
+            <strong style={{ fontSize: 22, color: C.ink }}>{vm.persayINR || 'Enter verified area and basic rate for every schedule'}</strong>
           </section>
         </LinkStageGate>}
 
@@ -715,10 +859,17 @@ export default function WizardApp() {
         </section>}
 
         {step === 9 && <section className="panel download">
-          <h2>Download your sale deed</h2>
-          <p>You can download at any time. Missing facts remain blank; an incomplete draft must be reviewed before signing or registration.</p>
+          <h2>Professional review and generation</h2>
+          <p>Generation is tied to the exact reviewed snapshot. Any later edit automatically makes this approval stale.</p>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
-          <div className="download-actions"><button className="primary" disabled={exporting} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          <label className="field"><span>Reviewing professional</span><input value={reviewerName} onChange={event => setReviewerName(event.target.value)} placeholder="Advocate or authorized document writer" /></label>
+          <div className="download-actions"><button type="button" onClick={() => {
+            if (!reviewerName.trim()) { setMessage('Enter the reviewing professional’s name before approval.'); return; }
+            setApproval({ status: 'approved', reviewerName: reviewerName.trim(), reviewerRole: 'authorized-professional', approvedSnapshotHash: snapshotHash, approvedAt: new Date().toISOString(), acceptedWarnings: warningIds });
+            setMessage(notices.length ? 'This snapshot is approved with the listed outstanding items explicitly accepted.' : 'This snapshot is professionally approved.');
+          }}>Approve this exact snapshot</button></div>
+          <p>{generationApproved ? `Approved by ${approval.reviewerName}.` : 'Final generation is locked until this snapshot is approved.'}</p>
+          <div className="download-actions"><button className="primary" disabled={exporting || !generationApproved} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting || !generationApproved} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 

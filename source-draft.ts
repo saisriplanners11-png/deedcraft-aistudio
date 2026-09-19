@@ -2,6 +2,7 @@ import { ALL_FIELDS, EMPTY_FORM } from './fields';
 import { initialState, withDerived, type AppState, type ValueRecord } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
+import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
 
 export const EXTRACTION_VERSION = 'evidence-v9-full-document-verification';
 export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned';
@@ -39,8 +40,13 @@ export type Draft = {
   activePropertyId: string;
   /** Link/supporting-document cards remain in the property bundle that created them. */
   linkPropertyRecords: Record<string, string>;
+  /** Instrument identity is part of the draft snapshot and cannot be inferred from its fields. */
+  instrumentId: InstrumentId;
+  variantId: string;
+  definitionVersion: string;
 };
-export const newDraft = (): Draft => ({ id: crypto.randomUUID(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {} });
+const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'reset' }
   | { type: 'step'; step: number }
@@ -52,6 +58,7 @@ export type Action =
   | { type: 'add-property'; id: string }
   | { type: 'active-property'; id: string }
   | { type: 'link-property'; record: string; propertyId: string }
+  | { type: 'instrument'; instrumentId: InstrumentId; variantId?: string }
   | { type: 'manual'; key: string; value: string }
   | { type: 'choose'; key: string; candidateId: string }
   | { type: 'job'; draftId: string; sourceId: string; sourceRevision: number; patch: Partial<Source> };
@@ -68,6 +75,10 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'add-property') next = { ...draft, propertyIds: draft.propertyIds.includes(action.id) || action.id === 'primary' ? draft.propertyIds : [...draft.propertyIds, action.id], activePropertyId: action.id };
   if (action.type === 'active-property') next = { ...draft, activePropertyId: action.id };
   if (action.type === 'link-property') next = { ...draft, linkPropertyRecords: { ...draft.linkPropertyRecords, [action.record]: action.propertyId } };
+  if (action.type === 'instrument') {
+    const definition = definitionFor(action.instrumentId);
+    next = { ...draft, instrumentId: action.instrumentId, variantId: action.variantId || definition.variants[0].id, definitionVersion: definition.version };
+  }
   if (action.type === 'manual') next = { ...draft, manual: { ...draft.manual, [action.key]: action.value }, manualEdits: draft.manualEdits + 1 };
   if (action.type === 'choose') {
     const manual = { ...draft.manual }; delete manual[action.key];
@@ -217,9 +228,16 @@ export function appStateFor(draft: Draft): AppState {
   const properties = propertyIds.map(id => byPropertyId.get(id) || ({ id, values: {}, docNames: [] }));
   const transaction = forRole('property').find(r => r.id === 'transaction');
   const sellers = forRole('executant'); const buyers = forRole('claimant'); const links = forRole('link');
+  const linkScheduleId = (record: ValueRecord) => draft.linkPropertyRecords[record.id]
+    || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === record.id)?.assignment?.propertyRecord
+    || 'primary';
+  const linkRecordsBySchedule: Record<string, ValueRecord[]> = {};
+  for (const link of links) (linkRecordsBySchedule[linkScheduleId(link)] ??= []).push(link);
   const registeredLinks = links.filter(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
   const supportingLinks = links.filter(r=>!registeredLinks.includes(r));
-  const form = { ...EMPTY_FORM, ...properties[0]?.values, ...sellers[0]?.values, ...buyers[0]?.values, ...registeredLinks[0]?.values, ...transaction?.values };
+  const primaryLinks = linkRecordsBySchedule.primary || [];
+  const primaryRegisteredLink = primaryLinks.find(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
+  const form = { ...EMPTY_FORM, ...properties[0]?.values, ...sellers[0]?.values, ...buyers[0]?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
   const paymentRecords = forRole('payment');
   const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
@@ -242,9 +260,12 @@ export function appStateFor(draft: Draft): AppState {
     [`${side}Relation`]: values[`${side}Relation`] || 'S/o',
   });
   return {
-    ...initialState, step: draft.step, deedType: 'Sale', draft: 'Outright Absolute Sale Deed',
+    ...initialState, step: draft.step,
+    deedType: definitionFor(draft.instrumentId || instrumentIdForLegacyType('Sale')).legacyType,
+    draft: definitionFor(draft.instrumentId || 'sale').variants.find(v => v.id === draft.variantId)?.label || definitionFor(draft.instrumentId || 'sale').variants[0].label,
     category: properties[0]?.values.category || '', unit: properties[0]?.values.unit || '',
     form: derived, payments, docs: [], fieldSource: {}, fieldEvidence: {}, conflicts: {}, unresolvedFields,
+    linkRecordsBySchedule,
     additionalExecutants: sellers.slice(1).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
     additionalClaimants: buyers.slice(1).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
     additionalLinkDocuments: registeredLinks.slice(1),
