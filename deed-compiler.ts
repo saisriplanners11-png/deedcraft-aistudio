@@ -1,4 +1,4 @@
-import { fillSaleDeed, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
+import { BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, type DeedTemplateSource, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
 import type { InstrumentId } from './instruments';
 import { definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
@@ -34,12 +34,16 @@ export function compileDeed(snapshot: DraftSnapshot): CompiledDeed {
   return { snapshot, templateVersionId: gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
 }
 
-export async function renderArtifact(compiled: CompiledDeed, format: 'docx'): Promise<{ result: MergeResult; manifest: GenerationManifest }> {
+export async function renderArtifact(
+  compiled: CompiledDeed,
+  format: 'docx',
+  templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
+): Promise<{ result: MergeResult; manifest: GenerationManifest }> {
   if (format !== 'docx') throw new Error('Only DOCX rendering is approved at this time.');
   if (compiled.snapshot.instrumentId !== 'sale') throw new Error('No approved renderer is registered for this instrument.');
   const first = compiled.snapshot.schedules[0];
   if (!first) throw new Error('At least one property schedule is required by the Sale template.');
-  const result = await fillSaleDeed(compiled.snapshot.values, first.variant, compiled.snapshot.rewrites || [], compiled.snapshot.schedules, compiled.snapshot.planPages || []);
+  const result = await fillSaleDeed(compiled.snapshot.values, first.variant, compiled.snapshot.rewrites || [], compiled.snapshot.schedules, compiled.snapshot.planPages || [], templateSource);
   return {
     result,
     manifest: {

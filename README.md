@@ -2,7 +2,7 @@
 
 Create a sale deed through an 11-step wizard: **Draft, Deed & Category → Link Deed & Enclosures → Jurisdiction → Property Details → Market Value → Payment Details → Property Schedules → Executant Details → Claimant Details → Reverify → Generate Deed**. Mixed PDFs, Word files, photos, text and handwritten notes can be uploaded on any step. Manual entry is optional. Missing or uncertain fields remain blank and do not prevent download.
 
-The output is the supplied sale-deed Word template with a registration plan appended, plus a separate plan PDF. Clause wording, numbering, formatting, schedule variants, declaration and signatures come from the template. Supporting records populate existing fields; they do not add paragraphs. New drafts contain no sample parties, properties, dimensions, stamp values or payments.
+The output uses the supplied sale-deed Word template by default, with a registration plan appended, plus a separate plan PDF. On the Generate Deed step, a drafter may instead upload a compatible tagged `.docx` derived from the downloadable starter template. Clause wording, numbering, formatting, schedule variants, declaration and signatures come from the selected template. Supporting records populate existing fields; they do not add paragraphs. New drafts contain no sample parties, properties, dimensions, stamp values or payments.
 
 ## Run
 
@@ -45,11 +45,13 @@ The prior deed's purchaser becomes the new seller. Prior payments, age, occupati
 
 `sale-deed-template.docx` is the supplied reference, kept byte-for-byte unchanged. `docx.ts` patches placeholders across their original text runs; it preserves run properties, line breaks and paragraph numbering. The selected schedule is retained, consideration is separated from market value, and blank fields become write-in spaces. Plan PNGs are embedded in separate page sections at print resolution. The same plan images form the PDF, avoiding a second independent layout.
 
+Customer templates stay in browser memory for the current draft and are never sent to the extraction AI. They must be `.docx` files that retain the starter template's five schedule markers, flow-of-title and consideration boundaries, declaration boundary, and supported `<Placeholder>` names. The app validates these requirements locally and blocks custom generation with actionable errors rather than silently falling back. Structural validation does not constitute legal approval of customer-authored wording.
+
 `registration-plan.tsx` renders the reference page structure using the current parties and source drawing. There are no fallback sample dimensions, roads or north arrows. If a new plan is unavailable, the linked deed's verified plan is used. If a drawing cannot be reproduced confidently, its region remains blank and the UI offers another plan/sketch upload. Source text is escaped and cannot execute as SVG markup.
 
 PDFs are read by page with the full source as context. DOCX text and embedded PNG/JPEG drawings are read; native Word shapes require the plan page as PDF/image. This explicit fallback avoids substituting invented geometry. Documents with too many party details to fit a single plan page report a layout error rather than clipping text.
 
-The release supports the existing Sale template only. Other deed types remain future template integrations through `DEED_TEMPLATES`.
+The release supports the Sale renderer only, using either its built-in template or a compatible customer-provided Sale template. Other deed types remain future template integrations through `DEED_TEMPLATES`.
 
 ## Multi-instrument foundation
 

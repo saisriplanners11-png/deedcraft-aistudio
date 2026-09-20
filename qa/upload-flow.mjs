@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({headless:true});
 const out = new URL('../tmp/upload-first-qa/',import.meta.url).pathname;
@@ -37,6 +37,20 @@ try {
  await page.getByText('2 verified transcriptions',{exact:false}).waitFor();
  await page.getByRole('button',{name:'Generate Deed',exact:false}).first().click();
  await page.getByRole('heading',{name:'Generate Deed',exact:true}).waitFor();
+ await page.getByLabel('My template',{exact:false}).check();
+ assert.equal(await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).isDisabled(),true);
+ const starter=await readFile(new URL('../sale-deed-template.docx',import.meta.url));
+ await page.locator('.custom-template input[type=file]').setInputFiles({name:'customer-template.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:starter});
+ await page.getByText('Compatible —',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).isEnabled(),true);
+ let customWait=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).click();
+ await (await customWait).saveAs(out+'custom-template.docx');
+ await page.locator('.custom-template input[type=file]').setInputFiles({name:'invalid.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('not a docx')});
+ await page.getByText('is not compatible',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).isDisabled(),true);
+ await page.getByLabel('Built-in template',{exact:false}).check();
+ assert.equal(await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).isEnabled(),true);
  let wait=page.waitForEvent('download');
  await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).click();
  await (await wait).saveAs(out+'blank-with-note.docx');
@@ -48,6 +62,8 @@ try {
  await page.screenshot({path:out+'mobile.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.getByRole('button',{name:'New deed',exact:true}).click();
+ await page.getByRole('button',{name:'Generate Deed',exact:false}).first().click();
+ assert.equal(await page.getByLabel('Built-in template',{exact:false}).isChecked(),true);
  await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
  await page.getByLabel('What is this property?').selectOption('Vacant Plot');
  assert.equal(await page.locator('.source').count(),0);
@@ -56,5 +72,5 @@ try {
  await page.getByText('2 verified transcriptions',{exact:false}).waitFor().catch(async error => { console.error(await page.locator('.source').innerText()); throw error; });
  await page.getByRole('button',{name:'New deed',exact:true}).click();
  assert.deepEqual(errors,[]);
- console.log('PASS: 11-step wizard, source removal, re-upload, blank Word/PDF downloads, mobile layout, draft reset, PDF page ingestion, no browser errors.');
+ console.log('PASS: custom-template validation and download, explicit built-in fallback, 11-step wizard, source removal, re-upload, blank Word/PDF downloads, mobile layout, draft reset, PDF page ingestion, no browser errors.');
 } finally {await browser.close();}

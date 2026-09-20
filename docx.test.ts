@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
-import { docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip } from './docx';
+import {
+  docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip,
+  validateSaleDeedTemplate, MAX_CUSTOM_TEMPLATE_BYTES, type DeedTemplateSource,
+} from './docx';
 import { ALL_FIELDS } from './fields';
 import { initialState } from './logic';
 import { mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
@@ -15,6 +18,55 @@ describe('sale deed template merge', () => {
   });
 
   afterAll(() => { globalThis.fetch = originalFetch; });
+
+  async function customizedTemplate(edit: (xml: string) => string): Promise<Uint8Array> {
+    const original = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
+    const entries = await readZip(original);
+    const document = entries.find(entry => entry.name === 'word/document.xml')!;
+    document.data = new TextEncoder().encode(edit(new TextDecoder().decode(document.data)));
+    return writeZip(entries);
+  }
+
+  it('validates the starter contract and renders from custom template bytes', async () => {
+    const reference = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
+    const bytes = await customizedTemplate(xml => replaceRunText(xml, /SALE DEED/g, () => 'CUSTOM SALE DEED'));
+    const validation = await validateSaleDeedTemplate(bytes, 'customer-template.docx', reference);
+    expect(validation.valid).toBe(true);
+    expect(validation.detectedPlaceholders.length).toBeGreaterThan(40);
+    expect(validation.omittedPlaceholders).toEqual([]);
+
+    const source: DeedTemplateSource = { kind: 'custom', name: 'customer-template.docx', hash: 'custom-hash', bytes, validation };
+    const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState), [], [], source);
+    expect(await docxToText(new Uint8Array(await result.blob.arrayBuffer()))).toContain('CUSTOM SALE DEED');
+  });
+
+  it('rejects corrupt, wrongly named, structurally incomplete, and unknown-tag templates', async () => {
+    const reference = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
+    expect((await validateSaleDeedTemplate(new Uint8Array([1, 2, 3]), 'template.docx', reference)).errors.join(' ')).toMatch(/readable/i);
+    expect((await validateSaleDeedTemplate(reference, 'template.pdf', reference)).errors.join(' ')).toMatch(/\.docx/i);
+
+    const missingMarker = await customizedTemplate(xml => replaceRunText(xml, /<IF OPEN PLOT>/g, () => 'REMOVED SCHEDULE MARKER'));
+    expect((await validateSaleDeedTemplate(missingMarker, 'missing.docx', reference)).errors.join(' ')).toContain('<IF OPEN PLOT>');
+
+    const unknownTag = await customizedTemplate(xml => xml.replace('</w:body>', '<w:p><w:r><w:t>&lt;Mystery Field&gt;</w:t></w:r></w:p></w:body>'));
+    expect((await validateSaleDeedTemplate(unknownTag, 'unknown.docx', reference)).errors.join(' ')).toContain('<Mystery Field>');
+
+    const oversized = new Uint8Array(MAX_CUSTOM_TEMPLATE_BYTES + 1);
+    expect((await validateSaleDeedTemplate(oversized, 'large.docx', reference)).errors.join(' ')).toContain('larger than 20 MB');
+
+    const unsafeEntries = await readZip(reference);
+    unsafeEntries.push({ name: '../unsafe.xml', data: new TextEncoder().encode('unsafe') });
+    const unsafe = await writeZip(unsafeEntries);
+    expect((await validateSaleDeedTemplate(unsafe, 'unsafe.docx', reference)).errors.join(' ')).toContain('unsafe file path');
+  });
+
+  it('refuses to render an invalid custom template instead of falling back', async () => {
+    const source: DeedTemplateSource = {
+      kind: 'custom', name: 'invalid.docx', hash: 'invalid', bytes: new Uint8Array([1]),
+      validation: { valid: false, errors: ['Template is invalid.'], detectedPlaceholders: [], omittedPlaceholders: [] },
+    };
+    await expect(fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', [], [], [], source)).rejects.toThrow('Template is invalid.');
+  });
 
   it('replaces split-run fields without losing the surrounding bold or line break', () => {
     const paragraph = '<w:p><w:r><w:t>Before &lt;Na</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>me&gt; bold</w:t><w:br/><w:t>tail &lt;Name&gt;</w:t></w:r></w:p>';

@@ -64,6 +64,21 @@
 .wizard-app .download-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 .wizard-app .download ul{columns:2;font-size:12.5px;padding-left:18px}
 .wizard-app .download li{break-inside:avoid;margin-bottom:5px}
+.wizard-app .template-picker{border:1px solid #E4DBC9;background:#FAF7F0;padding:14px;margin:16px 0}
+.wizard-app .template-picker h3{margin:0 0 10px;font:600 15px 'Source Serif 4',serif}
+.wizard-app .template-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.wizard-app .template-choices>label{display:flex;align-items:flex-start;gap:9px;border:1px solid #D6C79E;background:#FFFDF8;padding:11px;cursor:pointer}
+.wizard-app .template-choices>label.selected{border-color:#8A5E12;box-shadow:inset 0 2px 0 #8A5E12;background:#FBF3DC}
+.wizard-app .template-choices input{margin-top:3px;accent-color:#8A5E12}
+.wizard-app .template-choices b,.wizard-app .template-status b,.wizard-app .template-status span{display:block}
+.wizard-app .template-choices small{margin:2px 0 0}
+.wizard-app .custom-template{border-top:1px solid #E4DBC9;margin-top:12px;padding-top:12px}
+.wizard-app .custom-template>p{margin-top:0}
+.wizard-app .template-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.wizard-app .template-status{padding:10px;margin:10px 0;font-size:12px;border:1px solid}
+.wizard-app .template-status.valid{border-color:#A9C9B6;background:#EAF2ED;color:#2E6B4A}
+.wizard-app .template-status.invalid{border-color:#CFA7A0;background:#F8EDEA;color:#7B2F24}
+.wizard-app .template-status ul{columns:1;margin:7px 0 0;padding-left:18px}
 
 .wizard-app .picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
 .wizard-app .picker-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;border:1px solid #E4DBC9;background:#FFFDF8;padding:12px 14px;font:400 12px 'Source Serif 4',serif}
@@ -107,4 +122,5 @@
   .wizard-app .brand span{display:none}
   .wizard-app .navigation span{display:none}
   .wizard-app .download ul{columns:1}
+  .wizard-app .template-choices{grid-template-columns:1fr}
 }

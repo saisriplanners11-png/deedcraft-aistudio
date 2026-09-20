@@ -15,6 +15,21 @@
 import { loadSaleDeedTemplate } from './template';
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
+const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
+export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
+
+export type TemplateValidationResult = {
+  valid: boolean;
+  errors: string[];
+  detectedPlaceholders: string[];
+  omittedPlaceholders: string[];
+};
+
+export type DeedTemplateSource =
+  | { kind: 'built-in' }
+  | { kind: 'custom'; name: string; hash: string; bytes: Uint8Array; validation: TemplateValidationResult };
+
+export const BUILT_IN_TEMPLATE_SOURCE: DeedTemplateSource = { kind: 'built-in' };
 
 /** A literal phrase in the template to rewrite once the placeholders are filled. */
 export type Rewrite = { find: RegExp; replace: string; records?: Record<string, string>[] };
@@ -22,22 +37,46 @@ export type Rewrite = { find: RegExp; replace: string; records?: Record<string, 
 // ---------------------------------------------------------------- zip reading
 
 type Entry = { name: string; data: Uint8Array };
+type ZipReadLimits = { maxEntries?: number; maxEntryBytes?: number; maxTotalBytes?: number };
 
 const dv = (b: Uint8Array) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 
-async function inflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
+async function inflateRaw(bytes: Uint8Array, maxOutputBytes = Number.POSITIVE_INFINITY): Promise<Uint8Array> {
   try {
     const ds = new DecompressionStream('deflate-raw');
-    const buf = await new Response(new Blob([bytes as any]).stream().pipeThrough(ds)).arrayBuffer();
-    return new Uint8Array(buf);
-  } catch (error) {
+    const reader = new Blob([bytes as any]).stream().pipeThrough(ds).getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value as Uint8Array;
+      length += chunk.length;
+      if (length > maxOutputBytes) {
+        await reader.cancel();
+        throw new Error('Template contains an oversized file.');
+      }
+      chunks.push(chunk);
+    }
+    const output = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+    return output;
+  } catch (error: any) {
+    if (error?.message === 'Template contains an oversized file.') throw error;
     // Node 24 exposes the web stream classes but does not implement the ZIP
     // deflate-raw format. Keep browser builds dependency-free while allowing
     // tests and server-side rendering to use the native zlib implementation.
     if (typeof process === 'undefined' || !process.versions?.node) throw error;
     const moduleName = 'node:zlib';
     const { inflateRawSync } = await import(/* @vite-ignore */ moduleName);
-    return new Uint8Array(inflateRawSync(bytes));
+    const options = Number.isFinite(maxOutputBytes) ? { maxOutputLength: maxOutputBytes } : undefined;
+    try {
+      return new Uint8Array(inflateRawSync(bytes, options));
+    } catch (inflateError: any) {
+      if (/larger than|output length|buffer too large/i.test(inflateError?.message || '')) throw new Error('Template contains an oversized file.');
+      throw inflateError;
+    }
   }
 }
 
@@ -55,7 +94,7 @@ async function deflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
 }
 
 /** Read a zip via its End of Central Directory record. */
-export async function readZip(zip: Uint8Array): Promise<Entry[]> {
+export async function readZip(zip: Uint8Array, limits: ZipReadLimits = {}): Promise<Entry[]> {
   const v = dv(zip);
   let eocd = -1;
   for (let i = zip.length - 22; i >= 0 && i > zip.length - 65558; i--) {
@@ -64,26 +103,46 @@ export async function readZip(zip: Uint8Array): Promise<Entry[]> {
   if (eocd < 0) throw new Error('Template is not a readable .docx (no zip directory).');
 
   const count = v.getUint16(eocd + 10, true);
+  if (count > (limits.maxEntries ?? Number.POSITIVE_INFINITY)) throw new Error('Template contains too many files.');
   let p = v.getUint32(eocd + 16, true);
   const entries: Entry[] = [];
+  let declaredTotalSize = 0;
+  let actualTotalSize = 0;
 
   for (let i = 0; i < count; i++) {
+    if (p < 0 || p + 46 > zip.length) throw new Error('Corrupt zip directory in template.');
     if (v.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt zip directory in template.');
+    const flags = v.getUint16(p + 8, true);
     const method = v.getUint16(p + 10, true);
     const compSize = v.getUint32(p + 20, true);
+    const size = v.getUint32(p + 24, true);
     const nameLen = v.getUint16(p + 28, true);
     const extraLen = v.getUint16(p + 30, true);
     const commentLen = v.getUint16(p + 32, true);
     const localOff = v.getUint32(p + 42, true);
+    if (flags & 1) throw new Error('Encrypted Word templates are not supported.');
+    if (method !== 0 && method !== 8) throw new Error('Template uses an unsupported ZIP compression method.');
+    if (size > (limits.maxEntryBytes ?? Number.POSITIVE_INFINITY)) throw new Error('Template contains an oversized file.');
+    declaredTotalSize += size;
+    if (declaredTotalSize > (limits.maxTotalBytes ?? Number.POSITIVE_INFINITY)) throw new Error('Template expands beyond the allowed size.');
+    if (localOff < 0 || localOff + 30 > zip.length) throw new Error('Corrupt local file header in template.');
+    if (v.getUint32(localOff, true) !== 0x04034b50) throw new Error('Corrupt local file header in template.');
+    if (p + 46 + nameLen + extraLen + commentLen > zip.length) throw new Error('Corrupt zip directory in template.');
     const name = new TextDecoder().decode(zip.subarray(p + 46, p + 46 + nameLen));
+    if (name.startsWith('/') || name.includes('..\\') || name.split('/').includes('..')) throw new Error('Template contains an unsafe file path.');
 
     // The local header repeats the name and carries its own extra field.
     const lNameLen = v.getUint16(localOff + 26, true);
     const lExtraLen = v.getUint16(localOff + 28, true);
     const start = localOff + 30 + lNameLen + lExtraLen;
+    if (start < 0 || start + compSize > zip.length) throw new Error('Corrupt file data in template.');
     const raw = zip.subarray(start, start + compSize);
 
-    entries.push({ name, data: method === 8 ? await inflateRaw(raw) : raw.slice() });
+    const data = method === 8 ? await inflateRaw(raw, limits.maxEntryBytes) : raw.slice();
+    if (data.length > (limits.maxEntryBytes ?? Number.POSITIVE_INFINITY)) throw new Error('Template contains an oversized file.');
+    actualTotalSize += data.length;
+    if (actualTotalSize > (limits.maxTotalBytes ?? Number.POSITIVE_INFINITY)) throw new Error('Template expands beyond the allowed size.');
+    entries.push({ name, data });
     p += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
@@ -210,6 +269,80 @@ function topLevelChildren(body: string): { start: number; end: number }[] {
 const plainText = (xml: string) =>
   unescapeXml((xml.match(/<w:t[^>]*>[\s\S]*?<\/w:t>/g) || [])
     .map(t => t.replace(/<[^>]+>/g, '')).join(''));
+
+const angleTags = (xml: string) => [...new Set(
+  (plainText(xml).match(/<[^<>]{2,60}>/g) || [])
+    .map(tag => tag.slice(1, -1).replace(/\s+/g, ' ').trim())
+)];
+
+/**
+ * Validate an uploaded template against the renderer's structural contract and
+ * the bundled template's placeholder vocabulary. Validation is deliberately
+ * local: customer templates are never sent to an extraction provider.
+ */
+export async function validateSaleDeedTemplate(
+  bytes: Uint8Array,
+  filename = 'template.docx',
+  referenceBytes?: Uint8Array,
+): Promise<TemplateValidationResult> {
+  const errors: string[] = [];
+  const empty = { valid: false, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
+  if (!/\.docx$/i.test(filename)) errors.push('Choose a Word document with a .docx extension.');
+  if (!bytes.length) errors.push('The template file is empty.');
+  if (bytes.length > MAX_CUSTOM_TEMPLATE_BYTES) errors.push('The template is larger than 20 MB.');
+  if (errors.length) return empty;
+
+  try {
+    const entries = await readZip(bytes, { maxEntries: 2_000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
+    const requiredParts = ['[Content_Types].xml', 'word/document.xml', 'word/_rels/document.xml.rels'];
+    for (const part of requiredParts) if (!entries.some(entry => entry.name === part)) errors.push(`Template is missing ${part}.`);
+    const document = entries.find(entry => entry.name === 'word/document.xml');
+    if (!document) return empty;
+
+    const xml = new TextDecoder().decode(document.data);
+    const bodyOpen = xml.indexOf('<w:body>');
+    const bodyEnd = xml.lastIndexOf('</w:body>');
+    if (bodyOpen < 0 || bodyEnd < 0 || bodyEnd <= bodyOpen) {
+      errors.push('Template is missing a readable Word document body.');
+      return empty;
+    }
+    const body = xml.slice(bodyOpen + '<w:body>'.length, bodyEnd);
+    const children = topLevelChildren(body);
+    const paragraphs = children.map(child => plainText(body.slice(child.start, child.end)).trim());
+    for (const marker of VARIANTS) if (!paragraphs.includes(`<${marker}>`)) errors.push(`Template is missing the <${marker}> schedule marker.`);
+    const markerIndexes = VARIANTS.map(marker => paragraphs.indexOf(`<${marker}>`)).filter(index => index >= 0);
+    const firstMarker = markerIndexes.length ? Math.min(...markerIndexes) : -1;
+    const lastMarker = markerIndexes.length ? Math.max(...markerIndexes) : -1;
+    const flowStart = paragraphs.findIndex(text => text.startsWith('1. FLOW OF TITLE & LINK DEED DETAILS:'));
+    const flowEnd = paragraphs.findIndex(text => text.startsWith('2. CONSIDERATION & PAYMENT TERMS:'));
+    if (flowStart < 0) errors.push('Template is missing the “1. FLOW OF TITLE & LINK DEED DETAILS:” boundary.');
+    if (flowEnd < 0) errors.push('Template is missing the “2. CONSIDERATION & PAYMENT TERMS:” boundary.');
+    if (flowStart >= 0 && flowEnd >= 0 && (flowEnd <= flowStart || (firstMarker >= 0 && flowEnd >= firstMarker))) {
+      errors.push('The flow-of-title and consideration sections are not in the required order.');
+    }
+    const sharedTail = paragraphs.findIndex((text, index) => index > lastMarker && ['<FOR ALL THE DOCUMENTS>', 'DECLARATION'].includes(text));
+    if (lastMarker >= 0 && sharedTail < 0) errors.push('Template is missing the declaration/shared-tail boundary after the schedule sections.');
+    if (!/<w:sectPr(?:\s|>)/.test(body)) errors.push('Template is missing its final page-section settings.');
+
+    const customTags = angleTags(xml);
+    const reference = referenceBytes ?? await loadSaleDeedTemplate();
+    const referenceEntries = await readZip(reference);
+    const referenceDocument = referenceEntries.find(entry => entry.name === 'word/document.xml');
+    if (!referenceDocument) throw new Error('The built-in template is missing word/document.xml.');
+    const supported = angleTags(new TextDecoder().decode(referenceDocument.data))
+      .filter(tag => !STRUCTURAL_TAGS.has(norm(tag)));
+    const supportedByName = new Map(supported.map(tag => [norm(tag), tag]));
+    const detectedPlaceholders = customTags.filter(tag => supportedByName.has(norm(tag)));
+    const unknown = customTags.filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)));
+    if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
+    const detectedNames = new Set(detectedPlaceholders.map(norm));
+    const omittedPlaceholders = supported.filter(tag => !detectedNames.has(norm(tag))).sort();
+    return { valid: errors.length === 0, errors, detectedPlaceholders: detectedPlaceholders.sort(), omittedPlaceholders };
+  } catch (error: any) {
+    errors.push(error?.message || 'Template is not a readable Word document.');
+    return empty;
+  }
+}
 
 /** Clone one paragraph's formatting while replacing its visible text. */
 function paragraphLike(sample: string, text: string, alignment?: 'left' | 'center'): string {
@@ -451,8 +584,12 @@ export async function fillSaleDeed(
   rewrites: Rewrite[] = [],
   schedules: ScheduleMerge[] = [],
   planPages: Uint8Array[] = [],
+  templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<MergeResult> {
-  const bin = await loadSaleDeedTemplate();
+  if (templateSource.kind === 'custom' && !templateSource.validation.valid) {
+    throw new Error(`Custom template is not compatible: ${templateSource.validation.errors.join(' ')}`);
+  }
+  const bin = templateSource.kind === 'custom' ? templateSource.bytes : await loadSaleDeedTemplate();
   const entries = await readZip(bin);
 
   const doc = entries.find(e => e.name === 'word/document.xml');

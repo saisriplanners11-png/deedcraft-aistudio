@@ -6,7 +6,11 @@ import {
   plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
 } from './source-draft';
 import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
-import { fillSaleDeed, saveBlob, scheduleText, type ScheduleMerge } from './docx';
+import {
+  BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, validateSaleDeedTemplate,
+  type DeedTemplateSource, type ScheduleMerge,
+} from './docx';
+import { loadSaleDeedTemplate } from './template';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity } from './logic';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
@@ -420,7 +424,12 @@ export default function WizardApp() {
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [message, setMessage] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [download, setDownload] = useState<{ revision: number; draftId: string; docx: Blob; pdf: Blob; filename: string } | null>(null);
+  const [templateMode, setTemplateMode] = useState<'built-in' | 'custom'>('built-in');
+  const [customTemplate, setCustomTemplate] = useState<Extract<DeedTemplateSource, { kind: 'custom' }> | null>(null);
+  const [validatingTemplate, setValidatingTemplate] = useState(false);
+  const templateInput = useRef<HTMLInputElement>(null);
+  const templateValidationRevision = useRef(0);
+  const [download, setDownload] = useState<{ revision: number; draftId: string; templateKey: string; docx: Blob; pdf: Blob; filename: string } | null>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
   const resolved = useMemo(() => resolveDraft(draft), [draft]);
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
@@ -432,6 +441,8 @@ export default function WizardApp() {
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
   const generationReady = deedRelease.ready;
+  const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
+  const templateKey = templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}` : 'built-in';
   const goto = (s: number) => dispatch({ type: 'step', step: s });
   const edit = (role: Role, record: string, field: string, value: string) => {
     value = uppercasePartyIdentity(field, value);
@@ -606,7 +617,9 @@ export default function WizardApp() {
 
   function reset() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
-    setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] }); dispatch({ type: 'reset' });
+    setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
+    templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
+    setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false); dispatch({ type: 'reset' });
   }
 
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
@@ -645,19 +658,59 @@ export default function WizardApp() {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
-      let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision ? download : null;
+      if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
+      const templateSource = templateMode === 'custom' ? customTemplate! : BUILT_IN_TEMPLATE_SOURCE;
+      let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey ? download : null;
       if (!artifact) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
         const pngs = await Promise.all(previews.map(p => planPng(p.svg)));
-        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMerges, pngs);
+        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMerges, pngs, templateSource);
         const pdf = await planPdf(pngs);
-        artifact = { draftId: snapshot.id, revision: snapshot.revision, docx: merged.blob, pdf, filename: deedFilename(state) };
+        artifact = { draftId: snapshot.id, revision: snapshot.revision, templateKey, docx: merged.blob, pdf, filename: deedFilename(state) };
       }
       setDownload(artifact);
       saveBlob(kind === 'word' ? artifact.docx : artifact.pdf, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
       setMessage(notices.length ? `Downloaded an incomplete draft with ${notices.length} outstanding items. Review and complete it before signing or registration.` : 'Downloaded using the current verified and manually entered details.');
     } catch (error: any) { setMessage(`Download could not be prepared: ${error.message}. Please retry.`); }
     finally { setExporting(false); }
+  }
+
+  async function chooseTemplate(file?: File) {
+    if (!file) return;
+    const validationRevision = ++templateValidationRevision.current;
+    setValidatingTemplate(true); setDownload(null); setMessage('');
+    try {
+      if (file.size > MAX_CUSTOM_TEMPLATE_BYTES) {
+        setCustomTemplate({
+          kind: 'custom', name: file.name, hash: `oversized:${file.size}`, bytes: new Uint8Array(),
+          validation: { valid: false, errors: ['The template is larger than 20 MB.'], detectedPlaceholders: [], omittedPlaceholders: [] },
+        });
+        return;
+      }
+      const [buffer, hash] = await Promise.all([file.arrayBuffer(), fileHash(file)]);
+      const bytes = new Uint8Array(buffer);
+      const validation = await validateSaleDeedTemplate(bytes, file.name);
+      if (validationRevision !== templateValidationRevision.current) return;
+      setCustomTemplate({ kind: 'custom', name: file.name, hash, bytes, validation });
+    } catch (error: any) {
+      if (validationRevision !== templateValidationRevision.current) return;
+      setCustomTemplate(null);
+      setMessage(`Template could not be checked: ${error?.message || 'Please choose another file.'}`);
+    } finally {
+      if (validationRevision === templateValidationRevision.current) {
+        setValidatingTemplate(false);
+        if (templateInput.current) templateInput.current.value = '';
+      }
+    }
+  }
+
+  async function downloadStarterTemplate() {
+    try {
+      const bytes = await loadSaleDeedTemplate();
+      saveBlob(new Blob([bytes as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), 'DeedCraft-Sale-Deed-Template.docx');
+    } catch (error: any) {
+      setMessage(`Starter template could not be downloaded: ${error?.message || 'Please retry.'}`);
+    }
   }
 
   const patchPayment = (record: string, patch: Partial<Payment>) => {
@@ -883,9 +936,35 @@ export default function WizardApp() {
         {step === 9 && <section className="panel download">
           <h2>Download deed and plan</h2>
           <p>Review the listed details before downloading. You can return to any section to correct them.</p>
+          <div className="template-picker" aria-label="Word template">
+            <h3>Word template</h3>
+            <div className="template-choices">
+              <label className={templateMode === 'built-in' ? 'selected' : ''}>
+                <input type="radio" name="template-mode" checked={templateMode === 'built-in'} onChange={() => { setTemplateMode('built-in'); setDownload(null); setMessage(''); }} />
+                <span><b>Built-in template</b><small>Use DeedCraft’s approved Sale Deed template.</small></span>
+              </label>
+              <label className={templateMode === 'custom' ? 'selected' : ''}>
+                <input type="radio" name="template-mode" checked={templateMode === 'custom'} onChange={() => { setTemplateMode('custom'); setDownload(null); setMessage(''); }} />
+                <span><b>My template</b><small>Use a compatible tagged Word template for this draft.</small></span>
+              </label>
+            </div>
+            {templateMode === 'custom' && <div className="custom-template">
+              <p>Start from the DeedCraft template, preserve its tagged placeholders and section markers, and change the wording or formatting you need.</p>
+              <div className="template-actions">
+                <button type="button" className="gold" disabled={validatingTemplate} onClick={() => templateInput.current?.click()}>{validatingTemplate ? 'Checking…' : customTemplate ? 'Replace template' : 'Upload .docx template'}</button>
+                <input ref={templateInput} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden onChange={event => void chooseTemplate(event.target.files?.[0])} />
+                <button type="button" onClick={() => void downloadStarterTemplate()}>Download starter template</button>
+                {customTemplate && <button type="button" onClick={() => { templateValidationRevision.current++; setValidatingTemplate(false); setCustomTemplate(null); setDownload(null); setMessage(''); if (templateInput.current) templateInput.current.value = ''; }}>Remove</button>}
+              </div>
+              {customTemplate?.validation.valid && <div className="template-status valid"><b>{customTemplate.name}</b><span>Compatible — {customTemplate.validation.detectedPlaceholders.length} supported placeholders found.</span>{customTemplate.validation.omittedPlaceholders.length > 0 && <small>{customTemplate.validation.omittedPlaceholders.length} optional starter placeholders are omitted from this template.</small>}</div>}
+              {customTemplate && !customTemplate.validation.valid && <div className="template-status invalid" role="alert"><b>{customTemplate.name} is not compatible</b><ul>{customTemplate.validation.errors.map(error => <li key={error}>{error}</li>)}</ul></div>}
+              {!customTemplate && !validatingTemplate && <small>No custom template selected. Upload a compatible .docx or choose the built-in template.</small>}
+              <small>Templates are checked locally and are not sent to the extraction AI or stored on the server. Compatibility checks do not legally approve customer-authored wording.</small>
+            </div>}
+          </div>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
           {!generationReady && <p>{deedRelease.reasons.join(' ')}</p>}
-          <div className="download-actions"><button className="primary" disabled={exporting || !generationReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting || !generationReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 
