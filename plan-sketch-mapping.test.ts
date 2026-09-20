@@ -49,12 +49,12 @@ describe('planDocumentFromDraft', () => {
     expect(doc.witnesses.witness1).toBe('');
   });
 
-  it('falls back to a computed Sq. Yards figure when only extentValue/unit are known', () => {
+  it('uses only the square-yard extent supplied by the property schedule', () => {
     const state = {
       ...initialState,
       category: 'Vacant Plot',
       unit: 'Sq. Meters',
-      form: { ...initialState.form, extentValue: '100' },
+      form: { ...initialState.form, extentValue: '100', extentSqYards: '119.599' },
     };
     const doc = planDocumentFromDraft(state);
     expect(doc.property.areaSqYards).toBeCloseTo(119.599, 2);

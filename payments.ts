@@ -451,6 +451,30 @@ export function applyChequeBranchVerification(
 }
 
 /**
+ * Cheque party labels are easy to reverse in a broad read. A drawer/payee-only
+ * pair of reads is authoritative: payer is the account holder/drawer and
+ * payee is the handwritten name after PAY. Neither survives a disagreement.
+ */
+export function applyChequePartyVerification(
+  extraction: PaymentExtraction,
+  first: PaymentPass,
+  second: PaymentPass,
+): PaymentExtraction {
+  const values = { ...extraction.values };
+  const same = (a: string | undefined, b: string | undefined) =>
+    !!a && !!b && a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase();
+  const unresolved: string[] = [];
+  for (const key of ['payer', 'payee'] as const) {
+    delete values[key];
+    if (same(first.values[key], second.values[key])) values[key] = first.values[key]!;
+    else unresolved.push(key);
+  }
+  const notes = [extraction.unreadable, first.unreadable, second.unreadable].filter(Boolean);
+  if (unresolved.length) notes.push(`Could not independently verify cheque ${unresolved.join(', ')}; those fields were left blank.`);
+  return { ...extraction, values, unreadable: Array.from(new Set(notes)).join(' ') };
+}
+
+/**
  * Read a photographed instrument and return the fields it supplies.
  *
  * The schema is small enough to be sent whole — unlike the deed extraction in
@@ -463,7 +487,7 @@ export async function extractPayment(mode: PayMode, files: File[]): Promise<Paym
   const parts = (await Promise.all(files.map(fileToVisualParts))).flat() as Anthropic.ContentBlockParam[];
 
   try {
-    const [first, second, verification, dateFirst, dateSecond, branchFirst, branchSecond] = await Promise.all([
+    const [first, second, verification, dateFirst, dateSecond, branchFirst, branchSecond, partyFirst, partySecond] = await Promise.all([
       readPaymentPass(mode, parts, 'The same image may be included at more than one rotation: use the upright copy. Transcribe only text that is clearly visible. If any field is blurred, cropped, or ambiguous, omit it.'),
       readPaymentPass(mode, parts, 'The same image may be included at more than one rotation: use the upright copy. Perform an independent read. Do not infer from the requested instrument type or common bank names. Omit every field that is not clearly legible.'),
       readPaymentPass(mode, parts, 'The same image may be included at more than one rotation: use the upright copy. Verification pass: inspect the printed bank and branch, labelled instrument number, amount, handwritten transaction date, printed drawer/account-holder name, and the name actually written after PAY. For a cheque, use the labelled Cheque No. box and DATE boxes only; do not use pre-printed CTS, issue, MICR, account, IFSC, validity or serial values. PAY, RUPEES and FOR BEARER are labels, never party names. If the payee line is blank, omit payee. Omit a value unless you can visibly read it.'),
@@ -471,11 +495,21 @@ export async function extractPayment(mode: PayMode, files: File[]): Promise<Paym
       readPaymentPass(mode, parts, 'Independent date-only check. Read the upright image. For a cheque, return only the handwritten DATE-box value in YYYY-MM-DD if every digit is visible. Ignore all printed CTS, issue and validity dates; do not infer a date.'),
       readPaymentPass(mode, parts, 'Branch-only check. Read the upright image and return only the exact branch name printed below the bank name. Do not invent a city or use any account, IFSC, CTS, issue, validity or MICR text.'),
       readPaymentPass(mode, parts, 'Independent branch-only check. Read the upright image and return the exact printed bank branch name only when legible. Omit it if uncertain.'),
+      mode === 'cheque'
+        ? readPaymentPass(mode, parts, 'Cheque party check: return payer only as the printed drawer/account-holder name and payee only as the handwritten name after PAY. Never reverse them. PAY, RUPEES, FOR BEARER and account numbers are labels, not party names. Omit either party unless it is clearly visible.')
+        : Promise.resolve({ values: {}, detectedMode: null, unreadable: '' }),
+      mode === 'cheque'
+        ? readPaymentPass(mode, parts, 'Independent cheque party check: inspect only the drawer/account-holder and PAY line. Payer means drawer/account holder; payee means the name after PAY. Do not infer either name from the transaction or sale parties.')
+        : Promise.resolve({ values: {}, detectedMode: null, unreadable: '' }),
     ]);
 
     const verified = applyPaymentVerification(agreePaymentPasses(first, second), verification);
     if (mode !== 'cheque') return verified;
-    return applyChequeBranchVerification(applyChequeDateVerification(verified, dateFirst, dateSecond), branchFirst, branchSecond);
+    return applyChequePartyVerification(
+      applyChequeBranchVerification(applyChequeDateVerification(verified, dateFirst, dateSecond), branchFirst, branchSecond),
+      partyFirst,
+      partySecond,
+    );
   } catch (e) {
     throw readableError(e);
   }

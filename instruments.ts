@@ -57,8 +57,7 @@ const propertyEvidence: EvidenceRule[] = [
 ];
 const gate: ValidationRule[] = [
   { id: 'approved-reference', message: 'An effective, advocate-approved reference template is required.', severity: 'blocking' },
-  { id: 'professional-approval', message: 'A professional must approve the resolved draft snapshot before final generation.', severity: 'blocking' },
-  { id: 'unresolved-evidence', message: 'Evidence conflicts must be resolved or explicitly accepted by the reviewer.', severity: 'blocking' },
+  { id: 'unresolved-evidence', message: 'Evidence conflicts must be resolved or explicitly accepted before final generation.', severity: 'blocking' },
 ];
 const f = (id: string, label: string, kind: FieldDefinition['kind'] = 'text', required = true, legalChoice = false): FieldDefinition => ({ id, label, kind, required, legalChoice });
 const d = (
@@ -97,4 +96,3 @@ export const INSTRUMENT_IDS = Object.keys(DEED_DEFINITIONS) as InstrumentId[];
 export const definitionFor = (id: InstrumentId) => DEED_DEFINITIONS[id];
 export const instrumentIdForLegacyType = (type: string): InstrumentId =>
   INSTRUMENT_IDS.find(id => DEED_DEFINITIONS[id].legacyType === type) || 'sale';
-

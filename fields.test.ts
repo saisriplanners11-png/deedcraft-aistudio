@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_FIELDS, GROUPS } from './fields';
-import { buildViewModel, generationBlockers, initialState } from './logic';
+import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, withDerived } from './logic';
 import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
 
@@ -17,6 +17,13 @@ describe('field mapping', () => {
     const sale = GROUPS.find(group => group.step === 2)?.fields.find(field => field.id === 'executionDate');
     expect(link?.label).toBe('Link deed execution date');
     expect(sale?.label).toBe('Sale deed execution date');
+  });
+
+  it('uses the Jurisdiction SRO for the Schedule registration sub-district', () => {
+    const state = { ...initialState, form: { ...initialState.form, sro: 'Sircilla', linkSro: 'Old Office' } };
+    const values = mergeValues(state);
+    expect(values['Sub Registrar']).toBe('Sircilla');
+    expect(values['Sub-Registrar']).toBe('Sircilla');
   });
 
   it('does not rewrite the removed place field', () => {
@@ -52,14 +59,28 @@ describe('field mapping', () => {
     expect(generationBlockers(state).map(item => item.id)).not.toContain('claimantMobile');
   });
 
-  it('preserves alternate extents exactly as printed by the source deed', () => {
+  it('prefills an Aadhaar DOB age but keeps a typed correction', () => {
+    const suggested = withDerived({ executantDob: '2000-01-02', executantAge: '' });
+    expect(suggested.executantAge).toBe(ageFrom('2000-01-02', todayISO()));
+    expect(withDerived({ executantDob: '2000-01-02', executantAge: '31' }).executantAge).toBe('31');
+  });
+
+  it('uses editable age and uppercase party identity values in the deed merge', () => {
+    const state = { ...initialState, form: { ...initialState.form, executantName: 'Ravi Kumar', executantRelation: 'S/O', executantRelativeName: 'Rama Rao', executantAge: '31' } };
+    const values = mergeValues(state);
+    expect(values['EXECUTANT NAME']).toBe('RAVI KUMAR');
+    expect(values['EXECUTANT RELATION NAME']).toBe('S/O RAMA RAO');
+    expect(values['Executant Age']).toBe('31');
+  });
+
+  it('derives square metres from the required square-yard extent', () => {
     const state = {
       ...initialState,
       form: { ...initialState.form, extentValue: '157.22', extentSqYards: '157.22', extentSqMeters: '132.06' },
     };
     const values = mergeValues(state);
     expect(values['Extent in Sq.yards']).toBe('157.22');
-    expect(values['Extent in Sq.Meters']).toBe('132.06');
+    expect(values['Extent in Sq.Meters']).toBe('131.46');
   });
 
   it('calculates market value from a verified printed square-yard extent', () => {
@@ -95,6 +116,7 @@ describe('field mapping', () => {
     const values = mergeValues(state);
     expect(values['Market of Value Rs./-']).toBe('5,000');
     expect(values['Market of Value Rs./-']).toBe(values['Sale Consideration']);
+    expect(values['Sale Consideration Words']).toBe('Five Thousand Rupees Only');
   });
   it('does not copy primary property details into a second property preview', () => {
     const state = { ...initialState, form: { ...initialState.form, plotNo: '1', surveyNo: '41/3', boundaryNorth: 'Primary neighbour', executantName: 'Shared seller', consid: '500000' } };

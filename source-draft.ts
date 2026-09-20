@@ -1,5 +1,5 @@
 import { ALL_FIELDS, EMPTY_FORM } from './fields';
-import { initialState, withDerived, type AppState, type ValueRecord } from './logic';
+import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
@@ -19,6 +19,8 @@ export type SourceResult = {
 };
 export type Source = {
   id: string; revision: number; name: string; hash: string; status: 'queued' | 'reading' | 'done' | 'error';
+  /** Extraction scope, retained so section uploads can be displayed and filtered correctly. */
+  profile?: string;
   /**
    * `fromRecord` scopes the assignment to the one AI-provided record identifier
    * the user actually confirmed (e.g. one person's name on a page that shows
@@ -177,18 +179,19 @@ export function resolveDraft(draft: Draft) {
   const evidence: Record<string, Evidence[]> = {};
   const conflicts: Record<string, Evidence[]> = {};
   for (const [key, candidates] of Object.entries(groups)) {
+    const field = key.split('|')[2];
     // Historical mutable facts may support title, but must not become current facts.
     const usable = candidates.filter(c => !c.historical || !CURRENT_STATE_ONLY.test(c.field));
     if (!usable.length) continue;
     const selected = usable.find(c => c.id === draft.choices[key]);
-    if (selected) { values[key] = selected.value; evidence[key] = [selected]; continue; }
+    if (selected) { values[key] = uppercasePartyIdentity(field, selected.value); evidence[key] = [selected]; continue; }
     const byValue = new Map<string, Evidence[]>();
     for (const c of usable) {
       const k = exact(c.value);
       const bucket = byValue.get(k);
       if (bucket) bucket.push(c); else byValue.set(k, [c]);
     }
-    if (byValue.size === 1) { values[key] = usable[0].value; evidence[key] = usable; continue; }
+    if (byValue.size === 1) { values[key] = uppercasePartyIdentity(field, usable[0].value); evidence[key] = usable; continue; }
     // A single document read across several pages/regions rarely reproduces a
     // value byte-for-byte (a full name vs. an abbreviated signature, "Business"
     // vs. "BUSINESS"). Requiring unanimous agreement blanked the field on any
@@ -198,12 +201,24 @@ export function resolveDraft(draft: Draft) {
     const winner = ranked[0];
     const runnerUp = ranked[1];
     if (winner.length > usable.length / 2 && winner.length > (runnerUp?.length ?? 0)) {
-      values[key] = winner[0].value; evidence[key] = winner;
+      values[key] = uppercasePartyIdentity(field, winner[0].value); evidence[key] = winner;
     } else { values[key] = ''; conflicts[key] = usable; }
   }
   for (const [key, value] of Object.entries(draft.manual)) {
-    values[key] = value;
+    values[key] = uppercasePartyIdentity(key.split('|')[2], value);
     if (groups[key]?.some(c => exact(c.value) !== exact(value))) conflicts[key] = groups[key];
+  }
+  // RecordFieldGroup renders resolveDraft() directly, before appStateFor()
+  // applies form derivations. Put the Aadhaar-DOB age suggestion here as well
+  // so the Executant and Claimant inputs fill immediately after upload.
+  for (const side of ['executant', 'claimant'] as const) {
+    const dobSuffix = `|${side}Dob`;
+    for (const [dobKey, dob] of Object.entries(values).filter(([key]) => key.startsWith(`${side}|`) && key.endsWith(dobSuffix))) {
+      const [, record] = dobKey.split('|');
+      const ageKey = fieldKey(side, record, `${side}Age`);
+      if (Object.prototype.hasOwnProperty.call(draft.manual, ageKey)) continue;
+      values[ageKey] = ageFrom(dob, todayISO());
+    }
   }
   return { values, evidence, conflicts, unassigned };
 }
@@ -252,12 +267,12 @@ export function appStateFor(draft: Draft): AppState {
   defaultIfUnset('propState', 'Telangana');
   for (const side of ['executant', 'claimant']) {
     defaultIfUnset(`${side}PartyType`, 'Individual');
-    defaultIfUnset(`${side}Relation`, 'S/o');
+    defaultIfUnset(`${side}Relation`, 'S/O');
   }
   const partyDefaults = (side: 'executant' | 'claimant', values: Record<string, string>) => ({
     ...values,
     [`${side}PartyType`]: values[`${side}PartyType`] || 'Individual',
-    [`${side}Relation`]: values[`${side}Relation`] || 'S/o',
+    [`${side}Relation`]: values[`${side}Relation`] || 'S/O',
   });
   return {
     ...initialState, step: draft.step,

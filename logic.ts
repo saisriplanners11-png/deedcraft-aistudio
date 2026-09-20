@@ -204,7 +204,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters'];
+const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearHNo', 'surveyNo', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
@@ -309,7 +309,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     ['districtRegistrar', 'The property schedule names the registration district.', 'Link deed or registration record'],
     ['plotNo', 'The selected template schedule identifies the plot number.', 'Link deed or property plan'],
     ['surveyNo', 'The selected template schedule identifies survey number(s).', 'Link deed or property plan'],
-    ['extentValue', 'The selected template schedule requires the property extent.', 'Link deed or property plan'],
+    ['extentSqYards', 'The selected template schedule requires the property extent in Sq. Yards.', 'Link deed or property plan'],
     ['boundaryNorth', 'All four property boundaries are required.', 'Link deed or property plan'],
     ['boundarySouth', 'All four property boundaries are required.', 'Link deed or property plan'],
     ['boundaryEast', 'All four property boundaries are required.', 'Link deed or property plan'],
@@ -352,7 +352,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     });
   }
   state.additionalSchedules.forEach((record, index) => {
-    const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentValue', ...BOUNDARY_IDS, 'govtRate'];
+    const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
     if (['Residential', 'Commercial', 'Flat'].includes(record.category)) ids.push('bearingHNo', 'natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
     ids.forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'Every property schedule must be complete before combined registration.', 'Link deed, property record, plan or manual entry.', 3));
@@ -381,8 +381,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     if (!missing.some(item=>item.id===id)) missing.push({id,label:displayLabel(id),reason,source:'Correct or manually enter the verified value.',step});
   };
   const positive = (value: string | number) => !!value && Number.isFinite(Number(value)) && Number(value)>0;
-  const squareYards = f.extentSqYards || toSqYards(f.extentValue,state.unit);
-  if (!positive(squareYards)) invalid('extentValue','A positive verified extent and valid unit are required.',5);
+  if (!positive(f.extentSqYards)) invalid('extentSqYards','A positive verified extent in Sq. Yards is required.',3);
   if (!positive(f.govtRate)) invalid('govtRate','A positive basic rate is required to calculate market value.',3);
   if (f.structValue && (!Number.isFinite(Number(f.structValue)) || Number(f.structValue)<0)) invalid('structValue','Structure valuation must be a valid non-negative amount.',3);
   if (['Residential','Commercial','Flat'].includes(state.category)) add('structValue','A structure valuation is required for this category.','Valuation record or manual entry',3);
@@ -416,19 +415,33 @@ export function ageFrom(dobISO: string, onISO?: string): string {
   return years >= 0 && years < 130 ? String(years) : '';
 }
 
+/** Local calendar date, kept separate from ageFrom so date maths remains testable. */
+export function todayISO(now = new Date()): string {
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+/** Legal-party identity values are displayed and generated in deed-style capitals. */
+export function uppercasePartyIdentity(field: string, value: string): string {
+  return /^(?:executant|claimant)(?:Name|RelativeName)$/.test(field)
+    ? value.toLocaleUpperCase('en-IN')
+    : value;
+}
+
 /**
  * Values the form works out for itself.
  *
- * Age follows the date of birth and the date of execution, so a party's age is
- * never typed twice or left stale when either changes. Extent (Sq. Meters)
+ * Age is pre-filled from a party's date of birth as of today, but a drafter's
+ * correction always wins. Extent (Sq. Meters)
  * follows Extent (Sq. Yards) the same way. A field with nothing to compute
  * from keeps whatever was typed into it.
  */
 export function withDerived(form: Record<string, string>): Record<string, string> {
   const out = { ...form };
   for (const side of ['executant', 'claimant'] as const) {
-    const age = ageFrom(out[`${side}Dob`] ?? '', out.executionDate);
-    if (out[`${side}Dob`]) out[`${side}Age`] = age;
+    const ageKey = `${side}Age`;
+    const age = ageFrom(out[`${side}Dob`] ?? '', todayISO());
+    if (out[`${side}Dob`] && !out[ageKey]) out[ageKey] = age;
   }
   const sqYards = Number(out.extentSqYards);
   if (out.extentSqYards && Number.isFinite(sqYards)) {
@@ -541,19 +554,11 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   };
 
   // ---- area ----------------------------------------------------------------
-  const extentRaw = num(f.extentValue);
-  // A registered deed often prints only the alternate schedule extents (for
-  // example 157.22 sq. yards / 132.06 sq. metres). Treat a verified printed
-  // square-yard figure as authoritative area even when no separate generic
-  // extent/unit pair was returned, so market value can be calculated directly
-  // from the uploaded record.
   const printedSqYards = num(String(f.extentSqYards || '').replace(/,/g, ''));
-  const sqYardsN = !Number.isNaN(printedSqYards) && printedSqYards > 0
-    ? printedSqYards
-    : Number.isNaN(extentRaw) ? NaN : Math.round(toSqYards(extentRaw, state.unit) * 100) / 100;
+  const sqYardsN = !Number.isNaN(printedSqYards) && printedSqYards > 0 ? printedSqYards : NaN;
   const hasExtent = !Number.isNaN(sqYardsN) && sqYardsN > 0;
   const sqYards = f.extentSqYards || (hasExtent ? sqYardsN.toLocaleString('en-IN') : '');
-  const sqMeters = f.extentSqMeters || (hasExtent ? (Math.round(sqYardsN * 0.836127 * 100) / 100).toLocaleString('en-IN') : '');
+  const sqMeters = hasExtent ? (Math.round(sqYardsN * 0.836127 * 100) / 100).toLocaleString('en-IN') : '';
 
   const conversions = UNITS.map(u => ({
     unit: u,
@@ -568,14 +573,8 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const landN = hasExtent && !Number.isNaN(rate) ? Math.round(rate * sqYardsN) : NaN;
   const primaryPersayN = Number.isNaN(landN) ? NaN : landN + struct;
   const additionalPersay = state.additionalSchedules.map(record => {
-    const extent = num(record.values.extentValue);
-    // An uploaded deed can provide only the separately printed square-yard
-    // extent. Treat it exactly as we do for the primary schedule so one such
-    // schedule cannot blank the combined market value.
     const printedSqYards = num(String(record.values.extentSqYards || '').replace(/,/g, ''));
-    const sqy = !Number.isNaN(printedSqYards) && printedSqYards > 0
-      ? printedSqYards
-      : Number.isNaN(extent) ? NaN : toSqYards(extent, record.unit);
+    const sqy = !Number.isNaN(printedSqYards) && printedSqYards > 0 ? printedSqYards : NaN;
     const scheduleRate = num(record.values.govtRate);
     if (Number.isNaN(sqy) || Number.isNaN(scheduleRate)) return NaN;
     return Math.round(sqy * scheduleRate) + (Number(record.values.structValue) || 0);

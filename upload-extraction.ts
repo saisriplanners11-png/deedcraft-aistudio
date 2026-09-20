@@ -14,10 +14,16 @@ type Page = { number: number; region: string; parts: Part[]; text?: string };
 export const LINK_DEED_STEP2_PAGES = 2;
 export type ExtractionProfile =
   | 'phase1:linkDoc' | 'phase1:houseTax' | 'phase1:titleDeed' | 'phase1:nala' | 'phase1:permissions'
-  | 'party:executant' | 'party:claimant' | 'general';
+  | 'party:executant' | 'party:claimant' | 'jurisdiction' | 'property-schedule' | 'general';
 export type ExtractionProgress = string | { id: string; title: string; state: 'queued' | 'running' | 'done' | 'review' | 'error' };
 export function sectionFields(profile: ExtractionProfile) {
   const allowed = new Set(profileFields(profile));
+  if (profile === 'jurisdiction') return [{
+    id: 'jurisdiction', title: 'Jurisdiction details', fields: [...allowed],
+  }];
+  if (profile === 'property-schedule') return [{
+    id: 'property-schedule', title: 'Property schedule details', fields: [...allowed],
+  }];
   if (profile === 'party:executant' || profile === 'party:claimant') {
     return [{
       id: 'identity',
@@ -106,6 +112,8 @@ const extraFields = ['category', 'unit'];
 // extracted in the background as their own step5 section below.
 const phaseTwoFields = GROUPS.filter(group => [2, 3].includes(group.step)).flatMap(group => group.fields.map(field => field.id));
 const phaseOnePropertyFields = phaseTwoFields.filter(field => !['consid', 'executionDate', 'stampValue'].includes(field));
+const jurisdictionFields = GROUPS.filter(group => group.step === 2).flatMap(group => group.fields.map(field => field.id)).filter(field => field !== 'executionDate');
+const propertyScheduleFields = [...GROUPS.filter(group => group.step === 3).flatMap(group => group.fields.map(field => field.id)), ...extraFields];
 // Include every legal-entity variant, not just the individual-card fields in
 // the visible base group. The profile still accepts only the matching side.
 const partyFields = (side: 'executant' | 'claimant') => ALL_FIELDS.filter(field => field.id.startsWith(side)).map(field => field.id);
@@ -126,6 +134,8 @@ export function profileFields(profile: ExtractionProfile): string[] {
     : option.fields.map(field => field.id);
   if (profile === 'party:executant') return partyFields('executant');
   if (profile === 'party:claimant') return partyFields('claimant');
+  if (profile === 'jurisdiction') return jurisdictionFields;
+  if (profile === 'property-schedule') return propertyScheduleFields;
   return [...ALL_FIELDS.map(field => field.id), ...extraFields];
 }
 
@@ -137,13 +147,19 @@ function profileInstruction(profile: ExtractionProfile) {
     : `This is a ${option.label} uploaded in Phase 1. Use role="link" and record="primary". Return only its own card fields (${option.fields.map(field => field.id).join(', ')}). ${profile === 'phase1:houseTax' ? 'Read only the receipt number, assessment/PTIN number, local body and tax paid date. Keep receipt number, assessment number, demand number, house number and payment amount separate.' : profile === 'phase1:titleDeed' ? 'Read only the title deed number and khata number, using the exact labels beside each value.' : profile === 'phase1:nala' ? 'Read only the NALA order number, proceeding date, original Acre-Gunta extent in nalaExtent, and its square-yard equivalent in convertedExtentText. For compact notation 0.0144 means 0 acres and 1.44 guntas.' : profile === 'phase1:permissions' ? 'Read only the permission number, permission date, and issuing local authority. Copy the authority name exactly as printed (for example, Municipality or Gram Panchayat). Do not return layout/LRS/approval/certificate numbers, survey number, plot number, property extent, or any unrelated file number.' : ''} Do not return Phase 2 jurisdiction/property/valuation facts, and do not return executant, claimant or payment facts from this document.`;
   if (profile === 'party:executant') return 'This file was uploaded specifically for the current executant. Return every visibly supported executant individual/signatory identity, address, contact, occupation and PAN/Aadhaar field AND every visibly supported legal-entity field: party type, entity name, PAN, official mobile, registered/principal office address, signatory designation, firm/LLP registration, ROF office, partnership deed number/date, GSTIN and authority; society/trust classification, registration, registrar, NOC and governing-body resolution; company classification, CIN, DIN and board resolution; or HUF/other entity description, registration and authorization. Set executantPartyType only when the document explicitly establishes it. On Aadhaar cards, inspect the line labelled S/O, W/O, D/O or C/O and return the relationship prefix in executantRelation and only the father/relative name in executantRelativeName; do not omit it when it is clearly visible. Read the front and back and independently recheck names, identifiers, authority and address blocks. Do not return claimant, property, link-deed or payment facts.';
   if (profile === 'party:claimant') return 'This file was uploaded specifically for the current claimant. Return every visibly supported claimant individual/signatory identity, address, contact, occupation and PAN/Aadhaar field AND every visibly supported legal-entity field: party type, entity name, PAN, official mobile, registered/principal office address, signatory designation, firm/LLP registration, ROF office, partnership deed number/date, GSTIN and authority; society/trust classification, registration, registrar, NOC and governing-body resolution; company classification, CIN, DIN and board resolution; or HUF/other entity description, registration and authorization. Set claimantPartyType only when the document explicitly establishes it. On Aadhaar cards, inspect the line labelled S/O, W/O, D/O or C/O and return the relationship prefix in claimantRelation and only the father/relative name in claimantRelativeName; do not omit it when it is clearly visible. Read the front and back and independently recheck names, identifiers, authority and address blocks. Do not return executant, property, link-deed or payment facts.';
+  if (profile === 'jurisdiction') return 'This file was uploaded specifically to fill Jurisdiction for the current property. Return only propState, districtRegistrar, sro, district, mandal and village, all with role="property" and record="primary". Do not return link-document, property-schedule, party, valuation or payment facts.';
+  if (profile === 'property-schedule') return 'This file was uploaded specifically to fill the Property Schedule for the current property. Return only property identification, boundaries, structure/annexure details, category and unit, all with role="property" and record="primary". Do not return link-document, jurisdiction, valuation, party or payment facts.';
   return '';
 }
 function allowedByProfile(candidate: Candidate, profile: ExtractionProfile) {
   if (!profileFields(profile).includes(candidate.field)) return false;
   if (profile.startsWith('phase1:') && historicalTransactionFields.has(candidate.field)) return false;
+  // Aadhaar age text is a point-in-time print. The dashboard derives a fresh,
+  // user-editable age from its DOB instead of accepting that stale value.
+  if (profile.startsWith('party:') && /Age$/.test(candidate.field)) return false;
   if (profile === 'party:executant') return candidate.role === 'executant' && candidate.field.startsWith('executant');
   if (profile === 'party:claimant') return candidate.role === 'claimant' && candidate.field.startsWith('claimant');
+  if (profile === 'jurisdiction' || profile === 'property-schedule') return candidate.role === 'property';
   return true;
 }
 const catalog = ALL_FIELDS.map(f => `${f.id}: ${f.label}`).join('\n') + '\n' +
@@ -294,7 +310,7 @@ export function cleanDrawing(raw: any): PlanDrawing | null {
   return { lines: raw.lines.map((l: any) => ({ points: l.points })), labels: raw.labels.map((l: any) => ({ text: l.text, x: l.x, y: l.y, rotation: l.rotation || 0 })), scale: typeof raw.scale === 'string' ? raw.scale.slice(0, 80) : '' };
 }
 
-export async function prepare(file: File, signal: AbortSignal, profile: ExtractionProfile = 'general'): Promise<{ pages: Page[]; context: Part[]; notes: string[] }> {
+async function prepareOne(file: File, signal: AbortSignal, profile: ExtractionProfile = 'general'): Promise<{ pages: Page[]; context: Part[]; notes: string[] }> {
   stop(signal);
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
@@ -357,6 +373,25 @@ export async function prepare(file: File, signal: AbortSignal, profile: Extracti
     // One orientation only. Multiple rotated copies were misread as separate documents.
     return { pages: [{ number: 1, region: 'Uploaded photograph', parts: [imagePart(new Uint8Array(await blob.arrayBuffer()), 'image/jpeg')] }], context: [], notes: [] };
   } finally { bitmap.close(); }
+}
+
+/** Prepare an ordered source bundle. Each selected file contributes its pages to one legal record. */
+export async function prepare(input: File | File[], signal: AbortSignal, profile: ExtractionProfile = 'general'): Promise<{ pages: Page[]; context: Part[]; notes: string[] }> {
+  const files = Array.isArray(input) ? input : [input];
+  if (!files.length) throw new Error('Choose at least one document or image.');
+  const pages: Page[] = [];
+  const context: Part[] = [];
+  const notes: string[] = [];
+  for (const file of files) {
+    stop(signal);
+    const prepared = await prepareOne(file, signal, profile);
+    for (const page of prepared.pages) {
+      pages.push({ ...page, number: pages.length + 1, region: `${file.name} · ${page.region}` });
+    }
+    context.push(...prepared.context);
+    notes.push(...prepared.notes.map(note => `${file.name}: ${note}`));
+  }
+  return { pages, context, notes };
 }
 
 async function drawingImage(drawing: PlanDrawing): Promise<Part> {
@@ -719,7 +754,8 @@ export async function extractSections(inputPages: Page[], initialNotes: string[]
     const parts: Part[] = [shared];
     const taskInstruction = section.id === 'step2'
       ? 'Read the uploaded record’s own order, receipt, passbook or permission particulars from its original labels, including its own number, date, issuing authority and supported record fields. Never substitute a neighboring reference or an unrelated deed. Use role=link, record=primary.'
-      : LINK_TASK_INSTRUCTIONS[section.id as keyof typeof LINK_TASK_INSTRUCTIONS];
+      : LINK_TASK_INSTRUCTIONS[section.id as keyof typeof LINK_TASK_INSTRUCTIONS]
+        || 'Read only the requested fields from their original labels. Use role=property and record=primary.';
     const instruction = `${profileInstruction(profile)}\n${taskInstruction}\n${ADMINISTRATIVE_RULES} Return only these fields: ${section.fields.join(', ')}. Every candidate must include the original source page number and verbatim source quote. Set plan=null; a separate task processes drawings.`;
     const fullVisualConfirmation = requiresFullVisualConfirmation(profile);
     // Compact 12-field reads work well for one-page supporting records. A
@@ -834,13 +870,13 @@ export async function extractSections(inputPages: Page[], initialNotes: string[]
   return output();
 }
 
-export async function extractUpload(file: File, signal: AbortSignal, progress: (text: ExtractionProgress) => void, onPartial?: (result: SourceResult) => void, profile: ExtractionProfile = 'general'): Promise<SourceResult> {
+export async function extractUpload(input: File | File[], signal: AbortSignal, progress: (text: ExtractionProgress) => void, onPartial?: (result: SourceResult) => void, profile: ExtractionProfile = 'general'): Promise<SourceResult> {
   try {
     const extractionStarted = performance.now();
     progress({ id: 'prepare', title: 'Prepare document pages', state: 'running' });
-    const { pages, context, notes } = await prepare(file, signal, profile);
+    const { pages, context, notes } = await prepare(input, signal, profile);
     progress({ id: 'prepare', title: 'Prepare document pages', state: 'done' });
-    if (profile.startsWith('phase1:')) return await extractSections(pages, notes, signal, progress, onPartial, profile);
+    if (profile.startsWith('phase1:') || profile === 'jurisdiction' || profile === 'property-schedule') return await extractSections(pages, notes, signal, progress, onPartial, profile);
     const completed = new Map<number, SourceResult>();
     const pagesMs: Record<string, number> = {};
     const publish = (index: number, value: SourceResult) => {
@@ -950,7 +986,12 @@ export async function extractUpload(file: File, signal: AbortSignal, progress: (
   } catch (error) { if (signal.aborted) throw error; throw readableError(error); }
 }
 
-export async function fileHash(file: File): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+export async function fileHash(input: File | File[]): Promise<string> {
+  const files = Array.isArray(input) ? input : [input];
+  const hashes = await Promise.all(files.map(async file => {
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(hashes.join('\u0000')));
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }

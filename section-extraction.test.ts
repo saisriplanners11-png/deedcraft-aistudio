@@ -203,6 +203,11 @@ describe('shared document section extraction', () => {
     expect(sectionFields('party:claimant')[0].fields).toContain('claimantRelativeName');
   });
 
+  it('creates one strictly scoped worker for each direct section upload', () => {
+    expect(sectionFields('jurisdiction')).toEqual([{ id: 'jurisdiction', title: 'Jurisdiction details', fields: expect.arrayContaining(['sro', 'district']) }]);
+    expect(sectionFields('property-schedule')).toEqual([{ id: 'property-schedule', title: 'Property schedule details', fields: expect.arrayContaining(['plotNo', 'boundaryNorth']) }]);
+  });
+
   it('tolerates typography and case while preserving identifier and extent differences', () => {
     const c={field:'boundarySouth',value:"21' Road",role:'property',record:'primary'} as Candidate;
     expect(sameTranscription(c,{...c,value:'21’ ROAD.'})).toBe(true);

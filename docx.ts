@@ -293,7 +293,9 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)));
   if (repeat) return repeat.records!.map(record => fillParagraph(p, new Map([...values, ...Object.entries(record).map(([key, value]) => [norm(key), value] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat))).join('');
   // This placeholder is reused by the original template for different concepts.
-  if (/sale consideration|consideration value/i.test(plainText(p))) {
+  if (/WHEREAS[\s\S]*agreed consideration amount/i.test(plainText(p))) {
+    p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration> (<Sale Consideration Words>)');
+  } else if (/sale consideration|consideration value/i.test(plainText(p))) {
     p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>');
   }
   // The supplied template intentionally retains its source wording, including
@@ -317,8 +319,16 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
 }
 
 function markConsiderationRows(xml: string): string {
-  return xml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => /\bConsideration\b/i.test(plainText(row))
-    ? row.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>')) : row);
+  return xml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+    const text = plainText(row);
+    if (/Total\s+Market\s+Value/i.test(text)) {
+      return row.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
+        replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Statement of Market Value Consideration>'));
+    }
+    return /\bConsideration\b/i.test(text)
+      ? row.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>'))
+      : row;
+  });
 }
 
 /** Remove optional source-template title recitals when their source facts are absent. */

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS } from './instruments';
 import { LEGAL_REFERENCES, releaseGate, validateRegistry } from './legal-registry';
 import { appStateFor, draftReducer, newDraft } from './source-draft';
-import { approvalAllowsGeneration, emptyApproval, invalidateApproval } from './professional-review';
 import { compileDeed } from './deed-compiler';
 
 describe('multi-instrument registry', () => {
@@ -12,7 +11,7 @@ describe('multi-instrument registry', () => {
     for (const definition of Object.values(DEED_DEFINITIONS)) {
       expect(definition.variants.length).toBeGreaterThan(0);
       expect(definition.roles.length).toBeGreaterThan(0);
-      expect(definition.validationRules.map(rule => rule.id)).toContain('professional-approval');
+      expect(definition.validationRules.map(rule => rule.id)).not.toContain('professional-approval');
     }
   });
 
@@ -34,19 +33,10 @@ describe('multi-instrument registry', () => {
   });
 });
 
-describe('professional generation safeguards', () => {
-  it('ties approval to the exact immutable snapshot and all accepted warnings', () => {
-    const approval = { ...emptyApproval(), status: 'approved' as const, reviewerName: 'A. Advocate', approvedSnapshotHash: 'snapshot-1', approvedAt: '2026-09-16T00:00:00Z', acceptedWarnings: ['missing optional phone'] };
-    expect(approvalAllowsGeneration(approval, 'snapshot-1', ['missing optional phone'])).toBe(true);
-    expect(approvalAllowsGeneration(approval, 'snapshot-2', ['missing optional phone'])).toBe(false);
-    expect(approvalAllowsGeneration(approval, 'snapshot-1', ['new conflict'])).toBe(false);
-    expect(invalidateApproval(approval).status).toBe('unreviewed');
-  });
-
-  it('blocks compilation without professional approval and blocks unonboarded deeds', () => {
-    const common = { variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'hash', values: {}, schedules: [], unresolvedWarnings: [], approval: emptyApproval() };
-    expect(() => compileDeed({ ...common, instrumentId: 'sale' })).toThrow(/professional approval/i);
+describe('generation safeguards', () => {
+  it('allows compilation without professional approval but blocks unonboarded deeds', () => {
+    const common = { variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'hash', values: {}, schedules: [], unresolvedWarnings: [] };
+    expect(() => compileDeed({ ...common, instrumentId: 'sale' })).not.toThrow();
     expect(() => compileDeed({ ...common, instrumentId: 'gift', variantId: DEED_DEFINITIONS.gift.variants[0].id })).toThrow(/approved legal reference/i);
   });
 });
-

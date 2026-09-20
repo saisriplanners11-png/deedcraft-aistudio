@@ -44,7 +44,7 @@ describe('sale deed template merge', () => {
   });
 
   it('prints the sale consideration, not the calculated basic-rate market value, on the first page', async () => {
-    const state = { ...initialState, form: { ...initialState.form, extentValue:'100', govtRate:'10000', consid:'800000', executionDate:'2026-09-11' } };
+    const state = { ...initialState, form: { ...initialState.form, extentSqYards:'100', govtRate:'10000', consid:'800000', executionDate:'2026-09-11' } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).not.toContain('10,00,000');
@@ -69,12 +69,27 @@ describe('sale deed template merge', () => {
     expect(entries.find(e=>e.name==='word/media/deedcraft-plan-0.png')).toBeDefined();
   });
 
-  it('keeps the house annexure consideration distinct from market value', async () => {
-    const state = { ...initialState, category:'Residential', form:{...initialState.form,extentValue:'100',govtRate:'10000',consid:'800000'} };
+  it('keeps the house annexure market-value estimate distinct from consideration', async () => {
+    const state = { ...initialState, category:'Residential', form:{...initialState.form,extentSqYards:'100',govtRate:'10000',consid:'800000'} };
     const result=await fillSaleDeed(mergeValues(state),'IF HOUSE',rewritesFor(state),scheduleMergesFor(state));
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).toMatch(/Consideration\s+: Rs\.8,00,000/);
     expect(text).toMatch(/estimate M\.V\.\s+: Rs\.10,00,000/);
+  });
+
+  it('uses agreed consideration in the Statement of Market Value', async () => {
+    const state = { ...initialState, category:'Vacant Plot', form:{...initialState.form,extentSqYards:'100',govtRate:'10000',consid:'800000'} };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toMatch(/Total Market Value\s+: Rs\.8,00,000/);
+  });
+
+  it('writes consideration words only in the consideration-and-payment clause', async () => {
+    const state = { ...initialState, form: { ...initialState.form, consid: '800000' } };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('consideration amount of Rs.8,00,000 (Eight Lakh Rupees Only)');
+    expect(text).toContain('total sale consideration of Rs.8,00,000/-');
   });
 
   it('uses the new Open Place schedule and omits optional title recitals without source details', async () => {
@@ -124,7 +139,7 @@ describe('sale deed template merge', () => {
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text.match(/9876543210/g)).toHaveLength(1);
-    expect(text).toMatch(/Second,[\s\S]*Cell No: __________/);
+    expect(text).toMatch(/SECOND,[\s\S]*Cell No: __________/);
   });
 
   it('fills every mapped placeholder in the selected house schedule', async () => {
@@ -211,11 +226,11 @@ describe('sale deed template merge', () => {
 
     expect(text).toContain('Document No.100/2020');
     expect(text).toContain('Document No.200/2021');
-    expect(text).toContain('Vendor One');
-    expect(text).toContain('Vendor Two');
+    expect(text).toContain('VENDOR ONE');
+    expect(text).toContain('VENDOR TWO');
     expect(text).toContain('1111 1111 1111');
     expect(text).toContain('3333 3333 3333');
-    expect(text).toContain('Purchaser Two');
+    expect(text).toContain('PURCHASER TWO');
     expect(text).toContain('SCHEDULE OF PROPERTY - 1');
     expect(text).toContain('SCHEDULE OF PROPERTY - 2');
     expect(text.match(/DECLARATION/g)).toHaveLength(1);

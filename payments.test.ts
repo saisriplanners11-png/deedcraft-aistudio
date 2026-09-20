@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agreePaymentPasses, applyChequeBranchVerification, applyChequeDateVerification, applyPaymentVerification, cleanPaymentValue, paymentPatchError, type Payment, type PaymentPass } from './payments';
+import { agreePaymentPasses, applyChequeBranchVerification, applyChequeDateVerification, applyChequePartyVerification, applyPaymentVerification, cleanPaymentValue, paymentPatchError, type Payment, type PaymentPass } from './payments';
 
 const pass = (values: PaymentPass['values']): PaymentPass => ({
   values,
@@ -81,5 +81,18 @@ describe('payment extraction safeguards', () => {
     const result = applyChequeBranchVerification(base, pass({ branch: 'Gopal Nagar Siricilla' }), pass({ branch: ' gopal  nagar siricilla ' }));
     expect(result.values.branch).toBe('Gopal Nagar Siricilla');
     expect(result.unreadable).toBe('');
+  });
+
+  it('uses focused cheque drawer/payee reads instead of a reversed broad extraction', () => {
+    const base = { values: { payer: 'Vendor', payee: 'Purchaser' }, detectedMode: null, unreadable: '' };
+    const result = applyChequePartyVerification(base, pass({ payer: 'Purchaser', payee: 'Vendor' }), pass({ payer: ' purchaser ', payee: 'vendor' }));
+    expect(result.values).toMatchObject({ payer: 'Purchaser', payee: 'Vendor' });
+  });
+
+  it('clears an ambiguous focused cheque party', () => {
+    const base = { values: { payer: 'Purchaser', payee: 'Vendor' }, detectedMode: null, unreadable: '' };
+    const result = applyChequePartyVerification(base, pass({ payer: 'Purchaser', payee: 'Vendor' }), pass({ payer: 'Other Purchaser', payee: 'Vendor' }));
+    expect(result.values.payer).toBeUndefined();
+    expect(result.values.payee).toBe('Vendor');
   });
 });

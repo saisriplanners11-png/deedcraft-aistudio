@@ -93,7 +93,10 @@ export function Input({
 }) {
   const span = field.span || 1;
   const readOnly = field.derived;
-  const shown = readOnly ? derivedValue || '' : value;
+  // A derived field can receive an explicit display value from a parent, or
+  // its already-calculated value from the bound form. This keeps read-only
+  // calculations visible in record-scoped property sections.
+  const shown = readOnly ? (derivedValue ?? value) : value;
 
   return (
     <label style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>

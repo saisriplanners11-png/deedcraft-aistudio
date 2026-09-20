@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { appStateFor, draftReducer, newDraft, plansFor, resolveDraft, type Candidate, type Draft, type Source, WorkQueue } from './source-draft';
 import { cleanCandidate, cleanDrawing } from './upload-extraction';
+import { ageFrom, todayISO } from './logic';
 
 const candidate = (field: string, value: string, patch: Partial<Candidate> = {}): Candidate => ({ id: field, field, value, role: 'executant', record: 'primary', quote: value, page: 1, region: 'Seller handwritten particulars', handwritten: true, historical: false, status: 'accepted', ...patch });
 const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${id}.jpg`, revision: 0, hash: id, status: 'done', result: { candidates, plans: [], notes: [] } });
@@ -16,8 +17,8 @@ describe('source-backed drafts', () => {
   it('starts with no customer facts, payment instruments, plan or stamp defaults beyond the party/jurisdiction defaults', () => {
     const state = appStateFor(newDraft());
     expect(state.form).toMatchObject({
-      propState: 'Telangana', executantPartyType: 'Individual', executantRelation: 'S/o',
-      claimantPartyType: 'Individual', claimantRelation: 'S/o',
+      propState: 'Telangana', executantPartyType: 'Individual', executantRelation: 'S/O',
+      claimantPartyType: 'Individual', claimantRelation: 'S/O',
     });
     const withoutDefaults = { ...state.form, propState: '', executantPartyType: '', executantRelation: '', claimantPartyType: '', claimantRelation: '' };
     expect(Object.values(withoutDefaults).filter(Boolean)).toEqual([]);
@@ -32,6 +33,16 @@ describe('source-backed drafts', () => {
     expect(appStateFor(draft).form.executantAge).toBe('36');
     draft = draftReducer(draft, { type: 'remove', id: 'a' });
     expect(appStateFor(draft).form.executantDob).toBe(''); expect(appStateFor(draft).form.executantAge).toBe('');
+  });
+  it('exposes Aadhaar DOB age directly to the Executant and Claimant dashboards', () => {
+    let draft = draftWith(source('ids', [
+      candidate('executantDob', '1990-01-02'),
+      candidate('claimantDob', '1995-03-04', { role: 'claimant' }),
+    ]));
+    expect(resolveDraft(draft).values['executant|primary|executantAge']).toBe(ageFrom('1990-01-02', todayISO()));
+    expect(resolveDraft(draft).values['claimant|primary|claimantAge']).toBe(ageFrom('1995-03-04', todayISO()));
+    draft = draftReducer(draft, { type: 'manual', key: 'executant|primary|executantAge', value: '29' });
+    expect(resolveDraft(draft).values['executant|primary|executantAge']).toBe('29');
   });
   it('replacement clears omitted values and rejects old in-flight responses', () => {
     let draft = draftWith(source('a', [candidate('executantMobile','9876543210')]));
@@ -68,8 +79,8 @@ describe('source-backed drafts', () => {
     const draft = draftWith(source('a', [candidate('executantName','Seller One'), candidate('executantMobile','9876543210'), candidate('amount','200', { role: 'payment' })]), source('b', [candidate('executantName','Seller Two'), candidate('executantMobile','9876543211'), candidate('amount','300', { role: 'payment' })]));
     const state = appStateFor(draft);
     expect(state.additionalExecutants).toHaveLength(1);
-    expect(state.form.executantName).toBe('Seller One');
-    expect(state.additionalExecutants[0].values.executantName).toBe('Seller Two');
+    expect(state.form.executantName).toBe('SELLER ONE');
+    expect(state.additionalExecutants[0].values.executantName).toBe('SELLER TWO');
     expect(state.payments.map(p => p.amount)).toEqual(['200','300']);
   });
   it('does not blend current transaction values from different payment uploads', () => {
@@ -186,7 +197,7 @@ describe('source-backed drafts', () => {
     ]));
     const assigned = draftReducer(draft, { type: 'assign', id: 'composite', role: 'executant', record: 'gangula rajender', fromRecord: 'Gangula Rajender' });
     const state = appStateFor(assigned);
-    expect(state.form.executantName).toBe('Gangula Rajender');
+    expect(state.form.executantName).toBe('GANGULA RAJENDER');
     expect(state.form.executantAadhaar).toBe('4345 1375 8505');
     expect(resolveDraft(assigned).unassigned.map(c => c.record)).toEqual(['Sriramula Venkatesham', 'Sriramula Venkatesham']);
   });
@@ -259,7 +270,7 @@ describe('evidence validation', () => {
   it('preserves punctuation and zeroes, Telugu names and relation selections', () => {
     expect(cleanCandidate(candidate('surveyNo','001/2-A',{ role:'property' }),1,0)?.value).toBe('001/2-A');
     expect(cleanCandidate(candidate('executantRelativeName','లక్ష్మణ్'),1,0)?.value).toBe('లక్ష్మణ్');
-    expect(cleanCandidate(candidate('executantRelation','W/o'),1,0)?.value).toBe('W/o');
+    expect(cleanCandidate(candidate('executantRelation','W/o'),1,0)?.value).toBe('W/O');
   });
   it('rejects invalid dates and dangerous or invalid drawing coordinates', () => {
     expect(cleanCandidate(candidate('executantDob','2026-02-30'),1,0)).toBeNull();

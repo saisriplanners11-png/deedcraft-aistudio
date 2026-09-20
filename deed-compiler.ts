@@ -2,7 +2,6 @@ import { fillSaleDeed, type MergeResult, type Rewrite, type ScheduleMerge } from
 import type { InstrumentId } from './instruments';
 import { definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
-import { approvalAllowsGeneration, type ProfessionalApproval } from './professional-review';
 
 export interface DraftSnapshot {
   instrumentId: InstrumentId;
@@ -11,7 +10,6 @@ export interface DraftSnapshot {
   values: Record<string, string>;
   schedules: ScheduleMerge[];
   unresolvedWarnings: string[];
-  approval: ProfessionalApproval;
   rewrites?: Rewrite[];
   planPages?: Uint8Array[];
 }
@@ -27,17 +25,12 @@ export interface GenerationManifest {
   ruleVersion?: string;
   inputSnapshotHash: string;
   unresolvedWarnings: string[];
-  approvedBy: string;
-  approvedAt?: string;
   outputHash?: string;
 }
 
 export function compileDeed(snapshot: DraftSnapshot): CompiledDeed {
   const gate = releaseGate(snapshot.instrumentId, snapshot.variantId);
   if (!gate.ready || !gate.reference?.templateVersionId) throw new Error(gate.reasons.join(' '));
-  if (!approvalAllowsGeneration(snapshot.approval, snapshot.snapshotHash, snapshot.unresolvedWarnings)) {
-    throw new Error('Professional approval of this exact draft snapshot is required before final generation.');
-  }
   return { snapshot, templateVersionId: gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
 }
 
@@ -56,8 +49,6 @@ export async function renderArtifact(compiled: CompiledDeed, format: 'docx'): Pr
       ruleVersion: compiled.ruleVersion,
       inputSnapshotHash: compiled.snapshot.snapshotHash,
       unresolvedWarnings: compiled.snapshot.unresolvedWarnings,
-      approvedBy: compiled.snapshot.approval.reviewerName,
-      approvedAt: compiled.snapshot.approval.approvedAt,
     },
   };
 }
@@ -67,4 +58,3 @@ export function validateTemplateContract(instrumentId: InstrumentId, availableBi
   const available = new Set(availableBindings);
   return definition.templateBindings.filter(binding => !available.has(binding.placeholder)).map(binding => `Missing template placeholder: ${binding.placeholder}`);
 }
-

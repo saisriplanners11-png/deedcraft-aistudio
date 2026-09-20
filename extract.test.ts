@@ -6,7 +6,7 @@ import { profileFields } from './upload-extraction';
 describe('link deed extraction mapping', () => {
   it('limits a Phase 1 link deed to its title, jurisdiction and property-schedule facts', () => {
     const fields = profileFields('phase1:linkDoc');
-    expect(fields).toEqual(expect.arrayContaining(['linkDocNo', 'district', 'surveyNo', 'boundaryNorth', 'extentValue']));
+    expect(fields).toEqual(expect.arrayContaining(['linkDocNo', 'district', 'surveyNo', 'boundaryNorth', 'extentSqYards']));
     expect(fields).not.toContain('govtRate');
     expect(fields).not.toContain('structValue');
     expect(fields).not.toContain('executantAadhaar');
@@ -17,6 +17,13 @@ describe('link deed extraction mapping', () => {
     expect(profileFields('party:executant')).toEqual(expect.arrayContaining(['executantName', 'executantAadhaar', 'executantPinCode']));
     expect(profileFields('party:executant')).not.toContain('claimantName');
     expect(profileFields('party:claimant')).not.toContain('executantName');
+  });
+
+  it('scopes jurisdiction and property-schedule uploads to their own fields', () => {
+    expect(profileFields('jurisdiction')).toEqual(expect.arrayContaining(['districtRegistrar', 'sro', 'district', 'mandal', 'village']));
+    expect(profileFields('jurisdiction')).not.toContain('plotNo');
+    expect(profileFields('property-schedule')).toEqual(expect.arrayContaining(['plotNo', 'boundaryNorth', 'extentSqYards', 'category', 'unit']));
+    expect(profileFields('property-schedule')).not.toContain('districtRegistrar');
   });
 
   it('includes every legal-entity and authorized-signatory field in the scoped party read', () => {

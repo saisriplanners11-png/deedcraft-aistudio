@@ -8,7 +8,7 @@ import {
 import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
 import { fillSaleDeed, saveBlob, scheduleText, type ScheduleMerge } from './docx';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
-import { ageFrom, buildViewModel, generationBlockers, partyRecords, scheduleRecords } from './logic';
+import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity } from './logic';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
@@ -18,7 +18,6 @@ import './wizard-app.css';
 import './plan-sketch.css';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
-import { approvalAllowsGeneration, emptyApproval, type ProfessionalApproval } from './professional-review';
 
 // Raised from 4: Step 2 now lets a drafter add several document types (link
 // deed, house tax, title deed, NALA, permissions) at once, and each upload
@@ -118,18 +117,29 @@ type LinkStageStatus = 'loading' | 'error' | 'review' | 'done' | null;
  * which remounts (and blurs) its input children after each keystroke.
  */
 function LinkStageGate({ status, loading, children }: { status: LinkStageStatus; loading: string; children: React.ReactNode }) {
-  if (status === 'loading') return <Empty>{loading}</Empty>;
   return <>
+    {status === 'loading' && <Empty>{loading} You can continue entering or correcting the fields below.</Empty>}
     {status === 'error' && <Empty>Automatic extraction could not finish for this step. You can enter the details manually.</Empty>}
     {status === 'review' && <Empty>Some extracted details need review. Confirm the visible values or enter them manually.</Empty>}
     {children}
   </>;
 }
 
+/** A section-scoped upload whose extraction is allowed to fill only that section. */
+function ScopedSectionUpload({ label, busy, onUpload }: { label: string; busy?: boolean; onUpload: (files: File[]) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return <label className="link-upload" aria-disabled={busy}>
+    <span>{busy ? 'Reading…' : `Upload document or images for ${label.toLowerCase()}`}</span>
+    <input ref={input} type="file" accept={ACCEPT} multiple disabled={busy} hidden
+      onChange={event => { const files = [...(event.target.files || [])]; if (files.length) onUpload(files); event.target.value = ''; }} />
+    <button type="button" className="gold" disabled={busy} onClick={() => input.current?.click()}>Choose file(s) or photo</button>
+  </label>;
+}
+
 /** The named passes a document goes through while it's being read, ticked off as each completes. */
 /** One role-scoped field group, bound to a specific record through the draft's manual-edit dispatch. */
 function RecordFieldGroup({
-  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, executionDate,
+  role, record, category, step, resolved, edit, label, onDelete, deleteLabel,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
@@ -137,8 +147,6 @@ function RecordFieldGroup({
   /** When set, the first group renders a delete action for this whole record. */
   onDelete?: () => void;
   deleteLabel?: string;
-  /** Sale deed execution date, so this record's Age can be worked out live from its date of birth. */
-  executionDate?: string;
 }) {
   const groups = groupsForStep(step, category);
   if (!groups.length) return null;
@@ -146,17 +154,14 @@ function RecordFieldGroup({
   // Most executants and claimants are individuals related as S/o, and nearly
   // every deed is registered in Telangana, so those pickers open on the
   // common choice instead of forcing a click on every party/property.
-  const defaults: Record<string, string> = { [`${role}PartyType`]: 'Individual', [`${role}Relation`]: 'S/o', propState: 'Telangana' };
-  const ageId = role === 'executant' || role === 'claimant' ? `${role}Age` : '';
-  const dob = ageId ? resolved.values[fieldKey(role, record, `${role}Dob`)] : '';
+  const defaults: Record<string, string> = { [`${role}PartyType`]: 'Individual', [`${role}Relation`]: 'S/O', propState: 'Telangana' };
   // Extent (Sq. Meters) follows Extent (Sq. Yards) live, the same way it
   // already does when typed by hand — regardless of whether the yard figure
   // arrived by typing or by AI extraction from an uploaded property record.
   const sqYards = role === 'property' ? Number(resolved.values[fieldKey(role, record, 'extentSqYards')]) : NaN;
   const sqMeters = Number.isFinite(sqYards) && sqYards > 0 ? String(Math.round(sqYards * 0.836127 * 100) / 100) : '';
   for (const g of groups) for (const f of g.fields)
-    form[f.id] = f.id === ageId && dob ? ageFrom(dob, executionDate || '')
-      : f.id === 'extentSqMeters' && sqMeters ? sqMeters
+    form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : resolved.values[fieldKey(role, record, f.id)] || defaults[f.id] || '';
   return <>
     {groups.map(g => (
@@ -286,7 +291,7 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
  * different record's — the same way LinkRecordCard scopes an upload to one row.
  */
 function PartyRecordCard({
-  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, executionDate,
+  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
@@ -294,7 +299,6 @@ function PartyRecordCard({
   onUpload: (files: File[]) => void;
   busy?: boolean;
   sources: Source[];
-  executionDate?: string;
 }) {
   const noun = role === 'executant' ? 'executant' : 'claimant';
   const input = useRef<HTMLInputElement>(null);
@@ -318,7 +322,7 @@ function PartyRecordCard({
       <SourceFeedback sources={sources} />
     </Section>
     <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} label={label}
-      onDelete={onDelete} deleteLabel={`Delete this ${noun}`} executionDate={executionDate} />
+      onDelete={onDelete} deleteLabel={`Delete this ${noun}`} />
     {entityFields.length > 0 && <FieldGroup
       group={{ step, title: entityTitle, note: 'These particulars identify the legal entity. The individual details above are the authorized signatory / representative.', fields: entityFields }}
       form={entityForm}
@@ -415,8 +419,6 @@ export default function WizardApp() {
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [message, setMessage] = useState('');
-  const [reviewerName, setReviewerName] = useState('');
-  const [approval, setApproval] = useState<ProfessionalApproval>(emptyApproval);
   const [exporting, setExporting] = useState(false);
   const [download, setDownload] = useState<{ revision: number; draftId: string; docx: Blob; pdf: Blob; filename: string } | null>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
@@ -429,11 +431,10 @@ export default function WizardApp() {
   const step = draft.step;
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
-  const snapshotHash = `${draft.id}:${draft.revision}`;
-  const warningIds = notices.map(item => item.id);
-  const generationApproved = deedRelease.ready && approvalAllowsGeneration(approval, snapshotHash, warningIds);
+  const generationReady = deedRelease.ready;
   const goto = (s: number) => dispatch({ type: 'step', step: s });
   const edit = (role: Role, record: string, field: string, value: string) => {
+    value = uppercasePartyIdentity(field, value);
     if (field === 'consid') {
       const consideration = Number(value);
       const paid = state.payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
@@ -445,13 +446,15 @@ export default function WizardApp() {
     // Extent (Sq. Meters) and NALA's square-yard equivalent are computed live
     // for display (see RecordFieldGroup/LinkRecordCard) straight from their
     // source figure, whichever way it arrived — no mirrored write needed here.
-    // SRO code mirrors the Sub-Registrar Office only on this property's link records.
+    // Link-document SRO fields mirror the registering office for this property,
+    // so the Schedule's Registration Sub-District can never diverge.
     if (field === 'sro' && role === 'property') {
       for (const linkRecord of recordOptions('link').filter(linkRecord =>
         (draft.linkPropertyRecords[linkRecord]
           || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === linkRecord)?.assignment?.propertyRecord
           || 'primary') === record
       )) {
+        dispatch({ type: 'manual', key: fieldKey('link', linkRecord, 'linkSro'), value });
         dispatch({ type: 'manual', key: fieldKey('link', linkRecord, 'linkSroCode'), value });
       }
     }
@@ -460,8 +463,9 @@ export default function WizardApp() {
 
   useEffect(() => () => { controllers.current.forEach(c => c.abort()); }, []);
 
-  /** Reads one uploaded file, binding its extracted candidates to a specific record (when given) so a document uploaded into one row never spills into another. */
-  async function runUpload(file: File, assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
+  /** Reads one ordered source bundle, binding it to one record so it never spills into another. */
+  async function runUpload(files: File[], assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
+    if (!files.length) return;
     const sourceId = crypto.randomUUID();
     const draftId = current.current.id;
     controllers.current.get(sourceId)?.abort();
@@ -470,25 +474,25 @@ export default function WizardApp() {
     setActiveUpload({
       id: sourceId,
       label: option?.label || (assignment?.role === 'executant' ? 'Executant ID' : assignment?.role === 'claimant' ? 'Claimant ID' : 'Document'),
-      names: [file.name],
+      names: files.map(file => file.name),
     });
     const valid = () => !controller.signal.aborted && current.current.id === draftId;
     const job = (patch: any) => dispatch({ type: 'job', draftId, sourceId, sourceRevision: 0, patch });
-    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: file.name, hash: '', status: 'queued', assignment } });
+    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'queued', assignment, profile } });
     setUploadSteps(s => ({ ...s, [sourceId]: [] }));
     const started = performance.now();
     try {
       await fileQueue.run(async () => {
         if (!valid()) return;
         job({ status: 'reading' });
-        const hash = await fileHash(file);
+        const hash = await fileHash(files);
         if (!valid()) return;
         job({ hash });
         const key = `${draftId}:${hash}:${EXTRACTION_VERSION}:${profile}`;
         let result: SourceResult;
         if (cache.current.has(key)) result = await cache.current.get(key)!;
         else {
-          result = await extractUpload(file, controller.signal, event => {
+          result = await extractUpload(files, controller.signal, event => {
             if (!valid()) return;
             // Link-deed page 1/2 verification is the foreground task. Once
             // it settles, the property-page workers keep running without a
@@ -510,7 +514,7 @@ export default function WizardApp() {
           job({ status: 'done', result, durationMs: performance.now() - started, error: undefined });
           const uncertain = result.candidates.filter(candidate => candidate.status === 'uncertain');
           if (uncertain.length) setPendingReviews(queue => [...queue, ...uncertain.map(candidate => ({
-            id: `${sourceId}:${candidate.id}`, sourceName: file.name, assignment, candidate,
+            id: `${sourceId}:${candidate.id}`, sourceName: files.map(file => file.name).join(' · '), assignment, candidate,
           }))]);
         }
       });
@@ -525,7 +529,11 @@ export default function WizardApp() {
   }
   const uploadFor = (role: Role, record: string, profile?: ExtractionProfile, propertyRecord = activePropertyId) => (files: File[]) => {
     const scoped = profile || (role === 'executant' ? 'party:executant' : role === 'claimant' ? 'party:claimant' : 'general');
-    for (const file of files) void runUpload(file, { role, record, ...(role === 'link' ? { propertyRecord } : {}) }, scoped);
+    if (scoped === 'phase1:linkDoc' || scoped === 'jurisdiction' || scoped === 'property-schedule') {
+      void runUpload(files, { role, record, ...(role === 'link' ? { propertyRecord } : {}) }, scoped);
+    } else {
+      for (const file of files) void runUpload([file], { role, record, ...(role === 'link' ? { propertyRecord } : {}) }, scoped);
+    }
   };
   const sourceBusyFor = (role: Role, record: string) => draft.sources.find(s => s.assignment?.role === role && s.assignment?.record === record && (s.status === 'reading' || s.status === 'queued'));
   const linkStageStatus = (stageId: string, propertyRecord = activePropertyId): LinkStageStatus => {
@@ -539,14 +547,21 @@ export default function WizardApp() {
     if (states.some(state => state === 'review')) return 'review';
     return 'done';
   };
-  /** One new row per file (each upload is its own document); no files chosen still creates one blank row to type into. */
+  /** A selected Link Deed bundle becomes one record; other document types keep one record per file. */
   const addLinkDocuments = (optionId: string, files: File[]) => {
     if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'link-property', record, propertyId: activePropertyId }); edit('link', record, 'linkOption', optionId); return; }
+    if (optionId === 'linkDoc') {
+      const record = crypto.randomUUID();
+      dispatch({ type: 'link-property', record, propertyId: activePropertyId });
+      edit('link', record, 'linkOption', optionId);
+      void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, 'phase1:linkDoc');
+      return;
+    }
     for (const file of files) {
       const record = crypto.randomUUID();
       dispatch({ type: 'link-property', record, propertyId: activePropertyId });
       edit('link', record, 'linkOption', optionId);
-      void runUpload(file, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${optionId}` as ExtractionProfile);
+      void runUpload([file], { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${optionId}` as ExtractionProfile);
     }
   };
   /** Every executant/claimant record worth a card: those resolved from evidence/manual entry (or 'primary' when there are none yet), plus any just added and still waiting on their first upload. */
@@ -563,7 +578,7 @@ export default function WizardApp() {
       // Extra people use the same identity-only profile as the primary card.  A
       // generic extraction here used to discard address/identity candidates
       // during profile filtering, leaving this newly added card blank.
-      void runUpload(file, { role, record }, role === 'executant' ? 'party:executant' : 'party:claimant');
+      void runUpload([file], { role, record }, role === 'executant' ? 'party:executant' : 'party:claimant');
     }
   };
   const clearPartyRecord = (role: 'executant' | 'claimant', record: string) => {
@@ -591,7 +606,7 @@ export default function WizardApp() {
 
   function reset() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
-    setUploadSteps({}); setDownload(null); setMessage(''); setReviewerName(''); setApproval(emptyApproval()); setExtraPartyRecords({ executant: [], claimant: [] }); dispatch({ type: 'reset' });
+    setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] }); dispatch({ type: 'reset' });
   }
 
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
@@ -630,7 +645,6 @@ export default function WizardApp() {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
-      if (!generationApproved) throw new Error('Professional approval of this exact draft snapshot is required');
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision ? download : null;
       if (!artifact) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
@@ -778,11 +792,15 @@ export default function WizardApp() {
 
         {step === 2 && <LinkStageGate status={linkStageStatus('step3')} loading="Extracting jurisdiction from the property documents…">
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <ScopedSectionUpload label="Jurisdiction" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'jurisdiction')} />
+          <SourceFeedback sources={draft.sources.filter(source => source.profile === 'jurisdiction' && source.assignment?.record === activePropertyId)} visibleFields={GROUPS.filter(group => group.step === 2).flatMap(group => group.fields.map(field => field.id))} />
           <section className="panel"><h2>{propertyRecords.length > 1 ? `Property ${activePropertyIndex + 1} — Jurisdiction` : 'Jurisdiction'}</h2><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} /><RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} /></section>
         </LinkStageGate>}
 
         {step === 3 && <LinkStageGate status={linkStageStatus('step4')} loading="Extracting the property schedule from the property documents…">
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <ScopedSectionUpload label="Property Schedule" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'property-schedule')} />
+          <SourceFeedback sources={draft.sources.filter(source => source.profile === 'property-schedule' && source.assignment?.record === activePropertyId)} visibleFields={[...GROUPS.filter(group => group.step === 3).flatMap(group => group.fields.map(field => field.id)), 'category', 'unit']} />
           {propertyRecords.filter(record => record.id === activePropertyId).map(record => {
             const id = record.id;
             const merge = activeScheduleMerge;
@@ -815,6 +833,10 @@ export default function WizardApp() {
             <p>Total of every schedule's area × verified basic rate + structure valuation. This is calculated automatically and does not replace the final sale consideration.</p>
             <strong style={{ fontSize: 22, color: C.ink }}>{vm.persayINR || 'Enter verified area and basic rate for every schedule'}</strong>
           </section>
+          <section className="panel" aria-label="Consideration in words">
+            <h2>Consideration in words</h2>
+            <strong style={{ fontSize: 17, color: C.ink }}>{vm.considWords || 'Enter sale consideration to generate words'}</strong>
+          </section>
         </LinkStageGate>}
 
         {step === 5 && <section className="panel payments">
@@ -844,7 +866,7 @@ export default function WizardApp() {
                 onDelete={all.length > 1 ? () => clearPartyRecord(role, record) : undefined}
                 onUpload={uploadFor(role, record)}
                 sources={draft.sources.filter(s => s.assignment?.role === role && s.assignment.record === record)}
-                busy={!!busySource} executionDate={state.form.executionDate} />;
+                busy={!!busySource} />;
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
           </>;
@@ -859,17 +881,11 @@ export default function WizardApp() {
         </section>}
 
         {step === 9 && <section className="panel download">
-          <h2>Professional review and generation</h2>
-          <p>Generation is tied to the exact reviewed snapshot. Any later edit automatically makes this approval stale.</p>
+          <h2>Download deed and plan</h2>
+          <p>Review the listed details before downloading. You can return to any section to correct them.</p>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
-          <label className="field"><span>Reviewing professional</span><input value={reviewerName} onChange={event => setReviewerName(event.target.value)} placeholder="Advocate or authorized document writer" /></label>
-          <div className="download-actions"><button type="button" onClick={() => {
-            if (!reviewerName.trim()) { setMessage('Enter the reviewing professional’s name before approval.'); return; }
-            setApproval({ status: 'approved', reviewerName: reviewerName.trim(), reviewerRole: 'authorized-professional', approvedSnapshotHash: snapshotHash, approvedAt: new Date().toISOString(), acceptedWarnings: warningIds });
-            setMessage(notices.length ? 'This snapshot is approved with the listed outstanding items explicitly accepted.' : 'This snapshot is professionally approved.');
-          }}>Approve this exact snapshot</button></div>
-          <p>{generationApproved ? `Approved by ${approval.reviewerName}.` : 'Final generation is locked until this snapshot is approved.'}</p>
-          <div className="download-actions"><button className="primary" disabled={exporting || !generationApproved} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting || !generationApproved} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          {!generationReady && <p>{deedRelease.reasons.join(' ')}</p>}
+          <div className="download-actions"><button className="primary" disabled={exporting || !generationReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting || !generationReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 

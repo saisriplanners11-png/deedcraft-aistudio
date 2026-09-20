@@ -3,7 +3,7 @@
 // drafter to retype facts already on file. Never writes back into AppState.
 
 import { HOUSE_CATEGORIES } from './fields';
-import { partyRecords, scheduleRecords, toSqYards, type AppState } from './logic';
+import { partyRecords, scheduleRecords, type AppState } from './logic';
 import { calculateSqMtrs } from './plan-sketch-dimensions';
 import type { BoundaryDimensions, DimensionValue, PartyDetails, PlanDocument, PropertyDetails, PropertyType, RoadSideOption } from './plan-sketch-types';
 
@@ -54,12 +54,8 @@ export function planDocumentFromDraft(state: AppState): PlanDocument {
   const sv = schedule.values;
   const now = new Date().toISOString();
 
-  const areaSqYards = sv.extentSqYards
-    ? Number(sv.extentSqYards)
-    : sv.extentValue
-    ? Math.round(toSqYards(sv.extentValue, schedule.unit) * 100) / 100
-    : ('' as const);
-  const areaSqMtrs = sv.extentSqMeters ? Number(sv.extentSqMeters) : calculateSqMtrs(areaSqYards);
+  const areaSqYards = sv.extentSqYards ? Number(sv.extentSqYards) : ('' as const);
+  const areaSqMtrs = calculateSqMtrs(areaSqYards);
 
   const houseEnabled = HOUSE_CATEGORIES.includes(schedule.category);
 

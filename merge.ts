@@ -2,7 +2,7 @@
 
 import type { Rewrite, ScheduleMerge } from './docx';
 import { ALL_FIELDS, GROUPS, LINK_OPTIONS, SCHEDULE_VARIANT } from './fields';
-import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, words, toSqYards, type AppState, type SupportingRecord } from './logic';
+import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
 /** Values for every placeholder the template names. */
@@ -14,20 +14,24 @@ export function mergeValues(state: AppState): Record<string, string> {
   for (const field of ALL_FIELDS) {
     if (!field.ph) continue;
     const names = Array.isArray(field.ph) ? field.ph : [field.ph];
-    let value = f[field.id] ?? '';
+    let value = uppercasePartyIdentity(field.id, f[field.id] ?? '');
     if (field.type === 'date') value = deedDate(value);
     for (const n of names) out[n] = value;
   }
+  // The Schedule of Property's "Registration Sub-District" placeholder uses
+  // the same office selected in Jurisdiction, never an older link-deed office.
+  const registrationSro = f.sro || f.linkSro || '';
+  out['Sub Registrar'] = registrationSro;
+  out['Sub-Registrar'] = registrationSro;
 
   // Derived values.
-  const extent = Number(f.extentValue);
-  if (f.extentSqYards || (f.extentValue && state.unit && !Number.isNaN(extent))) {
-    const sy = f.extentSqYards ? Number(f.extentSqYards.replace(/,/g, '')) : Math.round(toSqYards(extent, state.unit) * 100) / 100;
-    out['Extent in Sq.yards'] = f.extentSqYards || sy.toLocaleString('en-IN');
-    out['Extent in Sq.Meters'] = f.extentSqMeters || (Math.round(sy * 0.836127 * 100) / 100).toLocaleString('en-IN');
+  const squareYards = Number(String(f.extentSqYards || '').replace(/,/g, ''));
+  if (f.extentSqYards && Number.isFinite(squareYards) && squareYards > 0) {
+    out['Extent in Sq.yards'] = squareYards.toLocaleString('en-IN');
+    out['Extent in Sq.Meters'] = (Math.round(squareYards * 0.836127 * 100) / 100).toLocaleString('en-IN');
   } else {
     out['Extent in Sq.yards'] = '';
-    out['Extent in Sq.Meters'] = f.extentSqMeters || '';
+    out['Extent in Sq.Meters'] = '';
   }
   for (const field of ['extentSqYards', 'extentSqMeters']) {
     if (state.unresolvedFields?.includes(field)) out[field === 'extentSqYards' ? 'Extent in Sq.yards' : 'Extent in Sq.Meters'] = '';
@@ -41,6 +45,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   const considText = f.consid && Number.isFinite(consid) ? consid.toLocaleString('en-IN') : '';
   out['Market of Value Rs./-'] = considText;
   out['Sale Consideration'] = considText;
+  out['Statement of Market Value Consideration'] = considText;
+  out['Sale Consideration Words'] = words(f.consid);
   out['Market Value Per Sq.Yard'] =
     f.govtRate === '' || Number.isNaN(rate) ? '' : rate.toLocaleString('en-IN');
 
@@ -48,7 +54,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   // template line ("S/o Yellaiah"), same as before the fields were split.
   for (const side of ['executant', 'claimant'] as const) {
     const ph = side === 'executant' ? 'EXECUTANT RELATION NAME' : 'CLAIMANT RELATION NAME';
-    out[ph] = [f[`${side}Relation`], f[`${side}RelativeName`]].filter(Boolean).join(' ');
+    out[ph] = [f[`${side}Relation`]?.toUpperCase(), uppercasePartyIdentity(`${side}RelativeName`, f[`${side}RelativeName`] || '')].filter(Boolean).join(' ');
   }
 
   // The non-judicial stamp paper value is supplied by the user. It is not the
@@ -178,9 +184,9 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         registeredTitleLinks.push(mapped);
       }
     }
-    const extent = Number(record.values.extentSqYards || toSqYards(record.values.extentValue, record.unit));
+    const extent = Number(String(record.values.extentSqYards || '').replace(/,/g, ''));
     const rate = Number(record.values.govtRate);
-    if ((record.values.extentSqYards || record.values.extentValue && record.unit) && record.values.govtRate && !Number.isNaN(extent) && !Number.isNaN(rate)) {
+    if (record.values.extentSqYards && record.values.govtRate && !Number.isNaN(extent) && !Number.isNaN(rate)) {
       values['Market of Value Rs./-'] = (Math.round(extent * rate) + (Number(record.values.structValue) || 0)).toLocaleString('en-IN');
     }
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
