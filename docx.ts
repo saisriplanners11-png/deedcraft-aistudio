@@ -186,7 +186,10 @@ export async function writeZip(entries: Entry[]): Promise<Uint8Array> {
     lv.setUint16(4, 20, true);          // version needed
     lv.setUint16(6, 0, true);           // flags
     lv.setUint16(8, 8, true);           // deflate
-    lv.setUint32(10, 0, true);          // time+date (zeroed: reproducible output)
+    // Word 2007's ZIP reader is stricter than modern Office and rejects the
+    // all-zero DOS date emitted by some browser ZIP writers. Keep output
+    // reproducible, but use the earliest valid DOS timestamp: 1980-01-01.
+    lv.setUint32(10, 0x00210000, true); // time 00:00:00, date 1980-01-01
     lv.setUint32(14, crc, true);
     lv.setUint32(18, comp.length, true);
     lv.setUint32(22, e.data.length, true);
@@ -203,7 +206,7 @@ export async function writeZip(entries: Entry[]): Promise<Uint8Array> {
     cv.setUint16(6, 20, true);
     cv.setUint16(8, 0, true);
     cv.setUint16(10, 8, true);
-    cv.setUint32(12, 0, true);
+    cv.setUint32(12, 0x00210000, true);
     cv.setUint32(16, crc, true);
     cv.setUint32(20, comp.length, true);
     cv.setUint32(24, e.data.length, true);

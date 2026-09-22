@@ -79,6 +79,16 @@ describe('sale deed template merge', () => {
     expect(result).toContain('tail A &amp; B');
   });
 
+  it('writes legacy-valid ZIP timestamps for Word 2007 compatibility', async () => {
+    const zip = await writeZip([{ name: 'word/document.xml', data: new TextEncoder().encode('<document/>') }]);
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    expect(view.getUint32(0, true)).toBe(0x04034b50);
+    expect(view.getUint32(10, true)).toBe(0x00210000);
+    const central = [...zip].findIndex((_, index) => index + 4 <= zip.length && view.getUint32(index, true) === 0x02014b50);
+    expect(central).toBeGreaterThan(0);
+    expect(view.getUint32(central + 12, true)).toBe(0x00210000);
+  });
+
   it('exports blanks without sample data and preserves template styles and numbering', async () => {
     const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState));
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
