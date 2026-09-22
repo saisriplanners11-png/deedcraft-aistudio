@@ -11,7 +11,6 @@ export interface DraftSnapshot {
   schedules: ScheduleMerge[];
   unresolvedWarnings: string[];
   rewrites?: Rewrite[];
-  planPages?: Uint8Array[];
 }
 export interface CompiledDeed {
   snapshot: DraftSnapshot;
@@ -43,7 +42,7 @@ export async function renderArtifact(
   if (compiled.snapshot.instrumentId !== 'sale') throw new Error('No approved renderer is registered for this instrument.');
   const first = compiled.snapshot.schedules[0];
   if (!first) throw new Error('At least one property schedule is required by the Sale template.');
-  const result = await fillSaleDeed(compiled.snapshot.values, first.variant, compiled.snapshot.rewrites || [], compiled.snapshot.schedules, compiled.snapshot.planPages || [], templateSource);
+  const result = await fillSaleDeed(compiled.snapshot.values, first.variant, compiled.snapshot.rewrites || [], compiled.snapshot.schedules, templateSource);
   return {
     result,
     manifest: {

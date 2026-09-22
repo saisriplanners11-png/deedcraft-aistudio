@@ -47,6 +47,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Sale Consideration'] = considText;
   out['Statement of Market Value Consideration'] = considText;
   out['Sale Consideration Words'] = words(f.consid);
+  out['Consideration in words'] = words(f.consid);
   out['Market Value Per Sq.Yard'] =
     f.govtRate === '' || Number.isNaN(rate) ? '' : rate.toLocaleString('en-IN');
 
@@ -98,6 +99,29 @@ export function rewritesFor(state: AppState): Rewrite[] {
     replace: 'in the presence of the following witnesses on this the ____________ day of ____________, 20____.',
   });
   const paid = state.payments.filter(payment => payment.amount !== '');
+  // The v2 template contains one sample paragraph for each payment method.
+  // Replace each sample with one cloned paragraph per actual payment, or remove
+  // it entirely when that method was not used.
+  const paymentRecord = (payment: Payment, refName: string) => ({
+    Amount: payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '',
+    [refName]: payment.refNo || '',
+    'Bank Name': [payment.bank, payment.branch].filter(Boolean).join(', '),
+    Date: deedDate(payment.date),
+    'Claimant Name': payment.payer || state.form.claimantName || '',
+    'CLAIMANT NAME': payment.payer || state.form.claimantName || '',
+    'Executant Name': payment.payee || state.form.executantName || '',
+    'EXECUTANT NAME': payment.payee || state.form.executantName || '',
+  });
+  const v2PaymentParagraphs: Array<{ mode: Payment['mode']; find: RegExp; refName: string }> = [
+    { mode: 'rtgs', find: /RTGS\/NEFT:\s*Amount of Rs\./i, refName: 'UTR No.' },
+    { mode: 'cheque', find: /Cheque:\s*Amount of Rs\./i, refName: 'Cheque No.' },
+    { mode: 'dd', find: /Demand Draft:\s*Amount of Rs\./i, refName: 'DD No.' },
+    { mode: 'upi', find: /UPI\/Online:\s*Amount of Rs\./i, refName: 'Transaction ID' },
+    { mode: 'cash', find: /Cash:\s*Amount of Rs\./i, refName: 'Cash Receipt No.' },
+  ];
+  for (const { mode, find, refName } of v2PaymentParagraphs) {
+    rewrites.push({ find, replace: '', records: paid.filter(payment => payment.mode === mode).map(payment => paymentRecord(payment, refName)) });
+  }
   if (paid.length && !(paid.length === 1 && paid[0].mode === 'cash')) {
     rewrites.push({ find: /\(1\)\s+Amount of Rs\..*paid via Cash\./i, replace: paid.map((payment, index) => {
       // The receipt remains a deterministic template; unknown facts are blanks.

@@ -73,6 +73,16 @@ describe('field mapping', () => {
     expect(values['Executant Age']).toBe('31');
   });
 
+  it('maps v2 PAN, assessment, and consideration-word placeholders', () => {
+    const state = { ...initialState, form: { ...initialState.form, executantPan: 'ABCDE1234F', claimantPan: 'FGHIJ5678K', assessmentPtinNo: 'VLT-7', bltNo: 'PTIN-9', consid: '5000' } };
+    const values = mergeValues(state);
+    expect(values['Executant Pan No.']).toBe('ABCDE1234F');
+    expect(values['Claimant Pan No.']).toBe('FGHIJ5678K');
+    expect(values['V.L.T No.']).toBe('VLT-7');
+    expect(values['P.T.I.No.']).toBe('PTIN-9');
+    expect(values['Consideration in words']).toBe('Five Thousand Rupees Only');
+  });
+
   it('derives square metres from the required square-yard extent', () => {
     const state = {
       ...initialState,

@@ -117,6 +117,12 @@ describe('supporting property extraction mapping', () => {
       'permBuildingPermitNo', 'permissionDate', 'permissionAuthorityName',
     ]);
   });
+
+  it('limits a Layout/LRS upload to its template-recital details', () => {
+    expect(profileFields('phase1:layoutLrs')).toEqual([
+      'layoutFileNo', 'lrsApplicationNo', 'lrsApplicationDate', 'lrsProceedingNo', 'lrsProceedingDate',
+    ]);
+  });
 });
 
 describe('identity extraction mapping', () => {

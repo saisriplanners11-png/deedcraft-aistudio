@@ -31,7 +31,7 @@ export default function UploadApp() {
   const [progress, setProgress] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [download, setDownload] = useState<{ revision: number; draftId: string; docx: Blob; pdf: Blob; filename: string } | null>(null);
+  const [download, setDownload] = useState<{ revision: number; draftId: string; docx?: Blob; pdf?: Blob; filename: string } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
   const resolved = useMemo(() => resolveDraft(draft), [draft]);
@@ -159,19 +159,23 @@ export default function UploadApp() {
   async function generate(kind: 'word' | 'pdf') {
     const snapshot = current.current; setExporting(true); setMessage('');
     try {
-      let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision ? download : null;
-      if (!artifact) {
+      let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision
+        ? download : { draftId: snapshot.id, revision: snapshot.revision, filename: deedFilename(state) };
+      if (kind === 'word' && !artifact.docx) {
+        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+        artifact = { ...artifact, docx: merged.blob };
+      }
+      if (kind === 'pdf' && !artifact.pdf) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
         const pngs = await Promise.all(previews.map(p => planPng(p.svg)));
-        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state), pngs);
         const pdf = await planPdf(pngs);
-        artifact = { draftId: snapshot.id, revision: snapshot.revision, docx: merged.blob, pdf, filename: deedFilename(state) };
+        artifact = { ...artifact, pdf };
       }
       if (current.current.id !== snapshot.id || current.current.revision !== snapshot.revision) {
         setMessage('Details changed while preparing the download. Please download again to use the latest details.'); return;
       }
       setDownload(artifact);
-      saveBlob(kind === 'word' ? artifact.docx : artifact.pdf, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
+      saveBlob(kind === 'word' ? artifact.docx! : artifact.pdf!, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
       setMessage('Downloaded using the current details. Missing or uncertain details were left blank.');
     } catch (error: any) { setMessage(`Download could not be prepared: ${error.message}. Your uploads are still here; please retry.`); }
     finally { setExporting(false); }
@@ -252,11 +256,11 @@ export default function UploadApp() {
         </div><div className="source-actions"><label className="button">Replace<input type="file" accept={ACCEPT} hidden onChange={e => { const file = e.target.files?.[0]; if (file) replace(source.id, file); e.target.value = ''; }} /></label>{source.status === 'error' && <button onClick={() => { const f = files.current.get(source.id); if (f) replace(source.id, f); }}>Retry</button>}<button onClick={() => remove(source.id)}>Remove</button></div>
       </article>)}</div></section>}
       {Object.keys(resolved.conflicts).length > 0 && <section className="panel"><h2>Different details found</h2><p>Unresolved extracted details stay blank. An intentional manual entry remains yours.</p>{Object.entries(resolved.conflicts).map(([key, candidates]) => <div className="conflict" key={key}><b>{labelFor(key.split('|')[2])}</b>{candidates.map(c => <button key={c.id} onClick={() => dispatch({ type: 'choose', key, candidateId: c.id })}>{c.value}<small>{c.sourceName} · {c.region}</small></button>)}</div>)}</section>}
-      {draft.step === 2 && <section className="panel download"><h2>Download your sale deed</h2><p>The Word draft keeps your reference wording and includes the registration plan. Missing details are left as write-in spaces.</p>
+      {draft.step === 2 && <section className="panel download"><h2>Download your sale deed</h2><p>The Word draft keeps your reference wording. Download the registration plan separately as a PDF. Missing details are left as write-in spaces.</p>
         {paymentMismatch && <p className="notice">The uploaded payments total ₹{completePaymentTotal!.toLocaleString('en-IN')}, which differs from the stated consideration. Upload another payment record or correct the details if needed; download is still available.</p>}
         <details><summary>{notices.length} missing or incomplete details — download is still available</summary><ul>{notices.map(item => <li key={item.id}>{item.label}</li>)}</ul></details>
         {busy && <p className="notice">Uploads are still being read. A download now includes only details already verified.</p>}
-        <div className="download-actions"><button className="primary" disabled={exporting} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+        <div className="download-actions"><button className="primary" disabled={exporting} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed'}</button><button disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button></div>
         {message && <p role="status">{message}</p>}
       </section>}
       <details className="panel"><summary>View details or make an optional correction</summary><p>Prefer to avoid typing? Upload another photo or a handwritten note above.</p>

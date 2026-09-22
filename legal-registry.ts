@@ -34,14 +34,14 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   variantIds: [saleDefinition.variants[0].id], jurisdiction: 'Telangana',
   effectiveFrom: '2026-09-01', version: '1.0.0', status: 'approved',
-  templateVersionId: 'sale-deed-v1', approvedBy: 'Existing supplied reference',
+  templateVersionId: 'sale-deed-v2', approvedBy: 'Existing supplied reference',
   propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Agricultural land','Part open place'],
   requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
-  id: 'sale-deed-v1', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
-  version: '1.0.0', asset: 'sale-deed-template.docx', immutable: true,
+  id: 'sale-deed-v2', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
+  version: '2.0.0', asset: 'sale-deed-template.docx', sha256: '4eaf1bead1c7f2d1b287b76978a525c28ea81ad8b6335a8c7331955cfbd0880b', immutable: true,
 }];
 
 export type ReleaseGate = { ready: boolean; reasons: string[]; reference?: LegalReference };

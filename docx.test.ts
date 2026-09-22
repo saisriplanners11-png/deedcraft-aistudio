@@ -36,7 +36,7 @@ describe('sale deed template merge', () => {
     expect(validation.omittedPlaceholders).toEqual([]);
 
     const source: DeedTemplateSource = { kind: 'custom', name: 'customer-template.docx', hash: 'custom-hash', bytes, validation };
-    const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState), [], [], source);
+    const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState), [], source);
     expect(await docxToText(new Uint8Array(await result.blob.arrayBuffer()))).toContain('CUSTOM SALE DEED');
   });
 
@@ -47,6 +47,9 @@ describe('sale deed template merge', () => {
 
     const missingMarker = await customizedTemplate(xml => replaceRunText(xml, /<IF OPEN PLOT>/g, () => 'REMOVED SCHEDULE MARKER'));
     expect((await validateSaleDeedTemplate(missingMarker, 'missing.docx', reference)).errors.join(' ')).toContain('<IF OPEN PLOT>');
+
+    const missingClauseMarker = await customizedTemplate(xml => xml.replace(/>HOUSE<\/w:t>/, '>REMOVED HOUSE CLAUSES</w:t>'));
+    expect((await validateSaleDeedTemplate(missingClauseMarker, 'missing-clause.docx', reference)).errors.join(' ')).toMatch(/operative-clause marker pair/i);
 
     const unknownTag = await customizedTemplate(xml => xml.replace('</w:body>', '<w:p><w:r><w:t>&lt;Mystery Field&gt;</w:t></w:r></w:p></w:body>'));
     expect((await validateSaleDeedTemplate(unknownTag, 'unknown.docx', reference)).errors.join(' ')).toContain('<Mystery Field>');
@@ -65,7 +68,7 @@ describe('sale deed template merge', () => {
       kind: 'custom', name: 'invalid.docx', hash: 'invalid', bytes: new Uint8Array([1]),
       validation: { valid: false, errors: ['Template is invalid.'], detectedPlaceholders: [], omittedPlaceholders: [] },
     };
-    await expect(fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', [], [], [], source)).rejects.toThrow('Template is invalid.');
+    await expect(fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', [], [], source)).rejects.toThrow('Template is invalid.');
   });
 
   it('replaces split-run fields without losing the surrounding bold or line break', () => {
@@ -81,13 +84,14 @@ describe('sale deed template merge', () => {
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const text = await docxToText(bytes);
     expect(text).not.toMatch(/2026|Kailash|<EXECUTANT|<Claimant|undefined|NaN/);
-    expect(text).toContain('made and executed on __________ at Sircilla');
+    expect(text).toContain('made and executed on __________ at S.R.O. __________, District:__________');
     expect(text).toContain('Cell No: __________');
     // No execution date was entered, so the signature block gets its own
     // fill-in-by-hand line instead of repeating "the afore mentioned date".
     expect(text).toContain('on this the ____________ day of ____________, 20____.');
     expect(text).not.toContain('on the afore mentioned date.');
-    for (let n = 1; n <= 8; n++) expect(text).toContain(`${n}. THE`);
+    expect(text).toContain('1. THE VENDOR/S');
+    expect(text).toContain('8. THE VENDOR/S');
     const original = await readZip(new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url))));
     const generated = await readZip(bytes);
     for (const name of ['word/styles.xml','word/numbering.xml','word/footer1.xml']) {
@@ -108,17 +112,16 @@ describe('sale deed template merge', () => {
     expect(text).toContain('on the afore mentioned date.');
   });
 
-  it('appends plans without moving deed paragraphs inside a section property', async () => {
-    const png = new Uint8Array([137,80,78,71]); // Package structure check, not image rendering.
-    const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState), [], [png]);
+  it('never embeds registration-plan media or appends plan sections to a deed', async () => {
+    const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState));
     const entries = await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     const xml = new TextDecoder().decode(entries.find(e=>e.name==='word/document.xml')!.data);
-    const sections = [...xml.matchAll(/<w:sectPr(?:\s[^>]*)?>[\s\S]*?<\/w:sectPr>/g)];
-    expect(sections).toHaveLength(3);
-    for (const section of sections) expect(section[0]).not.toContain('<w:p>');
-    expect(xml).toContain('w:top="8208"');
+    const original = await readZip(new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url))));
+    const originalXml = new TextDecoder().decode(original.find(e=>e.name==='word/document.xml')!.data);
+    expect([...xml.matchAll(/<w:sectPr(?:\s[^>]*)?>[\s\S]*?<\/w:sectPr>/g)]).toHaveLength([...originalXml.matchAll(/<w:sectPr(?:\s[^>]*)?>[\s\S]*?<\/w:sectPr>/g)].length);
     expect(xml).toContain('DECLARATION');
-    expect(entries.find(e=>e.name==='word/media/deedcraft-plan-0.png')).toBeDefined();
+    expect(entries.some(entry => /deedcraft-plan|word\/media\//i.test(entry.name))).toBe(false);
+    expect(new TextDecoder().decode(entries.find(e=>e.name==='word/_rels/document.xml.rels')!.data)).not.toContain('DeedCraftPlan');
   });
 
   it('keeps the house annexure market-value estimate distinct from consideration', async () => {
@@ -140,8 +143,21 @@ describe('sale deed template merge', () => {
     const state = { ...initialState, form: { ...initialState.form, consid: '800000' } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text).toContain('consideration amount of Rs.8,00,000 (Eight Lakh Rupees Only)');
+    expect(text).toContain('consideration amount of Rs.8,00,000/-');
+    expect(text).toContain('Eight Lakh Rupees Only');
     expect(text).toContain('total sale consideration of Rs.8,00,000/-');
+  });
+
+  it('keeps only the operative clauses applicable to the selected property type', async () => {
+    const house = await fillSaleDeed(mergeValues(initialState), 'IF HOUSE', rewritesFor(initialState));
+    const open = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState));
+    const houseText = await docxToText(new Uint8Array(await house.blob.arrayBuffer()));
+    const openText = await docxToText(new Uint8Array(await open.blob.arrayBuffer()));
+    expect(houseText).toContain('house/building standing thereon');
+    expect(houseText).not.toContain('IF VACANT PLOT');
+    expect(openText).toContain('1. THE VENDOR/S hereby sell/s');
+    expect(openText).not.toContain('house/building standing thereon');
+    expect(openText).not.toContain('IF HOUSE');
   });
 
   it('uses the new Open Place schedule and omits optional title recitals without source details', async () => {
@@ -174,7 +190,7 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
 
     expect(text.match(/FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE \d/g)).toHaveLength(2);
-    expect(text.match(/\(a\) Registered Deed:/g)).toHaveLength(2);
+    expect(text.match(/Registered Deed:/g)).toHaveLength(2);
     expect(text).toContain('Document No.OPEN/101');
     expect(text).toContain('Document No.HOUSE/202');
     expect(text).toContain('TAX-OPEN');
@@ -247,9 +263,9 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
 
-    expect(text).toContain('Amount of Rs.5,00,000/- paid through Cheque');
-    expect(text).toContain('Amount of Rs.1,00,000/- paid via cash');
-    expect(text).not.toContain('Amount of Rs.6,00,000/- paid through Cheque');
+    expect(text).toContain('Cheque: Amount of Rs.5,00,000/-');
+    expect(text).toContain('Cash:Amount of Rs.1,00,000/-');
+    expect(text).not.toContain('Cheque: Amount of Rs.6,00,000/-');
   });
 
   it('generates every linked deed, party and property schedule', async () => {

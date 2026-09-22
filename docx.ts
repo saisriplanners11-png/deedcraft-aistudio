@@ -15,6 +15,7 @@
 import { loadSaleDeedTemplate } from './template';
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
+const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
 const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
@@ -323,6 +324,12 @@ export async function validateSaleDeedTemplate(
     const sharedTail = paragraphs.findIndex((text, index) => index > lastMarker && ['<FOR ALL THE DOCUMENTS>', 'DECLARATION'].includes(text));
     if (lastMarker >= 0 && sharedTail < 0) errors.push('Template is missing the declaration/shared-tail boundary after the schedule sections.');
     if (!/<w:sectPr(?:\s|>)/.test(body)) errors.push('Template is missing its final page-section settings.');
+    const clauseIndexes = OPERATIVE_CLAUSE_MARKERS.map(marker => paragraphs.indexOf(marker));
+    if ((clauseIndexes[0] >= 0) !== (clauseIndexes[1] >= 0)) {
+      errors.push('Template has an incomplete operative-clause marker pair.');
+    } else if (clauseIndexes[0] >= 0 && (clauseIndexes[0] >= clauseIndexes[1] || clauseIndexes[1] >= firstMarker)) {
+      errors.push('The operative-clause markers are not in the required order before the schedule sections.');
+    }
 
     const customTags = angleTags(xml);
     const reference = referenceBytes ?? await loadSaleDeedTemplate();
@@ -427,7 +434,8 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   if (repeat) return repeat.records!.map(record => fillParagraph(p, new Map([...values, ...Object.entries(record).map(([key, value]) => [norm(key), value] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat))).join('');
   // This placeholder is reused by the original template for different concepts.
   if (/WHEREAS[\s\S]*agreed consideration amount/i.test(plainText(p))) {
-    p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration> (<Sale Consideration Words>)');
+    const hasDedicatedWordsField = /<\s*Consideration in words\s*>/i.test(plainText(p));
+    p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => hasDedicatedWordsField ? '<Sale Consideration>' : '<Sale Consideration> (<Sale Consideration Words>)');
   } else if (/sale consideration|consideration value/i.test(plainText(p))) {
     p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>');
   }
@@ -483,6 +491,28 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>):
     const rule = optional.find(item => item.test.test(plainText(chunk)));
     return rule && !rule.keep() ? '' : chunk;
   }).join('');
+}
+/** Keep the property-appropriate operative clauses when a v2 template supplies both blocks. */
+function selectOperativeClauses(body: string, variant: string): string {
+  const children = topLevelChildren(body);
+  const textAt = (index: number) => plainText(body.slice(children[index].start, children[index].end)).trim();
+  const vacantMarker = children.findIndex((_, index) => textAt(index) === OPERATIVE_CLAUSE_MARKERS[0]);
+  const houseMarker = children.findIndex((_, index) => textAt(index) === OPERATIVE_CLAUSE_MARKERS[1]);
+  if (vacantMarker < 0 && houseMarker < 0) return body; // v1/custom templates retain their author-selected clauses.
+  if (vacantMarker < 0 || houseMarker < 0 || vacantMarker >= houseMarker) {
+    throw new Error('Template operative-clause markers are missing or damaged.');
+  }
+  const firstSchedule = children.findIndex((_, index) => VARIANTS.some(marker => textAt(index) === `<${marker}>`));
+  if (firstSchedule < 0 || houseMarker >= firstSchedule) {
+    throw new Error('Template operative-clause markers are not before the schedule sections.');
+  }
+  const keepHouse = variant === 'IF HOUSE';
+  const kept = children.filter((_, index) =>
+    index < vacantMarker
+    || (keepHouse ? index > houseMarker && index < firstSchedule : index > vacantMarker && index < houseMarker)
+    || index >= firstSchedule
+  );
+  return kept.map(child => body.slice(child.start, child.end)).join('');
 }
 
 // ------------------------------------------------------------------- the merge
@@ -583,7 +613,6 @@ export async function fillSaleDeed(
   variant: string,
   rewrites: Rewrite[] = [],
   schedules: ScheduleMerge[] = [],
-  planPages: Uint8Array[] = [],
   templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<MergeResult> {
   if (templateSource.kind === 'custom' && !templateSource.validation.valid) {
@@ -598,7 +627,7 @@ export async function fillSaleDeed(
   let xml = new TextDecoder().decode(doc.data);
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  let body = markConsiderationRows(xml.slice(bodyStart, bodyEnd));
+  let body = selectOperativeClauses(markConsiderationRows(xml.slice(bodyStart, bodyEnd)), variant);
   const values_ = new Map<string, string>();
   for (const [k, v] of Object.entries(values)) values_.set(norm(k), v ?? '');
 
@@ -637,7 +666,7 @@ export async function fillSaleDeed(
       const titleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.titleValues || values)) titleValues.set(norm(key), value ?? '');
       const titleRewrites: Rewrite[] = schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
-        ? [{ find: /\(a\) Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
+        ? [{ find: /(?:\(a\)\s+)?Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
         : [];
       let block = removeOptionalTitleRecitals(
         children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''),
@@ -710,7 +739,6 @@ export async function fillSaleDeed(
 
   xml = xml.slice(0, bodyStart) + body + xml.slice(bodyEnd);
   doc.data = new TextEncoder().encode(xml);
-  if (planPages.length) appendPlanPages(entries, planPages);
 
   const zipped = await writeZip(entries);
   return {
@@ -731,38 +759,4 @@ export function saveBlob(blob: Blob, filename: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** The deed keeps its original sections; plans get independent A4 page sections. */
-function appendPlanPages(entries: Entry[], pages: Uint8Array[]) {
-  const decode = (name: string) => new TextDecoder().decode(entries.find(e => e.name === name)!.data);
-  const put = (name: string, value: string) => {
-    const entry = entries.find(e => e.name === name);
-    if (entry) entry.data = new TextEncoder().encode(value);
-    else entries.push({ name, data: new TextEncoder().encode(value) });
-  };
-  let xml = decode('word/document.xml');
-  let rels = decode('word/_rels/document.xml.rels');
-  let types = decode('[Content_Types].xml');
-  if (!/Extension="png"/.test(types)) types = types.replace('</Types>', '<Default Extension="png" ContentType="image/png"/></Types>');
-  const tail = xml.slice(xml.lastIndexOf('<w:sectPr')).match(/^<w:sectPr(?:\s[^>]*)?>[\s\S]*?<\/w:sectPr>(?=<\/w:body>)/);
-  if (!tail) throw new Error('Template is missing its final page section.');
-  const oldSection = `<w:p><w:pPr>${tail[0]}</w:pPr></w:p>`;
-  const pageSection = '<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0"/></w:sectPr>';
-  // Explicit blank footer prevents the deed footer from inheriting into the plan.
-  const footerId = 'rIdDeedCraftPlanFooter';
-  put('word/deedcraft-plan-footer.xml', '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:ftr>');
-  rels = rels.replace('</Relationships>', `<Relationship Id="${footerId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="deedcraft-plan-footer.xml"/></Relationships>`);
-  types = types.replace('</Types>', '<Override PartName="/word/deedcraft-plan-footer.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>');
-  const planSection = pageSection.replace('<w:sectPr>', `<w:sectPr><w:footerReference w:type="default" r:id="${footerId}"/>`);
-  const paragraphs = pages.map((png, i) => {
-    const id = `rIdDeedCraftPlan${i}`;
-    const name = `deedcraft-plan-${i}.png`;
-    entries.push({ name: `word/media/${name}`, data: png });
-    rels = rels.replace('</Relationships>', `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/></Relationships>`);
-    // A floating page-relative picture avoids creating an overflow text line.
-    return `<w:p><w:pPr><w:spacing w:after="0" w:before="0" w:line="1" w:lineRule="exact"/>${i < pages.length - 1 ? planSection : ''}</w:pPr><w:r><w:drawing><wp:anchor xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="7560310" cy="10692130"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${9000+i}" name="Registration plan ${i+1}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${9000+i}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="7560310" cy="10692130"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>`;
-  }).join('');
-  xml = xml.replace(tail[0] + '</w:body>', oldSection + paragraphs + planSection + '</w:body>');
-  put('word/document.xml', xml); put('word/_rels/document.xml.rels', rels); put('[Content_Types].xml', types);
 }

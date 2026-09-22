@@ -429,7 +429,7 @@ export default function WizardApp() {
   const [validatingTemplate, setValidatingTemplate] = useState(false);
   const templateInput = useRef<HTMLInputElement>(null);
   const templateValidationRevision = useRef(0);
-  const [download, setDownload] = useState<{ revision: number; draftId: string; templateKey: string; docx: Blob; pdf: Blob; filename: string } | null>(null);
+  const [download, setDownload] = useState<{ revision: number; draftId: string; templateKey: string; docx?: Blob; pdf?: Blob; filename: string } | null>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
   const resolved = useMemo(() => resolveDraft(draft), [draft]);
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
@@ -660,16 +660,20 @@ export default function WizardApp() {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
       if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
       const templateSource = templateMode === 'custom' ? customTemplate! : BUILT_IN_TEMPLATE_SOURCE;
-      let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey ? download : null;
-      if (!artifact) {
+      let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
+        ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
+      if (kind === 'word' && !artifact.docx) {
+        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMerges, templateSource);
+        artifact = { ...artifact, docx: merged.blob };
+      }
+      if (kind === 'pdf' && !artifact.pdf) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
         const pngs = await Promise.all(previews.map(p => planPng(p.svg)));
-        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMerges, pngs, templateSource);
         const pdf = await planPdf(pngs);
-        artifact = { draftId: snapshot.id, revision: snapshot.revision, templateKey, docx: merged.blob, pdf, filename: deedFilename(state) };
+        artifact = { ...artifact, pdf };
       }
       setDownload(artifact);
-      saveBlob(kind === 'word' ? artifact.docx : artifact.pdf, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
+      saveBlob(kind === 'word' ? artifact.docx! : artifact.pdf!, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
       setMessage(notices.length ? `Downloaded an incomplete draft with ${notices.length} outstanding items. Review and complete it before signing or registration.` : 'Downloaded using the current verified and manually entered details.');
     } catch (error: any) { setMessage(`Download could not be prepared: ${error.message}. Please retry.`); }
     finally { setExporting(false); }
@@ -934,7 +938,7 @@ export default function WizardApp() {
         </section>}
 
         {step === 9 && <section className="panel download">
-          <h2>Download deed and plan</h2>
+          <h2>Download deed</h2>
           <p>Review the listed details before downloading. You can return to any section to correct them.</p>
           <div className="template-picker" aria-label="Word template">
             <h3>Word template</h3>
@@ -964,7 +968,7 @@ export default function WizardApp() {
           </div>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
           {!generationReady && <p>{deedRelease.reasons.join(' ')}</p>}
-          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed + plan'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 

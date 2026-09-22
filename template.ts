@@ -4,7 +4,7 @@ import saleDeedTemplateUrl from './sale-deed-template.docx?url';
 import type { InstrumentId } from './instruments';
 import { TEMPLATE_VERSIONS } from './legal-registry';
 
-export const DEED_TEMPLATES = { Sale: { id: 'sale-deed-v1', url: saleDeedTemplateUrl } } as const;
+export const DEED_TEMPLATES = { Sale: { id: 'sale-deed-v2', url: saleDeedTemplateUrl } } as const;
 
 let cachedTemplate: Promise<Uint8Array> | undefined;
 
