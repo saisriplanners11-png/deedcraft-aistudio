@@ -13,10 +13,12 @@
 //      The variant the property category selects is kept; the rest are removed.
 
 import { loadSaleDeedTemplate } from './template';
+import type { StructureDetails } from './fields';
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
 const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
+const REMOVED_STRUCTURE_PLACEHOLDERS = new Set(['nature of house', 'nature of roof', 'floors', 'age of house', 'plinth area']);
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
 export type TemplateValidationResult = {
@@ -447,11 +449,16 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Tax Paid Date>');
     p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
   }
+  // The old one-line Annexure fields are superseded by the repeatable table.
+  if (/<\s*(?:Nature of House|Nature Of House|Nature of roof|Floors|Age of House|Plinth Area)\s*>/i.test(plainText(p))) return '';
   for (const rw of rewrites.filter(rw => !rw.records)) {
     p = replaceRunText(p, rw.find, () => rw.replace);
   }
   return replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
+    // Annexure I-A now renders repeatable rows; blank the template's retired
+    // scalar structure placeholders without reporting false missing facts.
+    if (REMOVED_STRUCTURE_PLACEHOLDERS.has(norm(name))) return '';
     const value = values.get(norm(name));
     if (value) return value;
     missing.add(name);
@@ -601,6 +608,33 @@ export type ScheduleMerge = {
   titleLinkRecords?: Record<string, string>[];
   /** Source-backed recitals shown only when supporting files were uploaded. */
   supportingRecords?: string[];
+  /** Repeatable Annexure I-A rows belonging only to this property schedule. */
+  structureDetails?: StructureDetails;
+};
+
+const tableCell = (text: string, bold = false) => `<w:tc><w:tcPr><w:tcW w:w="1800" w:type="dxa"/></w:tcPr><w:p><w:r>${bold ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t>${escapeXml(text)}</w:t></w:r></w:p></w:tc>`;
+const annexureStructureTable = (details?: StructureDetails) => {
+  if (!details?.rows.length) return '';
+  const displayType = (row: StructureDetails['rows'][number]) => row.structureType === 'Other / Custom Structure'
+    ? row.customStructureType || row.structureType : row.structureType;
+  const header = ['Total Floors', 'Floor No.', 'Structure Type', 'Stage', 'Building Age'].map(cell => tableCell(cell, true)).join('');
+  const rows = details.rows.map(row => `<w:tr>${[
+    details.totalFloors, row.floorNo, displayType(row), row.stage, row.buildingAge,
+  ].map(cell => tableCell(cell)).join('')}</w:tr>`).join('');
+  return `<w:p><w:pPr><w:spacing w:before="160" w:after="80"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>ANNEXURE I-A — STRUCTURE DETAILS</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders></w:tblPr><w:tr>${header}</w:tr>${rows}</w:tbl>`;
+};
+
+/** Insert after an explicit template marker when supplied, otherwise append to the schedule block. */
+const insertAnnexureStructureTable = (block: string, details?: StructureDetails) => {
+  const table = annexureStructureTable(details);
+  if (!table) return block;
+  let found = false;
+  const anchored = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (plainText(paragraph).trim() !== '<ANNEXURE I-A STRUCTURE DETAILS>') return paragraph;
+    found = true;
+    return table;
+  });
+  return found ? anchored : anchored + table;
 };
 
 /**
@@ -695,6 +729,7 @@ export async function fillSaleDeed(
           fillParagraph(p, scheduleValues, missing, [])
         );
       }).join('');
+      block = insertAnnexureStructureTable(block, schedule.structureDetails);
       // Supporting evidence fills existing fields; the template wording is unchanged.
       if (selected.length > 1) {
         block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${scheduleIndex + 1}`);

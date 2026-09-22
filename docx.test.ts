@@ -4,7 +4,7 @@ import {
   docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip,
   validateSaleDeedTemplate, MAX_CUSTOM_TEMPLATE_BYTES, type DeedTemplateSource,
 } from './docx';
-import { ALL_FIELDS } from './fields';
+import { ALL_FIELDS, newStructureDetail } from './fields';
 import { initialState } from './logic';
 import { mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { newPayment } from './payments';
@@ -334,5 +334,20 @@ describe('sale deed template merge', () => {
     );
     expect(preview).not.toContain('SUPPORTING PROPERTY RECORDS');
     expect(preview).not.toContain('Passbook No. T19130081677');
+  });
+
+  it('renders each house schedule Structure Details row as an Annexure I-A table', async () => {
+    const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
+    const rows = [
+      { ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4' },
+      { ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'Other / Custom Structure', customStructureType: 'Stone masonry', stage: 'Semi-Finished', buildingAge: '2' },
+    ];
+    const state = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', form, structureDetailsBySchedule: { primary: { totalFloors: '2', rows } } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('ANNEXURE I-A — STRUCTURE DETAILS');
+    expect(text).toContain('R.C.C. Building');
+    expect(text).toContain('Stone masonry');
+    expect(text).toContain('Semi-Finished');
   });
 });

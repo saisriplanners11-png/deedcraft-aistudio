@@ -79,7 +79,7 @@ const party = (side: 'executant' | 'claimant') =>
 const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState'];
 const PROPERTY = ['plotNo', 'bearingHNo', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARIES = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
-const STRUCTURE = ['natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo'];
+const STRUCTURE = ['bltNo'];
 const UTILITIES = ['taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const SUPPORTING = SUPPORTING_RECORD_FIELDS.map(field => field.id);
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { appStateFor, draftReducer, newDraft, plansFor, resolveDraft, type Candidate, type Draft, type Source, WorkQueue } from './source-draft';
 import { cleanCandidate, cleanDrawing } from './upload-extraction';
 import { ageFrom, todayISO } from './logic';
+import { newStructureDetail } from './fields';
 
 const candidate = (field: string, value: string, patch: Partial<Candidate> = {}): Candidate => ({ id: field, field, value, role: 'executant', record: 'primary', quote: value, page: 1, region: 'Seller handwritten particulars', handwritten: true, historical: false, status: 'accepted', ...patch });
 const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${id}.jpg`, revision: 0, hash: id, status: 'done', result: { candidates, plans: [], notes: [] } });
@@ -23,6 +24,17 @@ describe('source-backed drafts', () => {
     const withoutDefaults = { ...state.form, propState: '', executantPartyType: '', executantRelation: '', claimantPartyType: '', claimantRelation: '' };
     expect(Object.values(withoutDefaults).filter(Boolean)).toEqual([]);
     expect(state.payments).toEqual([]); expect(state.category).toBe(''); expect(state.unit).toBe('');
+  });
+  it('keeps repeatable Annexure I-A rows isolated by property schedule', () => {
+    const primary = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '5' }] };
+    const secondary = { totalFloors: '2', rows: [{ ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'Shed Structure', stage: 'Foundation', buildingAge: '1' }] };
+    let draft = draftReducer(newDraft(), { type: 'structure-details', propertyId: 'primary', value: primary });
+    draft = draftReducer(draft, { type: 'add-property', id: 'second' });
+    draft = draftReducer(draft, { type: 'manual', key: 'property|second|category', value: 'Commercial' });
+    draft = draftReducer(draft, { type: 'structure-details', propertyId: 'second', value: secondary });
+    const state = appStateFor(draft);
+    expect(state.structureDetailsBySchedule.primary).toEqual(primary);
+    expect(state.structureDetailsBySchedule.second).toEqual(secondary);
   });
   it('reads handwritten phone and occupation into their own fields', () => {
     const draft = draftWith(source('a', [candidate('executantMobile', '9876543210'), candidate('executantOccupation', 'Business')]));

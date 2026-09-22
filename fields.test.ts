@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_FIELDS, GROUPS } from './fields';
+import { ALL_FIELDS, GROUPS, newStructureDetail, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS } from './fields';
 import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, withDerived } from './logic';
 import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
@@ -12,11 +12,29 @@ describe('field mapping', () => {
     expect(ids).not.toContain('executionPlace');
   });
 
+  it('replaces legacy scalar structure fields with repeatable Annexure options', () => {
+    const ids = ALL_FIELDS.map(field => field.id);
+    expect(ids).not.toContain('plinthArea');
+    expect(ids).not.toContain('natureOfHouse');
+    expect(ids).not.toContain('floors');
+    expect(ids).not.toContain('ageOfHouse');
+    expect(STRUCTURE_TYPE_OPTIONS).toContain('Other / Custom Structure');
+    expect(STRUCTURE_STAGE_OPTIONS).toEqual(['Foundation', 'Upto Lintel level', 'Upto Slab/Roof level', 'Semi-Finished', 'Finished']);
+    expect(newStructureDetail()).toMatchObject({ floorNo: '', structureType: '', stage: '', buildingAge: '' });
+  });
+
   it('keeps link deed and sale deed execution dates distinct', () => {
     const link = GROUPS.find(group => group.step === 1)?.fields.find(field => field.id === 'linkDocDate');
     const sale = GROUPS.find(group => group.step === 2)?.fields.find(field => field.id === 'executionDate');
     expect(link?.label).toBe('Link deed execution date');
     expect(sale?.label).toBe('Sale deed execution date');
+  });
+
+  it('shows the V.L.T. number in vacant plot and open-place property schedules', () => {
+    const property = GROUPS.find(group => group.title === 'Property identification')!;
+    const vlt = property.fields.find(field => field.id === 'assessmentPtinNo');
+    expect(vlt?.only).toEqual(['Vacant Plot', 'Open Place']);
+    expect(vlt?.ph).toBe('V.L.T No.');
   });
 
   it('uses the Jurisdiction SRO for the Schedule registration sub-district', () => {
@@ -57,6 +75,14 @@ describe('field mapping', () => {
     const state = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', form, payments: [payment] };
     expect(generationBlockers(state).map(item => item.id)).not.toContain('executantMobile');
     expect(generationBlockers(state).map(item => item.id)).not.toContain('claimantMobile');
+  });
+
+  it('requires complete, capped Structure Details for a residential schedule', () => {
+    const details = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4' }] };
+    const valid = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', structureDetailsBySchedule: { primary: details } };
+    expect(generationBlockers(valid).map(item => item.label)).not.toContain('Structure Details');
+    const invalid = { ...valid, structureDetailsBySchedule: { primary: { ...details, totalFloors: '1', rows: [...details.rows, { ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '3' }] } } };
+    expect(generationBlockers(invalid).map(item => item.label)).toContain('Structure Details');
   });
 
   it('prefills an Aadhaar DOB age but keeps a typed correction', () => {

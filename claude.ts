@@ -112,10 +112,7 @@ export function facts(state: any, vm: any): string {
         north: f.boundaryNorth, south: f.boundarySouth,
         east: f.boundaryEast, west: f.boundaryWest,
       },
-      structure: {
-        natureOfRoof: f.natureOfHouse, floors: f.floors, ageYears: f.ageOfHouse,
-        plinthAreaSqFt: f.plinthArea, propertyTaxId: f.bltNo,
-      },
+      structure: { propertyTaxId: f.bltNo },
       valuation: {
         ratePerSqYard: vm.rateINR, structureValue: vm.structINR,
         marketValue: vm.persayINR, consideration: vm.considINR,

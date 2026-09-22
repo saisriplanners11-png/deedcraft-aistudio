@@ -58,6 +58,7 @@ export function planDocumentFromDraft(state: AppState): PlanDocument {
   const areaSqMtrs = calculateSqMtrs(areaSqYards);
 
   const houseEnabled = HOUSE_CATEGORIES.includes(schedule.category);
+  const firstStructure = schedule.structureDetails?.rows[0];
 
   const property: PropertyDetails = {
     propertyType: CATEGORY_TO_PROPERTY_TYPE[schedule.category] || 'Open Place',
@@ -69,13 +70,12 @@ export function planDocumentFromDraft(state: AppState): PlanDocument {
     village: sv.village || '',
     mandal: sv.mandal || '',
     district: sv.district || '',
-    house: houseEnabled
-      ? {
-          enabled: true,
-          structureType: sv.natureOfHouse || '',
-          plinthAreaSqFt: sv.plinthArea ? Number(sv.plinthArea) : '',
-        }
-      : undefined,
+    house: houseEnabled ? {
+      enabled: true,
+      structureType: firstStructure?.structureType === 'Other / Custom Structure'
+        ? firstStructure.customStructureType : firstStructure?.structureType || '',
+      plinthAreaSqFt: '',
+    } : undefined,
   };
 
   const roadSides: RoadSideOption[] = [];

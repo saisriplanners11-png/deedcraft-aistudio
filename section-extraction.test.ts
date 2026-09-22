@@ -186,6 +186,10 @@ describe('shared document section extraction', () => {
     expect(sectionFields('phase1:permissions')[0].title).toBe('Permissions and approvals details');
   });
 
+  it('includes V.L.T. number in the property-schedule AI extraction schema', () => {
+    expect(sectionFields('property-schedule')[0].fields).toContain('assessmentPtinNo');
+  });
+
   it('does not show or run Phase 2+ extraction for non-link document cards', () => {
     for (const profile of ['phase1:houseTax', 'phase1:titleDeed', 'phase1:nala', 'phase1:permissions'] as const) {
       expect(sectionFields(profile)).toHaveLength(1);

@@ -41,12 +41,14 @@ export function sectionFields(profile: ExtractionProfile) {
   };
   const optionId = profile.startsWith('phase1:') ? profile.slice('phase1:'.length) : '';
   const fields = (step: number) => GROUPS.filter(g => g.step === step).flatMap(g => g.fields.map(f => f.id)).filter(f => allowed.has(f));
+  const ownSection = { id: 'step2', title: ownDetailsTitle[optionId] || 'Step 2 · Document details', fields: profileOption(profile)?.fields.map(f => f.id) || [] };
   // Supporting Phase 1 uploads (house tax, title deed, NALA and permissions)
   // must stay scoped to their own card.  Do not create empty Phase 2/3/4
   // workers: besides doing needless extraction work, those workers are shown
   // in the upload dialog as if the supporting document were updating the deed.
+  if (profile.startsWith('phase1:') && optionId !== 'linkDoc') return [ownSection];
   return [
-    { id: 'step2', title: ownDetailsTitle[optionId] || 'Step 2 · Document details', fields: profileOption(profile)?.fields.map(f => f.id) || [] },
+    ownSection,
     { id: 'step3', title: 'Step 3 · Jurisdiction', fields: fields(2) },
     { id: 'step4', title: 'Step 4 · Property and schedule', fields: [...fields(3), ...['category', 'unit'].filter(f => allowed.has(f))] },
   ].filter(section => section.fields.length > 0);

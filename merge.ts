@@ -216,7 +216,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);
-    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords };
+    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails };
   });
 }
 

@@ -3,7 +3,7 @@
 // anything computed from a blank field reads as blank too, never as zero.
 
 import { STEPS, DEEDS, DRAFTS, CATEGORIES, RULES } from './reference';
-import { ALL_FIELDS, EMPTY_FORM, SCHEDULE_VARIANT, groupsForStep } from './fields';
+import { ALL_FIELDS, EMPTY_FORM, SCHEDULE_VARIANT, groupsForStep, type StructureDetails } from './fields';
 import type { DocKind } from './extract';
 import { newPayment, totalOf, netTotalOf, tdsTotalOf, recitalFor, type Payment } from './payments';
 import { instrumentIdForLegacyType } from './instruments';
@@ -41,6 +41,7 @@ export type ValueRecord = {
 export type ScheduleRecord = ValueRecord & {
   category: string;
   unit: string;
+  structureDetails?: StructureDetails;
 };
 
 export type SupportingRecord = {
@@ -81,6 +82,8 @@ export type AppState = {
   additionalSchedules: ScheduleRecord[];
   /** Uploaded evidence recited only in the property schedule it supports. */
   supportingRecords: SupportingRecord[];
+  /** Repeatable Annexure I-A structure rows, keyed by property schedule id. */
+  structureDetailsBySchedule: Record<string, StructureDetails>;
 };
 
 export const UNITS = ['Sq. Yards', 'Sq. Feet', 'Sq. Meters', 'Guntas', 'Acres', 'Cents'];
@@ -106,6 +109,7 @@ export const initialState: AppState = {
   additionalClaimants: [],
   additionalSchedules: [],
   supportingRecords: [],
+  structureDetailsBySchedule: {},
 };
 
 /** Workflow defaults only. Customer facts always start empty. */
@@ -196,17 +200,18 @@ export const scheduleRecords = (state: AppState): ScheduleRecord[] => {
     docNames: [],
     category: state.category,
     unit: state.unit,
+    structureDetails: state.structureDetailsBySchedule.primary,
   };
-  return [primary, ...state.additionalSchedules];
+  return [primary, ...state.additionalSchedules.map(record => ({ ...record, structureDetails: state.structureDetailsBySchedule[record.id] }))];
 };
 
 export const supportingRecordsForSchedule = (state: AppState, scheduleId: string) =>
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearHNo', 'surveyNo', 'extentSqYards', 'extentSqMeters'];
+const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
-const STRUCTURE_IDS = ['natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
+const STRUCTURE_IDS = ['bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
 
 const SQ_YARD: Record<string, number> = {
@@ -288,6 +293,19 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       missing.push({ id, label: displayLabel(id), reason, source, step });
     }
   };
+  const addStructureDetails = (details: StructureDetails | undefined, label: string, step: number) => {
+    const rows = details?.rows || [];
+    const total = Number(details?.totalFloors);
+    const valid = Number.isInteger(total) && total > 0 && rows.length > 0 && rows.length <= total && rows.every(row =>
+      has(row.floorNo) && has(row.structureType) && has(row.stage) && has(row.buildingAge) &&
+      (row.structureType !== 'Other / Custom Structure' || has(row.customStructureType))
+    );
+    if (!valid) missing.push({
+      id: `structureDetails-${step}-${label}`, label,
+      reason: 'Annexure I-A requires a complete Structure Details table within the declared total floors.',
+      source: 'Property-tax record, plan, house document or manual entry.', step,
+    });
+  };
 
   const legalGate = releaseGate(instrumentIdForLegacyType(state.deedType));
   if (!legalGate.ready) missing.push({ id: 'legalReference', label: `${state.deedType || 'Selected'} deed reference`, reason: legalGate.reasons.join(' '), source: 'Approved reference DOCX and legal sign-off.', step: 0 });
@@ -323,8 +341,9 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     add('nearHNo', 'The selected schedule identifies the nearby/adjacent house number.', 'Link deed or property plan');
   }
   if (['Residential', 'Commercial', 'Flat'].includes(state.category)) {
-    ['bearingHNo', 'natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
+    ['bearingHNo', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
+    addStructureDetails(state.structureDetailsBySchedule.primary, 'Structure Details', 3);
   }
 
   for (const side of ['executant', 'claimant']) {
@@ -354,7 +373,10 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
-    if (['Residential', 'Commercial', 'Flat'].includes(record.category)) ids.push('bearingHNo', 'natureOfHouse', 'floors', 'ageOfHouse', 'plinthArea', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
+    if (['Residential', 'Commercial', 'Flat'].includes(record.category)) {
+      ids.push('bearingHNo', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
+      addStructureDetails(state.structureDetailsBySchedule[record.id], `Schedule ${index + 2}: Structure Details`, 3);
+    }
     ids.forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'Every property schedule must be complete before combined registration.', 'Link deed, property record, plan or manual entry.', 3));
   });
 

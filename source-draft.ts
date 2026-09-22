@@ -1,4 +1,4 @@
-import { ALL_FIELDS, EMPTY_FORM } from './fields';
+import { ALL_FIELDS, EMPTY_FORM, newStructureDetails, type StructureDetails } from './fields';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
@@ -42,13 +42,15 @@ export type Draft = {
   activePropertyId: string;
   /** Link/supporting-document cards remain in the property bundle that created them. */
   linkPropertyRecords: Record<string, string>;
+  /** Explicit user-entered Annexure I-A rows, isolated per property schedule. */
+  structureDetailsBySchedule: Record<string, StructureDetails>;
   /** Instrument identity is part of the draft snapshot and cannot be inferred from its fields. */
   instrumentId: InstrumentId;
   variantId: string;
   definitionVersion: string;
 };
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
+export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'reset' }
   | { type: 'step'; step: number }
@@ -60,6 +62,7 @@ export type Action =
   | { type: 'add-property'; id: string }
   | { type: 'active-property'; id: string }
   | { type: 'link-property'; record: string; propertyId: string }
+  | { type: 'structure-details'; propertyId: string; value: StructureDetails }
   | { type: 'instrument'; instrumentId: InstrumentId; variantId?: string }
   | { type: 'manual'; key: string; value: string }
   | { type: 'choose'; key: string; candidateId: string }
@@ -77,6 +80,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'add-property') next = { ...draft, propertyIds: draft.propertyIds.includes(action.id) || action.id === 'primary' ? draft.propertyIds : [...draft.propertyIds, action.id], activePropertyId: action.id };
   if (action.type === 'active-property') next = { ...draft, activePropertyId: action.id };
   if (action.type === 'link-property') next = { ...draft, linkPropertyRecords: { ...draft.linkPropertyRecords, [action.record]: action.propertyId } };
+  if (action.type === 'structure-details') next = { ...draft, structureDetailsBySchedule: { ...draft.structureDetailsBySchedule, [action.propertyId]: action.value } };
   if (action.type === 'instrument') {
     const definition = definitionFor(action.instrumentId);
     next = { ...draft, instrumentId: action.instrumentId, variantId: action.variantId || definition.variants[0].id, definitionVersion: definition.version };
@@ -286,6 +290,7 @@ export function appStateFor(draft: Draft): AppState {
     additionalLinkDocuments: registeredLinks.slice(1),
     additionalSchedules: properties.slice(1).map(r => ({ ...r, category: r.values.category || '', unit: r.values.unit || '' })),
     supportingRecords: supportingLinks.map(r=>({id:r.id,scheduleId:draft.sources.find(s=>s.assignment?.record===r.id)?.assignment?.propertyRecord || 'primary',docName:draft.sources.find(s=>s.assignment?.record===r.id)?.name || '',values:r.values})),
+    structureDetailsBySchedule: Object.fromEntries(propertyIds.map(id => [id, draft.structureDetailsBySchedule[id] || newStructureDetails()])),
   };
 }
 

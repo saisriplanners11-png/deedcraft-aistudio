@@ -32,6 +32,35 @@ export type Group = {
   fields: Field[];
 };
 
+/** One floor/level entry in the repeatable Annexure I-A structure table. */
+export type StructureDetail = {
+  id: string;
+  floorNo: string;
+  structureType: string;
+  customStructureType: string;
+  stage: string;
+  buildingAge: string;
+};
+
+export type StructureDetails = { totalFloors: string; rows: StructureDetail[] };
+
+export const STRUCTURE_TYPE_OPTIONS = [
+  'R.C.C. Building', 'R.C.C. Roof House', 'Ground Floor House', 'G + 1 Upper Floor',
+  'G + 2 Upper Floors', 'Independent Villa', 'Tiled House', 'A.C. Sheet Roof House',
+  'Madras Terrace House', 'Commercial Building', 'Shed Structure', 'Other / Custom Structure',
+];
+
+export const STRUCTURE_STAGE_OPTIONS = [
+  'Foundation', 'Upto Lintel level', 'Upto Slab/Roof level', 'Semi-Finished', 'Finished',
+];
+
+export const newStructureDetail = (): StructureDetail => ({
+  id: globalThis.crypto?.randomUUID?.() || `structure-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  floorNo: '', structureType: '', customStructureType: '', stage: '', buildingAge: '',
+});
+
+export const newStructureDetails = (): StructureDetails => ({ totalFloors: '', rows: [newStructureDetail()] });
+
 /**
  * Repeatable evidence read from supporting property documents. These are not
  * fixed template placeholders: every uploaded source becomes its own record
@@ -199,6 +228,8 @@ export const GROUPS: Group[] = [
       { id: 'surveyNo', label: 'Survey no(s).', ph: 'Survey No.' },
       { id: 'nearHNo', label: 'Near / adjacent H.No.', ph: 'Near H.No.',
         hint: 'Door/house number of a neighbouring property used as a landmark in the boundary description — not the subject property\'s own number (see Bearing H.No.).' },
+      { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot', 'Open Place'],
+        hint: 'Vacant Land Tax / assessment number, exactly as printed in the local-body record.' },
       { id: 'locality', label: 'Locality', ph: 'Locality', span: 2 },
       { id: 'pinCode', label: 'PIN code', ph: 'Pin Code' },
     ],
@@ -223,10 +254,6 @@ export const GROUPS: Group[] = [
     note: 'Collected only for a built structure — these fill Annexure I-A of the deed.',
     fields: [
       { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', only: HOUSE_CATEGORIES },
-      { id: 'natureOfHouse', label: 'Nature of roof', ph: ['Nature of House', 'Nature Of House'], only: HOUSE_CATEGORIES, hint: 'e.g. RCC, Madras terrace' },
-      { id: 'floors', label: 'Floors', ph: 'Floors', only: HOUSE_CATEGORIES },
-      { id: 'ageOfHouse', label: 'Age of the house (years)', ph: 'Age of House', type: 'number', only: HOUSE_CATEGORIES },
-      { id: 'plinthArea', label: 'Built-up area (Sq. Ft.)', ph: 'Plinth Area', type: 'number', only: HOUSE_CATEGORIES },
       { id: 'bltNo', label: 'Property Tax Identification No.', ph: 'P.T.I.No.', span: 2, only: HOUSE_CATEGORIES },
       { id: 'taxesPerAnnum', label: 'Tax per annum (₹)', ph: 'Taxes Per Annum', type: 'money', only: HOUSE_CATEGORIES },
       { id: 'annualRentalValue', label: 'Annual rental value (₹)', ph: 'Annual Rental Value', type: 'money', only: HOUSE_CATEGORIES },
@@ -292,7 +319,8 @@ export const LINK_OPTIONS: LinkOption[] = [
     note: 'Municipal house-tax record. Its details are recited in the deed when entered.',
     fields: [
       { id: 'houseTaxReceiptNo', label: 'House tax receipt number', ph: 'House Tax Receipt' },
-      { id: 'assessmentPtinNo', label: 'Vacant land tax / assessment number', ph: 'V.L.T No.' },
+      { id: 'assessmentPtinNo', label: 'Vacant land tax / assessment number', ph: 'V.L.T No.',
+        hint: 'Copy only the value explicitly labelled V.L.T., vacant-land tax or assessment number.' },
       { id: 'localBodyName', label: 'Local body', ph: 'Local Body Name', hint: 'Municipality / Gram Panchayat / GHMC circle' },
       { id: 'taxPaidDate', label: 'Tax paid date', ph: 'Tax Paid Date', type: 'date' },
     ],
