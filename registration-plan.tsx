@@ -47,7 +47,8 @@ export function registrationPlanSvg(form: Record<string, string>, drawing?: Plan
   };
   const vendors = (parties?.vendors || [form]).map(p => party(p, 'executant')).join('; ');
   const buyers = (parties?.buyers || [form]).map(p => party(p, 'claimant')).join('; ');
-  const description = `THE ${form.category === 'Residential' ? 'HOUSE BEARING H.NO.' + f('bearingHNo') : 'OPEN PLOT NO.' + f('plotNo')}, ADMEASURING A TOTAL AREA OF ${f('extentSqYards')} SQUARE YARDS EQUIVALENT TO ${f('extentSqMeters')} SQUARE METERS, IN SURVEY NO/S.${f('surveyNo')}, SITUATED NEAR/ADJACENT H.NO.${f('nearHNo')} OF '${f('locality')}' LOCALITY OF ${f('village')} VILLAGE, ${f('mandal')} MANDAL.`.toUpperCase();
+  const landmarkRelation = f('nearAdjacent') === blank ? 'NEAR/ADJACENT' : f('nearAdjacent');
+  const description = `THE ${form.category === 'Residential' ? 'HOUSE BEARING H.NO.' + f('bearingHNo') : 'OPEN PLOT NO.' + f('plotNo')}, ADMEASURING A TOTAL AREA OF ${f('extentSqYards')} SQUARE YARDS EQUIVALENT TO ${f('extentSqMeters')} SQUARE METERS, IN SURVEY NO/S.${f('surveyNo')}, SITUATED ${landmarkRelation} H.NO.${f('nearHNo')} OF '${f('locality')}' LOCALITY OF ${f('village')} VILLAGE, ${f('mandal')} MANDAL.`.toUpperCase();
   let body = text(450, 86, 'PLAN FOR REGISTRATION', 24, 'text-anchor="middle" text-decoration="underline"');
   let y = 132;
   for (const paragraph of [description, 'VENDOR/S: ' + vendors, 'VENDEE/S: ' + buyers]) {

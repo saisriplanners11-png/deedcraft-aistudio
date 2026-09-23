@@ -38,8 +38,16 @@ describe('link deed extraction mapping', () => {
   });
   it('targets adjacent house numbers and explicitly forbids subject-number copying', () => {
     expect(TARGETS['link-deed']).toContain('nearHNo');
+    expect(TARGETS['link-deed']).toContain('nearAdjacent');
+    expect(TARGETS['link-deed']).toContain('ulbAuthority');
     expect(EXTRACTION_PROMPTS['link-deed']).toContain('nearby, adjacent or neighbouring');
     expect(EXTRACTION_PROMPTS['link-deed']).toContain('Never copy the subject property house number');
+  });
+
+  it('targets an explicitly labelled property PTIN from a link deed', () => {
+    expect(TARGETS['link-deed']).toContain('bltNo');
+    expect(profileFields('phase1:linkDoc')).toContain('bltNo');
+    expect((schemaForIds(['bltNo'], 'link-deed').properties as Record<string, { description: string }>).bltNo.description).toContain('PTIN');
   });
 
   it('applies deed/category classification in regular uploads without overwriting choices', () => {

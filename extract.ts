@@ -76,8 +76,8 @@ export const DOC_KINDS: Record<DocKind, { label: string; blurb: string; accept: 
 const party = (side: 'executant' | 'claimant') =>
   ALL_FIELDS.filter(f => f.id.startsWith(side) && !f.id.endsWith('Age')).map(f => f.id);
 
-const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState'];
-const PROPERTY = ['plotNo', 'bearingHNo', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters'];
+const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState', 'ulbAuthority'];
+const PROPERTY = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARIES = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE = ['bltNo'];
 const UTILITIES = ['taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
@@ -120,6 +120,7 @@ function describe(f: Field, kind: DocKind): string {
   }
   if (f.id === 'linkDocNo') bits.push('Read the registration/document number assigned to this uploaded deed, including its year. Do not return an earlier title deed number mentioned in the recitals.');
   if (f.id === 'linkDocDate') bits.push('Read the date on which this uploaded deed was executed from its opening execution sentence. Do not use a presentation, registration, stamp-paper or digital-signature date.');
+  if (f.id === 'bltNo') bits.push('Copy only the identifier explicitly labelled PTIN, P.T.I. No., Property Tax Identification No., Property Tax ID or Assessment No. for the SUBJECT property. Never use a demand number, receipt number, survey number, house number or tax amount.');
   if (/RelationName$/.test(f.id)) {
     bits.push('Return the relationship label together with the related person name, for example "S/O Rajender". A bare S/O, W/O or D/O is not a usable value.');
   }
@@ -213,7 +214,7 @@ export type Stage = { title: string; ids: string[] };
 export const STAGES: Record<DocKind, Stage[]> = {
   'link-deed': [
     { title: 'Document & registration', ids: ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro', 'sro', 'districtRegistrar'] },
-    { title: 'Jurisdiction', ids: ['district', 'mandal', 'village', 'locality', 'pinCode', 'propState'] },
+    { title: 'Jurisdiction', ids: ['district', 'mandal', 'village', 'locality', 'pinCode', 'propState', 'ulbAuthority'] },
     { title: 'Property & extent', ids: [...PROPERTY] },
     { title: 'Boundaries', ids: [...BOUNDARIES] },
     { title: 'Structure & valuation', ids: [...STRUCTURE, 'govtRate'] },
@@ -259,7 +260,7 @@ Rules you must follow:
 
 export const EXTRACTION_PROMPTS: Record<DocKind, string> = {
   'link-deed':
-    'This registered deed is being used as the link/title document for a new sale deed. A registered sale deed is a valid link deed for a later transaction, so do not reject it merely because it is itself a sale deed. Transcribe its particulars, including the link deed execution date shown in the opening recital on the first page (not the SRO registration/presentation date), the property it describes, its jurisdiction, extent, boundaries and valuation. For nearHNo, inspect the complete schedule/property description and return a value only when it explicitly identifies a nearby, adjacent or neighbouring H.No./door number as a landmark. Never copy the subject property house number into nearHNo. Do not extract party identity details here; those are read from the dedicated executant and claimant uploads.',
+    'This registered deed is being used as the link/title document for a new sale deed. A registered sale deed is a valid link deed for a later transaction, so do not reject it merely because it is itself a sale deed. Transcribe its particulars, including the link deed execution date shown in the opening recital on the first page (not the SRO registration/presentation date), the property it describes, its jurisdiction, extent, boundaries and valuation. For nearHNo, inspect the complete schedule/property description and return a value only when it explicitly identifies a nearby, adjacent or neighbouring H.No./door number as a landmark. Return the house number alone in nearHNo and return nearAdjacent as Near or Adjacent only when that relationship is explicitly printed. Never copy the subject property house number into nearHNo. Set ulbAuthority only when the document explicitly identifies Municipality, Gram Panchayit, Municipal Corporation or GHMC. Do not extract party identity details here; those are read from the dedicated executant and claimant uploads.',
   'executant-id':
     'These are identity documents for the executant (vendor / first party) of a sale deed. Transcribe the party particulars. When an Aadhaar card or letter is shown, read its printed 12-digit Aadhaar number; do not substitute its VID or enrolment number.',
   'claimant-id':
@@ -1251,10 +1252,10 @@ export async function extractFrom(
   // schedule. A value from the broad pass is cleared unless both focused
   // reads agree; a value found only by both focused reads is added.
   if (kind === 'link-deed') {
-    const critical = ['linkDocNo', 'linkDocDate', 'nearHNo'];
+    const critical = ['linkDocNo', 'linkDocDate', 'nearAdjacent', 'nearHNo'];
     const [first, second] = await Promise.all([
-      readFields(kind, critical, parts, undefined, signal, 'Focused verification: the uploaded deed number is printed on the presentation/registration endorsement, often beside the words Doct No.; include its year and do not use the older title recital number or U/R number. Inspect the opening recital for execution date and the complete schedule for wording such as "situated at near H.No."; that explicit phrase is nearHNo.'),
-      readFields(kind, critical, parts, undefined, signal, 'Independent focused verification: read this uploaded deed\'s own Doct No. and year from its registration endorsement, not any earlier registered sale deed number in the recitals. Re-read the opening execution sentence and property schedule. An H.No. introduced by "near H.No." is an adjacent landmark, not the subject plot number.'),
+      readFields(kind, critical, parts, undefined, signal, 'Focused verification: the uploaded deed number is printed on the presentation/registration endorsement, often beside the words Doct No.; include its year and do not use the older title recital number or U/R number. Inspect the opening recital for execution date and the complete schedule for wording such as "situated at near H.No."; return the bare number as nearHNo and Near or Adjacent as nearAdjacent only when explicitly printed.'),
+      readFields(kind, critical, parts, undefined, signal, 'Independent focused verification: read this uploaded deed\'s own Doct No. and year from its registration endorsement, not any earlier registered sale deed number in the recitals. Re-read the opening execution sentence and property schedule. An H.No. introduced by "near H.No." is an adjacent landmark, not the subject plot number; keep its relationship in nearAdjacent and the number in nearHNo.'),
     ]);
     const agreed = agreeFieldReads(kind, critical, first, second);
     for (const id of critical) {

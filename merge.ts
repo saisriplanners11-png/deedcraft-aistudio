@@ -23,6 +23,11 @@ export function mergeValues(state: AppState): Record<string, string> {
   const registrationSro = f.sro || f.linkSro || '';
   out['Sub Registrar'] = registrationSro;
   out['Sub-Registrar'] = registrationSro;
+  // The updated template uses one generic PAN slot in the claimant recital.
+  out.PAN = f.claimantPan || '';
+  // This is a renderer-only value: the supplied template has no placeholder
+  // for the relationship, but uses a literal "near/adjacent" phrase instead.
+  out['Near / Adjacent'] = f.nearAdjacent || '';
 
   // Derived values.
   const squareYards = Number(String(f.extentSqYards || '').replace(/,/g, ''));
@@ -76,6 +81,8 @@ export function mergeValues(state: AppState): Record<string, string> {
     ? [primary.bank, primary.branch].filter(Boolean).join(', ')
     : '';
   out['Cheque.Date'] = primary ? deedDate(primary.date) : '';
+  out['Utr/Reference No.'] = primary?.refNo ?? '';
+  out['Remitting Bank'] = primary ? [primary.bank, primary.branch].filter(Boolean).join(', ') : '';
 
   return out;
 }
@@ -105,7 +112,9 @@ export function rewritesFor(state: AppState): Rewrite[] {
   const paymentRecord = (payment: Payment, refName: string) => ({
     Amount: payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '',
     [refName]: payment.refNo || '',
+    'Utr/Reference No.': payment.refNo || '',
     'Bank Name': [payment.bank, payment.branch].filter(Boolean).join(', '),
+    'Remitting Bank': [payment.bank, payment.branch].filter(Boolean).join(', '),
     Date: deedDate(payment.date),
     'Claimant Name': payment.payer || state.form.claimantName || '',
     'CLAIMANT NAME': payment.payer || state.form.claimantName || '',

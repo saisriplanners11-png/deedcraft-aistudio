@@ -77,6 +77,7 @@ export function PropertyDetailsSection({ property, onChange }: { property: Prope
         <Input field={field('areaSqMtrs', 'Area (Sq. Metres)', { type: 'number', hint: 'Calculated from Sq. Yards' })} value={String(property.areaSqMtrs ?? '')}
           onChange={v => set('areaSqMtrs', v === '' ? '' : Number(v))} />
         <Input field={field('surveyNo', 'Survey no(s).')} value={property.surveyNo} onChange={v => set('surveyNo', v)} />
+        <Input field={field('nearAdjacent', 'Landmark relation', { type: 'select', options: ['Near', 'Adjacent'] })} value={property.nearAdjacent || ''} onChange={v => set('nearAdjacent', v as PropertyDetails['nearAdjacent'])} />
         <Input field={field('nearHNo', 'Near / adjacent H.No.')} value={property.nearHNo} onChange={v => set('nearHNo', v)} />
         <Input field={field('locality', 'Locality')} value={property.locality} onChange={v => set('locality', v)} />
         <Input field={field('village', 'Village')} value={property.village} onChange={v => set('village', v)} />

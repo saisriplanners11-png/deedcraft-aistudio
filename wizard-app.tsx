@@ -39,7 +39,15 @@ const PARTY_FIELDS: Record<'executant' | 'claimant', string[]> = {
 function StructureDetailsTable({ value, onChange, onNotice }: { value: StructureDetails; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
   const total = Number(details.totalFloors);
-  const floorOptions = ['Cellar', 'Foundation', 'Ground', 'Mezzanine floor', 'Parking', ...Array.from({ length: Number.isInteger(total) && total > 0 ? total : 0 }, (_, i) => `Floor No. ${i + 1}`)];
+  const ordinalFloor = (floor: number) => {
+    const ones = ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth', 'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth', 'Seventeenth', 'Eighteenth', 'Nineteenth'];
+    const tens = ['', '', 'Twentieth', 'Thirtieth', 'Fortieth', 'Fiftieth', 'Sixtieth', 'Seventieth', 'Eightieth', 'Ninetieth'];
+    const cardinalTens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    if (floor < 20) return `${ones[floor]} Floor`;
+    if (floor < 100) return `${floor % 10 ? `${cardinalTens[Math.floor(floor / 10)]} ${ones[floor % 10]}` : tens[Math.floor(floor / 10)]} Floor`;
+    return `Floor ${floor}`;
+  };
+  const floorOptions = ['Cellar', 'Foundation', 'Ground', 'Mezzanine floor', 'Parking', ...Array.from({ length: Number.isInteger(total) && total > 0 ? total : 0 }, (_, i) => ordinalFloor(i + 1))];
   const patchRow = (id: string, patch: Record<string, string>) => onChange({ ...details, rows: details.rows.map(row => row.id === id ? { ...row, ...patch } : row) });
   const setTotal = (next: string) => {
     if (next !== '' && (!/^\d+$/.test(next) || Number(next) < details.rows.length)) {
@@ -51,14 +59,15 @@ function StructureDetailsTable({ value, onChange, onNotice }: { value: Structure
   const canAdd = Number.isInteger(total) && total > details.rows.length;
   return <Section title="Structure Details" aside={<span style={{ fontSize: 11, color: C.muted }}>Annexure I-A</span>}>
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{['Total Floors*', 'Floor No.*', 'Structure Type*', 'Stage*', 'Building Age*', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
+      <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead><tr>{['Total Floors*', 'Floor No.*', 'Structure Type*', 'Stage*', 'Building Age*', 'Built-up area (Sq. Ft.)*', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
         <tbody>{details.rows.map((row, index) => <tr key={row.id}>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.structureType} onChange={event => patchRow(row.id, { structureType: event.target.value, customStructureType: event.target.value === 'Other / Custom Structure' ? row.customStructureType : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{STRUCTURE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select>{row.structureType === 'Other / Custom Structure' && <input value={row.customStructureType} onChange={event => patchRow(row.id, { customStructureType: event.target.value })} placeholder="Describe structure" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.builtUpAreaSqFt} onChange={event => patchRow(row.id, { builtUpAreaSqFt: event.target.value })} style={{ width: 112, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><button type="button" className="gold" disabled={!canAdd} onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button>{details.rows.length > 1 && <button type="button" className="quiet" onClick={() => onChange({ ...details, rows: details.rows.filter(item => item.id !== row.id) })} style={{ marginLeft: 6 }}>−</button>}</td>
         </tr>)}</tbody>
       </table>
@@ -921,10 +930,10 @@ export default function WizardApp() {
               <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} resolved={resolved} edit={edit} />
             </div>)}
           </section>
-          <section className="panel" aria-label="Calculated market value">
-            <h2>Calculated market value</h2>
-            <p>Total of every schedule's area × verified basic rate + structure valuation. This is calculated automatically and does not replace the final sale consideration.</p>
-            <strong style={{ fontSize: 22, color: C.ink }}>{vm.persayINR || 'Enter verified area and basic rate for every schedule'}</strong>
+          <section className="panel" aria-label="Consideration value">
+            <h2>Consideration value</h2>
+            <p>The agreed sale consideration for this deed. Calculated market value remains available for validation and duty calculations.</p>
+            <strong style={{ fontSize: 22, color: C.ink }}>{vm.considINR || 'Enter sale consideration'}</strong>
           </section>
           <section className="panel" aria-label="Consideration in words">
             <h2>Consideration in words</h2>

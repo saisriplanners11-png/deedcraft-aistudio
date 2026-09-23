@@ -8,6 +8,10 @@ describe('registration plan output', () => {
     for (const value of ['PLAN FOR REGISTRATION','PLOT NO.196','41/3','200.00 SQUARE YARDS','167.2255','VENDOR/S SIGN/S','VENDEE/S SIGN/S','WITNESSES:','AREA UNDER REGISTRATION']) expect(svg).toContain(value);
     expect(svg).not.toContain('DRAFT PLAN');
   });
+  it('renders the selected landmark relationship', () => {
+    expect(registrationPlanSvg({ ...DEFAULT_DRAFT_PLAN_FORM, nearAdjacent: 'Near', nearHNo: '10-1-36/1' })).toContain('SITUATED NEAR H.NO.10-1-36/1');
+    expect(registrationPlanSvg({ ...DEFAULT_DRAFT_PLAN_FORM, nearAdjacent: 'Adjacent', nearHNo: '10-1-36/1' })).toContain('SITUATED ADJACENT H.NO.10-1-36/1');
+  });
   it('leaves the drawing and facts blank when there is no source', () => {
     const svg = registrationPlanSvg({});
     expect(svg).not.toContain('196'); expect(svg).not.toContain('75&apos;-6');

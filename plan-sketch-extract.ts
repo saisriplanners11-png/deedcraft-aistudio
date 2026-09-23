@@ -30,6 +30,7 @@ export interface ExtractedSketchData {
   areaSqMtrs?: number | '';
   surveyNo?: string;
   plotNo?: string;
+  nearAdjacent?: 'Near' | 'Adjacent';
   nearHNo?: string;
   locality?: string;
   village?: string;
@@ -83,6 +84,7 @@ const SCHEMA = {
     areaSqMtrs: { type: 'number' },
     surveyNo: { type: 'string' },
     plotNo: { type: 'string' },
+    nearAdjacent: { type: 'string', enum: ['Near', 'Adjacent'] },
     nearHNo: { type: 'string' },
     locality: { type: 'string' },
     village: { type: 'string' },
@@ -188,6 +190,7 @@ export function applyExtractedDataToPlan(currentPlan: PlanDocument, extracted: E
     areaSqYards: areaYards,
     areaSqMtrs: areaMtrs,
     surveyNo: extracted.surveyNo || currentPlan.property.surveyNo,
+    nearAdjacent: extracted.nearAdjacent || currentPlan.property.nearAdjacent,
     nearHNo: extracted.nearHNo || currentPlan.property.nearHNo,
     locality: extracted.locality || currentPlan.property.locality,
     village: extracted.village || currentPlan.property.village,

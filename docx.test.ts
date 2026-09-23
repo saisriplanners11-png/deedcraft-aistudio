@@ -149,6 +149,14 @@ describe('sale deed template merge', () => {
     expect(text).toMatch(/Total Market Value\s+: Rs\.8,00,000/);
   });
 
+  it('renders the selected landmark relationship while retaining the separate house number', async () => {
+    const state = { ...initialState, category: 'Vacant Plot', form: { ...initialState.form, nearAdjacent: 'Adjacent', nearHNo: '10-1-36/1' } };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text.toLowerCase()).toContain('situated adjacent h.no.10-1-36/1');
+    expect(text.toLowerCase()).not.toContain('situated near/adjacent h.no.10-1-36/1');
+  });
+
   it('writes consideration words only in the consideration-and-payment clause', async () => {
     const state = { ...initialState, form: { ...initialState.form, consid: '800000' } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
@@ -349,8 +357,8 @@ describe('sale deed template merge', () => {
   it('renders each house schedule Structure Details row as an Annexure I-A table', async () => {
     const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
     const rows = [
-      { ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4' },
-      { ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'Other / Custom Structure', customStructureType: 'Stone masonry', stage: 'Semi-Finished', buildingAge: '2' },
+      { ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4', builtUpAreaSqFt: '900' },
+      { ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'Other / Custom Structure', customStructureType: 'Stone masonry', stage: 'Semi-Finished', buildingAge: '2', builtUpAreaSqFt: '750' },
     ];
     const state = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', form, structureDetailsBySchedule: { primary: { totalFloors: '2', rows } } };
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
@@ -359,5 +367,26 @@ describe('sale deed template merge', () => {
     expect(text).toContain('R.C.C. Building');
     expect(text).toContain('Stone masonry');
     expect(text).toContain('Semi-Finished');
+    expect(text).toContain('Built-up Area (Sq. Ft.)');
+    expect(text).toContain('First Floor');
+    expect(text).toContain('750');
+  });
+
+  it('does not render Annexure I-A for an open-plot schedule with stale structure rows', async () => {
+    const rows = [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4', builtUpAreaSqFt: '900' }];
+    const state = { ...initialState, category: 'Vacant Plot', form: { ...initialState.form, plotNo: '1' }, structureDetailsBySchedule: { primary: { totalFloors: '1', rows } } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).not.toContain('ANNEXURE I-A â€” STRUCTURE DETAILS');
+    expect(text).not.toContain('Built-up Area (Sq. Ft.)');
+  });
+
+  it('keeps the PTIN preamble in a house deed and its live document preview', async () => {
+    const state = { ...initialState, category: 'Residential', form: { ...initialState.form, bltNo: 'PTIN-88' } };
+    const merge = scheduleMergesFor(state)[0];
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), [merge]);
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('Tax/Assessment & Identification Particulars:');
+    expect(text).toContain('Assessment No.PTIN-88');
   });
 });

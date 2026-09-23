@@ -491,7 +491,7 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>):
     { test: /Title Deed:/i, keep: () => has('Pattadar Pass Book No', 'Pass Book Khata No') },
     { test: /Nala Order:/i, keep: () => has('Nala Order No', 'Nala Order Date') },
     { test: /Property Tax:/i, keep: () => has('House Tax Receipt', 'Tax Paid Date', 'Local Body Name') },
-    { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('BLT No.') },
+    { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('P.T.I.No.') },
     { test: /House Permission:/i, keep: () => has('House Permission No.', 'Permission Date', 'Municipality/Gram Panchayat Name') },
     { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.', 'Application Date') },
     { test: /L\.R\.S\. Proceeding:/i, keep: () => has('LRS Proceeding No.', 'Proceeding Date') },
@@ -620,9 +620,16 @@ const annexureStructureTable = (details?: StructureDetails) => {
   if (!details?.rows.length) return '';
   const displayType = (row: StructureDetails['rows'][number]) => row.structureType === 'Other / Custom Structure'
     ? row.customStructureType || row.structureType : row.structureType;
-  const header = ['Total Floors', 'Floor No.', 'Structure Type', 'Stage', 'Building Age'].map(cell => tableCell(cell, true)).join('');
+  const displayFloor = (floor: string) => {
+    const match = floor.match(/^floor(?:\s+no\.)?\s+(\d+)$/i);
+    if (!match) return floor;
+    const words = ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth', 'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth', 'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'];
+    const number = Number(match[1]);
+    return number <= 20 ? `${words[number]} Floor` : floor;
+  };
+  const header = ['Total Floors', 'Floor No.', 'Structure Type', 'Stage', 'Building Age', 'Built-up Area (Sq. Ft.)'].map(cell => tableCell(cell, true)).join('');
   const rows = details.rows.map(row => `<w:tr>${[
-    details.totalFloors, row.floorNo, displayType(row), row.stage, row.buildingAge,
+    details.totalFloors, displayFloor(row.floorNo), displayType(row), row.stage, row.buildingAge, row.builtUpAreaSqFt,
   ].map(cell => tableCell(cell)).join('')}</w:tr>`).join('');
   return `<w:p><w:pPr><w:spacing w:before="160" w:after="80"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>ANNEXURE I-A — STRUCTURE DETAILS</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders></w:tblPr><w:tr>${header}</w:tr>${rows}</w:tbl>`;
 };
@@ -726,13 +733,19 @@ export async function fillSaleDeed(
         : sharedTail >= 0 ? sharedTail : children.length;
       const scheduleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.values)) scheduleValues.set(norm(key), value ?? '');
+      const landmarkRelation = scheduleValues.get(norm('Near / Adjacent'))?.toLowerCase();
       let block = children.slice(start, stop).map(c => {
         const chunk = body.slice(c.start, c.end);
         return chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
-          fillParagraph(p, scheduleValues, missing, [])
+          fillParagraph(
+            landmarkRelation
+              ? replaceRunText(p, /near\/adjacent(?=\s+H\.No\.)/gi, () => landmarkRelation)
+              : p,
+            scheduleValues, missing, [],
+          )
         );
       }).join('');
-      block = insertAnnexureStructureTable(block, schedule.structureDetails);
+      block = insertAnnexureStructureTable(block, schedule.variant === 'IF HOUSE' ? schedule.structureDetails : undefined);
       // Supporting evidence fills existing fields; the template wording is unchanged.
       if (selected.length > 1) {
         block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${scheduleIndex + 1}`);

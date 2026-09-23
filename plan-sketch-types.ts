@@ -59,6 +59,7 @@ export interface PropertyDetails {
   areaSqYards: number | '';
   areaSqMtrs: number | '';
   surveyNo: string;
+  nearAdjacent?: 'Near' | 'Adjacent' | '';
   nearHNo: string;
   locality: string;
   village: string;

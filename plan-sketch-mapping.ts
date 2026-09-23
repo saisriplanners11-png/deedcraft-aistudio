@@ -65,6 +65,7 @@ export function planDocumentFromDraft(state: AppState): PlanDocument {
     areaSqYards,
     areaSqMtrs,
     surveyNo: sv.surveyNo || '',
+    nearAdjacent: sv.nearAdjacent === 'Adjacent' ? 'Adjacent' : sv.nearAdjacent === 'Near' ? 'Near' : '',
     nearHNo: sv.nearHNo || '',
     locality: sv.locality || '',
     village: sv.village || '',

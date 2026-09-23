@@ -129,17 +129,18 @@ export function generateLegalDescription(doc: PlanDocument): {
   const areaMtrs = p.areaSqMtrs !== '' ? p.areaSqMtrs : '_______';
   const surveyNo = p.surveyNo.trim() || '_______';
 
+  const landmarkRelation = p.nearAdjacent === 'Adjacent' ? 'ADJACENT' : 'NEAR';
   let nearHNo = p.nearHNo.trim();
   if (nearHNo) {
-    if (!nearHNo.toUpperCase().startsWith('NEAR')) {
+    if (!nearHNo.toUpperCase().startsWith(landmarkRelation)) {
       if (!nearHNo.toUpperCase().startsWith('H.NO')) {
-        nearHNo = `NEAR H.NO.${nearHNo}`;
+        nearHNo = `${landmarkRelation} H.NO.${nearHNo}`;
       } else {
-        nearHNo = `NEAR ${nearHNo}`;
+        nearHNo = `${landmarkRelation} ${nearHNo}`;
       }
     }
   } else {
-    nearHNo = 'NEAR H.NO. _______';
+    nearHNo = `${landmarkRelation} H.NO. _______`;
   }
 
   let locality = p.locality.trim() ? p.locality.trim().toUpperCase() : '';

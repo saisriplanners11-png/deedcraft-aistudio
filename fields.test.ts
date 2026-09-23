@@ -20,7 +20,7 @@ describe('field mapping', () => {
     expect(ids).not.toContain('ageOfHouse');
     expect(STRUCTURE_TYPE_OPTIONS).toContain('Other / Custom Structure');
     expect(STRUCTURE_STAGE_OPTIONS).toEqual(['Foundation', 'Upto Lintel level', 'Upto Slab/Roof level', 'Semi-Finished', 'Finished']);
-    expect(newStructureDetail()).toMatchObject({ floorNo: '', structureType: '', stage: '', buildingAge: '' });
+    expect(newStructureDetail()).toMatchObject({ floorNo: '', structureType: '', stage: '', buildingAge: '', builtUpAreaSqFt: '' });
   });
 
   it('keeps link deed and sale deed execution dates distinct', () => {
@@ -35,6 +35,20 @@ describe('field mapping', () => {
     const vlt = property.fields.find(field => field.id === 'assessmentPtinNo');
     expect(vlt?.only).toEqual(['Vacant Plot', 'Open Place']);
     expect(vlt?.ph).toBe('V.L.T No.');
+  });
+
+  it('adds the approved ULB selector without a Word-template binding', () => {
+    const jurisdiction = GROUPS.find(group => group.title === 'Jurisdiction')!;
+    const ulb = jurisdiction.fields.find(field => field.id === 'ulbAuthority');
+    expect(ulb?.type).toBe('select');
+    expect(ulb?.options).toEqual(['Municipality', 'Gram Panchayit', 'Municipal Corporation', 'GHMC']);
+    expect(ulb?.ph).toBeUndefined();
+  });
+
+  it('requires a landmark relationship whenever a nearby house number is entered', () => {
+    const state = { ...initialState, category: 'Residential', form: { ...initialState.form, nearHNo: '10-1-36/1' } };
+    expect(generationBlockers(state).map(item => item.id)).toContain('nearAdjacent');
+    expect(generationBlockers({ ...state, form: { ...state.form, nearAdjacent: 'Adjacent' } }).map(item => item.id)).not.toContain('nearAdjacent');
   });
 
   it('uses the Jurisdiction SRO for the Schedule registration sub-district', () => {
@@ -78,10 +92,12 @@ describe('field mapping', () => {
   });
 
   it('requires complete, capped Structure Details for a residential schedule', () => {
-    const details = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4' }] };
+    const details = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4', builtUpAreaSqFt: '900' }] };
     const valid = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', structureDetailsBySchedule: { primary: details } };
     expect(generationBlockers(valid).map(item => item.label)).not.toContain('Structure Details');
-    const invalid = { ...valid, structureDetailsBySchedule: { primary: { ...details, totalFloors: '1', rows: [...details.rows, { ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '3' }] } } };
+    const missingBuiltUpArea = { ...valid, structureDetailsBySchedule: { primary: { ...details, rows: [{ ...details.rows[0], builtUpAreaSqFt: '' }] } } };
+    expect(generationBlockers(missingBuiltUpArea).map(item => item.label)).toContain('Structure Details');
+    const invalid = { ...valid, structureDetailsBySchedule: { primary: { ...details, totalFloors: '1', rows: [...details.rows, { ...newStructureDetail(), floorNo: 'First Floor', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '3', builtUpAreaSqFt: '700' }] } } };
     expect(generationBlockers(invalid).map(item => item.label)).toContain('Structure Details');
   });
 
