@@ -246,6 +246,8 @@ const unescapeXml = (s: string) =>
 /** Placeholder names vary in spacing/case between occurrences — normalize to match. */
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /** Split `<w:body>` into its top-level `<w:p>` / `<w:tbl>` / `<w:sectPr>` children. */
 function topLevelChildren(body: string): { start: number; end: number }[] {
   const out: { start: number; end: number }[] = [];
@@ -433,6 +435,63 @@ export function replaceRunText(p: string, find: RegExp, replacement: (match: Reg
   });
 }
 
+/**
+ * Remove every empty placeholder inside its original Word paragraph.
+ * This intentionally operates through replaceRunText, so text split across
+ * Word runs keeps every untouched run's character formatting and paragraph XML.
+ */
+function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<string>): string {
+  let changed = false;
+  const names = [...new Set((plainText(p).match(/<([^<>]{2,60}?)>/g) || [])
+    .map(tag => tag.slice(1, -1).trim())
+    .filter(name => !STRUCTURAL_TAGS.has(norm(name)) && !REMOVED_STRUCTURE_PLACEHOLDERS.has(norm(name)) && !values.get(norm(name))))];
+  for (const name of names) {
+    missing.add(name);
+    // Templates commonly put cosmetic spaces inside angle brackets
+    // (`< Claimant Village>`), so match the logical field name rather than
+    // requiring an exact tag spelling.
+    const tag = `<\\s*${escapeRegExp(name)}\\s*>`;
+    // A short conventional label owns the label and its closing punctuation.
+    // Limiting the label to words (no commas) prevents removal from reaching a
+    // preceding populated field in the same recital.
+    const labelled = new RegExp(`(?:[A-Za-z][A-Za-z0-9./-]*\\s+){0,3}[A-Za-z][A-Za-z0-9./-]*:\\s*${tag}\\s*([.,;])?`, 'gi');
+    p = replaceRunText(p, labelled, match => {
+      changed = true;
+      return match[1] === '.' ? '.' : '';
+    });
+
+    // Common non-colon labels in deed templates: H.No.<value>, Document
+    // No.<value>, Rs.<value>/-. They are removed together with the empty tag.
+    p = replaceRunText(p, new RegExp(`(?:R\\/o\\s+)?H\\.?\\s*No\\.?\\s*${tag}`, 'gi'), () => { changed = true; return ''; });
+    p = replaceRunText(p, new RegExp(`(?:Document\\s+)?No\\.?\\s*${tag}`, 'gi'), () => { changed = true; return ''; });
+    p = replaceRunText(p, new RegExp(`Rs\\.\\s*${tag}\\s*\\/-`, 'gi'), () => { changed = true; return ''; });
+
+    // For an unlabeled address component, prefer its following separator so
+    // "<Locality>, <Village> Village" becomes "<Village> Village". If it is
+    // the final component instead, remove its preceding separator instead.
+    const standaloneWithFollowingComma = new RegExp(`${tag}\\s*,\\s*`, 'gi');
+    p = replaceRunText(p, standaloneWithFollowingComma, () => { changed = true; return ''; });
+    const standaloneWithLeadingComma = new RegExp(`,\\s*${tag}`, 'gi');
+    p = replaceRunText(p, standaloneWithLeadingComma, () => { changed = true; return ''; });
+    const standalone = new RegExp(tag, 'gi');
+    p = replaceRunText(p, standalone, () => { changed = true; return ''; });
+  }
+  if (!changed) return p;
+
+  // Removing several adjacent values can create a new invalid separator after
+  // each pass, so normalize a few times until the paragraph is stable.
+  for (let pass = 0; pass < 4; pass++) {
+    const before = plainText(p);
+    p = replaceRunText(p, /\s+([,.;:])/g, match => match[1]);
+    p = replaceRunText(p, /[:,]\s*([,.])/g, match => match[1]);
+    p = replaceRunText(p, /,\s*,+/g, () => ',');
+    p = replaceRunText(p, /\(\s*\)/g, () => '');
+    p = replaceRunText(p, / {2,}/g, () => ' ');
+    if (plainText(p) === before) break;
+  }
+  return p;
+}
+
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
   // Apply structural recitals first, then merge placeholders into their own runs.
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)));
@@ -457,15 +516,13 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   for (const rw of rewrites.filter(rw => !rw.records)) {
     p = replaceRunText(p, rw.find, () => rw.replace);
   }
+  p = removeEmptyFields(p, values, missing);
   return replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
     // Annexure I-A now renders repeatable rows; blank the template's retired
     // scalar structure placeholders without reporting false missing facts.
     if (REMOVED_STRUCTURE_PLACEHOLDERS.has(norm(name))) return '';
-    const value = values.get(norm(name));
-    if (value) return value;
-    missing.add(name);
-    return '__________';
+    return values.get(norm(name)) || '';
   });
 }
 

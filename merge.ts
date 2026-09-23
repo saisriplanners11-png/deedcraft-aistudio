@@ -96,14 +96,13 @@ export function rewritesFor(state: AppState): Rewrite[] {
   const date = deedDate(state.form.executionDate);
   const rewrites: Rewrite[] = [{
     find: /made and executed on\s+[^;]*?(?=\s+at\s+)/,
-    replace: 'made and executed on ' + (date || '__________'),
+    replace: date ? 'made and executed on ' + date : 'made and executed',
   }];
-  // No execution date was entered: leave it blank rather than guess one, but
-  // give the signing parties a labelled blank next to the signature block so
-  // the date actually executed can be filled in by hand after printing.
+  // No execution date was entered: omit the date phrase rather than invent a
+  // fill-in blank in the downloaded deed.
   if (!date) rewrites.push({
     find: /in the presence of the following witnesses on the afore mentioned date\./,
-    replace: 'in the presence of the following witnesses on this the ____________ day of ____________, 20____.',
+    replace: 'in the presence of the following witnesses.',
   });
   const paid = state.payments.filter(payment => payment.amount !== '');
   // The v2 template contains one sample paragraph for each payment method.
@@ -133,15 +132,14 @@ export function rewritesFor(state: AppState): Rewrite[] {
   }
   if (paid.length && !(paid.length === 1 && paid[0].mode === 'cash')) {
     rewrites.push({ find: /\(1\)\s+Amount of Rs\..*paid via Cash\./i, replace: paid.map((payment, index) => {
-      // The receipt remains a deterministic template; unknown facts are blanks.
-      const amount = payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '__________';
-      const mode = payment.mode ? modeSpec(payment.mode).label : '__________';
-      const ref = payment.refNo || '__________';
-      const bank = [payment.bank, payment.branch].filter(Boolean).join(', ') || '__________';
-      const date = deedDate(payment.date) || '__________';
+      const amount = payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '';
+      const mode = payment.mode ? modeSpec(payment.mode).label : '';
+      const ref = payment.refNo || '';
+      const bank = [payment.bank, payment.branch].filter(Boolean).join(', ');
+      const date = deedDate(payment.date);
       const prefix = `(${index + 1}) Amount of Rs.${amount}/-`;
-      return payment.mode === 'cash' ? `${prefix} paid via cash dated ${date}.`
-        : `${prefix} paid through ${mode} bearing No. ${ref} drawn on ${bank} dated ${date}.`;
+      return payment.mode === 'cash' ? `${prefix} paid via cash${date ? ` dated ${date}` : ''}.`
+        : `${prefix} paid${mode ? ` through ${mode}` : ''}${ref ? ` bearing No. ${ref}` : ''}${bank ? ` drawn on ${bank}` : ''}${date ? ` dated ${date}` : ''}.`;
     }).join('; ') });
   }
   for (const side of ['executant', 'claimant'] as const) {

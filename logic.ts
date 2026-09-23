@@ -349,7 +349,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   }
 
   for (const side of ['executant', 'claimant']) {
-    ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode']
+    ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode']
       .forEach(suffix => add(`${side}${suffix}`, 'The party recital requires this identity or address detail.', 'Aadhaar, PAN, address proof or party declaration'));
     if (Number(f.consid) >= 5000000) add(`${side}Pan`, 'PAN is required for consideration of ₹50 lakh or more.', 'PAN card or party declaration');
   }
@@ -365,7 +365,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   for (const side of ['executant', 'claimant'] as const) {
     const records = side === 'executant' ? state.additionalExecutants : state.additionalClaimants;
     records.forEach((record, index) => {
-      ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].forEach(suffix => {
+      ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode'].forEach(suffix => {
         const id = `${side}${suffix}`;
         addRecordField(record, id, `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 2}: ${fieldLabel(id)}`, 'Every party recital requires this identity or address detail.', 'Aadhaar, PAN, address proof or manual entry.', side === 'executant' ? 6 : 7);
       });

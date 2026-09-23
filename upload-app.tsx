@@ -260,7 +260,7 @@ export default function UploadApp() {
         {paymentMismatch && <p className="notice">The uploaded payments total ₹{completePaymentTotal!.toLocaleString('en-IN')}, which differs from the stated consideration. Upload another payment record or correct the details if needed; download is still available.</p>}
         <details><summary>{notices.length} missing or incomplete details — download is still available</summary><ul>{notices.map(item => <li key={item.id}>{item.label}</li>)}</ul></details>
         {busy && <p className="notice">Uploads are still being read. A download now includes only details already verified.</p>}
-        <div className="download-actions"><button className="primary" disabled={exporting} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed'}</button><button disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+        <div className="download-actions"><button className="primary" disabled={exporting} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button><button disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button></div>
         {message && <p role="status">{message}</p>}
       </section>}
       <details className="panel"><summary>View details or make an optional correction</summary><p>Prefer to avoid typing? Upload another photo or a handwritten note above.</p>

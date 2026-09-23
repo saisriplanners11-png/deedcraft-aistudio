@@ -91,6 +91,17 @@ describe('field mapping', () => {
     expect(generationBlockers(state).map(item => item.id)).not.toContain('claimantMobile');
   });
 
+  it('does not make optional party localities a generation blocker', () => {
+    const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.id.includes('Dob') ? '1990-01-01' : '1']));
+    form.executantLocality = '';
+    form.claimantLocality = '';
+    const payment = { ...newPayment('cheque'), amount: '100000', refNo: '123456', bank: 'Bank', branch: 'Main', date: '2026-01-01', payer: 'Buyer', payee: 'Seller' };
+    const state = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', form, payments: [payment] };
+    const missing = generationBlockers(state).map(item => item.id);
+    expect(missing).not.toContain('executantLocality');
+    expect(missing).not.toContain('claimantLocality');
+  });
+
   it('requires complete, capped Structure Details for a residential schedule', () => {
     const details = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '4', builtUpAreaSqFt: '900' }] };
     const valid = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', structureDetailsBySchedule: { primary: details } };

@@ -21,6 +21,8 @@ export type Field = {
   only?: string[];
   /** Retained for extraction and document generation, but not shown to drafters. */
   hidden?: boolean;
+  /** Omit this field's tagged recital segment, rather than printing a blank, when no value is supplied. */
+  omitWhenEmpty?: boolean;
 };
 
 export type Group = {
@@ -114,10 +116,10 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
     { id: k('Dob'), label: 'Date of birth', ph: `${P} Dob`, type: 'date' },
     { id: k('Occupation'), label: 'Occupation', ph: `${P} Occupation` },
     { id: k('Aadhaar'), label: 'Aadhaar number', ph: `${P} Adhar Number` },
-    { id: k('Pan'), label: 'PAN', ph: `${P} Pan No.`, hint: 'Required above ₹50 lakh' },
-    { id: k('Mobile'), label: 'Mobile', ph: `${P} Cell.No.`, type: 'tel' },
+    { id: k('Pan'), label: 'PAN', ph: `${P} Pan No.`, hint: 'Required above ₹50 lakh', omitWhenEmpty: true },
+    { id: k('Mobile'), label: 'Mobile', ph: `${P} Cell.No.`, type: 'tel', omitWhenEmpty: true },
     { id: k('HNo'), label: 'House no.', ph: `${P} H.No.` },
-    { id: k('Locality'), label: 'Locality', ph: `${P} Locality` },
+    { id: k('Locality'), label: 'Locality', ph: `${P} Locality`, omitWhenEmpty: true },
     { id: k('Village'), label: 'Village', ph: `${P} Village` },
     { id: k('Mandal'), label: 'Mandal', ph: `${P} Mandal` },
     { id: k('District'), label: 'District', ph: `${P} District` },

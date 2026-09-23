@@ -89,17 +89,13 @@ describe('sale deed template merge', () => {
     expect(view.getUint32(central + 12, true)).toBe(0x00210000);
   });
 
-  it('exports blanks without sample data and preserves template styles and numbering', async () => {
+  it('omits unprovided fields and preserves template styles and numbering', async () => {
     const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState));
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const text = await docxToText(bytes);
-    expect(text).not.toMatch(/2026|Kailash|<EXECUTANT|<Claimant|undefined|NaN/);
-    expect(text).toContain('made and executed on __________ at S.R.O. __________, District:__________');
-    expect(text).toContain('Cell No: __________');
-    // No execution date was entered, so the signature block gets its own
-    // fill-in-by-hand line instead of repeating "the afore mentioned date".
-    expect(text).toContain('on this the ____________ day of ____________, 20____.');
-    expect(text).not.toContain('on the afore mentioned date.');
+    expect(text).not.toMatch(/2026|Kailash|<[^>]+>|__________|undefined|NaN/);
+    expect(text).toContain('THIS SALE DEED is made');
+    expect(text).toContain('in the presence of the following witnesses.');
     expect(text).toContain('1. THE VENDOR/S');
     expect(text).toContain('8. THE VENDOR/S');
     const original = await readZip(new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url))));
@@ -225,7 +221,49 @@ describe('sale deed template merge', () => {
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text.match(/9876543210/g)).toHaveLength(1);
-    expect(text).toMatch(/SECOND,[\s\S]*Cell No: __________/);
+    expect(text).toMatch(/SECOND,[\s\S]*\(Hereinafter called the "VENDOR\/S"\)/);
+    expect(text).not.toMatch(/SECOND,[\s\S]*Cell No:/);
+  });
+
+  it('removes empty claimant mobile, PAN and locality recitals without disturbing nearby details', async () => {
+    const state = { ...initialState, form: {
+      ...initialState.form,
+      claimantName: 'Purchaser', claimantRelation: 'S/O', claimantRelativeName: 'Parent', claimantAge: '30', claimantDob: '1996-01-02',
+      claimantOccupation: 'Business', claimantHNo: '1-2-3', claimantLocality: '', claimantVillage: 'Sircilla', claimantMandal: 'Sircilla',
+      claimantDistrict: 'Rajanna', claimantState: 'Telangana', claimantPinCode: '505301', claimantAadhaar: '1234 5678 9012', claimantMobile: '', claimantPan: '',
+    } };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const recital = text.match(/PURCHASER,[\s\S]*?OTHER PART\./)?.[0] || '';
+    expect(recital).toContain('R/o H.No.1-2-3, Sircilla Village');
+    expect(recital).toContain('Aadhaar No: 1234 5678 9012.');
+    expect(recital).not.toContain('Cell No:');
+    expect(recital).not.toContain('Pan:');
+    expect(recital).not.toMatch(/,\s*,|\s{2,}|\s+[,.]|:\s*[,.]/);
+  });
+
+  it('keeps populated party mobile, PAN and locality recitals', async () => {
+    const state = { ...initialState, form: { ...initialState.form, claimantName: 'Purchaser', claimantLocality: 'BY Nagar', claimantVillage: 'Sircilla', claimantMobile: '9876543210', claimantPan: 'ABCDE1234F' } };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('BY Nagar, Sircilla Village');
+    expect(text).toContain('Cell No: 9876543210');
+    expect(text).toContain('Pan: ABCDE1234F');
+  });
+
+  it('cleans opted-in empty fields across split Word runs in a custom template', async () => {
+    const bytes = await customizedTemplate(xml => xml.replace(
+      '&lt;Claimant Locality&gt;',
+      '&lt;Claimant Lo</w:t></w:r><w:r><w:t>cality&gt;',
+    ));
+    const validation = await validateSaleDeedTemplate(bytes, 'split-custom.docx');
+    expect(validation.valid).toBe(true);
+    const source: DeedTemplateSource = { kind: 'custom', name: 'split-custom.docx', hash: 'split', bytes, validation };
+    const state = { ...initialState, form: { ...initialState.form, claimantName: 'Purchaser', claimantHNo: '5', claimantLocality: '', claimantVillage: 'Town' } };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), [], source);
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('R/o H.No.5, Town Village');
+    expect(text).not.toContain(', ,');
   });
 
   it('fills every mapped placeholder in the selected house schedule', async () => {

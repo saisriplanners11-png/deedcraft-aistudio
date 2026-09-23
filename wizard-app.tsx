@@ -1013,7 +1013,7 @@ export default function WizardApp() {
           </div>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
           {!generationReady && <p>{deedRelease.reasons.join(' ')}</p>}
-          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word deed'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 
