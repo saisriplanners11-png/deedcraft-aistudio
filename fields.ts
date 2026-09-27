@@ -5,7 +5,7 @@
 // `ph` names match the template exactly, including its own spelling
 // (`Executant Adhar Number`, `Market of Value Rs./-`).
 
-export type FieldType = 'text' | 'number' | 'money' | 'date' | 'tel' | 'select' | 'textarea';
+export type FieldType = 'text' | 'number' | 'money' | 'date' | 'month' | 'tel' | 'select' | 'textarea';
 
 export type Field = {
   id: string;
@@ -34,7 +34,7 @@ export type Group = {
   fields: Field[];
 };
 
-/** One floor/level entry in the repeatable Annexure I-A structure table. */
+/** One floor/level entry in a house schedule and Annexure I-A. */
 export type StructureDetail = {
   id: string;
   floorNo: string;
@@ -216,7 +216,7 @@ export const GROUPS: Group[] = [
       { id: 'village', label: 'Village', ph: 'Village' },
       { id: 'ulbAuthority', label: 'ULB name / Authority', type: 'select', options: ['Municipality', 'Gram Panchayit', 'Municipal Corporation', 'GHMC'],
         hint: 'Select the local urban body / authority explicitly named for this property.' },
-      { id: 'executionDate', label: 'Sale deed execution date', type: 'date', hint: 'Optional — left blank in the deed when not entered.' },
+      { id: 'executionDate', label: 'Sale deed execution month and year', type: 'month', hint: 'Select the month and year. Leave the day blank to write it by hand after printing.' },
     ],
   },
   {
@@ -261,6 +261,10 @@ export const GROUPS: Group[] = [
     note: 'Collected only for a built structure — these fill Annexure I-A of the deed.',
     fields: [
       { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', only: HOUSE_CATEGORIES },
+      { id: 'roofMaterial', label: 'Nature of roof', only: HOUSE_CATEGORIES,
+        hint: 'Enter the roof material exactly as supported by the property record, e.g. R.C.C.' },
+      { id: 'constructionDescription', label: 'Type of structure / construction', only: HOUSE_CATEGORIES,
+        hint: 'Enter the construction description for Annexure I-A, e.g. Framed with pillars & columns only.' },
       { id: 'bltNo', label: 'PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'], span: 2, only: HOUSE_CATEGORIES },
       { id: 'taxesPerAnnum', label: 'Tax per annum (₹)', ph: 'Taxes Per Annum', type: 'money', only: HOUSE_CATEGORIES },
       { id: 'annualRentalValue', label: 'Annual rental value (₹)', ph: 'Annual Rental Value', type: 'money', only: HOUSE_CATEGORIES },
@@ -287,7 +291,7 @@ export const GROUPS: Group[] = [
     step: 4,
     title: 'Market value, consideration & stamp paper',
     telugu: 'మార్కెట్ విలువ',
-    note: 'Enter the agreed values and the face value printed on the non-judicial stamp paper. Stamp value is editable and is not calculated as statutory duty.',
+    note: 'The extent × basic rate estimate is shown for reference. Enter the agreed consideration and the face value printed on the non-judicial stamp paper; the deed uses the consideration amount.',
     fields: [
       { id: 'govtRate', label: 'Basic rate per Sq. Yard (₹)', ph: 'Market Value Per Sq.Yard', type: 'money' },
       { id: 'structValue', label: 'Structure valuation (₹)', type: 'money', hint: 'Depreciated; 0 for open land' },

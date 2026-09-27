@@ -192,7 +192,16 @@ function RecordFieldGroup({
   onDelete?: () => void;
   deleteLabel?: string;
 }) {
-  const groups = groupsForStep(step, category);
+  const groups = groupsForStep(step, category).map(group => {
+    if (step !== 4 || role !== 'property') return group;
+    const rateIndex = group.fields.findIndex(field => field.id === 'govtRate');
+    if (rateIndex < 0) return group;
+    const calculatedValue = {
+      id: 'calculatedLandMarketValue', label: 'Calculated market value (extent × basic rate)',
+      type: 'money' as const, derived: true, span: 2 as const,
+    };
+    return { ...group, fields: [...group.fields.slice(0, rateIndex + 1), calculatedValue, ...group.fields.slice(rateIndex + 1)] };
+  });
   if (!groups.length) return null;
   const form: Record<string, string> = {};
   // Most executants and claimants are individuals related as S/o, and nearly
@@ -204,8 +213,13 @@ function RecordFieldGroup({
   // arrived by typing or by AI extraction from an uploaded property record.
   const sqYards = role === 'property' ? Number(resolved.values[fieldKey(role, record, 'extentSqYards')]) : NaN;
   const sqMeters = Number.isFinite(sqYards) && sqYards > 0 ? String(Math.round(sqYards * 0.836127 * 100) / 100) : '';
+  const marketExtent = Number(String(resolved.values[fieldKey(role, record, 'extentSqYards')] || '').replace(/,/g, ''));
+  const marketRate = Number(String(resolved.values[fieldKey(role, record, 'govtRate')] || '').replace(/,/g, ''));
+  const calculatedLandMarketValue = marketExtent > 0 && marketRate > 0 && Number.isFinite(marketExtent * marketRate)
+    ? String(Math.round(marketExtent * marketRate)) : '';
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
+      : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
       : resolved.values[fieldKey(role, record, f.id)] || defaults[f.id] || '';
   return <>
     {groups.map(g => (
@@ -393,9 +407,9 @@ function SchedulePreview({ merge }: { merge: ScheduleMerge }) {
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    scheduleText(merge.variant, merge.values, merge.supportingRecords).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
+    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
     return () => { live = false; };
-  }, [merge.variant, JSON.stringify(merge.values)]);
+  }, [merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.structureDetails)]);
   if (error) return <p style={{ color: C.gold, fontSize: 12 }}>{error}</p>;
   if (!text) return <p style={{ color: C.mutedSoft, fontSize: 12 }}>Loading the schedule paragraph…</p>;
   return <div style={{ fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap' }}>{text}</div>;

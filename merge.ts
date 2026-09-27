@@ -28,6 +28,17 @@ export function mergeValues(state: AppState): Record<string, string> {
   // This is a renderer-only value: the supplied template has no placeholder
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
   out['Near / Adjacent'] = f.nearAdjacent || '';
+  const houseRows = state.structureDetailsBySchedule.primary?.rows || [];
+  const firstStructure = houseRows.find(row => row.structureType);
+  out['Nature of House'] = firstStructure?.structureType === 'Other / Custom Structure'
+    ? firstStructure.customStructureType || '' : firstStructure?.structureType || '';
+  out['Roof Material'] = f.roofMaterial || '';
+  out['Construction Description'] = f.constructionDescription || '';
+  const ages = houseRows.map(row => row.buildingAge).filter(value => value !== '').map(Number).filter(Number.isFinite);
+  out['Age of House'] = ages.length ? String(Math.max(...ages)) : '';
+  out['Floors'] = state.structureDetailsBySchedule.primary?.totalFloors || '';
+  const areas = houseRows.map(row => row.builtUpAreaSqFt).filter(value => value !== '').map(Number).filter(Number.isFinite);
+  out['Plinth Area'] = areas.length ? areas.reduce((sum, area) => sum + area, 0).toLocaleString('en-IN') : '';
 
   // Derived values.
   const squareYards = Number(String(f.extentSqYards || '').replace(/,/g, ''));
@@ -87,13 +98,21 @@ export function mergeValues(state: AppState): Record<string, string> {
   return out;
 }
 
+/** Format an execution month while reserving the day for handwriting. */
+export function executionMonthDate(value: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+  // Keep a marker through paragraph whitespace cleanup; docx.ts expands it to
+  // the four literal spaces the drafter needs for the handwritten day.
+  return match ? `\uE000-${match[2]}-${match[1]}` : '';
+}
+
 /**
  * The template writes the opening recital as a fill-in-by-hand line. The app
  * collects the current deed date, but deliberately leaves the template's
  * existing place text untouched.
  */
 export function rewritesFor(state: AppState): Rewrite[] {
-  const date = deedDate(state.form.executionDate);
+  const date = executionMonthDate(state.form.executionDate || '');
   const rewrites: Rewrite[] = [{
     find: /made and executed on\s+[^;]*?(?=\s+at\s+)/,
     replace: date ? 'made and executed on ' + date : 'made and executed',
@@ -203,6 +222,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       unit: record.unit,
       form: { ...propertyForm(state, record.values), ...blankTitleFields },
       additionalSchedules: [],
+      structureDetailsBySchedule: { primary: record.structureDetails || { totalFloors: '', rows: [] } },
     };
     const values = mergeValues(scheduleState);
     const titleValues = { ...values };
@@ -214,11 +234,6 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       if (titleRecord.values.linkOption === 'linkDoc' || (!titleRecord.values.linkOption && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key]))) {
         registeredTitleLinks.push(mapped);
       }
-    }
-    const extent = Number(String(record.values.extentSqYards || '').replace(/,/g, ''));
-    const rate = Number(record.values.govtRate);
-    if (record.values.extentSqYards && record.values.govtRate && !Number.isNaN(extent) && !Number.isNaN(rate)) {
-      values['Market of Value Rs./-'] = (Math.round(extent * rate) + (Number(record.values.structValue) || 0)).toLocaleString('en-IN');
     }
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)

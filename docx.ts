@@ -18,7 +18,6 @@ import type { StructureDetails } from './fields';
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
 const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
-const REMOVED_STRUCTURE_PLACEHOLDERS = new Set(['nature of house', 'nature of roof', 'floors', 'age of house', 'plinth area']);
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
 export type TemplateValidationResult = {
@@ -444,7 +443,7 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
   let changed = false;
   const names = [...new Set((plainText(p).match(/<([^<>]{2,60}?)>/g) || [])
     .map(tag => tag.slice(1, -1).trim())
-    .filter(name => !STRUCTURAL_TAGS.has(norm(name)) && !REMOVED_STRUCTURE_PLACEHOLDERS.has(norm(name)) && !values.get(norm(name))))];
+    .filter(name => !STRUCTURAL_TAGS.has(norm(name)) && !values.get(norm(name))))];
   for (const name of names) {
     missing.add(name);
     // Templates commonly put cosmetic spaces inside angle brackets
@@ -499,7 +498,7 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   // This placeholder is reused by the original template for different concepts.
   if (/WHEREAS[\s\S]*agreed consideration amount/i.test(plainText(p))) {
     const hasDedicatedWordsField = /<\s*Consideration in words\s*>/i.test(plainText(p));
-    p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => hasDedicatedWordsField ? '<Sale Consideration>' : '<Sale Consideration> (<Sale Consideration Words>)');
+    p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => hasDedicatedWordsField ? '<Sale Consideration>' : '<Sale Consideration> <Sale Consideration Words>');
   } else if (/sale consideration|consideration value/i.test(plainText(p))) {
     p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>');
   }
@@ -511,19 +510,17 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Tax Paid Date>');
     p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
   }
-  // The old one-line Annexure fields are superseded by the repeatable table.
-  if (/<\s*(?:Nature of House|Nature Of House|Nature of roof|Floors|Age of House|Plinth Area)\s*>/i.test(plainText(p))) return '';
+  // Amounts written in words are consistently parenthesized throughout the deed.
+  p = replaceRunText(p, /<\s*(Consideration in words|Sale Consideration Words)\s*>/gi, match => `(${match[0]})`);
   for (const rw of rewrites.filter(rw => !rw.records)) {
     p = replaceRunText(p, rw.find, () => rw.replace);
   }
   p = removeEmptyFields(p, values, missing);
-  return replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
+  p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
-    // Annexure I-A now renders repeatable rows; blank the template's retired
-    // scalar structure placeholders without reporting false missing facts.
-    if (REMOVED_STRUCTURE_PLACEHOLDERS.has(norm(name))) return '';
     return values.get(norm(name)) || '';
   });
+  return replaceRunText(p, /\uE000/g, () => '    ');
 }
 
 function markConsiderationRows(xml: string): string {
@@ -611,6 +608,7 @@ export async function scheduleText(
   variant: string,
   values: Record<string, string>,
   supportingRecords: string[] = [],
+  structureDetails?: StructureDetails,
 ): Promise<string> {
   const bin = await loadSaleDeedTemplate();
   const entries = await readZip(bin);
@@ -645,7 +643,7 @@ export async function scheduleText(
   const missing = new Set<string>();
 
   const selected = markConsiderationRows(children.slice(start, stop).map(c => body.slice(c.start, c.end)).join(''));
-  const withEvidence = selected;
+  const withEvidence = variant === 'IF HOUSE' ? prepareHouseBlock(selected, values, structureDetails) : selected;
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
     .map(paragraph => plainText(fillParagraph(paragraph, values_, missing, [])).trim())
     .filter(Boolean)
@@ -672,37 +670,71 @@ export type ScheduleMerge = {
   structureDetails?: StructureDetails;
 };
 
-const tableCell = (text: string, bold = false) => `<w:tc><w:tcPr><w:tcW w:w="1800" w:type="dxa"/></w:tcPr><w:p><w:r>${bold ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t>${escapeXml(text)}</w:t></w:r></w:p></w:tc>`;
-const annexureStructureTable = (details?: StructureDetails) => {
-  if (!details?.rows.length) return '';
-  const displayType = (row: StructureDetails['rows'][number]) => row.structureType === 'Other / Custom Structure'
-    ? row.customStructureType || row.structureType : row.structureType;
-  const displayFloor = (floor: string) => {
-    const match = floor.match(/^floor(?:\s+no\.)?\s+(\d+)$/i);
-    if (!match) return floor;
-    const words = ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth', 'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth', 'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'];
-    const number = Number(match[1]);
-    return number <= 20 ? `${words[number]} Floor` : floor;
+/** Fill the source house layout without adding a second table after Annexure I-A. */
+function prepareHouseBlock(block: string, values: Record<string, string>, details?: StructureDetails): string {
+  const rows = details?.rows || [];
+  const floorName = (name: string) => {
+    const number = name.match(/^Floor(?: No\.)?\s+(\d+)$/i);
+    if (!number) return /^Ground$/i.test(name) ? 'Ground Floor' : name;
+    const ordinal = ['','First','Second','Third','Fourth','Fifth','Sixth','Seventh','Eighth','Ninth','Tenth'];
+    return Number(number[1]) < ordinal.length ? `${ordinal[Number(number[1])]} Floor` : name;
   };
-  const header = ['Total Floors', 'Floor No.', 'Structure Type', 'Stage', 'Building Age', 'Built-up Area (Sq. Ft.)'].map(cell => tableCell(cell, true)).join('');
-  const rows = details.rows.map(row => `<w:tr>${[
-    details.totalFloors, displayFloor(row.floorNo), displayType(row), row.stage, row.buildingAge, row.builtUpAreaSqFt,
-  ].map(cell => tableCell(cell)).join('')}</w:tr>`).join('');
-  return `<w:p><w:pPr><w:spacing w:before="160" w:after="80"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>ANNEXURE I-A — STRUCTURE DETAILS</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders></w:tblPr><w:tr>${header}</w:tr>${rows}</w:tbl>`;
-};
-
-/** Insert after an explicit template marker when supplied, otherwise append to the schedule block. */
-const insertAnnexureStructureTable = (block: string, details?: StructureDetails) => {
-  const table = annexureStructureTable(details);
-  if (!table) return block;
-  let found = false;
-  const anchored = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
-    if (plainText(paragraph).trim() !== '<ANNEXURE I-A STRUCTURE DETAILS>') return paragraph;
-    found = true;
-    return table;
+  const structureName = (row: StructureDetails['rows'][number]) =>
+    row.structureType === 'Other / Custom Structure' ? row.customStructureType || row.structureType : row.structureType;
+  const setFloorParagraphIndent = (paragraph: string, hanging: boolean) => {
+    const indentation = `<w:ind w:left="480"${hanging ? ' w:hanging="480"' : ''}/>`;
+    const tabs = hanging ? '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>' : '';
+    return paragraph.replace(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/, pPr => {
+      let next = pPr.replace(/<w:(?:ind|tabs)(?:\s[^>]*)?\/>|<w:tabs(?:\s[^>]*)?>[\s\S]*?<\/w:tabs>/g, '');
+      const additions = tabs + indentation;
+      return /<w:rPr(?:\s[^>]*)?>/.test(next)
+        ? next.replace(/<w:rPr(?:\s[^>]*)?>/, additions + '$&')
+        : next.replace('</w:pPr>', additions + '</w:pPr>');
+    });
+  };
+  return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
+    const text = plainText(original);
+    let paragraph = original;
+    if (text.includes('<Nature of House>') && /roof house/i.test(text)) {
+      paragraph = replaceRunText(paragraph, /<Nature of House>\s+roof house/gi,
+        () => values['Nature of House'] ? '<Nature of House>' : 'house');
+    }
+    if (/^\s*All that the\b/i.test(text) && /<Plinth Area>/i.test(text)) {
+      const floorSummary = rows.filter(row => row.floorNo).map(row => {
+        const parts = [structureName(row), row.builtUpAreaSqFt ? `${row.builtUpAreaSqFt} square feet` : ''].filter(Boolean);
+        return `${floorName(row.floorNo)}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+      }).join(', ');
+      paragraph = replaceRunText(paragraph,
+        /,?\s*having a plinth area of <Plinth Area> square feets consisting of <Floors> Floor\/s/i,
+        () => floorSummary ? `, consisting of ${floorSummary}` : '');
+    }
+    if (/^\s*:\s*<Nature Of House>\s*$/i.test(text)) {
+      return replaceRunText(paragraph, /<Nature Of House>/i, () => '<Roof Material>');
+    }
+    if (/^\s*:\s*Framed with walls only\s*$/i.test(text)) {
+      return replaceRunText(paragraph, /Framed with walls only/i, () => '<Construction Description>');
+    }
+    if (/<Plinth Area>\s*sq\.fts/i.test(text)) {
+      if (!rows.length) return replaceRunText(paragraph, /<Plinth Area>\s*sq\.fts/i, () => '');
+      return rows.map((row, index) => {
+        let floorParagraph = replaceRunText(paragraph, /<Plinth Area>\s*sq\.fts/i, () => {
+          const particulars = [floorName(row.floorNo), structureName(row), row.stage,
+            row.buildingAge !== '' ? `${row.buildingAge} years` : '',
+            row.builtUpAreaSqFt !== '' ? `${row.builtUpAreaSqFt} sq.fts` : ''].filter(Boolean);
+          return particulars.join(' — ');
+        });
+        if (index === 0) {
+          floorParagraph = replaceRunText(floorParagraph, /^:\s*/, () => ':');
+          floorParagraph = floorParagraph.replace(/(<w:t(?:\s[^>]*)?>:<\/w:t>)/, '$1<w:tab/>');
+        } else {
+          floorParagraph = replaceRunText(floorParagraph, /^:\s*/, () => '');
+        }
+        return setFloorParagraphIndent(floorParagraph, index === 0);
+      }).join('');
+    }
+    return paragraph;
   });
-  return found ? anchored : anchored + table;
-};
+}
 
 /**
  * @param values   placeholder name -> value, keyed exactly as the template writes it
@@ -791,9 +823,9 @@ export async function fillSaleDeed(
       const scheduleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.values)) scheduleValues.set(norm(key), value ?? '');
       const landmarkRelation = scheduleValues.get(norm('Near / Adjacent'))?.toLowerCase();
-      let block = children.slice(start, stop).map(c => {
-        const chunk = body.slice(c.start, c.end);
-        return chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
+      let block = children.slice(start, stop).map(c => body.slice(c.start, c.end)).join('');
+      if (schedule.variant === 'IF HOUSE') block = prepareHouseBlock(block, schedule.values, schedule.structureDetails);
+      block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
           fillParagraph(
             landmarkRelation
               ? replaceRunText(p, /near\/adjacent(?=\s+H\.No\.)/gi, () => landmarkRelation)
@@ -801,8 +833,6 @@ export async function fillSaleDeed(
             scheduleValues, missing, [],
           )
         );
-      }).join('');
-      block = insertAnnexureStructureTable(block, schedule.variant === 'IF HOUSE' ? schedule.structureDetails : undefined);
       // Supporting evidence fills existing fields; the template wording is unchanged.
       if (selected.length > 1) {
         block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${scheduleIndex + 1}`);

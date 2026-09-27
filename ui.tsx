@@ -96,7 +96,11 @@ export function Input({
   // A derived field can receive an explicit display value from a parent, or
   // its already-calculated value from the bound form. This keeps read-only
   // calculations visible in record-scoped property sections.
-  const shown = readOnly ? (derivedValue ?? value) : value;
+  const rawShown = readOnly ? (derivedValue ?? value) : value;
+  // A saved execution date may predate the month-only control and still include
+  // a day. Display its year/month in the native month picker without losing it
+  // until the drafter changes the field.
+  const shown = field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(rawShown) ? rawShown.slice(0, 7) : rawShown;
 
   return (
     <label style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
@@ -145,7 +149,7 @@ export function Input({
         />
       ) : (
         <input
-          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'tel' ? 'tel' : 'text'}
+          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
           value={shown}
           readOnly={readOnly}
           onChange={e => onChange(e.target.value)}

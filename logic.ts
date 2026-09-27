@@ -211,7 +211,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'ulbAuthority'];
 const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
-const STRUCTURE_IDS = ['bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
+const STRUCTURE_IDS = ['bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
 
 const SQ_YARD: Record<string, number> = {
@@ -302,7 +302,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     );
     if (!valid) missing.push({
       id: `structureDetails-${step}-${label}`, label,
-      reason: 'Annexure I-A requires a complete Structure Details table within the declared total floors.',
+      reason: 'Annexure I-A requires complete floor details within the declared total floors.',
       source: 'Property-tax record, plan, house document or manual entry.', step,
     });
   };
@@ -343,7 +343,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   }
   if (f.nearHNo) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   if (['Residential', 'Commercial', 'Flat'].includes(state.category)) {
-    ['bearingHNo', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
+    ['bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
     addStructureDetails(state.structureDetailsBySchedule.primary, 'Structure Details', 3);
   }
@@ -377,7 +377,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo', 'nearAdjacent');
     if (record.values.nearHNo) ids.push('nearAdjacent');
     if (['Residential', 'Commercial', 'Flat'].includes(record.category)) {
-      ids.push('bearingHNo', 'bltNo', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
+      ids.push('bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
       addStructureDetails(state.structureDetailsBySchedule[record.id], `Schedule ${index + 2}: Structure Details`, 3);
     }
     ids.forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'Every property schedule must be complete before combined registration.', 'Link deed, property record, plan or manual entry.', 3));

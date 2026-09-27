@@ -27,7 +27,8 @@ describe('field mapping', () => {
     const link = GROUPS.find(group => group.step === 1)?.fields.find(field => field.id === 'linkDocDate');
     const sale = GROUPS.find(group => group.step === 2)?.fields.find(field => field.id === 'executionDate');
     expect(link?.label).toBe('Link deed execution date');
-    expect(sale?.label).toBe('Sale deed execution date');
+    expect(sale?.label).toBe('Sale deed execution month and year');
+    expect(sale?.type).toBe('month');
   });
 
   it('shows the V.L.T. number in vacant plot and open-place property schedules', () => {
@@ -58,13 +59,13 @@ describe('field mapping', () => {
     expect(values['Sub-Registrar']).toBe('Sircilla');
   });
 
-  it('does not rewrite the removed place field', () => {
+  it('leaves the execution day blank for handwriting and accepts saved full dates', () => {
     const state = {
       ...initialState,
       form: { ...initialState.form, executionDate: '2026-01-02' },
     };
     const rewrite = rewritesFor(state)[0];
-    expect(rewrite.replace).toBe('made and executed on 02-01-2026');
+    expect(rewrite.replace).toBe('made and executed on \uE000-01-2026');
     expect(rewrite.replace).not.toContain(' at ');
   });
 
