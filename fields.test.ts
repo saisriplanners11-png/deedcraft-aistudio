@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_FIELDS, GROUPS, newStructureDetail, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS } from './fields';
-import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, withDerived } from './logic';
+import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, vendeeShareCents, withDerived, type AppState } from './logic';
 import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
 
 describe('field mapping', () => {
+  it('requires each schedule’s vendee percentages to total 100 with at most two decimals', () => {
+    expect(vendeeShareCents('33.33')).toBe(3333);
+    expect(vendeeShareCents('33.333')).toBeNull();
+    expect(vendeeShareCents('0')).toBeNull();
+    const base = {
+      ...initialState,
+      additionalClaimants: [{ id: 'buyer-2', docNames: [], values: { claimantName: 'Second Buyer' } }],
+      additionalSchedules: [{ id: 'second', docNames: [], category: 'Vacant Plot', unit: 'Sq. Yards', values: {} }],
+      vendeeSharesBySchedule: { primary: { primary: '50', 'buyer-2': '50' }, second: { primary: '40', 'buyer-2': '50' } },
+    };
+    const shareIssues = (state: AppState) => generationBlockers(state).filter(issue => issue.id.startsWith('vendee-share'));
+    expect(shareIssues(base).map(issue => issue.id)).toEqual(['vendee-share-total-second']);
+    expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40', 'buyer-2': '60' } } })).toEqual([]);
+    expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40' } } }).map(issue => issue.id))
+      .toContain('vendee-share-second-buyer-2');
+  });
   it('removes Telugu party names and place of execution', () => {
     const ids = ALL_FIELDS.map(field => field.id);
     expect(ids).not.toContain('executantNameTelugu');

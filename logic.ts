@@ -52,6 +52,17 @@ export type SupportingRecord = {
   values: Record<string, string>;
 };
 
+/** Manually assigned vendee ownership percentages, by schedule and party id. */
+export type VendeeSharesBySchedule = Record<string, Record<string, string>>;
+
+/** Percentages are stored to two decimal places so totals can be exact. */
+export function vendeeShareCents(value: string): number | null {
+  const clean = value.trim();
+  if (!/^(?:0|[1-9]\d{0,2})(?:\.\d{1,2})?$/.test(clean)) return null;
+  const cents = Math.round(Number(clean) * 100);
+  return cents > 0 && cents <= 10000 ? cents : null;
+}
+
 export type AppState = {
   /** Explicitly unresolved fields must never be silently reconstructed by a fallback. */
   unresolvedFields?: string[];
@@ -79,7 +90,9 @@ export type AppState = {
   linkRecordsBySchedule: Record<string, ValueRecord[]>;
   additionalExecutants: ValueRecord[];
   additionalClaimants: ValueRecord[];
+  primaryClaimantId?: string;
   additionalSchedules: ScheduleRecord[];
+  vendeeSharesBySchedule?: VendeeSharesBySchedule;
   /** Uploaded evidence recited only in the property schedule it supports. */
   supportingRecords: SupportingRecord[];
   /** Repeatable Annexure I-A structure rows, keyed by property schedule id. */
@@ -108,6 +121,7 @@ export const initialState: AppState = {
   additionalExecutants: [],
   additionalClaimants: [],
   additionalSchedules: [],
+  vendeeSharesBySchedule: {},
   supportingRecords: [],
   structureDetailsBySchedule: {},
 };
@@ -372,6 +386,31 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       if (Number(f.consid) >= 5000000) addRecordField(record, `${side}Pan`, `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 2}: PAN`, 'PAN is required for consideration of ₹50 lakh or more.', 'PAN card or manual entry.', side === 'executant' ? 6 : 7);
     });
   }
+  const vendees = partyRecords(state, 'claimant');
+  if (vendees.length > 1) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
+    let totalCents = 0;
+    let allValid = true;
+    vendees.forEach((vendee, index) => {
+      const partyId = index === 0 ? state.primaryClaimantId || 'primary' : vendee.id;
+      const value = state.vendeeSharesBySchedule?.[schedule.id]?.[partyId] || '';
+      const cents = vendeeShareCents(value);
+      if (cents === null) {
+        allValid = false;
+        missing.push({
+          id: `vendee-share-${schedule.id}-${partyId}`,
+          label: `Schedule ${scheduleIndex + 1}: Vendee ${index + 1} undivided share`,
+          reason: value ? 'Enter a percentage greater than 0 and no more than 100, with at most two decimal places.' : 'Enter this vendee’s undivided ownership percentage.',
+          source: 'Agreed ownership allocation entered by the drafter.', step: 7,
+        });
+      } else totalCents += cents;
+    });
+    if (allValid && totalCents !== 10000) missing.push({
+      id: `vendee-share-total-${schedule.id}`,
+      label: `Schedule ${scheduleIndex + 1}: total vendee shares`,
+      reason: `Undivided shares must total 100%; currently ${(totalCents / 100).toFixed(2).replace(/\.00$/, '')}%.`,
+      source: 'Agreed ownership allocation entered by the drafter.', step: 7,
+    });
+  });
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo', 'nearAdjacent');

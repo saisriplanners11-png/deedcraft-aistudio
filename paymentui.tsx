@@ -96,7 +96,7 @@ function ModeTabs({ mode, onPick }: { mode: PayMode; onPick: (m: PayMode) => voi
             style={css(
               `padding:7px 13px;border:0;border-right:1px solid ${C.goldLight};cursor:pointer;` +
               `font-size:11px;font-weight:700;letter-spacing:.04em;` +
-              (on ? `background:${C.ink};color:#F6F2E9` : `background:transparent;color:${C.body}`)
+              (on ? `background:${C.ink};color:${C.ground}` : `background:transparent;color:${C.body}`)
             )}
           >
             {m.label}
@@ -200,7 +200,7 @@ export function PaymentCard({
 
       {/* header: which payment, how it was made, and whether it is an advance */}
       <div style={css(`display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid ${C.rule};background:${C.ground}`)}>
-        <span style={css(`flex:none;width:22px;height:22px;background:${C.ink};color:#F6F2E9;font-family:${C.mono};font-size:11px;display:flex;align-items:center;justify-content:center`)}>
+        <span style={css(`flex:none;width:22px;height:22px;background:${C.ink};color:${C.ground};font-family:${C.mono};font-size:11px;display:flex;align-items:center;justify-content:center`)}>
           {index + 1}
         </span>
         <ModeTabs mode={payment.mode} onPick={m => onPatch({ mode: m, filled: [] })} />

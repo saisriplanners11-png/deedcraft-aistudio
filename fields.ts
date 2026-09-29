@@ -330,8 +330,8 @@ export const LINK_OPTIONS: LinkOption[] = [
     note: 'Municipal house-tax record. Its details are recited in the deed when entered.',
     fields: [
       { id: 'houseTaxReceiptNo', label: 'House tax receipt number', ph: 'House Tax Receipt' },
-      { id: 'assessmentPtinNo', label: 'Vacant land tax / assessment number', ph: ['V.L.T No.', 'V.L.T. No.'],
-        hint: 'Copy only the value explicitly labelled V.L.T., vacant-land tax or assessment number.' },
+      { id: 'assessmentPtinNo', label: 'Assessment / PTIN number', ph: ['V.L.T No.', 'V.L.T. No.'],
+        hint: 'Copy only the property identifier explicitly labelled assessment number, PTIN or V.L.T.; never a receipt or demand number.' },
       { id: 'localBodyName', label: 'Local body', ph: 'Local Body Name', hint: 'Municipality / Gram Panchayat / GHMC circle' },
       { id: 'taxPaidDate', label: 'Tax paid date', ph: 'Tax Paid Date', type: 'date' },
     ],

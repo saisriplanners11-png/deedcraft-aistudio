@@ -1,5 +1,5 @@
 import { ALL_FIELDS, EMPTY_FORM, newStructureDetails, type StructureDetails } from './fields';
-import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord } from './logic';
+import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
@@ -44,13 +44,15 @@ export type Draft = {
   linkPropertyRecords: Record<string, string>;
   /** Explicit user-entered Annexure I-A rows, isolated per property schedule. */
   structureDetailsBySchedule: Record<string, StructureDetails>;
+  /** Optional for drafts saved before vendee allocations were introduced. */
+  vendeeSharesBySchedule?: VendeeSharesBySchedule;
   /** Instrument identity is part of the draft snapshot and cannot be inferred from its fields. */
   instrumentId: InstrumentId;
   variantId: string;
   definitionVersion: string;
 };
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
+export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'reset' }
   | { type: 'step'; step: number }
@@ -63,6 +65,8 @@ export type Action =
   | { type: 'active-property'; id: string }
   | { type: 'link-property'; record: string; propertyId: string }
   | { type: 'structure-details'; propertyId: string; value: StructureDetails }
+  | { type: 'vendee-share'; scheduleId: string; claimantId: string; value: string }
+  | { type: 'remove-party'; role: 'executant' | 'claimant'; record: string }
   | { type: 'instrument'; instrumentId: InstrumentId; variantId?: string }
   | { type: 'manual'; key: string; value: string }
   | { type: 'choose'; key: string; candidateId: string }
@@ -81,6 +85,22 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'active-property') next = { ...draft, activePropertyId: action.id };
   if (action.type === 'link-property') next = { ...draft, linkPropertyRecords: { ...draft.linkPropertyRecords, [action.record]: action.propertyId } };
   if (action.type === 'structure-details') next = { ...draft, structureDetailsBySchedule: { ...draft.structureDetailsBySchedule, [action.propertyId]: action.value } };
+  if (action.type === 'vendee-share') next = { ...draft, vendeeSharesBySchedule: {
+    ...(draft.vendeeSharesBySchedule || {}),
+    [action.scheduleId]: { ...(draft.vendeeSharesBySchedule?.[action.scheduleId] || {}), [action.claimantId]: action.value },
+  } };
+  if (action.type === 'remove-party') {
+    const prefix = `${action.role}|${action.record}|`;
+    const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith(prefix)));
+    const choices = Object.fromEntries(Object.entries(draft.choices).filter(([key]) => !key.startsWith(prefix)));
+    const shares = Object.fromEntries(Object.entries(draft.vendeeSharesBySchedule || {}).map(([scheduleId, parties]) => {
+      const nextParties = { ...parties };
+      if (action.role === 'claimant') delete nextParties[action.record];
+      return [scheduleId, nextParties];
+    }));
+    next = { ...draft, manual, choices, vendeeSharesBySchedule: shares,
+      sources: draft.sources.filter(source => source.assignment?.role !== action.role || source.assignment.record !== action.record) };
+  }
   if (action.type === 'instrument') {
     const definition = definitionFor(action.instrumentId);
     next = { ...draft, instrumentId: action.instrumentId, variantId: action.variantId || definition.variants[0].id, definitionVersion: definition.version };
@@ -247,6 +267,8 @@ export function appStateFor(draft: Draft): AppState {
   const properties = propertyIds.map(id => byPropertyId.get(id) || ({ id, values: {}, docNames: [] }));
   const transaction = forRole('property').find(r => r.id === 'transaction');
   const sellers = forRole('executant'); const buyers = forRole('claimant'); const links = forRole('link');
+  const primarySeller = sellers.find(record => record.id === 'primary') || sellers[0];
+  const primaryBuyer = buyers.find(record => record.id === 'primary') || buyers[0];
   const linkScheduleId = (record: ValueRecord) => draft.linkPropertyRecords[record.id]
     || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === record.id)?.assignment?.propertyRecord
     || 'primary';
@@ -256,7 +278,7 @@ export function appStateFor(draft: Draft): AppState {
   const supportingLinks = links.filter(r=>!registeredLinks.includes(r));
   const primaryLinks = linkRecordsBySchedule.primary || [];
   const primaryRegisteredLink = primaryLinks.find(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
-  const form = { ...EMPTY_FORM, ...properties[0]?.values, ...sellers[0]?.values, ...buyers[0]?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
+  const form = { ...EMPTY_FORM, ...properties[0]?.values, ...primarySeller?.values, ...primaryBuyer?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
   const paymentRecords = forRole('payment');
   const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
@@ -285,12 +307,14 @@ export function appStateFor(draft: Draft): AppState {
     category: properties[0]?.values.category || '', unit: properties[0]?.values.unit || '',
     form: derived, payments, docs: [], fieldSource: {}, fieldEvidence: {}, conflicts: {}, unresolvedFields,
     linkRecordsBySchedule,
-    additionalExecutants: sellers.slice(1).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
-    additionalClaimants: buyers.slice(1).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
+    additionalExecutants: sellers.filter(r => r !== primarySeller).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
+    additionalClaimants: buyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
+    primaryClaimantId: primaryBuyer?.id || 'primary',
     additionalLinkDocuments: registeredLinks.slice(1),
     additionalSchedules: properties.slice(1).map(r => ({ ...r, category: r.values.category || '', unit: r.values.unit || '' })),
     supportingRecords: supportingLinks.map(r=>({id:r.id,scheduleId:draft.sources.find(s=>s.assignment?.record===r.id)?.assignment?.propertyRecord || 'primary',docName:draft.sources.find(s=>s.assignment?.record===r.id)?.name || '',values:r.values})),
     structureDetailsBySchedule: Object.fromEntries(propertyIds.map(id => [id, draft.structureDetailsBySchedule[id] || newStructureDetails()])),
+    vendeeSharesBySchedule: draft.vendeeSharesBySchedule || {},
   };
 }
 

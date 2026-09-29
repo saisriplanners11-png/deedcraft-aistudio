@@ -232,6 +232,74 @@ describe('sale deed template merge', () => {
     expect(text.indexOf('PERMIT-HOUSE')).toBeGreaterThan(secondFlow);
   });
 
+  it('uses a house-tax receipt without leaving an empty registered-deed recital', async () => {
+    const state = {
+      ...initialState, category: 'Residential',
+      linkRecordsBySchedule: { primary: [{ id: 'tax', docNames: [], values: {
+        linkOption: 'houseTax', houseTaxReceiptNo: 'TAX-10817', assessmentPtinNo: 'PTIN-42',
+        taxPaidDate: '2026-02-03', localBodyName: 'Sircilla Municipality',
+      } }] },
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).not.toContain('Registered Deed:');
+    expect(text).toContain('Property Tax:');
+    expect(text).toContain('TAX-10817');
+    expect(text).toContain('Sircilla Municipality');
+    expect(text).toContain('Tax/Assessment & Identification Particulars:');
+    expect(text).toContain('Assessment No.PTIN-42');
+  });
+
+  it('includes only supported tax recitals and never substitutes a receipt or demand number for PTIN', async () => {
+    const state = {
+      ...initialState, category: 'Residential',
+      linkRecordsBySchedule: { primary: [{ id: 'tax', docNames: [], values: {
+        linkOption: 'houseTax', houseTaxReceiptNo: 'RECEIPT-7', demandNo: 'DEMAND-8',
+      } }] },
+    };
+    const incomplete = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const incompleteText = await docxToText(new Uint8Array(await incomplete.blob.arrayBuffer()));
+    expect(incompleteText).not.toContain('Registered Deed:');
+    expect(incompleteText).not.toContain('Property Tax:');
+    expect(incompleteText).not.toContain('Tax/Assessment & Identification Particulars:');
+    const assessmentState = { ...state, linkRecordsBySchedule: { primary: [{ id: 'tax', docNames: [], values: {
+      linkOption: 'houseTax', assessmentPtinNo: 'PTIN-ONLY',
+    } }] } };
+    const assessment = await fillSaleDeed(mergeValues(assessmentState), variantFor(state.category), rewritesFor(state), scheduleMergesFor(assessmentState));
+    const assessmentText = await docxToText(new Uint8Array(await assessment.blob.arrayBuffer()));
+    expect(assessmentText).toContain('Assessment No.PTIN-ONLY');
+    expect(assessmentText).not.toContain('Property Tax:');
+    const splitReceiptState = { ...state, linkRecordsBySchedule: { primary: [
+      { id: 'receipt', docNames: [], values: { linkOption: 'houseTax', houseTaxReceiptNo: 'RECEIPT-7' } },
+      { id: 'date', docNames: [], values: { linkOption: 'houseTax', taxPaidDate: '2026-02-03', localBodyName: 'Another Municipality' } },
+    ] } };
+    const splitReceipt = await fillSaleDeed(mergeValues(splitReceiptState), variantFor(state.category), rewritesFor(state), scheduleMergesFor(splitReceiptState));
+    const splitText = await docxToText(new Uint8Array(await splitReceipt.blob.arrayBuffer()));
+    expect(splitText).not.toContain('Property Tax:');
+  });
+
+  it('keeps title and tax recitals within their own property schedule', async () => {
+    const state = {
+      ...initialState, category: 'Residential',
+      additionalSchedules: [{ id: 'second', docNames: [], category: 'Residential', unit: 'Sq. Yards', values: {} }],
+      linkRecordsBySchedule: {
+        primary: [{ id: 'tax-1', docNames: [], values: { linkOption: 'houseTax', houseTaxReceiptNo: 'RECEIPT-ONE', assessmentPtinNo: 'PTIN-ONE', taxPaidDate: '2026-02-03', localBodyName: 'First Municipality' } }],
+        second: [{ id: 'link-2', docNames: [], values: { linkOption: 'linkDoc', linkDocType: 'Gift Deed', linkDocNo: 'DOC-TWO', linkDocDate: '2020-01-02' } }],
+      },
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const first = text.slice(text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 1'), text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 2'));
+    const second = text.slice(text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 2'), text.indexOf('2. CONSIDERATION'));
+    expect(first).toContain('RECEIPT-ONE');
+    expect(first).toContain('PTIN-ONE');
+    expect(first).not.toContain('Registered Deed:');
+    expect(second).toContain('DOC-TWO');
+    expect(second).toContain('Registered Deed:');
+    expect(second).not.toContain('RECEIPT-ONE');
+    expect(second).not.toContain('PTIN-ONE');
+  });
+
   it('does not borrow missing secondary party details from the first party', async () => {
     const state={...initialState,form:{...initialState.form,executantName:'First',executantMobile:'9876543210'},additionalExecutants:[{id:'second',docNames:[],values:{executantName:'Second'}}]};
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
@@ -380,6 +448,55 @@ describe('sale deed template merge', () => {
     expect(text.match(/DECLARATION/g)).toHaveLength(1);
   });
 
+  it('numbers multiple parties at the opening and signatures and isolates vendee shares by schedule', async () => {
+    const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
+    form.executantName = 'Vendor One';
+    form.claimantName = 'Purchaser One';
+    const state = {
+      ...initialState, deedType: 'Sale', category: 'Vacant Plot', form,
+      additionalExecutants: [{ id: 'vendor-2', docNames: [], values: { ...form, executantName: 'Vendor Two' } }],
+      additionalClaimants: [{ id: 'buyer-2', docNames: [], values: { ...form, claimantName: 'Purchaser Two' } }],
+      additionalSchedules: [{ id: 'schedule-2', docNames: [], category: 'Open Place', unit: 'Sq. Yards', values: { ...form, plotNo: '2' } }],
+      vendeeSharesBySchedule: { primary: { primary: '60', 'buyer-2': '40' }, 'schedule-2': { primary: '25', 'buyer-2': '75' } },
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
+    expect(opening).toContain('1. VENDOR ONE');
+    expect(opening).toContain('2. VENDOR TWO');
+    expect(opening).toContain('1. PURCHASER ONE');
+    expect(opening).toContain('2. PURCHASER TWO');
+    const first = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 1'), text.indexOf('SCHEDULE OF PROPERTY - 2'));
+    const second = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 2'), text.indexOf('DECLARATION'));
+    expect(first).toContain('(1) PURCHASER ONE — 60%; (2) PURCHASER TWO — 40%');
+    expect(second).toContain('(1) PURCHASER ONE — 25%; (2) PURCHASER TWO — 75%');
+    expect(first).not.toContain('PURCHASER ONE — 25%');
+    expect(second).not.toContain('PURCHASER ONE — 60%');
+    const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
+    expect(signatures).toMatch(/1\.[^\n]*VENDOR ONE[^\n]*\n1\.[^\n]*PURCHASER ONE/);
+    expect(signatures).toMatch(/2\.[^\n]*VENDOR TWO[^\n]*\n2\.[^\n]*PURCHASER TWO/);
+  });
+
+  it('keeps a single vendor unnumbered and shows blank shares in an incomplete multi-vendee draft', async () => {
+    const state = {
+      ...initialState, deedType: 'Sale', category: 'Vacant Plot',
+      form: { ...initialState.form, executantName: 'Only Vendor', claimantName: 'First Buyer' },
+      additionalClaimants: [{ id: 'buyer-2', docNames: [], values: { claimantName: 'Second Buyer' } }],
+      vendeeSharesBySchedule: { primary: { primary: '70' } },
+    };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
+    expect(opening).toContain('ONLY VENDOR');
+    expect(opening).not.toContain('1. ONLY VENDOR');
+    expect(opening).toContain('1. FIRST BUYER');
+    expect(opening).toContain('2. SECOND BUYER');
+    expect(text).toContain('(1) FIRST BUYER — 70%; (2) SECOND BUYER — ____%');
+    const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
+    expect(signatures).toContain('ONLY VENDOR');
+    expect(signatures).toContain('2. ________________ (SECOND BUYER)');
+  });
+
   it('does not add supporting-record prose to the reference template', async () => {
     const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
     const state = {
@@ -456,8 +573,15 @@ describe('sale deed template merge', () => {
     const xml = new TextDecoder().decode(document.data);
     const houseBlock = xml.slice(xml.indexOf('SCHEDULE OF PROPERTY'), xml.indexOf('DECLARATION'));
     expect(houseBlock.match(/<w:tbl>/g)).toHaveLength(2); // boundaries and the source Annexure I-A
-    expect(houseBlock).toContain('<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs><w:ind w:left="480" w:hanging="480"/>');
-    expect((houseBlock.match(/<w:ind w:left="480"\/>/g) || []).length).toBe(2);
+    const floorParagraphs = (houseBlock.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
+      .filter(paragraph => /(?:Ground|First|Second) Floor —/.test(paragraph));
+    expect(floorParagraphs).toHaveLength(3);
+    const floorProperties = floorParagraphs.map(paragraph => paragraph.match(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/)?.[0]);
+    expect(new Set(floorProperties).size).toBe(1);
+    expect(floorProperties[0]).toContain('<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs><w:ind w:left="480" w:hanging="480"/>');
+    expect(floorParagraphs[0]).toMatch(/<\/w:pPr><w:r><w:t>:<\/w:t><w:tab\/><\/w:r>/);
+    for (const paragraph of floorParagraphs.slice(1))
+      expect(paragraph).toMatch(/<\/w:pPr><w:r><w:tab\/><\/w:r>/);
     const preview = await scheduleText('IF HOUSE', scheduleMergesFor(state)[0].values, [], state.structureDetailsBySchedule.primary);
     expect(preview).toContain('Ground Floor (R.C.C. Building, 700 square feet)');
     expect(preview).toContain('Second Floor — R.C.C. Building — Finished — 2 years — 800 sq.fts');

@@ -2,7 +2,7 @@
 
 import type { Rewrite, ScheduleMerge } from './docx';
 import { ALL_FIELDS, GROUPS, LINK_OPTIONS, SCHEDULE_VARIANT } from './fields';
-import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, words, type AppState, type SupportingRecord } from './logic';
+import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
 /** Values for every placeholder the template names. */
@@ -166,6 +166,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     if (records.length < 2) continue;
     rewrites.push({
       find: new RegExp(side === 'executant' ? '<EXECUTANT NAME>' : '<CLAIMANT NAME>'), replace: '',
+      partyRole: side,
       records: records.map(record => {
         const form = { ...state.form };
         for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = record.values[field.id] || '';
@@ -214,6 +215,7 @@ export function propertyForm(state: AppState, values: Record<string, string>): R
 
 /** One filled template schedule for every property being registered together. */
 export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
+  const vendees = partyRecords(state, 'claimant');
   return scheduleRecords(state).map(record => {
     const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields).map(field => [field.id, '']));
     const scheduleState: AppState = {
@@ -228,17 +230,41 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const titleValues = { ...values };
     const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
     const registeredTitleLinks: Record<string, string>[] = [];
+    const taxRecords = titleLinkRecords.filter(titleRecord => titleRecord.values.linkOption === 'houseTax'
+      || (!titleRecord.values.linkOption && ['houseTaxReceiptNo', 'assessmentPtinNo', 'taxPaidDate', 'localBodyName']
+        .some(key => !!titleRecord.values[key])));
     for (const titleRecord of titleLinkRecords) {
       const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
-      if (titleRecord.values.linkOption === 'linkDoc' || (!titleRecord.values.linkOption && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key]))) {
+      if (['linkDocNo', 'linkDocType', 'linkDocDate'].some(key => !!titleRecord.values[key])) {
         registeredTitleLinks.push(mapped);
       }
+    }
+    // A tax recital must describe one receipt, not combine fields from several
+    // incomplete receipts. The separate assessment identifier may come from a
+    // tax record even when its payment particulars are incomplete.
+    const completeTax = taxRecords.find(({ values: tax }) => tax.houseTaxReceiptNo && tax.taxPaidDate && tax.localBodyName);
+    const taxValues = completeTax
+      ? mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...completeTax.values } }) : undefined;
+    for (const name of ['House Tax Receipt', 'Tax Paid Date', 'Local Body Name']) titleValues[name] = taxValues?.[name] || '';
+    const taxAssessment = taxRecords.find(({ values: tax }) => tax.assessmentPtinNo)?.values.assessmentPtinNo;
+    if (variantFor(record.category) === 'IF HOUSE' && !titleValues['P.T.I.No.'] && taxAssessment) {
+      titleValues['P.T.I.No.'] = taxAssessment;
+      titleValues['P.T.I. No.'] = taxAssessment;
     }
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);
-    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails };
+    const vendeeShares = vendees.length > 1 ? vendees.map((vendee, index) => {
+      const partyId = index === 0 ? state.primaryClaimantId || 'primary' : vendee.id;
+      const cents = vendeeShareCents(state.vendeeSharesBySchedule?.[record.id]?.[partyId] || '');
+      return {
+        partyNumber: index + 1,
+        name: uppercasePartyIdentity('claimantName', vendee.values.claimantName || ''),
+        percentage: cents === null ? '' : String(cents / 100),
+      };
+    }) : undefined;
+    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendeeShares };
   });
 }
 

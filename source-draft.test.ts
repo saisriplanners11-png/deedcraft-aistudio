@@ -36,6 +36,29 @@ describe('source-backed drafts', () => {
     expect(state.structureDetailsBySchedule.primary).toEqual(primary);
     expect(state.structureDetailsBySchedule.second).toEqual(secondary);
   });
+  it('keeps vendee shares by schedule and removes them with a deleted claimant', () => {
+    let draft = newDraft();
+    draft = draftReducer(draft, { type: 'add-property', id: 'second' });
+    draft = draftReducer(draft, { type: 'manual', key: 'claimant|buyer-2|claimantName', value: 'Second Buyer' });
+    draft = draftReducer(draft, { type: 'vendee-share', scheduleId: 'primary', claimantId: 'buyer-2', value: '40' });
+    draft = draftReducer(draft, { type: 'vendee-share', scheduleId: 'second', claimantId: 'buyer-2', value: '75' });
+    expect(appStateFor(draft).vendeeSharesBySchedule).toEqual({ primary: { 'buyer-2': '40' }, second: { 'buyer-2': '75' } });
+    draft = draftReducer(draft, { type: 'remove-party', role: 'claimant', record: 'buyer-2' });
+    expect(appStateFor(draft).additionalClaimants).toEqual([]);
+    expect(draft.vendeeSharesBySchedule).toEqual({ primary: {}, second: {} });
+    expect(appStateFor({ ...newDraft(), vendeeSharesBySchedule: undefined }).vendeeSharesBySchedule).toEqual({});
+  });
+  it('keeps a newly added blank claimant in the saved party order', () => {
+    let draft = newDraft();
+    draft = draftReducer(draft, { type: 'manual', key: 'claimant|primary|claimantName', value: '' });
+    draft = draftReducer(draft, { type: 'manual', key: 'claimant|buyer-2|claimantName', value: '' });
+    draft = draftReducer(draft, { type: 'vendee-share', scheduleId: 'primary', claimantId: 'primary', value: '60' });
+    draft = draftReducer(draft, { type: 'vendee-share', scheduleId: 'primary', claimantId: 'buyer-2', value: '40' });
+    const reopened = appStateFor(JSON.parse(JSON.stringify(draft)));
+    expect(reopened.primaryClaimantId).toBe('primary');
+    expect(reopened.additionalClaimants.map(claimant => claimant.id)).toEqual(['buyer-2']);
+    expect(reopened.vendeeSharesBySchedule.primary).toEqual({ primary: '60', 'buyer-2': '40' });
+  });
   it('reads handwritten phone and occupation into their own fields', () => {
     const draft = draftWith(source('a', [candidate('executantMobile', '9876543210'), candidate('executantOccupation', 'Business')]));
     expect(appStateFor(draft).form).toMatchObject({ executantMobile: '9876543210', executantOccupation: 'Business' });

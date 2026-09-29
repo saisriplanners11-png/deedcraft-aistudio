@@ -1,10 +1,12 @@
+:root{--dc-ink:#16130F;--dc-paper:#FFFDF8;--dc-ground:#EFEAE0;--dc-rule:#E4DBC9;--dc-rule-soft:#EFE8D9;--dc-gold:#8A5E12;--dc-gold-light:#D6C79E;--dc-gold-bg:#FBF3DC;--dc-muted:#7B7263;--dc-muted-soft:#948872;--dc-body:#5A5145;--dc-green:#2E6B4A;--dc-green-line:#A9C9B6;--dc-green-bg:#EAF2ED;--dc-danger:#8A3A2E;--dc-danger-bg:#FBEDEA;--dc-danger-line:#E8C4BC}
+:root[data-theme=dark]{color-scheme:dark;--dc-ink:#F3EEE4;--dc-paper:#22232B;--dc-ground:#17191F;--dc-rule:#41434D;--dc-rule-soft:#343640;--dc-gold:#E9BC74;--dc-gold-light:#826B4C;--dc-gold-bg:#332B22;--dc-muted:#B9B0A4;--dc-muted-soft:#AFA597;--dc-body:#D4CBBF;--dc-green:#92D6AB;--dc-green-line:#456B55;--dc-green-bg:#21362B;--dc-danger:#F0B2AA;--dc-danger-bg:#3A2528;--dc-danger-line:#995E59}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#EFEAE0}
+html,body{margin:0;padding:0;background:var(--dc-ground)}
 body{-webkit-font-smoothing:antialiased}
-a{color:#8A5E12;text-decoration:none;border-bottom:1px solid rgba(138,94,18,.35)}
-a:hover{color:#5E3F0A;border-bottom-color:#5E3F0A}
+a{color:var(--dc-gold);text-decoration:none;border-bottom:1px solid var(--dc-gold-light)}
+a:hover{color:var(--dc-ink);border-bottom-color:var(--dc-ink)}
 input,select,textarea,button{font-family:inherit}
-input:focus,textarea:focus,select:focus{border-bottom-color:#8A5E12 !important;background:rgba(138,94,18,.045) !important}
+input:focus,textarea:focus,select:focus{border-bottom-color:var(--dc-gold) !important;background:var(--dc-gold-bg) !important}
 ::selection{background:#E8D9AE;color:#16130F}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-thumb{background:#CFC4AE;border-radius:9px}
@@ -12,11 +14,11 @@ input:focus,textarea:focus,select:focus{border-bottom-color:#8A5E12 !important;b
 @keyframes livedot{0%,100%{opacity:1}50%{opacity:.25}}
 
 /* style-hover rules lifted out of the design template */
-.hv1:hover{background:#2A241C}
-.hv2:hover{background:#EBC367}
-.hv3:hover{border-color:#8A5E12;color:#8A5E12}
-.hv4:hover{background:#8A5E12;color:#FFFDF8}
-.hv5:hover{border-color:#16130F;color:#16130F}
+.hv1:hover{background:var(--dc-gold);color:var(--dc-ground)}
+.hv2:hover{background:var(--dc-gold-bg)}
+.hv3:hover{border-color:var(--dc-gold);color:var(--dc-gold)}
+.hv4:hover{background:var(--dc-gold);color:var(--dc-ground)}
+.hv5:hover{border-color:var(--dc-ink);color:var(--dc-ink)}
 
 /* Upload progress dialog */
 @keyframes dcspin{to{transform:rotate(360deg)}}

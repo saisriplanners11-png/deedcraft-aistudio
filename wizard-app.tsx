@@ -12,7 +12,7 @@ import {
 } from './docx';
 import { loadSaleDeedTemplate } from './template';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
-import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity } from './logic';
+import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity, vendeeShareCents, type VendeeSharesBySchedule } from './logic';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
@@ -31,11 +31,6 @@ import { releaseGate } from './legal-registry';
 const fileQueue = new WorkQueue(10);
 const ACCEPT = '.pdf,.docx,.txt,.md,image/jpeg,image/png,image/webp,image/gif';
 const LINK_FIELDS = ['linkOption', ...LINK_OPTIONS.flatMap(o => o.fields.map(f => f.id))];
-const PARTY_FIELDS: Record<'executant' | 'claimant', string[]> = {
-  executant: ALL_FIELDS.filter(f => f.id.startsWith('executant')).map(f => f.id),
-  claimant: ALL_FIELDS.filter(f => f.id.startsWith('claimant')).map(f => f.id),
-};
-
 function StructureDetailsTable({ value, onChange, onNotice }: { value: StructureDetails; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
   const total = Number(details.totalFloors);
@@ -118,7 +113,7 @@ function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
         <input autoFocus value={value} onChange={event => setValue(event.target.value)}
           style={{ display: 'block', boxSizing: 'border-box', width: '100%', marginTop: 5, padding: '9px 10px', border: `1px solid ${C.goldLight}`, background: 'transparent', color: C.ink, fontSize: 14 }} />
       </label>
-      {!target && <p style={{ margin: '10px 0 0', fontSize: 12, color: '#8A3A2E' }}>This reading has no assigned deed role, so it cannot be added automatically.</p>}
+      {!target && <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--dc-danger)' }}>This reading has no assigned deed role, so it cannot be added automatically.</p>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
         <Button kind="ghost" onClick={onDismiss}>Leave blank</Button>
         <Button kind="gold" disabled={!target || !value.trim()} onClick={() => onConfirm(review, value.trim())}>Confirm and use value</Button>
@@ -137,7 +132,7 @@ function SourceFeedback({ sources, visibleFields }: { sources: Source[]; visible
     const uncertain = candidates.filter(c => c.status === 'uncertain');
     return <div className="source" key={source.id} style={{ margin: '12px 0', fontSize: 12 }}>
       <strong>{source.name}</strong>
-      {source.error && <p role="alert" style={{ color: '#a12828' }}>{source.error}</p>}
+      {source.error && <p role="alert" style={{ color: 'var(--dc-danger)' }}>{source.error}</p>}
       {source.result && candidates.length > 0 && <>
         <p>{accepted.length} verified transcriptions · {uncertain.length} awaiting review{source.durationMs ? ` · ${Math.round(source.durationMs / 1000)}s` : ''}</p>
         {!!candidates.length && <details><summary>View extracted details and source pages</summary>
@@ -401,15 +396,48 @@ function AddPartyRecord({ noun, onAdd }: { noun: string; onAdd: (files: File[]) 
   </div>;
 }
 
+function VendeeSharesEditor({
+  claimants, schedules, shares, onChange,
+}: {
+  claimants: { id: string; name: string }[];
+  schedules: { id: string }[];
+  shares: VendeeSharesBySchedule;
+  onChange: (scheduleId: string, claimantId: string, value: string) => void;
+}) {
+  return <Section title="Undivided ownership shares">
+    <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Enter each vendee’s percentage separately for every property. The shares for each schedule must total 100%.</p>
+    {schedules.map((schedule, scheduleIndex) => {
+      const values = claimants.map(claimant => shares[schedule.id]?.[claimant.id] || '');
+      const cents = values.map(vendeeShareCents);
+      const complete = cents.every(value => value !== null);
+      const total = cents.reduce<number>((sum, value) => sum + (value || 0), 0);
+      return <div key={schedule.id} style={{ marginTop: scheduleIndex ? 22 : 0 }}>
+        <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {scheduleIndex + 1}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+          {claimants.map((claimant, index) => <label key={claimant.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: C.body }}>
+            <span>Vendee {index + 1}{claimant.name ? ` — ${claimant.name}` : ''} (%)</span>
+            <input type="text" inputMode="decimal" value={values[index]} aria-label={`Schedule ${scheduleIndex + 1} Vendee ${index + 1} undivided share percent`}
+              onChange={event => { const value = event.target.value; if (/^\d{0,3}(?:\.\d{0,2})?$/.test(value)) onChange(schedule.id, claimant.id, value); }}
+              style={{ padding: '8px 2px', border: 0, borderBottom: `1px solid ${C.goldLight}`, background: 'transparent', fontSize: 14, color: C.ink }} />
+          </label>)}
+        </div>
+        <p style={{ margin: '9px 0 0', fontSize: 12, color: complete && total === 10000 ? C.green : C.gold }}>
+          Total: {(total / 100).toFixed(2).replace(/\.00$/, '')}%{complete && total === 10000 ? ' ✓' : ' — enter shares totalling 100%'}
+        </p>
+      </div>;
+    })}
+  </Section>;
+}
+
 /** The real template SCHEDULE OF PROPERTY paragraph, loaded live for one property record. */
 function SchedulePreview({ merge }: { merge: ScheduleMerge }) {
   const [text, setText] = useState<string>('');
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
+    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails, merge.vendeeShares).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
     return () => { live = false; };
-  }, [merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.structureDetails)]);
+  }, [merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.structureDetails), JSON.stringify(merge.vendeeShares)]);
   if (error) return <p style={{ color: C.gold, fontSize: 12 }}>{error}</p>;
   if (!text) return <p style={{ color: C.mutedSoft, fontSize: 12 }}>Loading the schedule paragraph…</p>;
   return <div style={{ fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap' }}>{text}</div>;
@@ -465,6 +493,14 @@ function ReviewQueue({ sources, record, edit }: { sources: Source[]; record: str
 }
 
 export default function WizardApp() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try { return localStorage.getItem('deedcraft-theme') === 'dark' ? 'dark' : 'light'; }
+    catch { return 'light'; }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('deedcraft-theme', theme); } catch { /* Storage may be disabled. */ }
+  }, [theme]);
   const [draft, dispatch] = useReducer(draftReducer, undefined, newDraft);
   const current = useRef(draft); current.current = draft;
   const controllers = useRef(new Map<string, AbortController>());
@@ -631,14 +667,19 @@ export default function WizardApp() {
   };
   /** Every executant/claimant record worth a card: those resolved from evidence/manual entry (or 'primary' when there are none yet), plus any just added and still waiting on their first upload. */
   const partyRecordIds = (role: 'executant' | 'claimant') => {
-    const base = recordOptions(role).length ? recordOptions(role) : ['primary'];
+    const existing = recordOptions(role);
+    const base = existing.includes('primary') ? ['primary', ...existing.filter(record => record !== 'primary')] : existing.length ? existing : ['primary'];
     return [...base, ...extraPartyRecords[role].filter(r => !base.includes(r))];
   };
   /** One new row per uploaded ID (each is its own person); no files chosen still creates one blank row to type into. */
   const addPartyRecord = (role: 'executant' | 'claimant') => (files: File[]) => {
-    if (!files.length) { const record = crypto.randomUUID(); setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] })); return; }
+    // Persist even untouched blank cards so numbering and share checks use the
+    // same parties as the UI, including after a draft is reopened.
+    if (!recordOptions(role).length) dispatch({ type: 'manual', key: fieldKey(role, 'primary', `${role}Name`), value: '' });
+    if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'manual', key: fieldKey(role, record, `${role}Name`), value: '' }); setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] })); return; }
     for (const file of files) {
       const record = crypto.randomUUID();
+      dispatch({ type: 'manual', key: fieldKey(role, record, `${role}Name`), value: '' });
       setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] }));
       // Extra people use the same identity-only profile as the primary card.  A
       // generic extraction here used to discard address/identity candidates
@@ -647,7 +688,7 @@ export default function WizardApp() {
     }
   };
   const clearPartyRecord = (role: 'executant' | 'claimant', record: string) => {
-    for (const field of PARTY_FIELDS[role]) edit(role, record, field, '');
+    dispatch({ type: 'remove-party', role, record });
     setExtraPartyRecords(s => ({ ...s, [role]: s[role].filter(r => r !== record) }));
   };
 
@@ -804,7 +845,7 @@ export default function WizardApp() {
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
-  return <div className="wizard-app">
+  return <div className="wizard-app" data-theme={theme}>
     <ExtractDialog
       open={!!activeUpload}
       label={activeUpload?.label || 'Document'}
@@ -816,7 +857,7 @@ export default function WizardApp() {
       onCancel={cancelActiveUpload}
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
-    <header className="app-top"><a href="#" className="brand">DeedCraft <span>MULTI-INSTRUMENT</span></a><button className="quiet" onClick={reset}>New deed</button></header>
+    <header className="app-top"><a href="#" className="brand">DeedCraft <span>MULTI-INSTRUMENT</span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button><button className="quiet" onClick={reset}>New deed</button></div></header>
     <div className="shell">
       <nav className="rail" aria-label="Deed steps">
         <button className={`rail-overview${step === -1 ? ' active' : ''}`} onClick={() => goto(-1)}>Overview</button>
@@ -979,12 +1020,18 @@ export default function WizardApp() {
               const busySource = sourceBusyFor(role, record);
               return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
                 label={all.length > 1 ? `${noun} ${i + 1}` : undefined}
-                onDelete={all.length > 1 ? () => clearPartyRecord(role, record) : undefined}
+                onDelete={all.length > 1 && record !== 'primary' ? () => clearPartyRecord(role, record) : undefined}
                 onUpload={uploadFor(role, record)}
                 sources={draft.sources.filter(s => s.assignment?.role === role && s.assignment.record === record)}
                 busy={!!busySource} />;
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
+            {role === 'claimant' && records.length > 1 && <VendeeSharesEditor
+              claimants={records.map(record => ({ id: record, name: resolved.values[fieldKey('claimant', record, 'claimantName')] || '' }))}
+              schedules={propertyRecords}
+              shares={draft.vendeeSharesBySchedule || {}}
+              onChange={(scheduleId, claimantId, value) => dispatch({ type: 'vendee-share', scheduleId, claimantId, value })}
+            />}
           </>;
         })()}
 

@@ -16,20 +16,20 @@ export function formatMoneyInput(raw: string): string {
 }
 
 export const C = {
-  ink: '#16130F',
-  paper: '#FFFDF8',
-  ground: '#EFEAE0',
-  rule: '#E4DBC9',
-  ruleSoft: '#EFE8D9',
-  gold: '#8A5E12',
-  goldLight: '#D6C79E',
-  goldBg: '#FBF3DC',
-  muted: '#7B7263',
-  mutedSoft: '#948872',
-  body: '#5A5145',
-  green: '#2E6B4A',
-  greenLine: '#A9C9B6',
-  greenBg: '#EAF2ED',
+  ink: 'var(--dc-ink)',
+  paper: 'var(--dc-paper)',
+  ground: 'var(--dc-ground)',
+  rule: 'var(--dc-rule)',
+  ruleSoft: 'var(--dc-rule-soft)',
+  gold: 'var(--dc-gold)',
+  goldLight: 'var(--dc-gold-light)',
+  goldBg: 'var(--dc-gold-bg)',
+  muted: 'var(--dc-muted)',
+  mutedSoft: 'var(--dc-muted-soft)',
+  body: 'var(--dc-body)',
+  green: 'var(--dc-green)',
+  greenLine: 'var(--dc-green-line)',
+  greenBg: 'var(--dc-green-bg)',
   serif: "'Source Serif 4',serif",
   mono: "'IBM Plex Mono',monospace",
   telugu: "'Noto Sans Telugu',sans-serif",
@@ -60,7 +60,7 @@ export function Note({ tag, children, tone = 'gold' }: { tag: string; children: 
       <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${g ? C.green : C.gold};border:1px solid ${g ? C.greenLine : C.goldLight};background:${C.paper};padding:3px 7px;flex-shrink:0`)}>
         {tag}
       </span>
-      <span style={css(`font-size:12px;color:${g ? '#31463C' : C.body};line-height:1.5`)}>{children}</span>
+      <span style={css(`font-size:12px;color:${C.body};line-height:1.5`)}>{children}</span>
     </div>
   );
 }
@@ -257,10 +257,10 @@ export function Empty({ children }: { children: React.ReactNode }) {
 export function Button({ onClick, children, kind = 'ghost', disabled }: { onClick?: () => void; children: React.ReactNode; kind?: 'ghost' | 'solid' | 'gold'; disabled?: boolean }) {
   const style =
     kind === 'solid'
-      ? `padding:12px 22px;background:${C.ink};border:1px solid ${C.ink};color:#F6F2E9;font-size:12.5px;font-weight:700`
+      ? `padding:12px 22px;background:${C.ink};border:1px solid ${C.ink};color:${C.ground};font-size:12.5px;font-weight:700`
       : kind === 'gold'
       ? `padding:7px 14px;background:transparent;border:1px solid ${C.gold};color:${C.gold};font-size:11px;font-weight:700`
-      : `padding:9px 16px;background:transparent;border:1px solid #C9BFA8;font-size:11.5px;font-weight:600;color:${C.body}`;
+      : `padding:9px 16px;background:transparent;border:1px solid ${C.goldLight};font-size:11.5px;font-weight:600;color:${C.body}`;
   return (
     <button
       type="button"
@@ -286,7 +286,7 @@ export type ProgressStep = {
 const Marker = ({ state }: { state: ProgressStep['state'] }) => {
   if (state === 'done') {
     return (
-      <span style={css(`flex:none;width:16px;height:16px;border-radius:50%;background:${C.green};color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center`)}>
+      <span style={css(`flex:none;width:16px;height:16px;border-radius:50%;background:${C.green};color:${C.ground};font-size:10px;display:flex;align-items:center;justify-content:center`)}>
         ✓
       </span>
     );
@@ -378,7 +378,7 @@ export function ExtractDialog({
         ) : null}
 
         {error ? (
-          <div style={css('margin-top:16px;padding:11px 13px;font-size:11.5px;color:#8A3A2E;background:#FBEDEA;border:1px solid #E8C4BC;line-height:1.6')}>
+          <div style={css('margin-top:16px;padding:11px 13px;font-size:11.5px;color:var(--dc-danger);background:var(--dc-danger-bg);border:1px solid var(--dc-danger-line);line-height:1.6')}>
             {error}
           </div>
         ) : result ? (
@@ -469,7 +469,7 @@ export function UploadZone({
       </label>
 
       {error ? (
-        <div style={css(`margin-top:14px;padding:11px 14px;font-size:11.5px;color:#8A3A2E;background:#FBEDEA;border:1px solid #E8C4BC;line-height:1.6`)}>
+        <div style={css(`margin-top:14px;padding:11px 14px;font-size:11.5px;color:var(--dc-danger);background:var(--dc-danger-bg);border:1px solid var(--dc-danger-line);line-height:1.6`)}>
           {error}
         </div>
       ) : null}
@@ -489,7 +489,7 @@ export function UploadZone({
           {audit.found.length ? <p style={css(`margin:7px 0 0;color:${C.green}`)}><b>Fetched:</b> {audit.found.join(', ')}</p> : null}
           {audit.confirmed.length ? <p style={css(`margin:7px 0 0;color:${C.body}`)}><b>Confirmed:</b> {audit.confirmed.join(', ')}</p> : null}
           {audit.notFound.length ? <p style={css(`margin:7px 0 0;color:${C.mutedSoft}`)}><b>Not returned:</b> {audit.notFound.join(', ')}. These remain blank unless another source supplies them; the app does not infer them.</p> : null}
-          {audit.conflicts.length ? <p style={css(`margin:7px 0 0;color:#8A3A2E`)}><b>Needs review:</b> {audit.conflicts.join(', ')}.</p> : null}
+          {audit.conflicts.length ? <p style={css(`margin:7px 0 0;color:var(--dc-danger)`)}><b>Needs review:</b> {audit.conflicts.join(', ')}.</p> : null}
           {audit.unreadable ? <p style={css(`margin:7px 0 0;color:${C.mutedSoft}`)}><b>Reader note:</b> {audit.unreadable}</p> : null}
         </div>
       ) : null}
