@@ -4,6 +4,13 @@ import { EXTRACTION_PROMPTS, STAGES, TARGETS, aadhaarFromDocumentText, agreeFiel
 import { profileFields } from './upload-extraction';
 
 describe('link deed extraction mapping', () => {
+  it('extracts all merged land document fields and keeps tax identifiers separate', () => {
+    expect(profileFields('phase1:landLayoutLrs')).toEqual([
+      'vltNo', 'layoutFileNo', 'lrsApplicationNo', 'lrsApplicationDate', 'lrsProceedingNo', 'lrsProceedingDate',
+    ]);
+    expect(profileFields('phase1:houseTax')).toEqual(expect.arrayContaining(['houseTaxReceiptNo', 'bltNo', 'localBodyName', 'taxPaidDate']));
+    expect(profileFields('phase1:houseTax')).not.toContain('vltNo');
+  });
   it('limits a Phase 1 link deed to its title, jurisdiction and property-schedule facts', () => {
     const fields = profileFields('phase1:linkDoc');
     expect(fields).toEqual(expect.arrayContaining(['linkDocNo', 'district', 'surveyNo', 'boundaryNorth', 'extentSqYards']));

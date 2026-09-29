@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_FIELDS, GROUPS, newStructureDetail, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS } from './fields';
+import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, newStructureDetail, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, TITLE_SECTION_IDS } from './fields';
 import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, vendeeShareCents, withDerived, type AppState } from './logic';
 import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
@@ -54,6 +54,19 @@ describe('field mapping', () => {
     expect(vlt?.ph).toBe('V.L.T No.');
   });
 
+  it('shows one editable assessment/PTIN field in Step 2 and keeps receipt extraction compatibility', () => {
+    const options = TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id)!);
+    expect(options.map(option => option.id)).toEqual(['linkDoc', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions']);
+    expect(options.find(option => option.id === 'landLayoutLrs')?.fields.map(field => field.id))
+      .toEqual(['vltNo', 'layoutFileNo', 'lrsApplicationNo', 'lrsApplicationDate', 'lrsProceedingNo', 'lrsProceedingDate']);
+    const visibleAssessmentFields = options.flatMap(option => option.fields)
+      .filter(field => !field.hidden && field.label === 'Assessment / PTIN number');
+    expect(visibleAssessmentFields).toHaveLength(1);
+    expect(visibleAssessmentFields[0].id).toBe('bltNo');
+    const receiptAssessment = LINK_OPTIONS.find(option => option.id === 'houseTax')!.fields.find(field => field.id === 'assessmentPtinNo');
+    expect(receiptAssessment?.hidden).toBe(true);
+  });
+
   it('adds the approved ULB selector without a Word-template binding', () => {
     const jurisdiction = GROUPS.find(group => group.title === 'Jurisdiction')!;
     const ulb = jurisdiction.fields.find(field => field.id === 'ulbAuthority');
@@ -66,6 +79,16 @@ describe('field mapping', () => {
     const state = { ...initialState, category: 'Residential', form: { ...initialState.form, nearHNo: '10-1-36/1' } };
     expect(generationBlockers(state).map(item => item.id)).toContain('nearAdjacent');
     expect(generationBlockers({ ...state, form: { ...state.form, nearAdjacent: 'Adjacent' } }).map(item => item.id)).not.toContain('nearAdjacent');
+  });
+
+  it('treats demolished and partly open house numbers as the subject property, not a landmark', () => {
+    for (const category of ['Demolished', 'Part open place']) {
+      const state = { ...initialState, category, form: { ...initialState.form, nearHNo: '6-5-62/1' } };
+      expect(generationBlockers(state).map(item => item.id)).not.toContain('nearAdjacent');
+      const fields = groupsForStep(3, category).flatMap(group => group.fields);
+      expect(fields.find(field => field.id === 'nearHNo')?.label).toBe('Subject property H.No.');
+      expect(fields.some(field => field.id === 'nearAdjacent')).toBe(false);
+    }
   });
 
   it('uses the Jurisdiction SRO for the Schedule registration sub-district', () => {

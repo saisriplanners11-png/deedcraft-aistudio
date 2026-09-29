@@ -352,10 +352,14 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   ].forEach(([id, reason, source]) => add(id, reason, source));
 
   if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(state.category)) {
-    add('nearHNo', 'The selected schedule identifies the nearby/adjacent house number.', 'Link deed or property plan');
+    add('nearHNo', ['Demolished', 'Part open place'].includes(state.category)
+      ? 'The selected schedule identifies the subject property house number.'
+      : 'The selected schedule identifies the nearby/adjacent house number.', 'Link deed or property plan');
+  }
+  if (['Vacant Plot', 'Open Place', 'Agricultural land'].includes(state.category)) {
     add('nearAdjacent', 'Choose whether the landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   }
-  if (f.nearHNo) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
+  if (f.nearHNo && !['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   if (['Residential', 'Commercial', 'Flat'].includes(state.category)) {
     ['bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
@@ -413,8 +417,8 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   });
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
-    if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo', 'nearAdjacent');
-    if (record.values.nearHNo) ids.push('nearAdjacent');
+    if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
+    if (['Vacant Plot', 'Open Place', 'Agricultural land'].includes(record.category) || (record.values.nearHNo && !['Demolished', 'Part open place'].includes(record.category))) ids.push('nearAdjacent');
     if (['Residential', 'Commercial', 'Flat'].includes(record.category)) {
       ids.push('bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
       addStructureDetails(state.structureDetailsBySchedule[record.id], `Schedule ${index + 2}: Structure Details`, 3);

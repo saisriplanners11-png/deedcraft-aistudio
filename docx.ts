@@ -277,6 +277,14 @@ const plainText = (xml: string) =>
   unescapeXml((xml.match(/<w:t[^>]*>[\s\S]*?<\/w:t>/g) || [])
     .map(t => t.replace(/<[^>]+>/g, '')).join(''));
 
+/** Drop the source template's trailing blank row from market-value tables. */
+function removeTrailingEmptyTableRow(table: string): string {
+  const rows = [...table.matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)];
+  const last = rows.at(-1);
+  if (!last || plainText(last[0]).trim() || last.index == null) return table;
+  return table.slice(0, last.index) + table.slice(last.index + last[0].length);
+}
+
 const angleTags = (xml: string) => [...new Set(
   (plainText(xml).match(/<[^<>]{2,60}>/g) || [])
     .map(tag => tag.slice(1, -1).replace(/\s+/g, ' ').trim())
@@ -508,9 +516,10 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   // The supplied template intentionally retains its source wording, including
   // two date placeholders that are also used by the link-deed recital. Make
   // those two occurrences unambiguous before the generic placeholder pass.
-  if (/Nala Order/i.test(plainText(p))) p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Nala Order Date>');
+  if (/Nala Order:|Property Tax:/i.test(plainText(p)) && !values.get(norm('Link Doct.Date'))) {
+    p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '__________');
+  }
   if (/Property Tax:/i.test(plainText(p))) {
-    p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Tax Paid Date>');
     p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
   }
   // Amounts written in words are consistently parenthesized throughout the deed.
@@ -542,14 +551,13 @@ function markConsiderationRows(xml: string): string {
 /** Remove optional source-template title recitals when their source facts are absent. */
 function removeOptionalTitleRecitals(body: string, values: Map<string, string>): string {
   const has = (...names: string[]) => names.every(name => !!values.get(norm(name)));
-  const hasAny = (...names: string[]) => names.some(name => !!values.get(norm(name)));
   const optional: Array<{ test: RegExp; keep: () => boolean }> = [
-    { test: /Registered Deed:/i, keep: () => hasAny('Link Doc Type', 'Link Doct.No.', 'Link Doct.Date') },
-    { test: /Vacant Land Tax\/Assessment/i, keep: () => has('VLT No.') },
+    { test: /Registered Deed:/i, keep: () => has('Link Doc Type', 'Link Doct.No.', 'Link Doct.Date') },
+    { test: /Vacant Land Tax\/Assessment/i, keep: () => has('V.L.T. No.') },
     { test: /Approved Layout:/i, keep: () => has('Layout File No.') },
     { test: /Title Deed:/i, keep: () => has('Pattadar Pass Book No', 'Pass Book Khata No') },
-    { test: /Nala Order:/i, keep: () => has('Nala Order No', 'Nala Order Date') },
-    { test: /Property Tax:/i, keep: () => has('House Tax Receipt', 'Tax Paid Date', 'Local Body Name') },
+    { test: /Nala Order:/i, keep: () => has('Nala Order No') },
+    { test: /Property Tax:/i, keep: () => has('House Tax Receipt', 'Local Body Name') },
     { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('P.T.I.No.') },
     { test: /House Permission:/i, keep: () => has('House Permission No.', 'Permission Date', 'Municipality/Gram Panchayat Name') },
     { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.', 'Application Date') },
@@ -649,7 +657,9 @@ export async function scheduleText(
   const missing = new Set<string>();
 
   const selected = markConsiderationRows(children.slice(start, stop).map(c => body.slice(c.start, c.end)).join(''));
-  const withEvidence = addVendeeShareParagraph(variant === 'IF HOUSE' ? prepareHouseBlock(selected, values, structureDetails) : selected, vendeeShares);
+  const withEvidence = addVendeeShareParagraph(variant === 'IF HOUSE'
+    ? prepareHouseBlock(selected, values, structureDetails)
+    : prepareNonHouseIdentifiers(selected, variant, values), vendeeShares);
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
     .map(paragraph => plainText(fillParagraph(paragraph, values_, missing, [])).trim())
     .filter(Boolean)
@@ -749,7 +759,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
         : next.replace('</w:pPr>', additions + '</w:pPr>');
     });
   };
-  return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
+  const filled = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
     let paragraph = original;
     if (text.includes('<Nature of House>') && /roof house/i.test(text)) {
@@ -789,6 +799,32 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
       }).join('');
     }
     return paragraph;
+  });
+  // The item 4 label and all its floor paragraphs share one template row.
+  // Keep that row on a single page so a later floor cannot become detached
+  // from the label and the first floor at a page boundary.
+  return rows.length ? filled.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+    if (!/Total built-up area of the property/i.test(plainText(row))) return row;
+    if (/<w:trPr(?:\s[^>]*)?>/.test(row)) return row.replace(/<w:trPr(?:\s[^>]*)?>/, match => `${match}<w:cantSplit/>`);
+    return row.replace(/<w:tr(?:\s[^>]*)?>/, match => `${match}<w:trPr><w:cantSplit/></w:trPr>`);
+  }) : filled;
+}
+
+/** Recite identifiers the non-house template variants leave out of their description. */
+function prepareNonHouseIdentifiers(block: string, variant: string, values: Record<string, string>): string {
+  if (!['IF OPEN PLACE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(variant)) return block;
+  return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph);
+    if (!/^\s*All that\b/i.test(text)) return paragraph;
+    const plot = values['Plot No.'] && !/<Plot No\.>/i.test(text);
+    const survey = values['Survey No.'] && !/<Survey No\.>/i.test(text);
+    if (!plot && !survey) return paragraph;
+    if (variant === 'IF OPEN PLACE' && plot) {
+      return replaceRunText(paragraph, /in Survey No\/s\.<Survey No\.>/i,
+        () => values['Survey No.'] ? 'in plot no.<Plot No.> & Survey No/s.<Survey No.>' : 'in plot no.<Plot No.>');
+    }
+    const identifiers = [plot ? 'plot no.<Plot No.>' : '', survey ? 'Survey No/s.<Survey No.>' : ''].filter(Boolean).join(' & ');
+    return replaceRunText(paragraph, /,\s*situated at/i, () => `, in ${identifiers}, situated at`);
   });
 }
 
@@ -880,7 +916,9 @@ export async function fillSaleDeed(
       for (const [key, value] of Object.entries(schedule.values)) scheduleValues.set(norm(key), value ?? '');
       const landmarkRelation = scheduleValues.get(norm('Near / Adjacent'))?.toLowerCase();
       let block = children.slice(start, stop).map(c => body.slice(c.start, c.end)).join('');
-      if (schedule.variant === 'IF HOUSE') block = prepareHouseBlock(block, schedule.values, schedule.structureDetails);
+      block = schedule.variant === 'IF HOUSE'
+        ? prepareHouseBlock(block, schedule.values, schedule.structureDetails)
+        : prepareNonHouseIdentifiers(block, schedule.variant, schedule.values);
       block = addVendeeShareParagraph(block, schedule.vendeeShares);
       block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
           fillParagraph(
@@ -919,9 +957,15 @@ export async function fillSaleDeed(
     .map(c => {
       const chunk = body.slice(c.start, c.end);
       // Tables hold many paragraphs; fill each one.
-      return chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
+      const filled = chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
         fillParagraph(p, values_, missing, rewrites)
       );
+      // The template's market-value table ends with an empty row after a
+      // repeating header. When a two-schedule deed pushes the table across a
+      // page, Word can render that header by itself on the next page.
+      return /Market Value per Sq\.\s*Yard/i.test(plainText(filled))
+        ? removeTrailingEmptyTableRow(filled)
+        : filled;
     })
     .join('');
   body = addPartySignatureLines(body, values_, rewrites);

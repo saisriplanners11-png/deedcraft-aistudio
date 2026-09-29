@@ -25,6 +25,22 @@ describe('source-backed drafts', () => {
     expect(Object.values(withoutDefaults).filter(Boolean)).toEqual([]);
     expect(state.payments).toEqual([]); expect(state.category).toBe(''); expect(state.unit).toBe('');
   });
+  it('prefills each house PTIN from its own title assessment or tax receipt', () => {
+    let draft = newDraft();
+    const set = (key: string, value: string) => { draft = draftReducer(draft, { type: 'manual', key, value }); };
+    set('property|primary|category', 'Residential');
+    set('link|tax-one|linkOption', 'houseTax');
+    set('link|tax-one|assessmentPtinNo', 'PTIN-ONE');
+    draft = draftReducer(draft, { type: 'add-property', id: 'second' });
+    set('property|second|category', 'Commercial');
+    draft = draftReducer(draft, { type: 'link-property', record: 'tax-two', propertyId: 'second' });
+    set('link|tax-two|linkOption', 'houseTax');
+    set('link|tax-two|assessmentPtinNo', 'PTIN-TWO');
+    expect(appStateFor(draft).form.bltNo).toBe('PTIN-ONE');
+    expect(appStateFor(draft).additionalSchedules[0].values.bltNo).toBe('PTIN-TWO');
+    set('property|primary|bltNo', 'MANUAL-PTIN');
+    expect(appStateFor(draft).form.bltNo).toBe('MANUAL-PTIN');
+  });
   it('keeps repeatable Annexure I-A rows isolated by property schedule', () => {
     const primary = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '5' }] };
     const secondary = { totalFloors: '2', rows: [{ ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'Shed Structure', stage: 'Foundation', buildingAge: '1' }] };

@@ -18,6 +18,9 @@ export function mergeValues(state: AppState): Record<string, string> {
     if (field.type === 'date') value = deedDate(value);
     for (const n of names) out[n] = value;
   }
+  // Legacy drafts stored vacant-land assessment under assessmentPtinNo.
+  out['V.L.T No.'] = f.vltNo || f.assessmentPtinNo || '';
+  out['V.L.T. No.'] = out['V.L.T No.'];
   // The Schedule of Property's "Registration Sub-District" placeholder uses
   // the same office selected in Jurisdiction, never an older link-deed office.
   const registrationSro = f.sro || f.linkSro || '';
@@ -217,7 +220,9 @@ export function propertyForm(state: AppState, values: Record<string, string>): R
 export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
   const vendees = partyRecords(state, 'claimant');
   return scheduleRecords(state).map(record => {
-    const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields).map(field => [field.id, '']));
+    const propertyFieldIds = new Set(GROUPS.flatMap(group => group.fields.map(field => field.id)));
+    const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields)
+      .filter(field => !propertyFieldIds.has(field.id)).map(field => [field.id, '']));
     const scheduleState: AppState = {
       ...state,
       category: record.category,
@@ -236,22 +241,52 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     for (const titleRecord of titleLinkRecords) {
       const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
-      if (['linkDocNo', 'linkDocType', 'linkDocDate'].some(key => !!titleRecord.values[key])) {
-        registeredTitleLinks.push(mapped);
+      if (['linkDocNo', 'linkDocType', 'linkDocDate'].every(key => !!titleRecord.values[key])
+        && (titleRecord.values.linkSro || scheduleState.form.sro)) {
+        registeredTitleLinks.push({ ...mapped,
+          'Sub Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
+          'Sub-Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
+          'Sub Registrar Code': titleRecord.values.linkSroCode || '',
+        });
       }
     }
-    // A tax recital must describe one receipt, not combine fields from several
-    // incomplete receipts. The separate assessment identifier may come from a
-    // tax record even when its payment particulars are incomplete.
-    const completeTax = taxRecords.find(({ values: tax }) => tax.houseTaxReceiptNo && tax.taxPaidDate && tax.localBodyName);
-    const taxValues = completeTax
-      ? mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...completeTax.values } }) : undefined;
-    for (const name of ['House Tax Receipt', 'Tax Paid Date', 'Local Body Name']) titleValues[name] = taxValues?.[name] || '';
-    const taxAssessment = taxRecords.find(({ values: tax }) => tax.assessmentPtinNo)?.values.assessmentPtinNo;
-    if (variantFor(record.category) === 'IF HOUSE' && !titleValues['P.T.I.No.'] && taxAssessment) {
-      titleValues['P.T.I.No.'] = taxAssessment;
-      titleValues['P.T.I. No.'] = taxAssessment;
+    const complete = (options: string[], fields: string[]) => titleLinkRecords.find(titleRecord =>
+      (options.includes(titleRecord.values.linkOption || '') || (!titleRecord.values.linkOption && fields.some(field => !!titleRecord.values[field])))
+      && fields.every(field => !!titleRecord.values[field]));
+    const mapped = (titleRecord?: typeof titleLinkRecords[number]) => titleRecord
+      ? mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } }) : undefined;
+    const registered = registeredTitleLinks[0];
+    for (const name of ['Link Doc Type', 'Link Doct.No.', 'Link Doct.Date', 'Sub Registrar', 'Sub Registrar Code']) {
+      titleValues[name] = registered?.[name] || '';
     }
+    const preferredField = (field: string, options: string[]) => options.map(option =>
+      titleLinkRecords.find(titleRecord => titleRecord.values.linkOption === option && titleRecord.values[field])?.values[field]).find(Boolean) || '';
+    const legacyVacantTax = !preferredField('vltNo', ['landLayoutLrs', 'vacantTax']) && variantFor(record.category) !== 'IF HOUSE'
+      ? taxRecords.find(tax => !tax.values.linkOption && tax.values.assessmentPtinNo) : undefined;
+    titleValues['V.L.T. No.'] = preferredField('vltNo', ['landLayoutLrs', 'vacantTax']) || legacyVacantTax?.values.assessmentPtinNo || record.values.assessmentPtinNo || '';
+    titleValues['V.L.T No.'] = titleValues['V.L.T. No.'];
+    titleValues['Layout File No.'] = preferredField('layoutFileNo', ['landLayoutLrs', 'approvedLayout', 'layoutLrs']);
+    const deed = mapped(complete(['titleDeed'], ['titleDeedNo', 'khataNo']));
+    titleValues['Pattadar Pass Book No'] = deed?.['Pattadar Pass Book No'] || '';
+    titleValues['Pass Book Khata No'] = deed?.['Pass Book Khata No'] || '';
+    const nala = complete(['nala'], ['nalaOrderNo']);
+    titleValues['Nala Order No'] = nala?.values.nalaOrderNo || '';
+    const tax = mapped(taxRecords.find(({ values: item }) => item.houseTaxReceiptNo && item.localBodyName));
+    titleValues['House Tax Receipt'] = tax?.['House Tax Receipt'] || '';
+    titleValues['Local Body Name'] = tax?.['Local Body Name'] || '';
+    const explicitAssessment = preferredField('bltNo', ['houseTax', 'assessment']);
+    const taxAssessment = taxRecords.find(({ values: item }) => item.assessmentPtinNo)?.values.assessmentPtinNo;
+    const assessment = explicitAssessment || record.values.bltNo || taxAssessment || '';
+    titleValues['P.T.I.No.'] = assessment;
+    titleValues['P.T.I. No.'] = assessment;
+    const permission = mapped(complete(['permissions'], ['permBuildingPermitNo', 'permissionDate', 'permissionAuthorityName']));
+    titleValues['House Permission No.'] = permission?.['House Permission No.'] || '';
+    titleValues['Permission Date'] = permission?.['Permission Date'] || '';
+    titleValues['Municipality/Gram Panchayat Name'] = permission?.['Municipality/Gram Panchayat Name'] || '';
+    titleValues['LRS Application No.'] = preferredField('lrsApplicationNo', ['landLayoutLrs', 'lrsApplication', 'layoutLrs']);
+    titleValues['Application Date'] = deedDate(preferredField('lrsApplicationDate', ['landLayoutLrs', 'lrsApplication', 'layoutLrs']));
+    titleValues['LRS Proceeding No.'] = preferredField('lrsProceedingNo', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']);
+    titleValues['Proceeding Date'] = deedDate(preferredField('lrsProceedingDate', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']));
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload,  requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
+import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
 import { appStateFor, newDraft, type Candidate, type SourceResult } from './source-draft';
 
 const api = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce:false, step2Gate: undefined as Promise<void> | undefined }));
@@ -34,6 +34,15 @@ const pages = (count: number) => Array.from({length: count}, (_,i) => ({number:i
 beforeEach(() => { api.calls=[]; api.active=0; api.peak=0; api.truncateOnce=false; api.transientOnce=false; api.step2Gate=undefined; });
 
 describe('shared document section extraction', () => {
+  it('prepares several land and LRS documents for one merged card in order', async () => {
+    const files = [
+      Object.assign(new Blob(['V.L.T. No. VLT-101'], { type: 'text/plain' }), { name: 'vacant-tax.txt' }),
+      Object.assign(new Blob(['Approved Layout File No. LAY-202'], { type: 'text/plain' }), { name: 'layout.txt' }),
+    ] as File[];
+    const prepared = await prepare(files, new AbortController().signal, 'phase1:landLayoutLrs');
+    expect(prepared.pages.map(page => page.region)).toEqual(['vacant-tax.txt · Uploaded text', 'layout.txt · Uploaded text']);
+    expect(prepared.pages.map(page => page.text)).toEqual(['V.L.T. No. VLT-101', 'Approved Layout File No. LAY-202']);
+  });
   it('uses the value labelled Doct No. instead of a neighbouring CS number', () => {
     const candidate = cleanCandidate({
       field: 'linkDocNo', value: '1323/2016', role: 'link', record: 'primary',
@@ -180,7 +189,8 @@ describe('shared document section extraction', () => {
 
   it('gives each Step 2 upload its own dedicated extraction section', () => {
     expect(sectionFields('phase1:linkDoc')[0].title).toBe('Link document details');
-    expect(sectionFields('phase1:houseTax')[0].title).toBe('House tax receipt details');
+    expect(sectionFields('phase1:landLayoutLrs')[0].title).toBe('Vacant land tax, layout and LRS details');
+    expect(sectionFields('phase1:houseTax')[0].title).toBe('Property tax and assessment details');
     expect(sectionFields('phase1:titleDeed')[0].title).toBe('Title deed details');
     expect(sectionFields('phase1:nala')[0].title).toBe('NALA order details');
     expect(sectionFields('phase1:permissions')[0].title).toBe('Permissions and approvals details');

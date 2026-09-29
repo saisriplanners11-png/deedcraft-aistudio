@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, newStructureDetail, newStructureDetails, partyEntityFields, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newStructureDetail, newStructureDetails, partyEntityFields, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
@@ -178,11 +178,12 @@ function ScopedSectionUpload({ label, busy, onUpload }: { label: string; busy?: 
 /** The named passes a document goes through while it's being read, ticked off as each completes. */
 /** One role-scoped field group, bound to a specific record through the draft's manual-edit dispatch. */
 function RecordFieldGroup({
-  role, record, category, step, resolved, edit, label, onDelete, deleteLabel,
+  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
   label?: string;
+  fallbackValues?: Record<string, string>;
   /** When set, the first group renders a delete action for this whole record. */
   onDelete?: () => void;
   deleteLabel?: string;
@@ -215,7 +216,7 @@ function RecordFieldGroup({
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
-      : resolved.values[fieldKey(role, record, f.id)] || defaults[f.id] || '';
+      : resolved.values[fieldKey(role, record, f.id)] || fallbackValues?.[f.id] || defaults[f.id] || '';
   return <>
     {groups.map(g => (
       <FieldGroup
@@ -243,8 +244,8 @@ function LinkRecordCard({
   busy?: boolean;
   sources: Source[];
 }) {
-  const selectedId = resolved.values[fieldKey('link', record, 'linkOption')] || LINK_OPTIONS[0].id;
-  const option = LINK_OPTIONS.find(o => o.id === selectedId) || LINK_OPTIONS[0];
+  const selectedId = resolved.values[fieldKey('link', record, 'linkOption')] || 'linkDoc';
+  const option = LINK_OPTIONS.find(o => o.id === selectedId) || LINK_OPTIONS.find(o => o.id === 'linkDoc')!;
   const form: Record<string, string> = {};
   // Square-yard equivalent follows the Acre-Guntas extent live, the same way
   // it already does when typed by hand — regardless of whether nalaExtent
@@ -269,51 +270,42 @@ function LinkRecordCard({
   </section>;
 }
 
-/** One blank preview card for a document type not yet added — its own upload button creates the row. */
-function AddLinkDocumentCard({ option, onUpload }: { option: (typeof LINK_OPTIONS)[number]; onUpload: (files: File[]) => void }) {
+function TitlePointCard({ option, record, form, onField, onUpload, sources, busy, onDelete }: {
+  option: (typeof LINK_OPTIONS)[number]; record: string; form: Record<string, string>;
+  onField: (field: string, value: string) => void; onUpload: (files: File[]) => void;
+  sources: Source[]; busy: boolean; onDelete?: () => void;
+}) {
   const input = useRef<HTMLInputElement>(null);
-  const blankForm = Object.fromEntries(option.fields.map(f => [f.id, '']));
-  return <section className="panel link-record">
-    <h2>{option.label}</h2>
-    <label className="link-upload">
-      <span>{`Upload a ${option.label.toLowerCase()} to fill the fields below`}</span>
-      <input ref={input} type="file" accept={ACCEPT} multiple hidden
-        onChange={e => { const files = [...(e.target.files || [])]; if (files.length) onUpload(files); e.target.value = ''; }} />
-      <button type="button" className="gold" onClick={() => input.current?.click()}>Choose file(s) or photo</button>
+  const visibleFields = option.fields.filter(field => !field.hidden);
+  return <section className="panel link-record" data-title-point={option.id}>
+    <h2>{option.id === 'linkDoc' ? 'Registered Deed' : option.id === 'permissions' ? 'House Permission' : option.label}</h2>
+    <label className="link-upload" aria-disabled={busy}>
+      <span>{busy ? 'Reading…' : 'Upload a document to fill these details, or type them below'}</span>
+      <input ref={input} type="file" accept={ACCEPT} multiple={option.id === 'linkDoc' || option.id === 'landLayoutLrs'} disabled={busy} hidden
+        onChange={event => { const files = [...(event.target.files || [])]; if (files.length) onUpload(files); event.target.value = ''; }} />
+      <button type="button" className="gold" disabled={busy} onClick={() => input.current?.click()}>Choose file(s) or photo</button>
     </label>
-    <FieldGroup group={{ step: 1, title: option.label, telugu: option.telugu, note: option.note, fields: option.fields }} form={blankForm} setField={() => {}} />
+    <SourceFeedback sources={sources} visibleFields={visibleFields.map(field => field.id)} />
+    {option.id === 'landLayoutLrs' ? [
+      ['Vacant Land Tax / Assessment', 'vltNo'],
+      ['Approved Layout', 'layoutFileNo'],
+      ['LRS 2020 Application', 'lrsApplicationNo', 'lrsApplicationDate'],
+      ['LRS Proceeding', 'lrsProceedingNo', 'lrsProceedingDate'],
+    ].map(([title, ...ids]) => <FieldGroup key={title} group={{ step: 1, title, note: '', fields: visibleFields.filter(field => ids.includes(field.id)) }} form={form} setField={onField} />)
+      : <FieldGroup group={{ step: 1, title: option.label, note: option.note, fields: visibleFields }} form={form} setField={onField} />}
+    {onDelete && <button type="button" className="quiet" onClick={onDelete}>Remove these details</button>}
   </section>;
 }
 
-/**
- * "+ Add / upload document": first pick which document type(s) are being
- * added — one or several at once (link deed + house tax + NALA, say) — then
- * only those chosen cards appear, each with its own upload button so a
- * different file goes straight into the matching card.
- */
+/** Select which title points to add; the editable cards appear after selection. */
 function AddLinkDocument({ onAdd }: { onAdd: (optionId: string, files: File[]) => void }) {
   const [picking, setPicking] = useState(false);
-  const [chosen, setChosen] = useState<string[]>([]);
 
-  if (chosen.length) {
-    return <>
-      <div className="add-document-row">
-        <span>Upload each document into its matching card below.</span>
-        <button className="quiet" onClick={() => { setChosen([]); setPicking(false); }}>Cancel all</button>
-      </div>
-      {chosen.map(id => {
-        const option = LINK_OPTIONS.find(o => o.id === id)!;
-        return <AddLinkDocumentCard key={id} option={option}
-          onUpload={files => { onAdd(option.id, files); setChosen(c => c.filter(x => x !== id)); }} />;
-      })}
-    </>;
-  }
-
-  if (!picking) return <div className="add-document-row"><button className="primary" onClick={() => setPicking(true)}>+ Add / upload document</button></div>;
+  if (!picking) return <div className="add-document-row"><button type="button" className="primary" onClick={() => setPicking(true)}>+ Add / upload document</button></div>;
 
   return <MultiPicker
     onCancel={() => setPicking(false)}
-    onContinue={ids => setChosen(ids)} />;
+    onContinue={ids => { ids.forEach(id => onAdd(id, [])); setPicking(false); }} />;
 }
 
 /** Checkbox-style tile picker for choosing one or several document types before any upload happens. */
@@ -326,7 +318,7 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
       <button className="quiet" onClick={onCancel}>Cancel</button>
     </div>
     <div className="picker-grid">
-      {LINK_OPTIONS.map(o => (
+      {TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(o => o.id === id)!).map(o => (
         <button key={o.id} type="button" className={`picker-tile${selected.includes(o.id) ? ' selected' : ''}`} onClick={() => toggle(o.id)}>
           <b>{o.label}</b>
         </button>
@@ -547,18 +539,6 @@ export default function WizardApp() {
     // Extent (Sq. Meters) and NALA's square-yard equivalent are computed live
     // for display (see RecordFieldGroup/LinkRecordCard) straight from their
     // source figure, whichever way it arrived — no mirrored write needed here.
-    // Link-document SRO fields mirror the registering office for this property,
-    // so the Schedule's Registration Sub-District can never diverge.
-    if (field === 'sro' && role === 'property') {
-      for (const linkRecord of recordOptions('link').filter(linkRecord =>
-        (draft.linkPropertyRecords[linkRecord]
-          || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === linkRecord)?.assignment?.propertyRecord
-          || 'primary') === record
-      )) {
-        dispatch({ type: 'manual', key: fieldKey('link', linkRecord, 'linkSro'), value });
-        dispatch({ type: 'manual', key: fieldKey('link', linkRecord, 'linkSroCode'), value });
-      }
-    }
     dispatch({ type: 'manual', key: fieldKey(role, record, field), value });
   };
 
@@ -648,8 +628,20 @@ export default function WizardApp() {
     if (states.some(state => state === 'review')) return 'review';
     return 'done';
   };
-  /** A selected Link Deed bundle becomes one record; other document types keep one record per file. */
+  /** Each grouped section uses one record per property, including several uploaded files. */
   const addLinkDocuments = (optionId: string, files: File[]) => {
+    if (optionId === 'landLayoutLrs' || optionId === 'houseTax') {
+      const related = optionId === 'landLayoutLrs'
+        ? ['landLayoutLrs', 'vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'layoutLrs']
+        : ['houseTax', 'assessment'];
+      const existing = recordOptions('link').find(record => propertyForLinkRecord(record) === activePropertyId
+        && related.includes(resolved.values[fieldKey('link', record, 'linkOption')]));
+      const record = existing || crypto.randomUUID();
+      if (!existing) dispatch({ type: 'link-property', record, propertyId: activePropertyId });
+      edit('link', record, 'linkOption', optionId);
+      if (files.length) void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${optionId}` as ExtractionProfile);
+      return;
+    }
     if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'link-property', record, propertyId: activePropertyId }); edit('link', record, 'linkOption', optionId); return; }
     if (optionId === 'linkDoc') {
       const record = crypto.randomUUID();
@@ -918,24 +910,47 @@ export default function WizardApp() {
 
         {step === 1 && (() => {
           const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);
-          const multipleProperties = propertyRecords.length > 1;
           const activeProperty = propertyRecords.find(record => record.id === activePropertyId);
           const category = activeProperty?.category || '';
+          const options = TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id)!);
+          const sectionRecords = (id: string) => records.filter(record => {
+            const saved = resolved.values[fieldKey('link', record, 'linkOption')] || 'linkDoc';
+            return saved === id || (id === 'landLayoutLrs' && ['vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'layoutLrs'].includes(saved))
+              || (id === 'houseTax' && saved === 'assessment');
+          });
           return <>
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="panel"><ScheduleTypeControl scheduleNumber={activePropertyIndex + 1} category={category} onChange={value => edit('property', activePropertyId, 'category', value)} /></section>
           {!category ? <Empty>Choose this schedule's property type to add its documents.</Empty> : <>
-          <section className="panel"><h2>{multipleProperties ? `Documents for Property ${activePropertyIndex + 1}` : 'Property documents'}</h2><p>Upload only the link deeds, receipts and property records for this schedule. These documents cannot alter another property’s extracted details.</p></section>
-          {records.length === 0 && <Empty>No documents added{multipleProperties ? ` for Property ${activePropertyIndex + 1}` : ''} yet — click below to add one.</Empty>}
-          {records.map((record, i, all) => {
-            const busySource = sourceBusyFor('link', record);
-            const optionId = resolved.values[fieldKey('link', record, 'linkOption')] || LINK_OPTIONS[0].id;
-            return <LinkRecordCard key={record} record={record} resolved={resolved} edit={edit}
-              label={all.length > 1 ? `Document ${i + 1}` : undefined}
-              onDelete={() => clearLinkRecord(record)}
-              onUpload={uploadFor('link', record, `phase1:${optionId}` as ExtractionProfile)}
-              sources={draft.sources.filter(s => s.assignment?.role === 'link' && s.assignment.record === record && (s.assignment.propertyRecord || 'primary') === activePropertyId)}
-              busy={!!busySource} />;
+          {options.map(option => {
+            const related = sectionRecords(option.id);
+            const existing = option.id === 'landLayoutLrs' || option.id === 'houseTax' ? related.slice(0, 1) : related;
+            return <React.Fragment key={option.id}>
+              {existing.map(record => {
+                const grouped = option.id === 'landLayoutLrs' || option.id === 'houseTax';
+                const canonical = grouped ? related.find(id => resolved.values[fieldKey('link', id, 'linkOption')] === option.id) : record;
+                const priority = option.id === 'landLayoutLrs' ? ['vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'layoutLrs'] : ['assessment'];
+                const ordered = grouped ? [canonical, ...priority.flatMap(kind => related.filter(id => resolved.values[fieldKey('link', id, 'linkOption')] === kind)), ...related].filter((id, index, ids): id is string => !!id && ids.indexOf(id) === index) : [record];
+                const form = Object.fromEntries(option.fields.map(field => [field.id, ordered.map(id => resolved.values[fieldKey('link', id, field.id)]).find(Boolean) || '']));
+                if (option.id === 'houseTax' && !form.bltNo) form.bltNo = resolved.values[fieldKey('property', activePropertyId, 'bltNo')]
+                  || related.map(id => resolved.values[fieldKey('link', id, 'assessmentPtinNo')]).find(Boolean) || '';
+                if (option.id === 'landLayoutLrs' && !form.vltNo) form.vltNo = resolved.values[fieldKey('property', activePropertyId, 'assessmentPtinNo')]
+                  || records.filter(id => !resolved.values[fieldKey('link', id, 'linkOption')])
+                    .map(id => resolved.values[fieldKey('link', id, 'assessmentPtinNo')]).find(Boolean) || '';
+                const ensureRecord = () => {
+                  if (resolved.values[fieldKey('link', record, 'linkOption')] !== option.id) {
+                    dispatch({ type: 'link-property', record, propertyId: activePropertyId });
+                    edit('link', record, 'linkOption', option.id);
+                  }
+                };
+                return <TitlePointCard key={record} option={option} record={record} form={form}
+                  onField={(field, value) => { ensureRecord(); edit('link', record, field, value); }}
+                  onUpload={files => { ensureRecord(); void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${option.id}` as ExtractionProfile); }}
+                  sources={draft.sources.filter(source => source.assignment?.role === 'link' && (grouped ? related.includes(source.assignment.record) : source.assignment.record === record))}
+                  busy={(grouped ? related : [record]).some(id => !!sourceBusyFor('link', id))}
+                  onDelete={() => (grouped ? related : [record]).forEach(clearLinkRecord)} />;
+              })}
+            </React.Fragment>;
           })}
           <AddLinkDocument onAdd={addLinkDocuments} />
           </>}
@@ -963,7 +978,8 @@ export default function WizardApp() {
               {multipleProperties && <div className="add-document-row"><button type="button" className="quiet" onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }}>Edit documents for Property {i + 1}</button></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
-              <RecordFieldGroup role="property" record={id} category={record.category} step={3} resolved={resolved} edit={edit} />
+              <RecordFieldGroup role="property" record={id} category={record.category} step={3} resolved={resolved} edit={edit}
+                fallbackValues={{ bltNo: id === 'primary' ? state.form.bltNo : record.values.bltNo || '' }} />
               {['Residential', 'Commercial', 'Flat'].includes(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
                 onChange={value => dispatch({ type: 'structure-details', propertyId: id, value })}

@@ -1,4 +1,4 @@
-import { ALL_FIELDS, EMPTY_FORM, newStructureDetails, type StructureDetails } from './fields';
+import { ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
@@ -274,11 +274,20 @@ export function appStateFor(draft: Draft): AppState {
     || 'primary';
   const linkRecordsBySchedule: Record<string, ValueRecord[]> = {};
   for (const link of links) (linkRecordsBySchedule[linkScheduleId(link)] ??= []).push(link);
+  const assessmentFor = (scheduleId: string, category: string) => {
+    if (!HOUSE_CATEGORIES.includes(category)) return '';
+    const records = linkRecordsBySchedule[scheduleId] || [];
+    return records.find(record => record.values.linkOption === 'houseTax' && record.values.bltNo)?.values.bltNo
+      || records.find(record => record.values.linkOption === 'assessment' && record.values.bltNo)?.values.bltNo
+      || records.find(record => record.values.linkOption === 'houseTax' && record.values.assessmentPtinNo)?.values.assessmentPtinNo
+      || '';
+  };
   const registeredLinks = links.filter(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
   const supportingLinks = links.filter(r=>!registeredLinks.includes(r));
   const primaryLinks = linkRecordsBySchedule.primary || [];
   const primaryRegisteredLink = primaryLinks.find(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
   const form = { ...EMPTY_FORM, ...properties[0]?.values, ...primarySeller?.values, ...primaryBuyer?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
+  if (!form.bltNo) form.bltNo = assessmentFor('primary', properties[0]?.values.category || '');
   const paymentRecords = forRole('payment');
   const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
@@ -311,7 +320,11 @@ export function appStateFor(draft: Draft): AppState {
     additionalClaimants: buyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
     primaryClaimantId: primaryBuyer?.id || 'primary',
     additionalLinkDocuments: registeredLinks.slice(1),
-    additionalSchedules: properties.slice(1).map(r => ({ ...r, category: r.values.category || '', unit: r.values.unit || '' })),
+    additionalSchedules: properties.slice(1).map(r => {
+      const inferred = assessmentFor(r.id, r.values.category || '');
+      return { ...r, values: inferred && !r.values.bltNo ? { ...r.values, bltNo: inferred } : r.values,
+        category: r.values.category || '', unit: r.values.unit || '' };
+    }),
     supportingRecords: supportingLinks.map(r=>({id:r.id,scheduleId:draft.sources.find(s=>s.assignment?.record===r.id)?.assignment?.propertyRecord || 'primary',docName:draft.sources.find(s=>s.assignment?.record===r.id)?.name || '',values:r.values})),
     structureDetailsBySchedule: Object.fromEntries(propertyIds.map(id => [id, draft.structureDetailsBySchedule[id] || newStructureDetails()])),
     vendeeSharesBySchedule: draft.vendeeSharesBySchedule || {},

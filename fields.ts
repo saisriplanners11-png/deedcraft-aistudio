@@ -312,6 +312,31 @@ export type LinkOption = { id: string; label: string; telugu: string; note: stri
  * schedule via `supportingRecordRecital`-style recitals only where applicable.
  */
 export const LINK_OPTIONS: LinkOption[] = [
+  { id: 'landLayoutLrs', label: 'Vacant Land Tax / Approved Layout / LRS', telugu: '', note: 'Enter each available land-tax, layout and regularisation detail for this property.', fields: [
+    { id: 'vltNo', label: 'V.L.T. number', ph: ['V.L.T No.', 'V.L.T. No.'] },
+    { id: 'layoutFileNo', label: 'Approved layout file number', ph: 'Layout File No.' },
+    { id: 'lrsApplicationNo', label: 'LRS 2020 application number', ph: 'LRS Application No.' },
+    { id: 'lrsApplicationDate', label: 'Application date', ph: 'Application Date', type: 'date' },
+    { id: 'lrsProceedingNo', label: 'LRS proceeding number', ph: 'LRS Proceeding No.' },
+    { id: 'lrsProceedingDate', label: 'Proceeding date', ph: 'Proceeding Date', type: 'date' },
+  ] },
+  { id: 'vacantTax', label: 'Vacant Land Tax/Assessment', telugu: '', note: 'Vacant-land tax or assessment identifier for this schedule.', fields: [
+    { id: 'vltNo', label: 'V.L.T. / vacant-land assessment number', ph: ['V.L.T No.', 'V.L.T. No.'] },
+  ] },
+  { id: 'approvedLayout', label: 'Approved Layout', telugu: '', note: 'Approved layout file number for this schedule.', fields: [
+    { id: 'layoutFileNo', label: 'Approved layout file number', ph: 'Layout File No.' },
+  ] },
+  { id: 'assessment', label: 'Tax/Assessment Identification', telugu: '', note: 'Enter the property assessment or PTIN identifier once here. A house-tax receipt may fill this value when it is shown on the receipt.', fields: [
+    { id: 'bltNo', label: 'Assessment / PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
+  ] },
+  { id: 'lrsApplication', label: 'L.R.S.-2020 Application', telugu: '', note: 'Layout regularisation application and date.', fields: [
+    { id: 'lrsApplicationNo', label: 'Application number', ph: 'LRS Application No.' },
+    { id: 'lrsApplicationDate', label: 'Application date', ph: 'Application Date', type: 'date' },
+  ] },
+  { id: 'lrsProceeding', label: 'L.R.S. Proceeding', telugu: '', note: 'Layout regularisation proceeding and date.', fields: [
+    { id: 'lrsProceedingNo', label: 'Proceeding number', ph: 'LRS Proceeding No.' },
+    { id: 'lrsProceedingDate', label: 'Proceeding date', ph: 'Proceeding Date', type: 'date' },
+  ] },
   {
     id: 'linkDoc', label: 'Link Document No.', telugu: 'రిజిస్టర్డ్ లింక్ దస్తావేజు',
     note: 'The prior registered document through which the vendor holds title. It is recited verbatim in the deed.',
@@ -326,12 +351,13 @@ export const LINK_OPTIONS: LinkOption[] = [
     ],
   },
   {
-    id: 'houseTax', label: 'House Tax Receipt No.', telugu: 'ఇంటి పన్ను రసీదు',
-    note: 'Municipal house-tax record. Its details are recited in the deed when entered.',
+    id: 'houseTax', label: 'Property Tax / Assessment', telugu: 'ఇంటి పన్ను రసీదు',
+    note: 'Enter the receipt and the property assessment/PTIN separately. Do not use a demand or receipt number as the assessment number.',
     fields: [
       { id: 'houseTaxReceiptNo', label: 'House tax receipt number', ph: 'House Tax Receipt' },
-      { id: 'assessmentPtinNo', label: 'Assessment / PTIN number', ph: ['V.L.T No.', 'V.L.T. No.'],
-        hint: 'Copy only the property identifier explicitly labelled assessment number, PTIN or V.L.T.; never a receipt or demand number.' },
+      { id: 'bltNo', label: 'Assessment / PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
+      { id: 'assessmentPtinNo', label: 'Assessment / PTIN number',
+        hint: 'Kept for older drafts.', hidden: true },
       { id: 'localBodyName', label: 'Local body', ph: 'Local Body Name', hint: 'Municipality / Gram Panchayat / GHMC circle' },
       { id: 'taxPaidDate', label: 'Tax paid date', ph: 'Tax Paid Date', type: 'date' },
     ],
@@ -375,6 +401,7 @@ export const LINK_OPTIONS: LinkOption[] = [
     ],
   },
 ];
+export const TITLE_SECTION_IDS = ['linkDoc', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions'] as const;
 
 /** Flat list of every field, in step order. De-duplicated: `linkDoc`'s core four are the same fields already in GROUPS. */
 export const ALL_FIELDS: Field[] = Object.values(
@@ -386,7 +413,10 @@ export const ALL_FIELDS: Field[] = Object.values(
 /** Groups for one step, with category-inapplicable fields removed. */
 export function groupsForStep(step: number, category: string): Group[] {
   return GROUPS.filter(g => g.step === step)
-    .map(g => ({ ...g, fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))) }))
+    .map(g => ({ ...g, fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
+      && !(f.id === 'nearAdjacent' && ['Demolished', 'Part open place'].includes(category)))
+      .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
+        ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' } : f) }))
     .filter(g => g.fields.length > 0);
 }
 

@@ -1,9 +1,10 @@
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
 // Synthetic evidence keeps the integration test independent of external APIs.
-const out = new URL('../tmp/upload-first-qa/',import.meta.url).pathname;
+const out = fileURLToPath(new URL('../tmp/upload-first-qa/', import.meta.url));
 await mkdir(out,{recursive:true});
 const property = {propState:'Telangana',district:'Karimnagar',mandal:'Sircilla',village:'Sircilla',locality:'Ganeshnagar',pinCode:'505301',sro:'Sircilla',districtRegistrar:'Karimnagar',plotNo:'16',nearHNo:'10-1-36/1',surveyNo:'795/B&D',extentValue:'157.22',extentSqYards:'157.22',extentSqMeters:'132.06',unit:'Sq. Yards',category:'Part open place',boundaryNorth:'North neighbour',boundarySouth:"21' Road",boundaryEast:'East neighbour',boundaryWest:'West neighbour'};
 const own = {
