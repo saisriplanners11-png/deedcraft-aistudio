@@ -7,7 +7,7 @@ import {
 } from './source-draft';
 import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
 import {
-  BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, validateSaleDeedTemplate,
+  appendRegistrationPlans, BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, validateSaleDeedTemplate,
   type DeedTemplateSource, type ScheduleMerge,
 } from './docx';
 import { loadSaleDeedTemplate } from './template';
@@ -18,6 +18,9 @@ import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
 import { PaymentCard, AddPayment } from './paymentui';
 import { PlanSketchStep } from './plan-sketch-step';
+import { planDocumentFromDraft } from './plan-sketch-mapping';
+import type { PlanDocument } from './plan-sketch-types';
+import type { PlanDeedChange } from './plan-sketch-integration';
 import './wizard-app.css';
 import './plan-sketch.css';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
@@ -504,6 +507,8 @@ export default function WizardApp() {
   // resolveDraft only lists a record once it has a value, so a freshly added blank/uploading
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
+  const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
+  const [selectedPlanSvgs, setSelectedPlanSvgs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [exporting, setExporting] = useState(false);
   const [templateMode, setTemplateMode] = useState<'built-in' | 'custom'>('built-in');
@@ -539,6 +544,13 @@ export default function WizardApp() {
     // Extent (Sq. Meters) and NALA's square-yard equivalent are computed live
     // for display (see RecordFieldGroup/LinkRecordCard) straight from their
     // source figure, whichever way it arrived — no mirrored write needed here.
+    if (role === 'property' || role === 'executant' || role === 'claimant') {
+      setSelectedPlanSvgs(old => {
+        if (role !== 'property') return {};
+        const next = { ...old }; delete next[record]; return next;
+      });
+      setDownload(null);
+    }
     dispatch({ type: 'manual', key: fieldKey(role, record, field), value });
   };
 
@@ -701,10 +713,12 @@ export default function WizardApp() {
   };
 
   useEffect(() => { setDownload(null); setMessage(''); }, [draft.id, draft.revision]);
+  useEffect(() => { setSelectedPlanSvgs({}); }, [draft.id, draft.manual, draft.sources, draft.propertyIds, draft.structureDetailsBySchedule, draft.instrumentId, draft.variantId]);
 
   function reset() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
+    setPlanDrafts({}); setSelectedPlanSvgs({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false); dispatch({ type: 'reset' });
   }
@@ -712,6 +726,29 @@ export default function WizardApp() {
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
+  const activePlan = planDrafts[activePropertyId] || planDocumentFromDraft(state, activePropertyId);
+  const changePlan = (plan: PlanDocument) => {
+    setPlanDrafts(old => ({ ...old, [activePropertyId]: { ...plan, updatedAt: new Date().toISOString() } }));
+    setSelectedPlanSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
+    setDownload(null);
+  };
+  const applyPlanChanges = (changes: PlanDeedChange[]) => {
+    const ids = {
+      executant: partyRecordIds('executant').slice(),
+      claimant: partyRecordIds('claimant').slice(),
+    };
+    for (const change of changes) {
+      if (change.role === 'property') { edit('property', activePropertyId, change.field, change.after); continue; }
+      while (ids[change.role].length <= change.index) {
+        const id = crypto.randomUUID();
+        ids[change.role].push(id);
+        dispatch({ type: 'manual', key: fieldKey(change.role, id, `${change.role}Name`), value: '' });
+        setExtraPartyRecords(old => ({ ...old, [change.role]: [...old[change.role], id] }));
+      }
+      edit(change.role, ids[change.role][change.index], change.field, change.after);
+    }
+    setMessage(`Applied ${changes.length} reviewed plan field(s) to the deed. Recheck the deed before approval.`);
+  };
   const propertyRecords = scheduleRecords(state);
   const combinedMarketStatus: LinkStageStatus = (() => {
     const states = propertyRecords.map(record => linkStageStatus('step5', record.id));
@@ -722,9 +759,20 @@ export default function WizardApp() {
   })();
   const executantRecords = partyRecords(state, 'executant');
   const claimantRecords = partyRecords(state, 'claimant');
+  const sourcePlanChoices = (scheduleId: string) => {
+    const record = propertyRecords.find(item => item.id === scheduleId);
+    if (!record) return [];
+    const form: Record<string, string> = { ...propertyForm(state, record.values), category: record.category };
+    const unique = [...new Map(plansFor(draft, scheduleId).map(plan => [JSON.stringify(plan.drawing), plan])).values()];
+    return unique.map((plan, index) => ({
+      label: `source plan ${index + 1}`,
+      svg: registrationPlanSvg(form, plan.drawing, { vendors: executantRecords.map(r => r.values), buyers: claimantRecords.map(r => r.values) }),
+    }));
+  };
 
   const previews = propertyRecords.map((record) => {
     const id = record.id;
+    if (selectedPlanSvgs[id]) return { id, svg: selectedPlanSvgs[id], note: 'Reviewed plan selected for this schedule.', error: '' };
     const plans = plansFor(draft, id);
     const unique = [...new Map(plans.map(plan => [JSON.stringify(plan.drawing), plan])).values()];
     const form: Record<string, string> = { ...propertyForm(state, record.values), category: record.category };
@@ -751,7 +799,10 @@ export default function WizardApp() {
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
         const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMerges, templateSource);
-        artifact = { ...artifact, docx: merged.blob };
+        const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
+          selectedPlanSvgs[record.id] ? [{ schedule: index + 1, svg: selectedPlanSvgs[record.id] }] : []
+        ).map(async plan => ({ schedule: plan.schedule, png: await planPng(plan.svg) })));
+        artifact = { ...artifact, docx: await appendRegistrationPlans(merged.blob, reviewed) };
       }
       if (kind === 'pdf' && !artifact.pdf) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
@@ -879,7 +930,7 @@ export default function WizardApp() {
             <button key={s.id} className={`overview-card${vm.doneIds.includes(s.id) ? ' done' : ''}`} onClick={() => goto(s.id)}>
               <b>{String(s.id + 1).padStart(2, '0')}</b>
               <span>{s.label}</span>
-              <em>{s.id === 10 ? 'Beta — optional' : vm.doneIds.includes(s.id) ? '✓ Done' : 'Open'}</em>
+              <em>{s.id === 10 ? 'Plan editor' : vm.doneIds.includes(s.id) ? '✓ Done' : 'Open'}</em>
             </button>
           ))}</div>
           <h2>Readiness checks</h2>
@@ -1094,7 +1145,12 @@ export default function WizardApp() {
           {message && <p role="status">{message}</p>}
         </section>}
 
-        {step === 10 && <section className="panel plan-sketch"><PlanSketchStep state={state} /></section>}
+        {step === 10 && <section className="panel plan-sketch">
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <PlanSketchStep key={activePropertyId} state={state} scheduleId={activePropertyId} doc={activePlan}
+            selected={!!selectedPlanSvgs[activePropertyId]} sourcePlans={sourcePlanChoices(activePropertyId)} onChange={changePlan} onApplyChanges={applyPlanChanges}
+            onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
+        </section>}
 
         <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(Math.max(-1, step - 1))}>{step <= 0 ? 'Overview' : STEPS[step - 1].label}</button>

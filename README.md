@@ -2,7 +2,9 @@
 
 Create a sale deed through an 11-step wizard: **Draft, Deed & Category → Link Deed & Enclosures → Jurisdiction → Property Details → Market Value → Payment Details → Property Schedules → Executant Details → Claimant Details → Reverify → Generate Deed**. Mixed PDFs, Word files, photos, text and handwritten notes can be uploaded on any step. Manual entry is optional. Missing or uncertain fields remain blank and do not prevent download.
 
-The output uses the supplied sale-deed Word template by default, with a registration plan appended, plus a separate plan PDF. On the Generate Deed step, a drafter may instead upload a compatible tagged `.docx` derived from the downloadable starter template. Clause wording, numbering, formatting, schedule variants, declaration and signatures come from the selected template. Supporting records populate existing fields; they do not add paragraphs. New drafts contain no sample parties, properties, dimensions, stamp values or payments.
+The output uses the supplied sale-deed Word template by default. A reviewed plan explicitly selected in the Property Plan step is appended to the deed; the separate combined plan PDF uses that plan or an unambiguous verified source plan for each schedule. On the Generate Deed step, a drafter may instead upload a compatible tagged `.docx` derived from the downloadable starter template. Clause wording, numbering, formatting, schedule variants, declaration and signatures come from the selected template. Supporting records populate existing fields; they do not add paragraphs. New drafts contain no sample parties, properties, dimensions, stamp values or payments.
+
+The Property Plan step holds one editable plan per schedule. It includes the five source sample templates, photo/PDF sketch review, cadastral drawing controls, A4 preview and a separate opt-in browser library. Plan changes enter the deed only after selecting individual fields in the review panel. Saving to the library does not save or modify the open deed draft.
 
 ## Run
 
@@ -43,7 +45,7 @@ The prior deed's purchaser becomes the new seller. Prior payments, age, occupati
 
 ## Documents and plans
 
-`sale-deed-template.docx` is the supplied reference, kept byte-for-byte unchanged. `docx.ts` patches placeholders across their original text runs; it preserves run properties, line breaks and paragraph numbering. The selected schedule is retained, consideration is separated from market value, and blank fields become write-in spaces. Plan PNGs are embedded in separate page sections at print resolution. The same plan images form the PDF, avoiding a second independent layout.
+`sale-deed-template.docx` is the current supplied reference, with repeatable building rows and payment placeholders added for generation. The earlier default remains available as `sale-deed-template-v2.docx`. `docx.ts` patches placeholders across their original text runs; it preserves run properties, line breaks and paragraph numbering. The selected schedule is retained, consideration is separated from market value, and blank fields become write-in spaces. Plan PNGs are embedded in separate page sections at print resolution. The same plan images form the PDF, avoiding a second independent layout.
 
 Customer templates stay in browser memory for the current draft and are never sent to the extraction AI. They must be `.docx` files that retain the starter template's five schedule markers, flow-of-title and consideration boundaries, declaration boundary, and supported `<Placeholder>` names. The app validates these requirements locally and blocks custom generation with actionable errors rather than silently falling back. Structural validation does not constitute legal approval of customer-authored wording.
 

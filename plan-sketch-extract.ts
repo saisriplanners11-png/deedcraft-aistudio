@@ -30,6 +30,7 @@ export interface ExtractedSketchData {
   areaSqMtrs?: number | '';
   surveyNo?: string;
   plotNo?: string;
+  houseNo?: string;
   nearAdjacent?: 'Near' | 'Adjacent';
   nearHNo?: string;
   locality?: string;
@@ -84,6 +85,7 @@ const SCHEMA = {
     areaSqMtrs: { type: 'number' },
     surveyNo: { type: 'string' },
     plotNo: { type: 'string' },
+    houseNo: { type: 'string' },
     nearAdjacent: { type: 'string', enum: ['Near', 'Adjacent'] },
     nearHNo: { type: 'string' },
     locality: { type: 'string' },
@@ -153,15 +155,10 @@ export function applyExtractedDataToPlan(currentPlan: PlanDocument, extracted: E
   const eastDim = parseDimension(eRaw, unit);
   const westDim = parseDimension(wRaw, unit);
 
-  let areaYards = extracted.areaSqYards;
-  if (!areaYards || areaYards <= 0) {
-    const avgW = (northDim.normalized + southDim.normalized) / 2;
-    const avgH = (eastDim.normalized + westDim.normalized) / 2;
-    areaYards = unit === 'Feet'
-      ? Math.round(((avgW * avgH) / 9) * 100) / 100
-      : Math.round(avgW * avgH * 1.19599 * 100) / 100;
-    if (!avgW || !avgH) areaYards = currentPlan.property.areaSqYards;
-  }
+  // Four side lengths do not establish the area of an irregular property.
+  // Only an area actually read from the source may enter the plan.
+  const areaYards = extracted.areaSqYards && extracted.areaSqYards > 0
+    ? extracted.areaSqYards : currentPlan.property.areaSqYards;
   const areaMtrs = areaYards === '' ? currentPlan.property.areaSqMtrs : calculateSqMtrs(areaYards);
 
   const roadSides = (extracted.roadSides?.length ? extracted.roadSides : currentPlan.boundaries.roadSides) as RoadSideOption[];
@@ -190,6 +187,8 @@ export function applyExtractedDataToPlan(currentPlan: PlanDocument, extracted: E
     areaSqYards: areaYards,
     areaSqMtrs: areaMtrs,
     surveyNo: extracted.surveyNo || currentPlan.property.surveyNo,
+    plotNo: extracted.plotNo || currentPlan.property.plotNo,
+    houseNo: extracted.houseNo || currentPlan.property.houseNo,
     nearAdjacent: extracted.nearAdjacent || currentPlan.property.nearAdjacent,
     nearHNo: extracted.nearHNo || currentPlan.property.nearHNo,
     locality: extracted.locality || currentPlan.property.locality,

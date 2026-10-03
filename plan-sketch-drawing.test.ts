@@ -41,4 +41,26 @@ describe('PlanSketchDrawing', () => {
       expect(() => renderToStaticMarkup(PlanSketchDrawing({ property, boundaries: b }) as any)).not.toThrow();
     }
   });
+  it('does not print guessed dimensions or adjacent owners for an incomplete plan', () => {
+    const blank = { ...boundaries, northDim: { raw: '', normalized: 0, unit: 'Feet' as const }, northBoundary: '' };
+    const markup = renderToStaticMarkup(PlanSketchDrawing({ property: { ...property, areaSqYards: '', areaSqMtrs: '' }, boundaries: blank }) as any);
+    expect(markup.match(/40&#x27;/g)).toHaveLength(1);
+    expect(markup).not.toContain('ADJACENT PROPERTY');
+  });
+  it('shows multiple positioned structures and per-side drawing controls', () => {
+    const houses: PropertyDetails['houses'] = [
+      { id: 'a', name: 'Main House', widthRaw: "18'", lengthRaw: "25'", position: 'north-west', plinthAreaSqFt: 450 },
+      { id: 'b', name: 'Shed', widthRaw: "12'", lengthRaw: "18'", position: 'south-east', plinthAreaSqFt: 216 },
+    ];
+    const markup = renderToStaticMarkup(PlanSketchDrawing({
+      property: { ...property, propertyType: 'House', houses },
+      boundaries: { ...boundaries, roadSides: ['South','East'], southRoadContinuity: 'left', eastRoadContinuity: 'top',
+        northSymbolStyle: 'minimal', mapRotation: 30, sketchScale: 120, boundaryFontWeight: 'bold' },
+    }) as any);
+    expect(markup).toContain('id="structure-1"');
+    expect(markup).toContain('id="structure-2"');
+    expect(markup).toContain('Main House');
+    expect(markup).toContain('Shed');
+    expect(markup).toContain('rotate(30,');
+  });
 });

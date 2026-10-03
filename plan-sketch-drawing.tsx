@@ -55,7 +55,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
   const renderWrappedBoundaryText = (text: string, x: number, y: number, maxLenPx: number) => {
     if (!text) return null;
-    const charWidth = 6.0; // Approx for 11px uppercase bold tracking-wide
+    const charWidth = 6.0 * Math.max(.6, Math.min(1.8, (boundaries.textScale ?? 100) / 100));
     const maxChars = Math.max(8, Math.floor((maxLenPx - 20) / charWidth));
 
     const words = text.split(' ');
@@ -82,7 +82,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
       <text
         textAnchor="middle"
         dominantBaseline="central"
-        style={{ ...T(11, 800, {letterSpacing: '0.025em', textTransform: 'uppercase'}), ...{ paintOrder: 'stroke fill', stroke: '#ffffff', strokeWidth: '3px' } }}
+        style={{ ...T(11 * Math.max(.6, Math.min(1.8, (boundaries.textScale ?? 100) / 100)), boundaries.boundaryFontWeight === 'bold' ? 800 : 400, {letterSpacing: '0.025em', textTransform: 'uppercase'}), ...{ paintOrder: 'stroke fill', stroke: '#ffffff', strokeWidth: '3px' } }}
       >
         {lines.map((line, index) => (
           <tspan key={index} x={x} y={startY + index * lineHeight}>
@@ -202,6 +202,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
   const nBCy = -uBCx; // Outward (rightward) normal
   const angleBC = Math.atan2(dyBC, dxBC) * (180 / Math.PI);
   const invSlopeBC = (cy !== by) ? (cx - bx) / (cy - by) : 0;
+  const labelAngle = (angle: number) => angle - (boundaries.autoAlignBoundariesWithMap ? 0 : (boundaries.mapRotation || 0));
 
   // Dimensions for center badge auto-fitting
   const minPlotW = Math.min(scaledNW, scaledSW);
@@ -218,14 +219,15 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
   const badgeFitScale = Math.min(1.0, Math.max(0.48, Math.min(scaleBadgeW, scaleBadgeH)));
 
   // Format dimensions for display
-  const nText = formatDimensionDisplay(northDim) || `${nVal}'`;
-  const sText = formatDimensionDisplay(southDim) || `${sVal}'`;
-  const eText = formatDimensionDisplay(eastDim) || `${eVal}'`;
-  const wText = formatDimensionDisplay(westDim) || `${wVal}'`;
+  const nText = formatDimensionDisplay(northDim);
+  const sText = formatDimensionDisplay(southDim);
+  const eText = formatDimensionDisplay(eastDim);
+  const wText = formatDimensionDisplay(westDim);
 
   // ================= HOUSE DETAILS & GEOMETRY =================
-  const isHouseActive = property.propertyType === 'House' || !!property.house?.enabled;
-  const houseData = property.house;
+  const houses = property.houses?.length ? property.houses : property.house?.enabled ? [property.house] : [];
+  const houseData = houses[0];
+  const isHouseActive = !!houseData && houseData.showMeasurements !== false && !!(houseData.widthRaw || houseData.widthFeet) && !!(houseData.lengthRaw || houseData.lengthFeet);
 
   const parseFt = (val?: string | number, fallback: number = 24): number => {
     if (typeof val === 'number') return val > 0 ? val : fallback;
@@ -248,17 +250,18 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
   const houseWFeet = parseFt(houseData?.widthRaw ?? houseData?.widthFeet, defaultHouseW);
   const houseLFeet = parseFt(houseData?.lengthRaw ?? houseData?.lengthFeet, defaultHouseL);
+  const houseUnitFactor = boundaries.dimensionUnit === 'Metres' ? 3.28084 : 1;
 
-  const houseWDisplay = houseData?.widthRaw || `${Math.round(houseWFeet)}'-0"`;
-  const houseLDisplay = houseData?.lengthRaw || `${Math.round(houseLFeet)}'-0"`;
-  const houseStructure = (houseData?.structureType || 'R.C.C. Roof House').toUpperCase();
-  const housePlinthSqFt = houseData?.plinthAreaSqFt || Math.round(houseWFeet * houseLFeet);
+  const houseWDisplay = houseData?.widthRaw || (houseData?.widthFeet ? `${houseData.widthFeet}'` : '');
+  const houseLDisplay = houseData?.lengthRaw || (houseData?.lengthFeet ? `${houseData.lengthFeet}'` : '');
+  const houseStructure = (houseData?.structureType || houseData?.name || 'HOUSE').toUpperCase();
+  const housePlinthSqFt = houseData?.plinthAreaSqFt || '';
 
   // Scaled dimensions in SVG pixels, capped so it always fits nicely inside the plot
   const maxHousePxW = minPlotW * 0.74;
   const maxHousePxH = minPlotH * 0.70;
-  const housePxW = Math.max(54, Math.min(houseWFeet * scale, maxHousePxW));
-  const housePxH = Math.max(54, Math.min(houseLFeet * scale, maxHousePxH));
+  const housePxW = Math.max(54, Math.min(houseWFeet / houseUnitFactor * scale, maxHousePxW));
+  const housePxH = Math.max(54, Math.min(houseLFeet / houseUnitFactor * scale, maxHousePxH));
 
   const hx1 = centerX - housePxW / 2;
   const hx2 = centerX + housePxW / 2;
@@ -269,10 +272,10 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
   const showSetbacks = houseData?.showSetbacks !== false;
 
   // Setback strings
-  const rearSetbackText = houseData?.setbackNorth || `${Math.max(1, Math.round(((hy1 - (ay + by) / 2) / scale) * 10) / 10)}'-0"`;
-  const frontSetbackText = houseData?.setbackSouth || `${Math.max(1, Math.round((((cy + dy) / 2 - hy2) / scale) * 10) / 10)}'-0"`;
-  const westSetbackText = houseData?.setbackWest || `${Math.max(1, Math.round(((hx1 - (ax + dx) / 2) / scale) * 10) / 10)}'-0"`;
-  const eastSetbackText = houseData?.setbackEast || `${Math.max(1, Math.round((((bx + cx) / 2 - hx2) / scale) * 10) / 10)}'-0"`;
+  const rearSetbackText = houseData?.setbackNorth || '';
+  const frontSetbackText = houseData?.setbackSouth || '';
+  const westSetbackText = houseData?.setbackWest || '';
+  const eastSetbackText = houseData?.setbackEast || '';
 
   return (
     <div className={`plan-sketch-canvas-wrap ${className}`}>
@@ -300,15 +303,12 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
         {/* ================= NORTH ARROW (COMPASS) ================= */}
         <g transform={`translate(${viewBoxWidth - 70}, 65)`}>
-          <circle cx="0" cy="0" r="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          {boundaries.northSymbolStyle !== 'minimal' && <circle cx="0" cy="0" r="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />}
           <g transform={`rotate(${boundaries.northRotation || 0})`}>
-            {/* Compass 4-point star */}
-            <polygon points="0,-20 5,-4 0,0" fill="#000000" />
-            <polygon points="0,-20 -5,-4 0,0" fill="#000000" />
-            <polygon points="0,20 4,4 0,0" fill="#000000" />
-            <polygon points="0,20 -4,4 0,0" fill="#000000" />
-            <polygon points="20,0 4,4 0,0" fill="#000000" />
-            <polygon points="-20,0 -4,4 0,0" fill="#000000" />
+            {boundaries.northSymbolStyle === 'minimal' ? <path d="M0 18V-18m0 0-7 9m7-9 7 9" fill="none" stroke="black" strokeWidth="2"/> :
+              boundaries.northSymbolStyle === 'architectural' ? <><path d="M0 18V-17" stroke="black" strokeWidth="2"/><polygon points="0,-21 -6,-8 0,-12 6,-8" fill="black"/></> :
+              boundaries.northSymbolStyle === 'compass' ? <><polygon points="0,-20 7,0 0,-5 -7,0" fill="black"/><polygon points="0,20 7,0 0,5 -7,0" fill="white" stroke="black"/></> :
+              <><polygon points="0,-20 5,-4 0,0" fill="#000000" /><polygon points="0,-20 -5,-4 0,0" fill="#000000" /><polygon points="0,20 4,4 0,0" fill="#000000" /><polygon points="0,20 -4,4 0,0" fill="#000000" /><polygon points="20,0 4,4 0,0" fill="#000000" /><polygon points="-20,0 -4,4 0,0" fill="#000000" /></>}
             {/* North 'N' label */}
             <text
               x="0"
@@ -321,6 +321,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           </g>
         </g>
 
+        <g transform={`rotate(${boundaries.mapRotation || 0}, ${centerX}, ${centerY}) translate(${centerX}, ${centerY}) scale(${Math.max(.4, Math.min(2, (boundaries.sketchScale ?? 100) / 100))}) translate(${-centerX}, ${-centerY})`}>
         {/* ================= ROAD STRIPS ================= */}
         {/* South Road */}
         {hasSouthRoad && (() => {
@@ -329,8 +330,11 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           const termR = isDeadEnd && (deadEndSide === 'right' || deadEndSide === 'both');
           const termL = isDeadEnd && (deadEndSide === 'left' || deadEndSide === 'both');
 
-          const extL = termL ? 22 : (!isCont || roadContinuitySide === 'right' || roadContinuitySide === 'none' ? 0 : 80);
-          const extR = termR ? 22 : (!isCont || roadContinuitySide === 'left' || roadContinuitySide === 'none' ? 0 : 80);
+          const continuity = boundaries.southRoadContinuity ?? roadContinuitySide;
+          const directionLeft = boundaries.southRoadDirectionLeft ?? roadDirectionLeft;
+          const directionRight = boundaries.southRoadDirectionRight ?? roadDirectionRight;
+          const extL = termL ? 22 : (!isCont || continuity === 'right' || continuity === 'none' ? 0 : 80);
+          const extR = termR ? 22 : (!isCont || continuity === 'left' || continuity === 'none' ? 0 : 80);
 
           // Junction bounds
           const x1 = Math.max(22, dx - (hasWestRoad ? roadStripDepth : 0) - extL);
@@ -626,7 +630,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
               })()}
 
               {/* Optional direction continuation labels */}
-              {extL > 0 && !termL && roadDirectionLeft && (
+              {extL > 0 && !termL && directionLeft && (
                 <text
                   x={x1 + 8}
                   y={yIn(x1 + 8) + roadStripDepth / 2}
@@ -635,10 +639,10 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                   transform={`rotate(${angleDC}, ${x1 + 8}, ${yIn(x1 + 8) + roadStripDepth / 2})`}
                   style={{ ...T(9, 700, {letterSpacing: '0.025em'}), ...{ paintOrder: 'stroke fill', stroke: '#ffffff', strokeWidth: '2px' } }}
                 >
-                  ⟵ {roadDirectionLeft}
+                  ⟵ {directionLeft}
                 </text>
               )}
-              {extR > 0 && !termR && roadDirectionRight && (
+              {extR > 0 && !termR && directionRight && (
                 <text
                   x={x2 - 8}
                   y={yIn(x2 - 8) + roadStripDepth / 2}
@@ -647,7 +651,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                   transform={`rotate(${angleDC}, ${x2 - 8}, ${yIn(x2 - 8) + roadStripDepth / 2})`}
                   style={{ ...T(9, 700, {letterSpacing: '0.025em'}), ...{ paintOrder: 'stroke fill', stroke: '#ffffff', strokeWidth: '2px' } }}
                 >
-                  {roadDirectionRight} ⟶
+                  {directionRight} ⟶
                 </text>
               )}
             </g>
@@ -661,8 +665,11 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           const termR = isDeadEnd && (deadEndSide === 'right' || deadEndSide === 'both');
           const termL = isDeadEnd && (deadEndSide === 'left' || deadEndSide === 'both');
 
-          const extL = termL ? 22 : (!isCont || roadContinuitySide === 'right' || roadContinuitySide === 'none' ? 0 : 80);
-          const extR = termR ? 22 : (!isCont || roadContinuitySide === 'left' || roadContinuitySide === 'none' ? 0 : 80);
+          const continuity = boundaries.northRoadContinuity ?? roadContinuitySide;
+          const directionLeft = boundaries.northRoadDirectionLeft ?? roadDirectionLeft;
+          const directionRight = boundaries.northRoadDirectionRight ?? roadDirectionRight;
+          const extL = termL ? 22 : (!isCont || continuity === 'right' || continuity === 'none' ? 0 : 80);
+          const extR = termR ? 22 : (!isCont || continuity === 'left' || continuity === 'none' ? 0 : 80);
 
           const x1 = Math.max(22, ax - (hasWestRoad ? roadStripDepth : 0) - extL);
           const x2 = Math.min(viewBoxWidth - 22, bx + (hasEastRoad ? roadStripDepth : 0) + extR);
@@ -948,7 +955,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                 );
               })()}
 
-              {extL > 0 && !termL && roadDirectionLeft && (
+              {extL > 0 && !termL && directionLeft && (
                 <text
                   x={x1 + 8}
                   y={yIn(x1 + 8) - roadStripDepth / 2}
@@ -957,10 +964,10 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                   transform={`rotate(${angleAB}, ${x1 + 8}, ${yIn(x1 + 8) - roadStripDepth / 2})`}
                   style={{ ...T(9, 700, {letterSpacing: '0.025em'}), ...{ paintOrder: 'stroke fill', stroke: '#ffffff', strokeWidth: '2px' } }}
                 >
-                  ⟵ {roadDirectionLeft}
+                  ⟵ {directionLeft}
                 </text>
               )}
-              {extR > 0 && !termR && roadDirectionRight && (
+              {extR > 0 && !termR && directionRight && (
                 <text
                   x={x2 - 8}
                   y={yIn(x2 - 8) - roadStripDepth / 2}
@@ -969,7 +976,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                   transform={`rotate(${angleAB}, ${x2 - 8}, ${yIn(x2 - 8) - roadStripDepth / 2})`}
                   style={{ ...T(9, 700, {letterSpacing: '0.025em'}), ...{ paintOrder: 'stroke fill', stroke: '#ffffff', strokeWidth: '2px' } }}
                 >
-                  {roadDirectionRight} ⟶
+                  {directionRight} ⟶
                 </text>
               )}
             </g>
@@ -980,8 +987,9 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
         {hasEastRoad && (() => {
           const isCont = roadContinuous !== false;
           const isDeadEnd = roadLayoutType === 'Dead-End / Cul-de-Sac';
-          const extT = !isCont ? 0 : 70;
-          const extB = !isCont ? 0 : 70;
+          const continuity = boundaries.eastRoadContinuity ?? 'both';
+          const extT = !isCont || continuity === 'bottom' || continuity === 'none' ? 0 : 70;
+          const extB = !isCont || continuity === 'top' || continuity === 'none' ? 0 : 70;
 
           const y1 = Math.max(22, by - (hasNorthRoad ? roadStripDepth : 0) - extT);
           const y2 = Math.min(viewBoxHeight - 22, cy + (hasSouthRoad ? roadStripDepth : 0) + extB);
@@ -1164,8 +1172,9 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
         {hasWestRoad && (() => {
           const isCont = roadContinuous !== false;
           const isDeadEnd = roadLayoutType === 'Dead-End / Cul-de-Sac';
-          const extT = !isCont ? 0 : 70;
-          const extB = !isCont ? 0 : 70;
+          const continuity = boundaries.westRoadContinuity ?? 'both';
+          const extT = !isCont || continuity === 'bottom' || continuity === 'none' ? 0 : 70;
+          const extB = !isCont || continuity === 'top' || continuity === 'none' ? 0 : 70;
 
           const y1 = Math.max(22, ay - (hasNorthRoad ? roadStripDepth : 0) - extT);
           const y2 = Math.min(viewBoxHeight - 22, dy + (hasSouthRoad ? roadStripDepth : 0) + extB);
@@ -1491,6 +1500,10 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           );
         })()}
 
+        {hasEastRoad && boundaries.eastRoadDirectionTop && <text x={bx + roadStripDepth + 14} y={Math.max(22, by - 18)} textAnchor="middle" style={T(8,700)}>{boundaries.eastRoadDirectionTop} ↑</text>}
+        {hasEastRoad && boundaries.eastRoadDirectionBottom && <text x={cx + roadStripDepth + 14} y={Math.min(viewBoxHeight - 20, cy + 30)} textAnchor="middle" style={T(8,700)}>↓ {boundaries.eastRoadDirectionBottom}</text>}
+        {hasWestRoad && boundaries.westRoadDirectionTop && <text x={ax - roadStripDepth - 14} y={Math.max(22, ay - 18)} textAnchor="middle" style={T(8,700)}>{boundaries.westRoadDirectionTop} ↑</text>}
+        {hasWestRoad && boundaries.westRoadDirectionBottom && <text x={dx - roadStripDepth - 14} y={Math.min(viewBoxHeight - 20, dy + 30)} textAnchor="middle" style={T(8,700)}>↓ {boundaries.westRoadDirectionBottom}</text>}
         {/* ================= PLOT POLYGON (AREA UNDER REGN) ================= */}
         {/* Solid light rose background */}
         <polygon
@@ -1509,7 +1522,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
         {/* Corner vertex labels A, B, C, D removed as requested */}
 
         {/* ================= HOUSE DRAWING & MEASUREMENTS IN MIDDLE OF PLOT ================= */}
-        {isHouseActive && (
+        {isHouseActive && houses.length <= 1 && (!houseData.position || houseData.position === 'center') && (
           <g id="house-drawing-group">
             {/* 1. Base White Foundation Slab (covers cadastral hatching) */}
             <rect
@@ -1657,7 +1670,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                     textAnchor="middle"
                     style={T(8, 700)}
                   >
-                    {`PLINTH: ${housePlinthSqFt} SQ.FT.`}
+                    {housePlinthSqFt ? `PLINTH: ${housePlinthSqFt} SQ.FT.` : ''}
                   </text>
                 </g>
               );
@@ -1703,7 +1716,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
             {showSetbacks && (
               <g id="house-setbacks-group">
                 {/* Rear / North Setback */}
-                {hy1 - (ay + by) / 2 > 16 && (
+                {rearSetbackText && hy1 - (ay + by) / 2 > 16 && (
                   <g id="setback-north">
                     <text
                       x={centerX - housePxW * 0.28}
@@ -1717,7 +1730,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                 )}
 
                 {/* Front / South Setback */}
-                {(cy + dy) / 2 - hy2 > 16 && (
+                {frontSetbackText && (cy + dy) / 2 - hy2 > 16 && (
                   <g id="setback-south">
                     <text
                       x={centerX - housePxW * 0.28}
@@ -1731,7 +1744,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                 )}
 
                 {/* West Setback */}
-                {hx1 - (ax + dx) / 2 > 16 && (
+                {westSetbackText && hx1 - (ax + dx) / 2 > 16 && (
                   <g id="setback-west">
                     <text
                       x={((ax + dx) / 2 + hx1) / 2}
@@ -1745,7 +1758,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
                 )}
 
                 {/* East Setback */}
-                {(bx + cx) / 2 - hx2 > 16 && (
+                {eastSetbackText && (bx + cx) / 2 - hx2 > 16 && (
                   <g id="setback-east">
                     <text
                       x={(hx2 + (bx + cx) / 2) / 2}
@@ -1761,10 +1774,39 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
             )}
           </g>
         )}
+        {(houses.length > 1 || (houseData?.position && houseData.position !== 'center')) && houses.map((house, index) => {
+          if (!house.showMeasurements && house.showMeasurements === false) return null;
+          const width = parseFt(house.widthRaw ?? house.widthFeet, 0);
+          const length = parseFt(house.lengthRaw ?? house.lengthFeet, 0);
+          if (!width || !length) return null;
+          const position = house.position || 'center';
+          const fractionX = position.includes('west') || position.includes('nw-') || position.includes('sw-') ? .26 : position.includes('east') || position.includes('ne-') || position.includes('se-') ? .74 : .5;
+          const fractionY = position.includes('north') || position.includes('nw-') || position.includes('ne-') ? .27 : position.includes('south') || position.includes('sw-') || position.includes('se-') ? .73 : .5;
+          const spread = position === 'center' ? (index - (houses.length - 1) / 2) * Math.min(minPlotW * .32, 85) : 0;
+          const x = (ax + bx + cx + dx) / 4 + (fractionX - .5) * minPlotW + spread;
+          const y = (ay + by + cy + dy) / 4 + (fractionY - .5) * minPlotH;
+          const w = Math.min(width / houseUnitFactor * scale, minPlotW * (position === 'center' ? .7 / houses.length : .4));
+          const h = Math.min(length / houseUnitFactor * scale, minPlotH * .36);
+          const label = house.name || `${house.structureType?.toLowerCase().includes('shed') ? 'Shed' : 'House'} ${index + 1}`;
+          return <g key={house.id || index} id={`structure-${index + 1}`}>
+            <rect x={x-w/2} y={y-h/2} width={w} height={h} fill="white" stroke="black" strokeWidth="2" />
+            <rect x={x-w/2+3} y={y-h/2+3} width={Math.max(0,w-6)} height={Math.max(0,h-6)} fill="none" stroke="black" />
+            <text x={x} y={y-5} textAnchor="middle" style={T(8,800)}>{label}</text>
+            <text x={x} y={y+8} textAnchor="middle" style={T(8,700)}>{house.widthRaw || house.widthFeet} × {house.lengthRaw || house.lengthFeet}</text>
+            {!!house.plinthAreaSqFt && <text x={x} y={y+19} textAnchor="middle" style={T(7,700)}>PLINTH: {house.plinthAreaSqFt} SQ.FT.</text>}
+          </g>;
+        })}
 
         {/* ================= PLOT CENTER TEXT BADGE ================= */}
         {/* Auto-fits to plot dimensions; when house is active, positions safely in open yard */}
-        {isHouseActive ? (
+        {houses.length > 1 ? (
+          <g transform={`translate(${centerX}, ${centerY - minPlotH * .36})`}>
+            <rect x="-70" y="-13" width="140" height="26" fill="white" stroke="black" strokeWidth="1.5"/>
+            <text x="0" y="4" textAnchor="middle" style={T(9,800)}>
+              {hasArea ? `AREA UNDER REGN. ${property.areaSqYards} Sq.Yards` : 'AREA UNDER REGN.'}
+            </text>
+          </g>
+        ) : isHouseActive && (!houseData.position || houseData.position === 'center') ? (
           (() => {
             const plotBadgeY = hasNorthRoad
               ? (hy2 + (cy + dy) / 2) / 2
@@ -1860,7 +1902,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           return (
             <g id="north-dim-and-boundary">
               {/* Aligned Dimension Text */}
-              <g transform={`rotate(${angleAB}, ${dimX}, ${dimY})`}>
+              <g transform={`rotate(${labelAngle(angleAB)}, ${dimX}, ${dimY})`}>
                 <text
                   x={dimX}
                   y={dimY}
@@ -1874,8 +1916,8 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
               {/* Aligned North Boundary Text (Only if no road) */}
               {!hasNorthRoad && (
-                <g transform={`rotate(${angleAB}, ${boundX}, ${boundY})`}>
-                  {renderWrappedBoundaryText(northBoundary.trim() || 'ADJACENT PROPERTY', boundX, boundY, lenAB)}
+                <g transform={`rotate(${labelAngle(angleAB)}, ${boundX}, ${boundY})`}>
+                  {renderWrappedBoundaryText(northBoundary.trim(), boundX, boundY, lenAB)}
                 </g>
               )}
             </g>
@@ -1903,7 +1945,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           return (
             <g id="south-dim-and-boundary">
               {/* Aligned Dimension Text */}
-              <g transform={`rotate(${angleDC}, ${dimX}, ${dimY})`}>
+              <g transform={`rotate(${labelAngle(angleDC)}, ${dimX}, ${dimY})`}>
                 <text
                   x={dimX}
                   y={dimY}
@@ -1917,8 +1959,8 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
               {/* Aligned South Boundary Text (Only if no road) */}
               {!hasSouthRoad && (
-                <g transform={`rotate(${angleDC}, ${boundX}, ${boundY})`}>
-                  {renderWrappedBoundaryText(southBoundary.trim() || 'ADJACENT PROPERTY', boundX, boundY, lenDC)}
+                <g transform={`rotate(${labelAngle(angleDC)}, ${boundX}, ${boundY})`}>
+                  {renderWrappedBoundaryText(southBoundary.trim(), boundX, boundY, lenDC)}
                 </g>
               )}
             </g>
@@ -1946,7 +1988,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           return (
             <g id="west-dim-and-boundary">
               {/* Aligned Dimension Text */}
-              <g transform={`rotate(${angleAD}, ${dimX}, ${dimY})`}>
+              <g transform={`rotate(${labelAngle(angleAD)}, ${dimX}, ${dimY})`}>
                 <text
                   x={dimX}
                   y={dimY}
@@ -1960,8 +2002,8 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
               {/* Aligned West Boundary Text (Only if no road) */}
               {!hasWestRoad && (
-                <g transform={`rotate(${angleAD}, ${boundX}, ${boundY})`}>
-                  {renderWrappedBoundaryText(westBoundary.trim() || 'ADJACENT PROPERTY', boundX, boundY, lenAD)}
+                <g transform={`rotate(${labelAngle(angleAD)}, ${boundX}, ${boundY})`}>
+                  {renderWrappedBoundaryText(westBoundary.trim(), boundX, boundY, lenAD)}
                 </g>
               )}
             </g>
@@ -1989,7 +2031,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           return (
             <g id="east-dim-and-boundary">
               {/* Aligned Dimension Text */}
-              <g transform={`rotate(${angleBC}, ${dimX}, ${dimY})`}>
+              <g transform={`rotate(${labelAngle(angleBC)}, ${dimX}, ${dimY})`}>
                 <text
                   x={dimX}
                   y={dimY}
@@ -2003,8 +2045,8 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
 
               {/* Aligned East Boundary Text (Only if no road) */}
               {!hasEastRoad && (
-                <g transform={`rotate(${angleBC}, ${boundX}, ${boundY})`}>
-                  {renderWrappedBoundaryText(eastBoundary.trim() || 'ADJACENT PROPERTY', boundX, boundY, lenBC)}
+                <g transform={`rotate(${labelAngle(angleBC)}, ${boundX}, ${boundY})`}>
+                  {renderWrappedBoundaryText(eastBoundary.trim(), boundX, boundY, lenBC)}
                 </g>
               )}
             </g>
@@ -2035,6 +2077,7 @@ export const PlanSketchDrawing: React.FC<PlanSketchDrawingProps> = ({
           </g>
         )}
 
+        </g>
         {/* Bottom corner cadastral notice */}
         <text
           x={30}

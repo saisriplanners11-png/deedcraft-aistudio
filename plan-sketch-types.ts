@@ -7,6 +7,9 @@ export type PropertyType =
   | 'Open Place'
   | 'House'
   | 'Plot'
+  | 'Open Plot'
+  | 'Demolished House'
+  | 'Part Open Place'
   | 'Flat'
   | 'Commercial Building'
   | 'Agricultural Land'
@@ -16,6 +19,9 @@ export type DimensionUnit = 'Feet' | 'Metres';
 
 export type RoadSideOption = 'North' | 'South' | 'East' | 'West' | 'None';
 export type RoadContinuitySide = 'both' | 'left' | 'right' | 'none';
+export type VerticalRoadContinuitySide = 'both' | 'top' | 'bottom' | 'none';
+export type NorthSymbolStyle = 'cadastral' | 'compass' | 'architectural' | 'minimal';
+export type HousePosition = 'center' | 'north' | 'south' | 'east' | 'west' | 'north-west' | 'north-east' | 'south-west' | 'south-east' | 'attached-north' | 'attached-south' | 'attached-west' | 'attached-east' | 'attached-nw-corner' | 'attached-ne-corner' | 'attached-sw-corner' | 'attached-se-corner' | 'attached-center' | 'custom';
 
 export type RoadLayoutType =
   | 'One Side Road'
@@ -36,6 +42,9 @@ export interface DimensionValue {
 }
 
 export interface HouseDetails {
+  id?: string;
+  name?: string;
+  position?: HousePosition;
   enabled?: boolean;
   widthFeet?: number;
   lengthFeet?: number;
@@ -43,7 +52,10 @@ export interface HouseDetails {
   lengthRaw?: string;
   structureType?: string;
   roofType?: string;
+  houseAuthority?: string;
+  plinthPrefix?: string;
   plinthAreaSqFt?: number | '';
+  plinthAreaSqMtrs?: number | '';
   plinthAreaSqYds?: number | '';
   showMeasurements?: boolean;
   showSetbacks?: boolean;
@@ -59,6 +71,10 @@ export interface PropertyDetails {
   areaSqYards: number | '';
   areaSqMtrs: number | '';
   surveyNo: string;
+  plotNo?: string;
+  houseNo?: string;
+  houseAuthority?: string;
+  locationTemplateType?: 'bearing_and_plot' | 'bearing_only' | 'plot_only' | 'survey_only' | 'near_hno' | 'near_adjacent_hno' | 'adjacent_hno' | 'opp_hno' | 'beside_hno' | 'part_open_place_hno' | 'demolished_house_hno' | 'custom';
   nearAdjacent?: 'Near' | 'Adjacent' | '';
   nearHNo: string;
   locality: string;
@@ -66,6 +82,7 @@ export interface PropertyDetails {
   mandal: string;
   district: string;
   house?: HouseDetails;
+  houses?: HouseDetails[];
 }
 
 export interface PartyDetails {
@@ -94,12 +111,30 @@ export interface BoundaryDimensions {
   roadContinuitySide?: RoadContinuitySide;
   roadDirectionLeft?: string;
   roadDirectionRight?: string;
+  northRoadContinuity?: RoadContinuitySide;
+  northRoadDirectionLeft?: string;
+  northRoadDirectionRight?: string;
+  southRoadContinuity?: RoadContinuitySide;
+  southRoadDirectionLeft?: string;
+  southRoadDirectionRight?: string;
+  eastRoadContinuity?: VerticalRoadContinuitySide | RoadContinuitySide;
+  eastRoadDirectionTop?: string;
+  eastRoadDirectionBottom?: string;
+  westRoadContinuity?: VerticalRoadContinuitySide | RoadContinuitySide;
+  westRoadDirectionTop?: string;
+  westRoadDirectionBottom?: string;
   roadLayoutType?: RoadLayoutType;
   tJunctionSide?: RoadSideOption;
   approachRoadWidth?: string;
   deadEndType?: DeadEndType;
   deadEndSide?: DeadEndSide;
   northRotation?: number;
+  northSymbolStyle?: NorthSymbolStyle;
+  mapRotation?: number;
+  sketchScale?: number;
+  textScale?: number;
+  boundaryFontWeight?: 'normal' | 'bold';
+  autoAlignBoundariesWithMap?: boolean;
 }
 
 export interface Witnesses {
@@ -115,6 +150,8 @@ export interface PlanDocument {
   property: PropertyDetails;
   executant: PartyDetails;
   claimant: PartyDetails;
+  executants?: PartyDetails[];
+  claimants?: PartyDetails[];
   boundaries: BoundaryDimensions;
   witnesses: Witnesses;
 }

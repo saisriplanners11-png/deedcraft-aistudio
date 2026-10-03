@@ -21,13 +21,19 @@ export function mergeValues(state: AppState): Record<string, string> {
   // Legacy drafts stored vacant-land assessment under assessmentPtinNo.
   out['V.L.T No.'] = f.vltNo || f.assessmentPtinNo || '';
   out['V.L.T. No.'] = out['V.L.T No.'];
+  out['V.L.T.No.'] = out['V.L.T No.'];
   // The Schedule of Property's "Registration Sub-District" placeholder uses
   // the same office selected in Jurisdiction, never an older link-deed office.
   const registrationSro = f.sro || f.linkSro || '';
   out['Sub Registrar'] = registrationSro;
   out['Sub-Registrar'] = registrationSro;
-  // The updated template uses one generic PAN slot in the claimant recital.
+  // Both party recitals have their own PAN slot in the updated draft.
   out.PAN = f.claimantPan || '';
+  out['Executant PAN'] = f.executantPan || '';
+  out['Claimant PAN'] = f.claimantPan || '';
+  out['Pattadar Pass Book No.'] = out['Pattadar Pass Book No'] || '';
+  out['Pass Book Khata No.'] = out['Pass Book Khata No'] || '';
+  out['Nala Order No.'] = out['Nala Order No'] || '';
   // This is a renderer-only value: the supplied template has no placeholder
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
   out['Near / Adjacent'] = f.nearAdjacent || '';
@@ -37,6 +43,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     ? firstStructure.customStructureType || '' : firstStructure?.structureType || '';
   out['Roof Material'] = f.roofMaterial || '';
   out['Construction Description'] = f.constructionDescription || '';
+  out['Type of structure'] = out['Construction Description'];
   const ages = houseRows.map(row => row.buildingAge).filter(value => value !== '').map(Number).filter(Number.isFinite);
   out['Age of House'] = ages.length ? String(Math.max(...ages)) : '';
   out['Floors'] = state.structureDetailsBySchedule.primary?.totalFloors || '';
@@ -241,7 +248,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     for (const titleRecord of titleLinkRecords) {
       const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
-      if (['linkDocNo', 'linkDocType', 'linkDocDate'].every(key => !!titleRecord.values[key])
+      if (['linkDocNo', 'linkDocType'].every(key => !!titleRecord.values[key])
         && (titleRecord.values.linkSro || scheduleState.form.sro)) {
         registeredTitleLinks.push({ ...mapped,
           'Sub Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
@@ -265,21 +272,28 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       ? taxRecords.find(tax => !tax.values.linkOption && tax.values.assessmentPtinNo) : undefined;
     titleValues['V.L.T. No.'] = preferredField('vltNo', ['landLayoutLrs', 'vacantTax']) || legacyVacantTax?.values.assessmentPtinNo || record.values.assessmentPtinNo || '';
     titleValues['V.L.T No.'] = titleValues['V.L.T. No.'];
+    titleValues['V.L.T.No.'] = titleValues['V.L.T. No.'];
     titleValues['Layout File No.'] = preferredField('layoutFileNo', ['landLayoutLrs', 'approvedLayout', 'layoutLrs']);
     const deed = mapped(complete(['titleDeed'], ['titleDeedNo', 'khataNo']));
     titleValues['Pattadar Pass Book No'] = deed?.['Pattadar Pass Book No'] || '';
     titleValues['Pass Book Khata No'] = deed?.['Pass Book Khata No'] || '';
+    titleValues['Pattadar Pass Book No.'] = titleValues['Pattadar Pass Book No'];
+    titleValues['Pass Book Khata No.'] = titleValues['Pass Book Khata No'];
     const nala = complete(['nala'], ['nalaOrderNo']);
     titleValues['Nala Order No'] = nala?.values.nalaOrderNo || '';
+    titleValues['Nala Order No.'] = titleValues['Nala Order No'];
+    titleValues['Nala Order Date'] = deedDate(nala?.values.nalaProceedingDate || '');
     const tax = mapped(taxRecords.find(({ values: item }) => item.houseTaxReceiptNo && item.localBodyName));
     titleValues['House Tax Receipt'] = tax?.['House Tax Receipt'] || '';
     titleValues['Local Body Name'] = tax?.['Local Body Name'] || '';
+    const taxRecord = taxRecords.find(({ values: item }) => item.houseTaxReceiptNo && item.localBodyName);
+    titleValues['Tax Paid Date'] = deedDate(taxRecord?.values.taxPaidDate || '');
     const explicitAssessment = preferredField('bltNo', ['houseTax', 'assessment']);
     const taxAssessment = taxRecords.find(({ values: item }) => item.assessmentPtinNo)?.values.assessmentPtinNo;
     const assessment = explicitAssessment || record.values.bltNo || taxAssessment || '';
     titleValues['P.T.I.No.'] = assessment;
     titleValues['P.T.I. No.'] = assessment;
-    const permission = mapped(complete(['permissions'], ['permBuildingPermitNo', 'permissionDate', 'permissionAuthorityName']));
+    const permission = mapped(complete(['permissions'], ['permBuildingPermitNo', 'permissionAuthorityName']));
     titleValues['House Permission No.'] = permission?.['House Permission No.'] || '';
     titleValues['Permission Date'] = permission?.['Permission Date'] || '';
     titleValues['Municipality/Gram Panchayat Name'] = permission?.['Municipality/Gram Panchayat Name'] || '';

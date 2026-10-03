@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agreePaymentPasses, applyChequeBranchVerification, applyChequeDateVerification, applyChequePartyVerification, applyPaymentVerification, cleanPaymentValue, paymentPatchError, type Payment, type PaymentPass } from './payments';
+import { agreePaymentPasses, applyChequeBranchVerification, applyChequeDateVerification, applyChequePartyVerification, applyPaymentVerification, cleanPaymentValue, deedPaymentRecital, paymentPatchError, recitalFor, type Payment, type PaymentPass } from './payments';
 
 const pass = (values: PaymentPass['values']): PaymentPass => ({
   values,
@@ -8,6 +8,18 @@ const pass = (values: PaymentPass['values']): PaymentPass => ({
 });
 
 describe('payment extraction safeguards', () => {
+  it('omits empty date phrases in every payment mode and keeps supplied dates', () => {
+    for (const mode of ['rtgs', 'cheque', 'dd', 'upi', 'cash'] as const) {
+      const payment: Payment = { id: mode, mode, advance: false, tds: false, amount: '100', refNo: '123456', bank: 'Bank', branch: '', date: '', payer: '', payee: '' };
+      for (const recital of [recitalFor([payment]), deedPaymentRecital([payment])]) {
+        expect(recital).not.toContain('dated ____');
+        expect(recital).not.toMatch(/\b(?:dated|on)\s*$/);
+        expect(recital).not.toMatch(/\bdated\b/);
+        if (mode === 'cash') expect(recital).not.toMatch(/\bon\b/);
+      }
+      expect(deedPaymentRecital([{ ...payment, date: '2026-02-03' }])).toContain(mode === 'cash' ? 'on 03-02-2026' : 'dated 03-02-2026');
+    }
+  });
   it('allows payment evidence before consideration but respects explicit zero', () => {
     const payments = [{ id: 'one', mode: 'cheque', amount: '' }] as Payment[];
     expect(paymentPatchError(payments, 'one', { amount: '100' }, '')).toBeNull();

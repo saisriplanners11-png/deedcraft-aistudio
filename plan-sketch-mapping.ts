@@ -12,10 +12,10 @@ const CATEGORY_TO_PROPERTY_TYPE: Record<string, PropertyType> = {
   'Open Place': 'Open Place',
   Residential: 'House',
   Flat: 'Flat',
-  Demolished: 'Open Place',
+  Demolished: 'Demolished House',
   Commercial: 'Commercial Building',
   'Agricultural land': 'Agricultural Land',
-  'Part open place': 'Open Place',
+  'Part open place': 'Part Open Place',
 };
 
 const joinNonEmpty = (parts: (string | undefined)[], sep = ', ') => parts.map(p => (p || '').trim()).filter(Boolean).join(sep);
@@ -47,10 +47,10 @@ function blankDim(): DimensionValue {
   return { raw: '', normalized: 0, unit: 'Feet' };
 }
 
-export function planDocumentFromDraft(state: AppState): PlanDocument {
-  const schedule = scheduleRecords(state)[0];
-  const executant = partyRecords(state, 'executant')[0];
-  const claimant = partyRecords(state, 'claimant')[0];
+export function planDocumentFromDraft(state: AppState, scheduleId = 'primary'): PlanDocument {
+  const schedule = scheduleRecords(state).find(record => record.id === scheduleId) || scheduleRecords(state)[0];
+  const executants = partyRecords(state, 'executant').map(record => mapParty(record.values, 'executant'));
+  const claimants = partyRecords(state, 'claimant').map(record => mapParty(record.values, 'claimant'));
   const sv = schedule.values;
   const now = new Date().toISOString();
 
@@ -65,6 +65,9 @@ export function planDocumentFromDraft(state: AppState): PlanDocument {
     areaSqYards,
     areaSqMtrs,
     surveyNo: sv.surveyNo || '',
+    plotNo: sv.plotNo || '',
+    houseNo: sv.bearingHNo || '',
+    locationTemplateType: sv.bearingHNo ? 'bearing_only' : sv.plotNo ? 'plot_only' : sv.surveyNo ? 'survey_only' : 'near_hno',
     nearAdjacent: sv.nearAdjacent === 'Adjacent' ? 'Adjacent' : sv.nearAdjacent === 'Near' ? 'Near' : '',
     nearHNo: sv.nearHNo || '',
     locality: sv.locality || '',
@@ -111,13 +114,15 @@ export function planDocumentFromDraft(state: AppState): PlanDocument {
   };
 
   return {
-    id: 'plan-sketch-draft',
+    id: `plan-sketch-${schedule.id}`,
     title: 'Plan Sketch',
     createdAt: now,
     updatedAt: now,
     property,
-    executant: mapParty(executant.values, 'executant'),
-    claimant: mapParty(claimant.values, 'claimant'),
+    executant: executants[0] || { name: '', relation: 'S/o', relativeName: '', age: '', occupation: '', address: '' },
+    claimant: claimants[0] || { name: '', relation: 'S/o', relativeName: '', age: '', occupation: '', address: '' },
+    executants,
+    claimants,
     boundaries,
     witnesses: { witness1: '', witness2: '' },
   };

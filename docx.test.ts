@@ -40,6 +40,13 @@ describe('sale deed template merge', () => {
     expect(await docxToText(new Uint8Array(await result.blob.arrayBuffer()))).toContain('CUSTOM SALE DEED');
   });
 
+  it('accepts the previous default as a compatible custom template', async () => {
+    const legacy = new Uint8Array(await readFile(new URL('./sale-deed-template-v2.docx', import.meta.url)));
+    const validation = await validateSaleDeedTemplate(legacy, 'previous-default.docx');
+    expect(validation.valid).toBe(true);
+    expect(validation.errors).toEqual([]);
+  });
+
   it('rejects corrupt, wrongly named, structurally incomplete, and unknown-tag templates', async () => {
     const reference = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
     expect((await validateSaleDeedTemplate(new Uint8Array([1, 2, 3]), 'template.docx', reference)).errors.join(' ')).toMatch(/readable/i);
@@ -336,9 +343,54 @@ describe('sale deed template merge', () => {
     for (const value of ['DOC-1', 'VLT-1', 'LAYOUT-1', 'TITLE-1', 'KHATA-1', 'NALA-1', 'TAX-1', 'PTIN-1', 'PERMIT-1', 'APP-1', 'PROC-1']) expect(pageTwo).toContain(value);
     expect(pageTwo).toContain('were derived under and by virtue');
     expect(pageTwo).toContain('ownership/title of the concerned parties');
-    expect(pageTwo.match(/dated 05-04-2020/g)).toHaveLength(3);
-    expect(pageTwo).not.toContain('01-01-2024');
-    expect(pageTwo).not.toContain('01-01-2025');
+    expect(pageTwo.match(/dated 05-04-2020/g)).toHaveLength(1);
+    expect(pageTwo).toContain('Nala Order No. NALA-1, dated 01-01-2024');
+    expect(pageTwo).toContain('Property Tax Receipt No. TAX-1, dated 01-01-2025');
+  });
+
+  it('keeps identified title records without dates in every property category', async () => {
+    for (const category of ['Vacant Plot', 'Open Place', 'Residential', 'Flat', 'Demolished', 'Commercial', 'Agricultural land', 'Part open place']) {
+      const state = { ...initialState, category, linkRecordsBySchedule: { primary: [
+        { id: 'link', docNames: [], values: { linkOption: 'linkDoc', linkDocType: 'Sale Deed', linkDocNo: 'UNDATED-LINK', linkSro: 'Sircilla' } },
+        { id: 'nala', docNames: [], values: { linkOption: 'nala', nalaOrderNo: 'UNDATED-NALA' } },
+        { id: 'tax', docNames: [], values: { linkOption: 'houseTax', houseTaxReceiptNo: 'UNDATED-TAX', localBodyName: 'Sircilla Municipality' } },
+        { id: 'permission', docNames: [], values: { linkOption: 'permissions', permBuildingPermitNo: 'UNDATED-PERMIT', permissionAuthorityName: 'Sircilla Municipality' } },
+        { id: 'application', docNames: [], values: { linkOption: 'lrsApplication', lrsApplicationNo: 'UNDATED-APP' } },
+        { id: 'proceeding', docNames: [], values: { linkOption: 'lrsProceeding', lrsProceedingNo: 'UNDATED-PROC' } },
+      ] } };
+      const result = await fillSaleDeed(mergeValues(state), variantFor(category), rewritesFor(state), scheduleMergesFor(state));
+      const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+      for (const number of ['UNDATED-LINK', 'UNDATED-NALA', 'UNDATED-TAX', 'UNDATED-PERMIT', 'UNDATED-APP', 'UNDATED-PROC']) expect(text).toContain(number);
+      expect(text).not.toMatch(/\bdated\s*(?:[,.;]|_{2,}|\n|$)/i);
+      expect(text).not.toContain('dated __________');
+    }
+  });
+
+  it('keeps each date with its own record across schedules', async () => {
+    const state = { ...initialState, category: 'Open Place',
+      additionalSchedules: [{ id: 'second', docNames: [], category: 'Demolished', unit: 'Sq. Yards', values: {} }],
+      linkRecordsBySchedule: {
+        primary: [
+          { id: 'link-1', docNames: [], values: { linkOption: 'linkDoc', linkDocType: 'Sale Deed', linkDocNo: 'LINK-ONE', linkDocDate: '2020-01-02', linkSro: 'Sircilla' } },
+          { id: 'tax-1', docNames: [], values: { linkOption: 'houseTax', houseTaxReceiptNo: 'TAX-ONE', localBodyName: 'First Municipality' } },
+        ],
+        second: [
+          { id: 'nala-2', docNames: [], values: { linkOption: 'nala', nalaOrderNo: 'NALA-TWO', nalaProceedingDate: '2024-03-04' } },
+          { id: 'tax-2', docNames: [], values: { linkOption: 'houseTax', houseTaxReceiptNo: 'TAX-TWO', taxPaidDate: '2025-05-06', localBodyName: 'Second Municipality' } },
+        ],
+      },
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const first = text.slice(text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 1'), text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 2'));
+    const second = text.slice(text.indexOf('FLOW OF TITLE & LINK DEED DETAILS - SCHEDULE 2'), text.indexOf('2. CONSIDERATION'));
+    expect(first).toContain('Sale Deed dated 02-01-2020, registered as Document No. LINK-ONE');
+    expect(first).toContain('Property Tax Receipt No. TAX-ONE, issued');
+    expect(first).not.toContain('04-03-2024');
+    expect(first).not.toContain('06-05-2025');
+    expect(second).toContain('Nala Order No. NALA-TWO, dated 04-03-2024');
+    expect(second).toContain('Property Tax Receipt No. TAX-TWO, dated 06-05-2025');
+    expect(second).not.toContain('02-01-2020');
   });
 
   it('prints separate title recitals from merged records without mixing schedules', async () => {
@@ -397,9 +449,9 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     const recital = text.match(/PURCHASER,[\s\S]*?OTHER PART\./)?.[0] || '';
     expect(recital).toContain('R/o H.No.1-2-3, Sircilla Village');
-    expect(recital).toContain('Aadhaar No: 1234 5678 9012.');
+    expect(recital).toContain('Aadhaar No: 1234 5678 9012,');
     expect(recital).not.toContain('Cell No:');
-    expect(recital).not.toContain('Pan:');
+    expect(recital).not.toContain('PAN:');
     expect(recital).not.toMatch(/,\s*,|\s{2,}|\s+[,.]|:\s*[,.]/);
   });
 
@@ -409,7 +461,33 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).toContain('BY Nagar, Sircilla Village');
     expect(text).toContain('Cell No: 9876543210');
-    expect(text).toContain('Pan: ABCDE1234F');
+    expect(text).toContain('PAN: ABCDE1234F');
+  });
+
+  it('fills the new PAN slots from the correct party', async () => {
+    const state = { ...initialState, form: { ...initialState.form,
+      executantName: 'Vendor One', executantPan: 'VENDO1234R',
+      claimantName: 'Buyer One', claimantPan: 'BUYER1234P',
+    } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const vendor = text.split('IN FAVOUR OF')[0];
+    const buyer = text.split('IN FAVOUR OF')[1].split('FLOW OF TITLE')[0];
+    expect(vendor).toContain('PAN: VENDO1234R');
+    expect(vendor).not.toContain('BUYER1234P');
+    expect(buyer).toContain('PAN: BUYER1234P');
+    expect(buyer).not.toContain('VENDO1234R');
+  });
+
+  it('uses the part assessment recital only for part open place', async () => {
+    for (const category of ['Open Place', 'Part open place']) {
+      const state = { ...initialState, category, form: { ...initialState.form, bltNo: 'PTIN-77' } };
+      const result = await fillSaleDeed(mergeValues(state), variantFor(category), rewritesFor(state), scheduleMergesFor(state));
+      const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+      expect(text.match(/Tax\/Assessment & Identification Particulars:/g)).toHaveLength(1);
+      expect(text).toContain('Assessment No. PTIN-77');
+      expect(text.includes('Assessment No. PTIN-77 (Part).')).toBe(category === 'Part open place');
+    }
   });
 
   it('cleans opted-in empty fields across split Word runs in a custom template', async () => {
@@ -485,8 +563,29 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
 
     expect(text).toContain('Cheque: Amount of Rs.5,00,000/-');
-    expect(text).toContain('Cash:Amount of Rs.1,00,000/-');
+    expect(text).toContain('Cash: Amount of Rs.1,00,000/-');
     expect(text).not.toContain('Cheque: Amount of Rs.6,00,000/-');
+  });
+
+  it('omits missing payment dates from every generated payment paragraph', async () => {
+    const payments = (['rtgs', 'cheque', 'dd', 'upi', 'cash'] as const).map((mode, index) => ({
+      ...newPayment(mode), amount: '100', refNo: `REF-${index}`, bank: 'Test Bank', date: '',
+    }));
+    const state = { ...initialState, payments };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    for (const label of ['RTGS/NEFT:', 'Cheque:', 'Demand Draft:', 'UPI/Online:', 'Cash:']) expect(text).toContain(label);
+    expect(text).not.toMatch(/\bdated\s*(?:[,.;]|_{2,}|\n|$)/i);
+    expect(text).not.toContain('dated __________');
+  });
+
+  it('keeps RTGS reference and bank fields in the updated draft', async () => {
+    const state = { ...initialState, payments: [{
+      ...newPayment('rtgs'), amount: '125000', refNo: 'UTR-987654', bank: 'Union Bank', date: '2026-09-18',
+    }] };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('Transaction No./UTR No. UTR-987654, dated 18-09-2026, from Union Bank.');
   });
 
   it('generates every linked deed, party and property schedule', async () => {
@@ -543,6 +642,21 @@ describe('sale deed template merge', () => {
     expect(opening).toContain('2. VENDOR TWO');
     expect(opening).toContain('1. PURCHASER ONE');
     expect(opening).toContain('2. PURCHASER TWO');
+    const partyLines = opening.split('\n');
+    for (const [first, last, closing] of [
+      ['1. VENDOR ONE', '2. VENDOR TWO', '(Hereinafter called the "VENDOR/S") of the ONE PART.'],
+      ['1. PURCHASER ONE', '2. PURCHASER TWO', '(Hereinafter called the "VENDEE/S") of the OTHER PART.'],
+    ]) {
+      const firstLine = partyLines.find(line => line.startsWith(first))!;
+      const lastLine = partyLines.find(line => line.startsWith(last))!;
+      expect(firstLine).toMatch(/\.$/);
+      expect(firstLine).not.toMatch(/[,;.]\.$/);
+      expect(firstLine).not.toContain('Hereinafter called');
+      expect(firstLine).not.toContain('of the ONE PART');
+      expect(firstLine).not.toContain('of the OTHER PART');
+      expect(lastLine).toContain(closing);
+      expect(opening.split(closing)).toHaveLength(2);
+    }
     const first = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 1'), text.indexOf('SCHEDULE OF PROPERTY - 2'));
     const second = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 2'), text.indexOf('DECLARATION'));
     expect(first).toContain('(1) PURCHASER ONE — 60%; (2) PURCHASER TWO — 40%');
@@ -566,12 +680,57 @@ describe('sale deed template merge', () => {
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     expect(opening).toContain('ONLY VENDOR');
     expect(opening).not.toContain('1. ONLY VENDOR');
+    expect(opening).toContain('(Hereinafter called the "VENDOR/S") of the ONE PART.');
     expect(opening).toContain('1. FIRST BUYER');
     expect(opening).toContain('2. SECOND BUYER');
+    expect(opening.split('(Hereinafter called the "VENDEE/S") of the OTHER PART.')).toHaveLength(2);
+    expect(opening.split('\n').find(line => line.startsWith('1. FIRST BUYER'))).not.toContain('Hereinafter called');
+    expect(opening.split('\n').find(line => line.startsWith('2. SECOND BUYER'))).toContain('(Hereinafter called the "VENDEE/S") of the OTHER PART.');
     expect(text).toContain('(1) FIRST BUYER — 70%; (2) SECOND BUYER — ____%');
     const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
     expect(signatures).toContain('ONLY VENDOR');
     expect(signatures).toContain('2. ________________ (SECOND BUYER)');
+  });
+
+  it('puts the party closing clauses only after the third person on each side', async () => {
+    const state = { ...initialState,
+      form: { ...initialState.form, executantName: 'Vendor One', claimantName: 'Buyer One' },
+      additionalExecutants: [
+        { id: 'vendor-2', docNames: [], values: { executantName: 'Vendor Two' } },
+        { id: 'vendor-3', docNames: [], values: { executantName: 'Vendor Three' } },
+      ],
+      additionalClaimants: [
+        { id: 'buyer-2', docNames: [], values: { claimantName: 'Buyer Two' } },
+        { id: 'buyer-3', docNames: [], values: { claimantName: 'Buyer Three' } },
+      ],
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
+    const lines = opening.split('\n');
+    for (const [prefix, role, part] of [['VENDOR', 'VENDOR/S', 'ONE'], ['BUYER', 'VENDEE/S', 'OTHER']]) {
+      const partyLines = [1, 2, 3].map(index => lines.find(line => line.startsWith(`${index}. ${prefix} ${['ONE', 'TWO', 'THREE'][index - 1]}`))!);
+      expect(partyLines.every(Boolean)).toBe(true);
+      expect(partyLines[0]).not.toContain('Hereinafter called');
+      expect(partyLines[1]).not.toContain('Hereinafter called');
+      expect(partyLines[0]).toMatch(/\.$/);
+      expect(partyLines[1]).toMatch(/\.$/);
+      expect(partyLines[0]).not.toMatch(/[,;.]\.$/);
+      expect(partyLines[1]).not.toMatch(/[,;.]\.$/);
+      expect(partyLines[2]).toContain(`(Hereinafter called the "${role}") of the ${part} PART.`);
+      expect(opening.match(new RegExp(`Hereinafter called the "${role.replace('/', '\\/')}"`, 'g'))).toHaveLength(1);
+    }
+  });
+
+  it('keeps both closing clauses for a single vendor and vendee', async () => {
+    const state = { ...initialState, form: { ...initialState.form, executantName: 'Only Vendor', claimantName: 'Only Buyer' } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
+    expect(opening).toContain('(Hereinafter called the "VENDOR/S") of the ONE PART.');
+    expect(opening).toContain('(Hereinafter called the "VENDEE/S") of the OTHER PART.');
+    expect(opening).not.toContain('1. ONLY VENDOR');
+    expect(opening).not.toContain('1. ONLY BUYER');
   });
 
   it('removes the blank trailing market-value row that can repeat an orphaned header', async () => {
@@ -642,23 +801,24 @@ describe('sale deed template merge', () => {
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const text = await docxToText(bytes);
     expect(text).toContain('All that the R.C.C. Building with the open place bearing H.No.6-5-62/1');
-    expect(text).toContain('Ground Floor (R.C.C. Building, 700 square feet)');
-    expect(text).toContain('First Floor (Stone masonry, 750 square feet)');
-    expect(text).toContain('Second Floor (R.C.C. Building, 800 square feet)');
+    expect(text).toContain('BUILDING / FLOOR DETAILS:');
+    expect(text).toContain('Ground Floor\nR.C.C. Building\nFinished\n5 Years\n700 Sq.Ft.');
+    expect(text).toContain('First Floor\nStone masonry\nSemi-Finished\n3 Years\n750 Sq.Ft.');
+    expect(text).toContain('Second Floor\nR.C.C. Building\nFinished\n2 Years\n800 Sq.Ft.');
+    expect(text).toContain('TOTAL\n2,250 Sq.Ft.');
     expect(text).toContain("33' Road");
     expect(text).toContain('House of Gudla Babu');
     expect(text).toContain("26' Road");
     expect(text).toContain('House of Adepu Krishahari');
-    expect(text).toContain('ANNEXURE-IA');
+    expect(text).toContain('ANNEXURE – 1A');
     expect(text).toContain('Nature of roof\n: R.C.C.');
     expect(text).toContain('Type of structure\n: Framed with pillars & columns only');
-    expect(text).toContain('Age of the house\n: 5 years');
-    // The text extractor omits the Word tab after the colon; verify the tab
-    // and hanging indent in the source XML below for visual alignment.
-    expect(text).toContain('Total built-up area of the property\n:Ground Floor — R.C.C. Building — Finished — 5 years — 700 sq.fts');
+    expect(text).not.toContain('Age of the house\n:');
+    expect(text).toContain('3.\nGround Floor\n: 700 sq.fts\nFirst Floor\n: 750 sq.fts\nSecond Floor\n: 800 sq.fts');
+    expect(text).not.toContain('Total built-up area of the property');
     expect(text).toContain('R.C.C. Building');
     expect(text).toContain('Stone masonry');
-    expect(text).toContain('Semi-Finished');
+    expect(text).not.toContain('Semi-Finished — 3 years — 750 sq.fts');
     expect(text).toContain('First Floor');
     expect(text).toContain('750');
     expect(text).not.toContain('ANNEXURE I-A — STRUCTURE DETAILS');
@@ -666,20 +826,34 @@ describe('sale deed template merge', () => {
     const document = (await readZip(bytes)).find(entry => entry.name === 'word/document.xml')!;
     const xml = new TextDecoder().decode(document.data);
     const houseBlock = xml.slice(xml.indexOf('SCHEDULE OF PROPERTY'), xml.indexOf('DECLARATION'));
-    expect(houseBlock.match(/<w:tbl>/g)).toHaveLength(2); // boundaries and the source Annexure I-A
-    expect(houseBlock).toMatch(/<w:tr(?:\s[^>]*)?><w:trPr><w:cantSplit\/><\/w:trPr>[\s\S]*?Total built-up area of the property/);
-    const floorParagraphs = (houseBlock.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
-      .filter(paragraph => /(?:Ground|First|Second) Floor —/.test(paragraph));
-    expect(floorParagraphs).toHaveLength(3);
-    const floorProperties = floorParagraphs.map(paragraph => paragraph.match(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/)?.[0]);
-    expect(new Set(floorProperties).size).toBe(1);
-    expect(floorProperties[0]).toContain('<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs><w:ind w:left="480" w:hanging="480"/>');
-    expect(floorParagraphs[0]).toMatch(/<\/w:pPr><w:r><w:t>:<\/w:t><w:tab\/><\/w:r>/);
-    for (const paragraph of floorParagraphs.slice(1))
-      expect(paragraph).toMatch(/<\/w:pPr><w:r><w:tab\/><\/w:r>/);
+    expect(houseBlock.match(/<w:tbl>/g)).toHaveLength(3); // building details, boundaries, and Annexure 1A
+    const buildingRows = (houseBlock.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [])
+      .filter(row => /(?:Ground|First|Second) Floor/.test(row) && (row.match(/<w:tc(?:\s[^>]*)?>/g) || []).length === 5);
+    expect(buildingRows).toHaveLength(3);
+    const floorTableRows = (houseBlock.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [])
+      .filter(row => /(?:Ground|First|Second) Floor/.test(row) && (row.match(/<w:tc(?:\s[^>]*)?>/g) || []).length === 3);
+    expect(floorTableRows).toHaveLength(3);
+    const cellTexts = floorTableRows.map(row => (row.match(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g) || [])
+      .map(cell => [...cell.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(match => match[1]).join('').trim()));
+    expect(cellTexts).toEqual([
+      ['3.', 'Ground Floor', ': 700 sq.fts'],
+      ['', 'First Floor', ': 750 sq.fts'],
+      ['', 'Second Floor', ': 800 sq.fts'],
+    ]);
+    for (const row of floorTableRows) expect(row).toContain('<w:cantSplit/>');
     const preview = await scheduleText('IF HOUSE', scheduleMergesFor(state)[0].values, [], state.structureDetailsBySchedule.primary);
-    expect(preview).toContain('Ground Floor (R.C.C. Building, 700 square feet)');
-    expect(preview).toContain('Second Floor — R.C.C. Building — Finished — 2 years — 800 sq.fts');
+    expect(preview).toContain('Ground Floor\n\nR.C.C. Building\n\nFinished\n\n5 Years\n\n700 Sq.Ft.');
+    expect(preview).toContain('Ground Floor\n\n: 700 sq.fts');
+    expect(preview).toContain('Second Floor\n\n: 800 sq.fts');
+  });
+
+  it('retains item 4 without invented floors in an incomplete house draft', async () => {
+    const state = { ...initialState, category: 'Residential', structureDetailsBySchedule: { primary: { totalFloors: '', rows: [] } } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('3.\nTotal built-up area of the property');
+    expect(text).not.toContain('Ground Floor\n:');
+    expect(text).not.toContain('<Plinth Area>');
   });
 
   it('does not render Annexure I-A for an open-plot schedule with stale structure rows', async () => {

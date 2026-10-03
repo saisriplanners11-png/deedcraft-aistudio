@@ -85,7 +85,7 @@ export const MODES: ModeSpec[] = [
     docLabel: 'RTGS / NEFT advice or bank statement line',
     accept: '.pdf,image/*',
     recital: p =>
-      `₹${money0(p.amount)} by RTGS/NEFT bearing UTR ${p.refNo || '____'} dated ${p.date || '____'} through ${p.bank || '____'}`,
+      `₹${money0(p.amount)} by RTGS/NEFT bearing UTR ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''} through ${p.bank || '____'}`,
   },
   {
     key: 'cheque',
@@ -99,7 +99,7 @@ export const MODES: ModeSpec[] = [
     docLabel: 'Photograph or scan of the cheque leaf',
     accept: '.pdf,image/*',
     recital: p =>
-      `₹${money0(p.amount)} by cheque no. ${p.refNo || '____'} dated ${p.date || '____'} drawn on ${p.bank || '____'}${p.branch ? ', ' + p.branch : ''}`,
+      `₹${money0(p.amount)} by cheque no. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''} drawn on ${p.bank || '____'}${p.branch ? ', ' + p.branch : ''}`,
   },
   {
     key: 'dd',
@@ -112,7 +112,7 @@ export const MODES: ModeSpec[] = [
     docLabel: 'The demand draft or its counterfoil',
     accept: '.pdf,image/*',
     recital: p =>
-      `₹${money0(p.amount)} by demand draft no. ${p.refNo || '____'} dated ${p.date || '____'} issued by ${p.bank || '____'}`,
+      `₹${money0(p.amount)} by demand draft no. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''} issued by ${p.bank || '____'}`,
   },
   {
     key: 'upi',
@@ -125,7 +125,7 @@ export const MODES: ModeSpec[] = [
     docLabel: 'Screenshot of the payment receipt',
     accept: 'image/*,.pdf',
     recital: p =>
-      `₹${money0(p.amount)} by UPI transfer ref. ${p.refNo || '____'} dated ${p.date || '____'}`,
+      `₹${money0(p.amount)} by UPI transfer ref. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''}`,
   },
   {
     key: 'cash',
@@ -135,7 +135,7 @@ export const MODES: ModeSpec[] = [
     shows: { ref: false, bank: false, branch: false, parties: true },
     docLabel: 'Cash receipt or acknowledgement, if one was written',
     accept: '.pdf,image/*',
-    recital: p => `₹${money0(p.amount)} in cash on ${p.date || '____'}`,
+    recital: p => `₹${money0(p.amount)} in cash${p.date ? ` on ${p.date}` : ''}`,
   },
 ];
 
@@ -179,7 +179,7 @@ export const recitalFor = (ps: Payment[]) =>
 
 const deedDate = (iso: string) => {
   const [year, month, day] = iso.split('-');
-  return year && month && day ? `${day}-${month}-${year}` : iso || '____';
+  return year && month && day ? `${day}-${month}-${year}` : iso;
 };
 
 /** Template-style recital that preserves every individual payment amount. */
@@ -190,13 +190,13 @@ export const deedPaymentRecital = (ps: Payment[]) =>
       // The template paragraph already carries the automatic "a)" number.
       const prefix = `${index ? `${String.fromCharCode(97 + index)}) ` : ''}Rs. ${money0(p.amount)}/-`;
       const advance = p.advance ? ' (paid in advance)' : '';
-      if (p.mode === 'cash') return `${prefix} in cash on ${deedDate(p.date)}${advance}`;
+      if (p.mode === 'cash') return `${prefix} in cash${p.date ? ` on ${deedDate(p.date)}` : ''}${advance}`;
       if (p.mode === 'cheque') {
-        return `${prefix} through Cheque bearing No. ${p.refNo || '____'} drawn on ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'} dated ${deedDate(p.date)}${advance}`;
+        return `${prefix} through Cheque bearing No. ${p.refNo || '____'} drawn on ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
       }
-      if (p.mode === 'dd') return `${prefix} through Demand Draft bearing No. ${p.refNo || '____'} issued by ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'} dated ${deedDate(p.date)}${advance}`;
-      if (p.mode === 'rtgs') return `${prefix} through RTGS/NEFT bearing UTR ${p.refNo || '____'} through ${p.bank || '____'} dated ${deedDate(p.date)}${advance}`;
-      return `${prefix} through UPI/online transfer bearing reference ${p.refNo || '____'} through ${p.bank || '____'} dated ${deedDate(p.date)}${advance}`;
+      if (p.mode === 'dd') return `${prefix} through Demand Draft bearing No. ${p.refNo || '____'} issued by ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
+      if (p.mode === 'rtgs') return `${prefix} through RTGS/NEFT bearing UTR ${p.refNo || '____'} through ${p.bank || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
+      return `${prefix} through UPI/online transfer bearing reference ${p.refNo || '____'} through ${p.bank || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
     })
     .join('; ');
 

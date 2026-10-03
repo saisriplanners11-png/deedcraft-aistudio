@@ -84,7 +84,7 @@ export function parseDimension(rawInput: string, unit: DimensionUnit = 'Feet'): 
  */
 export function formatDimensionDisplay(dim: DimensionValue): string {
   if (dim.raw) return dim.raw;
-  if (!dim.normalized) return '0';
+  if (!dim.normalized) return '';
 
   if (dim.unit === 'Feet') {
     const totalInches = Math.round(dim.normalized * 12);
@@ -125,11 +125,15 @@ export function generateLegalDescription(doc: PlanDocument): {
     ? p.customPropertyType
     : p.propertyType).toUpperCase();
 
-  const areaYards = p.areaSqYards !== '' ? p.areaSqYards : '_______';
-  const areaMtrs = p.areaSqMtrs !== '' ? p.areaSqMtrs : '_______';
-  const surveyNo = p.surveyNo.trim() || '_______';
+  const areaYards = p.areaSqYards !== '' ? p.areaSqYards : '';
+  const areaMtrs = p.areaSqMtrs !== '' ? p.areaSqMtrs : '';
+  const surveyNo = p.surveyNo.trim();
 
-  const landmarkRelation = p.nearAdjacent === 'Adjacent' ? 'ADJACENT' : 'NEAR';
+  const relationByTemplate: Record<string, string> = {
+    adjacent_hno: 'ADJACENT', near_adjacent_hno: p.nearAdjacent === 'Adjacent' ? 'ADJACENT' : 'NEAR',
+    opp_hno: 'OPPOSITE', beside_hno: 'BESIDE',
+  };
+  const landmarkRelation = relationByTemplate[p.locationTemplateType || ''] || (p.nearAdjacent === 'Adjacent' ? 'ADJACENT' : 'NEAR');
   let nearHNo = p.nearHNo.trim();
   if (nearHNo) {
     if (!nearHNo.toUpperCase().startsWith(landmarkRelation)) {
@@ -139,8 +143,6 @@ export function generateLegalDescription(doc: PlanDocument): {
         nearHNo = `${landmarkRelation} ${nearHNo}`;
       }
     }
-  } else {
-    nearHNo = `${landmarkRelation} H.NO. _______`;
   }
 
   let locality = p.locality.trim() ? p.locality.trim().toUpperCase() : '';
@@ -151,13 +153,13 @@ export function generateLegalDescription(doc: PlanDocument): {
     locality = `${locality} LOCALITY OF `;
   }
 
-  let village = p.village.trim() ? p.village.trim().toUpperCase() : '_______';
-  if (village !== '_______' && !village.endsWith('VILLAGE')) {
+  let village = p.village.trim().toUpperCase();
+  if (village && !village.endsWith('VILLAGE')) {
     village = `${village} VILLAGE`;
   }
 
-  let mandal = p.mandal.trim() ? p.mandal.trim().toUpperCase() : '_______';
-  if (mandal !== '_______' && !mandal.endsWith('MANDAL')) {
+  let mandal = p.mandal.trim().toUpperCase();
+  if (mandal && !mandal.endsWith('MANDAL')) {
     mandal = `${mandal} MANDAL`;
   }
 
@@ -165,17 +167,32 @@ export function generateLegalDescription(doc: PlanDocument): {
 
   let houseDesc = '';
   if (p.propertyType === 'House' || p.house?.enabled) {
-    const struct = (p.house?.structureType || 'CONSTRUCTED R.C.C. HOUSE').toUpperCase();
+    const struct = (p.house?.structureType || 'HOUSE').toUpperCase();
     const plinth = p.house?.plinthAreaSqFt ? ` HAVING A PLINTH AREA OF ${p.house.plinthAreaSqFt} SQ.FT.` : '';
     const dims = (p.house?.widthRaw && p.house?.lengthRaw) ? ` (MEASURING ${p.house.widthRaw} × ${p.house.lengthRaw})` : '';
     houseDesc = ` TOGETHER WITH ${struct}${dims}${plinth},`;
   }
 
-  const propertyDescription = `THE ${propType},${houseDesc} ADMEASURING A TOTAL AREA OF ${areaYards} SQ.YARDS EQUIVALENT TO ${areaMtrs} SQ.MTRS, IN SURVEY NO.${surveyNo}, SITUATED AT ${nearHNo} OF ${locality}${village}, ${mandal}${district}.`;
+  const template = p.locationTemplateType || '';
+  const showHouse = !['plot_only','survey_only','near_hno','near_adjacent_hno','adjacent_hno','opp_hno','beside_hno'].includes(template);
+  const showPlot = !['bearing_only','survey_only','near_hno','near_adjacent_hno','adjacent_hno','opp_hno','beside_hno'].includes(template);
+  const identifiers = [
+    showHouse && p.houseNo ? `${template === 'demolished_house_hno' ? 'DEMOLISHED HOUSE' : template === 'part_open_place_hno' ? 'PART OPEN PLACE' : 'BEARING'} H.NO.${p.houseNo}` : '',
+    showPlot && p.plotNo ? `PLOT NO.${p.plotNo}` : '',
+    surveyNo ? `SURVEY NO.${surveyNo}` : '',
+  ].filter(Boolean).join(', ');
+  const location = [nearHNo, locality ? locality.trim().replace(/ OF$/, '') : '', village, mandal, p.district.trim().toUpperCase()].filter(Boolean).join(', ');
+  const propertyDescription = [
+    `THE ${propType}`,
+    houseDesc.trim().replace(/,$/, ''),
+    areaYards !== '' ? `ADMEASURING A TOTAL AREA OF ${areaYards} SQ.YARDS${areaMtrs !== '' ? ` EQUIVALENT TO ${areaMtrs} SQ.MTRS` : ''}` : '',
+    identifiers ? `IN ${identifiers}` : '',
+    location ? `SITUATED AT ${location}` : '',
+  ].filter(Boolean).join(', ') + '.';
 
   // Format party details: NAME RELATION RELATIVE, AGED XX YEARS, OCCU: XX, R/O ADDRESS
   const formatParty = (party: PlanDocument['executant'], defaultRole: string) => {
-    if (!party.name.trim()) return `[${defaultRole} DETAILS NOT ENTERED]`;
+    if (!party.name.trim()) return '';
     const parts: string[] = [];
     parts.push(party.name.trim().toUpperCase());
     if (party.relativeName.trim()) {
@@ -198,8 +215,8 @@ export function generateLegalDescription(doc: PlanDocument): {
   return {
     title: 'PLAN FOR REGISTRATION',
     propertyDescription,
-    executantText: formatParty(doc.executant, 'EXECUTANT'),
-    claimantText: formatParty(doc.claimant, 'CLAIMANT'),
+    executantText: (doc.executants?.length ? doc.executants : [doc.executant]).map(party => formatParty(party, 'EXECUTANT')).filter(Boolean).join('; '),
+    claimantText: (doc.claimants?.length ? doc.claimants : [doc.claimant]).map(party => formatParty(party, 'CLAIMANT')).filter(Boolean).join('; '),
     details: {
       propType,
       areaYards,
@@ -262,14 +279,14 @@ export function validatePlanDocument(doc: PlanDocument): ValidationIssue[] {
   }
 
   // Executant details validation
-  if (!doc.executant.name.trim()) {
+  if (!(doc.executants?.length ? doc.executants : [doc.executant]).some(party => party.name.trim())) {
     issues.push({
       field: 'executant.name',
       message: 'Executant Name is required.',
       severity: 'error',
     });
   }
-  if (!doc.executant.relativeName.trim()) {
+  if ((doc.executants?.length ? doc.executants : [doc.executant]).some(party => party.name.trim() && !party.relativeName.trim())) {
     issues.push({
       field: 'executant.relativeName',
       message: 'Executant Relative Name is required.',
@@ -278,14 +295,14 @@ export function validatePlanDocument(doc: PlanDocument): ValidationIssue[] {
   }
 
   // Claimant details validation
-  if (!doc.claimant.name.trim()) {
+  if (!(doc.claimants?.length ? doc.claimants : [doc.claimant]).some(party => party.name.trim())) {
     issues.push({
       field: 'claimant.name',
       message: 'Claimant Name is required.',
       severity: 'error',
     });
   }
-  if (!doc.claimant.relativeName.trim()) {
+  if ((doc.claimants?.length ? doc.claimants : [doc.claimant]).some(party => party.name.trim() && !party.relativeName.trim())) {
     issues.push({
       field: 'claimant.relativeName',
       message: 'Claimant Relative Name is required.',
@@ -306,7 +323,7 @@ export function validatePlanDocument(doc: PlanDocument): ValidationIssue[] {
     issues.push({
       field: 'boundaries.northDim',
       message: 'North Dimension must be specified.',
-      severity: 'warning',
+      severity: 'error',
     });
   }
 
@@ -321,7 +338,7 @@ export function validatePlanDocument(doc: PlanDocument): ValidationIssue[] {
     issues.push({
       field: 'boundaries.southDim',
       message: 'South Dimension must be specified.',
-      severity: 'warning',
+      severity: 'error',
     });
   }
 
@@ -336,7 +353,7 @@ export function validatePlanDocument(doc: PlanDocument): ValidationIssue[] {
     issues.push({
       field: 'boundaries.eastDim',
       message: 'East Dimension must be specified.',
-      severity: 'warning',
+      severity: 'error',
     });
   }
 
@@ -351,7 +368,7 @@ export function validatePlanDocument(doc: PlanDocument): ValidationIssue[] {
     issues.push({
       field: 'boundaries.westDim',
       message: 'West Dimension must be specified.',
-      severity: 'warning',
+      severity: 'error',
     });
   }
 

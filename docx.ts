@@ -18,6 +18,11 @@ import type { StructureDetails } from './fields';
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
 const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
+const LEGACY_TEMPLATE_TAGS = new Set([
+  'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
+  'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
+  'Utr/Reference No.', 'V.L.T. No.',
+].map(value => value.toLowerCase()));
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
 export type TemplateValidationResult = {
@@ -354,7 +359,7 @@ export async function validateSaleDeedTemplate(
       .filter(tag => !STRUCTURAL_TAGS.has(norm(tag)));
     const supportedByName = new Map(supported.map(tag => [norm(tag), tag]));
     const detectedPlaceholders = customTags.filter(tag => supportedByName.has(norm(tag)));
-    const unknown = customTags.filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)));
+    const unknown = customTags.filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)) && !LEGACY_TEMPLATE_TAGS.has(norm(tag)));
     if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
     const detectedNames = new Set(detectedPlaceholders.map(norm));
     const omittedPlaceholders = supported.filter(tag => !detectedNames.has(norm(tag))).sort();
@@ -503,8 +508,17 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   // Apply structural recitals first, then merge placeholders into their own runs.
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)));
   if (repeat) return repeat.records!.map((record, index) => {
-    const numbered = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
-    return fillParagraph(numbered, new Map([...values, ...Object.entries(record).map(([key, value]) => [norm(key), value] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
+    let paragraph = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
+    if (repeat.partyRole && index < repeat.records!.length - 1) {
+      const closing = repeat.partyRole === 'executant'
+        ? /,?\s*\(Hereinafter called the "VENDOR\/S"\) of the ONE PART\./i
+        : /,?\s*\(Hereinafter called the "VENDEE\/S"\) of the OTHER PART\./i;
+      paragraph = replaceRunText(paragraph, closing, () => '.');
+    }
+    const filled = fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([key, value]) => [norm(key), value] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
+    return repeat.partyRole && index < repeat.records!.length - 1
+      ? replaceRunText(filled, /[.,;]{2,}$/, () => '.')
+      : filled;
   }).join('');
   // This placeholder is reused by the original template for different concepts.
   if (/WHEREAS[\s\S]*agreed consideration amount/i.test(plainText(p))) {
@@ -513,11 +527,12 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   } else if (/sale consideration|consideration value/i.test(plainText(p))) {
     p = replaceRunText(p, /<Market of Value Rs\.\/->/gi, () => '<Sale Consideration>');
   }
-  // The supplied template intentionally retains its source wording, including
-  // two date placeholders that are also used by the link-deed recital. Make
-  // those two occurrences unambiguous before the generic placeholder pass.
-  if (/Nala Order:|Property Tax:/i.test(plainText(p)) && !values.get(norm('Link Doct.Date'))) {
-    p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '__________');
+  // The source template reuses the link-deed date in two unrelated recitals.
+  // Resolve each occurrence to its own record before filling the paragraph.
+  if (/Nala Order:/i.test(plainText(p))) {
+    p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Nala Order Date>');
+  } else if (/Property Tax:/i.test(plainText(p))) {
+    p = replaceRunText(p, /<Link Doct\.Date>/gi, () => '<Tax Paid Date>');
   }
   if (/Property Tax:/i.test(plainText(p))) {
     p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
@@ -527,6 +542,12 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   for (const rw of rewrites.filter(rw => !rw.records)) {
     p = replaceRunText(p, rw.find, () => rw.replace);
   }
+  // Remove the whole optional phrase, including its comma, while the field
+  // name is still available. This works when Word split it across runs.
+  p = replaceRunText(p, /,?\s+dated\s+<([^<>]*date[^<>]*)>/gi, match =>
+    values.get(norm(match[1])) ? match[0] : '');
+  p = replaceRunText(p, /\s+on\s+<Date>/gi, match =>
+    values.get(norm('Date')) ? match[0] : '');
   p = removeEmptyFields(p, values, missing);
   p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
@@ -549,23 +570,28 @@ function markConsiderationRows(xml: string): string {
 }
 
 /** Remove optional source-template title recitals when their source facts are absent. */
-function removeOptionalTitleRecitals(body: string, values: Map<string, string>): string {
+function removeOptionalTitleRecitals(body: string, values: Map<string, string>, variant: string): string {
   const has = (...names: string[]) => names.every(name => !!values.get(norm(name)));
   const optional: Array<{ test: RegExp; keep: () => boolean }> = [
-    { test: /Registered Deed:/i, keep: () => has('Link Doc Type', 'Link Doct.No.', 'Link Doct.Date') },
+    { test: /Registered Deed:/i, keep: () => has('Link Doc Type', 'Link Doct.No.') },
     { test: /Vacant Land Tax\/Assessment/i, keep: () => has('V.L.T. No.') },
     { test: /Approved Layout:/i, keep: () => has('Layout File No.') },
     { test: /Title Deed:/i, keep: () => has('Pattadar Pass Book No', 'Pass Book Khata No') },
     { test: /Nala Order:/i, keep: () => has('Nala Order No') },
     { test: /Property Tax:/i, keep: () => has('House Tax Receipt', 'Local Body Name') },
     { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('P.T.I.No.') },
-    { test: /House Permission:/i, keep: () => has('House Permission No.', 'Permission Date', 'Municipality/Gram Panchayat Name') },
-    { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.', 'Application Date') },
-    { test: /L\.R\.S\. Proceeding:/i, keep: () => has('LRS Proceeding No.', 'Proceeding Date') },
+    { test: /House Permission:/i, keep: () => has('House Permission No.', 'Municipality/Gram Panchayat Name') },
+    { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.') },
+    { test: /L\.R\.S\. Proceeding:/i, keep: () => has('LRS Proceeding No.') },
   ];
   return topLevelChildren(body).map(child => {
     const chunk = body.slice(child.start, child.end);
-    const rule = optional.find(item => item.test.test(plainText(chunk)));
+    const titleText = plainText(chunk);
+    if (/Tax\/Assessment & Identification Particulars:/i.test(titleText)) {
+      const partRecital = /\(Part\)/i.test(titleText);
+      if (partRecital !== (variant === 'IF PART OPEN PLACE')) return '';
+    }
+    const rule = optional.find(item => item.test.test(titleText));
     return rule && !rule.keep() ? '' : chunk;
   }).join('');
 }
@@ -740,6 +766,7 @@ function addPartySignatureLines(body: string, values: Map<string, string>, rewri
 /** Fill the source house layout without adding a second table after Annexure I-A. */
 function prepareHouseBlock(block: string, values: Record<string, string>, details?: StructureDetails): string {
   const rows = details?.rows || [];
+  const floorRows = rows.filter(row => row.floorNo.trim());
   const floorName = (name: string) => {
     const number = name.match(/^Floor(?: No\.)?\s+(\d+)$/i);
     if (!number) return /^Ground$/i.test(name) ? 'Ground Floor' : name;
@@ -748,17 +775,6 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   };
   const structureName = (row: StructureDetails['rows'][number]) =>
     row.structureType === 'Other / Custom Structure' ? row.customStructureType || row.structureType : row.structureType;
-  const setFloorParagraphIndent = (paragraph: string) => {
-    const indentation = '<w:ind w:left="480" w:hanging="480"/>';
-    const tabs = '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>';
-    return paragraph.replace(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/, pPr => {
-      let next = pPr.replace(/<w:(?:ind|tabs)(?:\s[^>]*)?\/>|<w:tabs(?:\s[^>]*)?>[\s\S]*?<\/w:tabs>/g, '');
-      const additions = tabs + indentation;
-      return /<w:rPr(?:\s[^>]*)?>/.test(next)
-        ? next.replace(/<w:rPr(?:\s[^>]*)?>/, additions + '$&')
-        : next.replace('</w:pPr>', additions + '</w:pPr>');
-    });
-  };
   const filled = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
     let paragraph = original;
@@ -781,33 +797,72 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     if (/^\s*:\s*Framed with walls only\s*$/i.test(text)) {
       return replaceRunText(paragraph, /Framed with walls only/i, () => '<Construction Description>');
     }
-    if (/<Plinth Area>\s*sq\.fts/i.test(text)) {
-      if (!rows.length) return replaceRunText(paragraph, /<Plinth Area>\s*sq\.fts/i, () => '');
-      return rows.map((row, index) => {
-        let floorParagraph = replaceRunText(paragraph, /<Plinth Area>\s*sq\.fts/i, () => {
-          const particulars = [floorName(row.floorNo), structureName(row), row.stage,
-            row.buildingAge !== '' ? `${row.buildingAge} years` : '',
-            row.builtUpAreaSqFt !== '' ? `${row.builtUpAreaSqFt} sq.fts` : ''].filter(Boolean);
-          return particulars.join(' — ');
-        });
-        // Give every floor the same first-line tab and hanging indent. Keep
-        // the draft's colon only on the first line, in a separate prefix run.
-        floorParagraph = replaceRunText(floorParagraph, /^:\s*/, () => '');
-        const prefix = `<w:r>${index === 0 ? '<w:t>:</w:t>' : ''}<w:tab/></w:r>`;
-        floorParagraph = floorParagraph.replace('</w:pPr>', `</w:pPr>${prefix}`);
-        return setFloorParagraphIndent(floorParagraph);
-      }).join('');
-    }
     return paragraph;
   });
-  // The item 4 label and all its floor paragraphs share one template row.
-  // Keep that row on a single page so a later floor cannot become detached
-  // from the label and the first floor at a page boundary.
-  return rows.length ? filled.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+  const areaText = (value: string) => {
+    if (!value.trim()) return '';
+    const number = Number(value.replace(/,/g, ''));
+    return `${Number.isFinite(number) ? number.toLocaleString('en-IN') : value.trim()} Sq.Ft.`;
+  };
+  const keepRowTogether = (row: string) => {
+    if (/<w:cantSplit\b/.test(row)) return row;
+    return /<w:trPr(?:\s[^>]*)?>/.test(row)
+      ? row.replace(/<w:trPr(?:\s[^>]*)?>/, match => `${match}<w:cantSplit/>`)
+      : row.replace(/<w:tr(?:\s[^>]*)?>/, match => `${match}<w:trPr><w:cantSplit/></w:trPr>`);
+  };
+  // The revised draft's five-column schedule table contains example floors.
+  // Use its first body row as the styled prototype for the actual floor count.
+  const withFloorTable = filled.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
+    if (!/Floor No\./i.test(plainText(table)) || !/<Floor No\.>/.test(plainText(table))) return table;
+    const tableRows = table.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
+    const prototype = tableRows.find(row => /<Floor No\.>/.test(plainText(row)));
+    const totalRow = tableRows.find(row => /<Total Built-up Area>/.test(plainText(row)));
+    if (!prototype || !totalRow) return table;
+    const floorEntries = floorRows.map(floor => {
+      let entry = prototype;
+      for (const [field, value] of [
+        ['Floor No.', floorName(floor.floorNo.trim())],
+        ['Structure Type', structureName(floor)],
+        ['Stage', floor.stage],
+        ['Building Age', floor.buildingAge ? `${floor.buildingAge} Years` : ''],
+        ['Built-up Area', areaText(floor.builtUpAreaSqFt)],
+      ]) {
+        entry = replaceRunText(entry, new RegExp(`<${escapeRegExp(field)}>`), () => value);
+      }
+      return keepRowTogether(entry);
+    }).join('');
+    const areas = floorRows.map(floor => Number(floor.builtUpAreaSqFt.replace(/,/g, '')))
+      .filter(number => Number.isFinite(number) && number > 0);
+    const total = areas.length ? areaText(String(areas.reduce((sum, area) => sum + area, 0))) : '';
+    return table.replace(prototype, () => floorEntries)
+      .replace(totalRow, () => replaceRunText(totalRow, /<Total Built-up Area>/, () => total));
+  });
+  // Older compatible templates use an Annexure item 4 with separate number,
+  // description and value cells. Preserve their floor-row behavior too.
+  return withFloorTable.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
     if (!/Total built-up area of the property/i.test(plainText(row))) return row;
-    if (/<w:trPr(?:\s[^>]*)?>/.test(row)) return row.replace(/<w:trPr(?:\s[^>]*)?>/, match => `${match}<w:cantSplit/>`);
-    return row.replace(/<w:tr(?:\s[^>]*)?>/, match => `${match}<w:trPr><w:cantSplit/></w:trPr>`);
-  }) : filled;
+    if (!floorRows.length) return replaceRunText(row, /<Plinth Area>\s*sq\.fts/i, () => '');
+    const cellPattern = /<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g;
+    if ((row.match(cellPattern) || []).length !== 3) return row;
+    const itemNumber = plainText((row.match(cellPattern) || [])[0]).trim();
+    return floorRows.map((floor, index) => {
+      let cellIndex = 0;
+      let floorRow = row.replace(cellPattern, cell => {
+        const column = cellIndex++;
+        if (column === 0) return index === 0 ? cell : replaceRunText(cell, new RegExp(`^${escapeRegExp(itemNumber)}`), () => '');
+        if (column === 1) return replaceRunText(cell, /Total built-up area of the property/i, () => floorName(floor.floorNo.trim()));
+        // The source value cell has a blank paragraph before the actual value.
+        // Remove it so the area starts at the same height as the floor name.
+        let valueCell = cell.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/, paragraph =>
+          plainText(paragraph).trim() ? paragraph : '');
+        valueCell = floor.builtUpAreaSqFt
+          ? replaceRunText(valueCell, /<Plinth Area>/i, () => floor.builtUpAreaSqFt)
+          : replaceRunText(valueCell, /:\s*<Plinth Area>\s*sq\.fts/i, () => '');
+        return valueCell;
+      });
+      return keepRowTogether(floorRow);
+    }).join('');
+  });
 }
 
 /** Recite identifiers the non-house template variants leave out of their description. */
@@ -896,6 +951,7 @@ export async function fillSaleDeed(
       let block = removeOptionalTitleRecitals(
         children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''),
         titleValues,
+        schedule.variant,
       );
       block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
         if (selected.length > 1 && /FLOW OF TITLE & LINK DEED DETAILS:/i.test(plainText(paragraph))) {
@@ -988,6 +1044,51 @@ export async function fillSaleDeed(
     missing: [...missing].sort(),
     unmapped: unmapped.sort(),
   };
+}
+
+/** Append reviewed registration-plan images after the approved deed template's text. */
+export async function appendRegistrationPlans(blob: Blob, plans: { schedule: number; png: Uint8Array }[]): Promise<Blob> {
+  if (!plans.length) return blob;
+  const entries = await readZip(new Uint8Array(await blob.arrayBuffer()));
+  const document = entries.find(entry => entry.name === 'word/document.xml');
+  const relationships = entries.find(entry => entry.name === 'word/_rels/document.xml.rels');
+  const contentTypes = entries.find(entry => entry.name === '[Content_Types].xml');
+  if (!document || !relationships || !contentTypes) throw new Error('The deed is missing a required Word package part.');
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let xml = decoder.decode(document.data);
+  let rels = decoder.decode(relationships.data);
+  let types = decoder.decode(contentTypes.data);
+  if (!types.includes('Extension="png"')) types = types.replace('</Types>', '<Default Extension="png" ContentType="image/png"/></Types>');
+  const used = new Set([...rels.matchAll(/Id="(rId\d+)"/g)].map(match => match[1]));
+  const planParagraphs: string[] = [];
+  for (const plan of plans) {
+    let number = 1;
+    while (used.has(`rId${number}`)) number++;
+    const id = `rId${number}`; used.add(id);
+    const imageName = `deedcraft-plan-${plan.schedule}.png`;
+    entries.push({ name: `word/media/${imageName}`, data: plan.png });
+    rels = rels.replace('</Relationships>', `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${imageName}"/></Relationships>`);
+    const title = escapeXml(`PLAN FOR REGISTRATION — SCHEDULE ${plan.schedule}`);
+    planParagraphs.push(
+      '<w:p><w:r><w:br w:type="page"/></w:r></w:p>' +
+      `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>${title}</w:t></w:r></w:p>` +
+      '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>' +
+      '<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">' +
+      '<wp:extent cx="5486400" cy="7760000"/><wp:docPr id="' + (9000 + plan.schedule) + '" name="Registration Plan"/>' +
+      '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+      '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="' + imageName + '"/><pic:cNvPicPr/></pic:nvPicPr>' +
+      '<pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="' + id + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="5486400" cy="7760000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+      '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
+    );
+  }
+  xml = xml.replace(/<w:sectPr\b/, planParagraphs.join('') + '<w:sectPr');
+  document.data = encoder.encode(xml);
+  relationships.data = encoder.encode(rels);
+  contentTypes.data = encoder.encode(types);
+  const zipped = await writeZip(entries);
+  return new Blob([zipped as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 }
 
 export function saveBlob(blob: Blob, filename: string) {

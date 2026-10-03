@@ -46,12 +46,12 @@ describe('analyzeManualSketch', () => {
 });
 
 describe('applyExtractedDataToPlan', () => {
-  it('fills blank boundary dimensions and computes area when none was extracted', () => {
+  it('fills boundary dimensions but leaves unsourced area blank', () => {
     const extracted: ExtractedSketchData = { northDim: "40'", southDim: "40'", eastDim: "60'", westDim: "60'", roadSides: ['South'] };
     const doc = applyExtractedDataToPlan(blankDoc(), extracted);
     expect(doc.boundaries.northDim.normalized).toBe(40);
     expect(doc.boundaries.roadSides).toEqual(['South']);
-    expect(doc.property.areaSqYards).toBeCloseTo(266.67, 1);
+    expect(doc.property.areaSqYards).toBe('');
   });
 
   it('never invents a boundary label, road width, or plot number the extraction did not return', () => {

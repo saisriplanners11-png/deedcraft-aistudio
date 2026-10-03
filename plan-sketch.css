@@ -1,4 +1,4 @@
-/* Plan Sketch (Beta) step — scoped styles for the ported sketch generator.
+/* Property Plan step — scoped styles for the sketch generator.
    Plain CSS, no Tailwind: this project loads none, and the exported SVG
    needs to carry its own inline styles anyway (see plan-sketch-drawing.tsx). */
 
@@ -22,12 +22,27 @@
 
 .plan-sketch-live { position: sticky; top: 18px; min-width: 0; }
 
-@media (max-width: 900px) {
+@media (max-width: 1450px) {
   .plan-sketch-columns { grid-template-columns: 1fr; }
   .plan-sketch-live { position: static; }
 }
 
 @media print {
-  .rail, .app-top, .navigation { display: none !important; }
-  .plan-sketch-canvas { border: 2px solid #000000; }
+  @page { size: A4; margin: 0; }
+  body * { visibility: hidden !important; }
+  .plan-sketch-registration-preview,
+  .plan-sketch-registration-preview * { visibility: visible !important; }
+  .plan-sketch-registration-preview {
+    position: fixed;
+    inset: 0;
+    width: 210mm !important;
+    height: 297mm !important;
+    overflow: hidden !important;
+    border: 0 !important;
+  }
+  .plan-sketch-registration-preview img {
+    width: 210mm !important;
+    height: 297mm !important;
+    min-width: 0 !important;
+  }
 }

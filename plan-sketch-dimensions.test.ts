@@ -68,10 +68,11 @@ function blankDoc(): PlanDocument {
 }
 
 describe('generateLegalDescription', () => {
-  it('leaves blanks as underscores rather than inventing facts', () => {
+  it('omits unsupported facts rather than inserting placeholders', () => {
     const legal = generateLegalDescription(blankDoc());
-    expect(legal.propertyDescription).toContain('_______');
-    expect(legal.executantText).toBe('[EXECUTANT DETAILS NOT ENTERED]');
+    expect(legal.propertyDescription).not.toContain('_______');
+    expect(legal.propertyDescription).not.toContain('SURVEY NO.');
+    expect(legal.executantText).toBe('');
   });
 });
 

@@ -17,12 +17,12 @@ import type { PlanDocument } from './plan-sketch-types';
 function planSketchRegistrationSvg(doc: PlanDocument, innerSvg: SVGSVGElement): string {
   const legal = generateLegalDescription(doc);
   const period = (value: string) => (value.endsWith('.') ? value : `${value}.`);
-  const executants = period(legal.executantText);
-  const claimants = period(legal.claimantText);
+  const executants = legal.executantText ? period(legal.executantText) : '';
+  const claimants = legal.claimantText ? period(legal.claimantText) : '';
 
   let body = text(450, 86, 'PLAN FOR REGISTRATION', 24, 'text-anchor="middle" text-decoration="underline"');
   let y = 132;
-  for (const paragraph of [legal.propertyDescription, `EXECUTANT/S: ${executants}`, `CLAIMANT/S: ${claimants}`]) {
+  for (const paragraph of [legal.propertyDescription, executants && `EXECUTANT/S: ${executants}`, claimants && `CLAIMANT/S: ${claimants}`].filter(Boolean)) {
     for (const line of wrapLines(paragraph, 780, 18)) { body += text(60, y, line); y += 23; }
     y += 24;
   }
@@ -48,12 +48,14 @@ function planSketchRegistrationSvg(doc: PlanDocument, innerSvg: SVGSVGElement): 
   body += text(840, signTop, 'EXECUTANT/S SIGN/S', 18, 'text-anchor="end" text-decoration="underline"');
   body += text(60, signTop + 46, '1.', 18);
   body += `<line x1="80" y1="${signTop + 46}" x2="330" y2="${signTop + 46}" stroke="black"/>`;
+  if (doc.witnesses.witness1.trim()) body += text(88, signTop + 40, doc.witnesses.witness1.trim(), 14);
 
   const claimSignTop = signTop + 96;
   body += `<line x1="655" y1="${claimSignTop - 14}" x2="840" y2="${claimSignTop - 14}" stroke="black"/>`;
   body += text(840, claimSignTop, 'CLAIMANT/S SIGN/S', 18, 'text-anchor="end" text-decoration="underline"');
   body += text(60, claimSignTop, '2.', 18);
   body += `<line x1="80" y1="${claimSignTop}" x2="330" y2="${claimSignTop}" stroke="black"/>`;
+  if (doc.witnesses.witness2.trim()) body += text(88, claimSignTop - 6, doc.witnesses.witness2.trim(), 14);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1273" viewBox="0 0 900 1273">` +
     `<rect width="900" height="1273" fill="white"/>` +
@@ -62,11 +64,14 @@ function planSketchRegistrationSvg(doc: PlanDocument, innerSvg: SVGSVGElement): 
     `<rect x="30" y="30" width="840" height="1213" fill="none" stroke="black"/>${body}</g></svg>`;
 }
 
-export function PlanSketchPreview({ doc }: { doc: PlanDocument }) {
+export function PlanSketchPreview({ doc, selected, onUse }: { doc: PlanDocument; selected?: boolean; onUse?: (svg: string) => void }) {
   const drawingRef = useRef<HTMLDivElement>(null);
   const [pageSvg, setPageSvg] = useState('');
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState('');
+  const [reviewed, setReviewed] = useState(false);
+  useEffect(() => setReviewed(false), [doc]);
+  const sampleOrigin = doc.id.startsWith('sample-');
 
   const issues = validatePlanDocument(doc);
   const errors = issues.filter(i => i.severity === 'error');
@@ -97,6 +102,13 @@ export function PlanSketchPreview({ doc }: { doc: PlanDocument }) {
       setExporting(false);
     }
   };
+  const copyText = async () => {
+    const legal = generateLegalDescription(doc);
+    try {
+      await navigator.clipboard.writeText([legal.propertyDescription, legal.executantText, legal.claimantText].join('\n\n'));
+      setMessage('Plan legal text copied.');
+    } catch { setMessage('Clipboard access was unavailable. Select the legal text in the preview instead.'); }
+  };
 
   return (
     <Section title="Plan preview &amp; export" telugu="ప్రివ్యూ">
@@ -105,13 +117,16 @@ export function PlanSketchPreview({ doc }: { doc: PlanDocument }) {
           <strong>Before exporting:</strong> {errors.map(e => e.message).join(' ')}
         </div>
       )}
+      {sampleOrigin && <p style={css(`padding:10px;border:1px solid ${C.goldLight};font-size:12px;color:${C.body}`)}>
+        This is a demonstration plan with sample property and party details. Save it as a working copy, replace those details, and review it before use in a deed.
+      </p>}
 
       {/* Off-screen: only used to hand a rendered <svg> to the composer above. */}
       <div ref={drawingRef} style={css('position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none')} aria-hidden="true">
         <PlanSketchDrawing property={doc.property} boundaries={doc.boundaries} isPrintMode />
       </div>
 
-      <div style={css('background:#fff;border:1px solid ' + C.rule + ';overflow-x:auto')}>
+      <div className="plan-sketch-registration-preview" style={css('background:#fff;border:1px solid ' + C.rule + ';overflow-x:auto')}>
         {pageSvg ? (
           <img
             src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageSvg)}`}
@@ -123,8 +138,14 @@ export function PlanSketchPreview({ doc }: { doc: PlanDocument }) {
         )}
       </div>
 
+      {onUse && <label style={css(`display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12px;color:${C.body}`)}>
+        <input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} />
+        I checked this plan’s property, measurements, parties, and sketch against this schedule.
+      </label>}
       <div style={css('display:flex;gap:10px;margin-top:16px')}>
+        {onUse && <Button kind="gold" disabled={!pageSvg || errors.length > 0 || !reviewed || sampleOrigin} onClick={() => onUse(pageSvg)}>{selected ? 'Selected for deed' : 'Use this plan in deed'}</Button>}
         <Button kind="solid" onClick={exportPdf} disabled={exporting}>{exporting ? 'Preparing…' : 'Download plan for registration (PDF)'}</Button>
+        <Button onClick={() => void copyText()}>Copy legal text</Button>
         <Button onClick={() => window.print()}>Print</Button>
       </div>
       {message && <p role="status" style={css(`margin-top:10px;font-size:12px;color:${C.gold}`)}>{message}</p>}

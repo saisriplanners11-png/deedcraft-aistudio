@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "node qa/section-upload-flow.mjs",
+    "test:plan-e2e": "node qa/property-plan-flow.mjs",
     "benchmark": "node benchmark-runner.mjs benchmarks/manifest.json benchmarks/report.json"
   },
   "keywords": [],
