@@ -64,6 +64,22 @@ describe('source-backed drafts', () => {
     expect(draft.vendeeSharesBySchedule).toEqual({ primary: {}, second: {} });
     expect(appStateFor({ ...newDraft(), vendeeSharesBySchedule: undefined }).vendeeSharesBySchedule).toEqual({});
   });
+  it('restores vendor shares and removes only the deleted vendor’s allocations', () => {
+    let draft = draftWith(source('vendor-upload', [candidate('executantName', 'First Vendor', { record: 'uploaded-vendor' })]));
+    draft = draftReducer(draft, { type: 'assign', id: 'vendor-upload', role: 'executant', record: 'uploaded-vendor' });
+    draft = draftReducer(draft, { type: 'manual', key: 'executant|vendor-2|executantName', value: 'Second Vendor' });
+    draft = draftReducer(draft, { type: 'vendor-share', scheduleId: 'primary', executantId: 'uploaded-vendor', value: '60' });
+    draft = draftReducer(draft, { type: 'vendor-share', scheduleId: 'primary', executantId: 'vendor-2', value: '40' });
+    draft = draftReducer(draft, { type: 'vendee-share', scheduleId: 'primary', claimantId: 'primary', value: '100' });
+    const reopened = appStateFor(JSON.parse(JSON.stringify(draft)));
+    expect(reopened.primaryExecutantId).toBe('uploaded-vendor');
+    expect(reopened.form.executantName).toBe('FIRST VENDOR');
+    expect(reopened.vendorSharesBySchedule?.primary).toEqual({ 'uploaded-vendor': '60', 'vendor-2': '40' });
+    draft = draftReducer(draft, { type: 'remove-party', role: 'executant', record: 'vendor-2' });
+    expect(draft.vendorSharesBySchedule?.primary).toEqual({ 'uploaded-vendor': '60' });
+    expect(draft.vendeeSharesBySchedule?.primary).toEqual({ primary: '100' });
+    expect(appStateFor({ ...newDraft(), vendorSharesBySchedule: undefined }).vendorSharesBySchedule).toEqual({});
+  });
   it('keeps a newly added blank claimant in the saved party order', () => {
     let draft = newDraft();
     draft = draftReducer(draft, { type: 'manual', key: 'claimant|primary|claimantName', value: '' });

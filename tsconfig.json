@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["*.ts", "*.tsx", "reference-plan/src/**/*.ts", "reference-plan/src/**/*.tsx"]
+  "include": ["*.ts", "*.tsx", "reference-plan/src/**/*.ts", "reference-plan/src/**/*.tsx", "exact-reference-plan/src/**/*.ts", "exact-reference-plan/src/**/*.tsx"]
 }

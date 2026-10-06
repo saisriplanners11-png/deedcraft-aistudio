@@ -1,6 +1,7 @@
 import type { Draft } from './source-draft';
 import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
+import type { PlanDocument as ExactPlanDocument } from './exact-reference-plan/src/types';
 import type { DeedTemplateSource } from './docx';
 
 export type SavedDeed = {
@@ -11,6 +12,8 @@ export type SavedDeed = {
   draft: Draft;
   sourceFiles: Record<string, File[]>;
   planDrafts: Record<string, PlanDocument>;
+  exactPlanDrafts?: Record<string, ExactPlanDocument>;
+  exactPlanSelectedSvgs?: Record<string, string>;
   referencePlanDrafts: Record<string, ReferencePlanDocument>;
   selectedPlanSvgs: Record<string, string>;
   extraPartyRecords: { executant: string[]; claimant: string[] };

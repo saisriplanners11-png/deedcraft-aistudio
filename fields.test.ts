@@ -21,6 +21,22 @@ describe('field mapping', () => {
     expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40' } } }).map(issue => issue.id))
       .toContain('vendee-share-second-buyer-2');
   });
+  it('validates vendor shares independently by schedule and primary record ID', () => {
+    const base = {
+      ...initialState,
+      primaryExecutantId: 'uploaded-vendor',
+      additionalExecutants: [{ id: 'vendor-2', docNames: [], values: { executantName: 'Second Vendor' } }],
+      additionalSchedules: [{ id: 'second', docNames: [], category: 'Vacant Plot', unit: 'Sq. Yards', values: {} }],
+      vendorSharesBySchedule: { primary: { 'uploaded-vendor': '50', 'vendor-2': '50' }, second: { 'uploaded-vendor': '60', 'vendor-2': '40' } },
+    };
+    const issues = (state: AppState) => generationBlockers(state).filter(issue => issue.id.startsWith('vendor-share'));
+    expect(issues(base)).toEqual([]);
+    expect(issues({ ...base, vendorSharesBySchedule: { ...base.vendorSharesBySchedule, second: { 'uploaded-vendor': '60', 'vendor-2': '30' } } }).map(issue => issue.id)).toEqual(['vendor-share-total-second']);
+    for (const invalid of ['', '0', '101', '33.333']) {
+      expect(issues({ ...base, vendorSharesBySchedule: { ...base.vendorSharesBySchedule, second: { 'uploaded-vendor': invalid, 'vendor-2': '40' } } }).map(issue => issue.id))
+        .toContain('vendor-share-second-uploaded-vendor');
+    }
+  });
   it('removes Telugu party names and place of execution', () => {
     const ids = ALL_FIELDS.map(field => field.id);
     expect(ids).not.toContain('executantNameTelugu');

@@ -1,7 +1,7 @@
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
-import { ALL_FIELDS, GROUPS, LINK_OPTIONS, ROOF_NATURE_OPTIONS, SCHEDULE_VARIANT } from './fields';
+import { ALL_FIELDS, GROUPS, LINK_OPTIONS, ROOF_NATURE_OPTIONS, STRUCTURE_TYPE_OPTIONS, SCHEDULE_VARIANT } from './fields';
 import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
@@ -38,7 +38,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
   out['Near / Adjacent'] = f.nearAdjacent || '';
   const houseRows = state.structureDetailsBySchedule.primary?.rows || [];
-  const firstStructure = houseRows.find(row => row.structureType);
+  const firstStructure = houseRows.find(row => row.structureType && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType));
   out['Nature of House'] = (ROOF_NATURE_OPTIONS.includes(f.roofMaterial) ? f.roofMaterial : '') || (firstStructure?.structureType === 'Other / Custom Structure'
     ? firstStructure.customStructureType || '' : firstStructure?.structureType || '');
   out['Roof Material'] = f.roofMaterial || '';
@@ -174,13 +174,20 @@ export function rewritesFor(state: AppState): Rewrite[] {
   for (const side of ['executant', 'claimant'] as const) {
     const records = partyRecords(state, side);
     if (records.length < 2) continue;
+    const schedules = scheduleRecords(state);
+    const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
     rewrites.push({
       find: new RegExp(side === 'executant' ? '<EXECUTANT NAME>' : '<CLAIMANT NAME>'), replace: '',
       partyRole: side,
-      records: records.map(record => {
+      records: records.map((record, index) => {
         const form = { ...state.form };
         for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = record.values[field.id] || '';
-        return mergeValues({ ...state, form });
+        const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
+        const allocations = schedules.map((schedule, scheduleIndex) => {
+          const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || '');
+          return schedules.length === 1 ? `${cents === null ? '____' : cents / 100}%` : `Schedule ${scheduleIndex + 1}: ${cents === null ? '____' : cents / 100}%`;
+        });
+        return { ...mergeValues({ ...state, form }), 'UNDIVIDED SHARE RECITAL': `Holding Undivided Share of ${allocations.join('; ')}` };
       }),
     });
   }
@@ -226,6 +233,7 @@ export function propertyForm(state: AppState, values: Record<string, string>): R
 /** One filled template schedule for every property being registered together. */
 export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
   const vendees = partyRecords(state, 'claimant');
+  const vendors = partyRecords(state, 'executant');
   return scheduleRecords(state).map(record => {
     const propertyFieldIds = new Set(GROUPS.flatMap(group => group.fields.map(field => field.id)));
     const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields)
@@ -313,7 +321,16 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }) : undefined;
-    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendeeShares };
+    const vendorShares = vendors.length > 1 ? vendors.map((vendor, index) => {
+      const partyId = index === 0 ? state.primaryExecutantId || 'primary' : vendor.id;
+      const cents = vendeeShareCents(state.vendorSharesBySchedule?.[record.id]?.[partyId] || '');
+      return {
+        partyNumber: index + 1,
+        name: uppercasePartyIdentity('executantName', vendor.values.executantName || ''),
+        percentage: cents === null ? '' : String(cents / 100),
+      };
+    }) : undefined;
+    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
   });
 }
 

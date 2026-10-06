@@ -52,6 +52,6 @@ export default defineConfig(({ mode }) => {
       'process.env.VERIFY_MODEL': JSON.stringify(geminiExtraction ? geminiVerifyModel : (env.VERIFY_MODEL ?? '')),
     },
     server: { port: 5173, open: true },
-    build: { outDir: 'dist', sourcemap: true, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html') } } },
+    build: { outDir: 'dist', sourcemap: true, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), exactReferencePlan: resolve(__dirname, 'exact-reference-plan/index.html') } } },
   };
 });

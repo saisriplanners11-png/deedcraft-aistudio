@@ -52,7 +52,7 @@ export type SupportingRecord = {
   values: Record<string, string>;
 };
 
-/** Manually assigned vendee ownership percentages, by schedule and party id. */
+/** Manually assigned ownership percentages, by schedule and party id. */
 export type VendeeSharesBySchedule = Record<string, Record<string, string>>;
 
 /** Percentages are stored to two decimal places so totals can be exact. */
@@ -91,8 +91,10 @@ export type AppState = {
   additionalExecutants: ValueRecord[];
   additionalClaimants: ValueRecord[];
   primaryClaimantId?: string;
+  primaryExecutantId?: string;
   additionalSchedules: ScheduleRecord[];
   vendeeSharesBySchedule?: VendeeSharesBySchedule;
+  vendorSharesBySchedule?: VendeeSharesBySchedule;
   /** Uploaded evidence recited only in the property schedule it supports. */
   supportingRecords: SupportingRecord[];
   /** Repeatable Annexure I-A structure rows, keyed by property schedule id. */
@@ -122,6 +124,7 @@ export const initialState: AppState = {
   additionalClaimants: [],
   additionalSchedules: [],
   vendeeSharesBySchedule: {},
+  vendorSharesBySchedule: {},
   supportingRecords: [],
   structureDetailsBySchedule: {},
 };
@@ -390,31 +393,37 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       if (Number(f.consid) >= 5000000) addRecordField(record, `${side}Pan`, `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 2}: PAN`, 'PAN is required for consideration of ₹50 lakh or more.', 'PAN card or manual entry.', side === 'executant' ? 6 : 7);
     });
   }
-  const vendees = partyRecords(state, 'claimant');
-  if (vendees.length > 1) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
+  for (const side of ['executant', 'claimant'] as const) {
+  const parties = partyRecords(state, side);
+  const vendor = side === 'executant';
+  const label = vendor ? 'Vendor' : 'Vendee';
+  const key = vendor ? 'vendor' : 'vendee';
+  const shares = vendor ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
+  if (parties.length > 1) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
     let totalCents = 0;
     let allValid = true;
-    vendees.forEach((vendee, index) => {
-      const partyId = index === 0 ? state.primaryClaimantId || 'primary' : vendee.id;
-      const value = state.vendeeSharesBySchedule?.[schedule.id]?.[partyId] || '';
+    parties.forEach((party, index) => {
+      const partyId = index === 0 ? (vendor ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id;
+      const value = shares?.[schedule.id]?.[partyId] || '';
       const cents = vendeeShareCents(value);
       if (cents === null) {
         allValid = false;
         missing.push({
-          id: `vendee-share-${schedule.id}-${partyId}`,
-          label: `Schedule ${scheduleIndex + 1}: Vendee ${index + 1} undivided share`,
-          reason: value ? 'Enter a percentage greater than 0 and no more than 100, with at most two decimal places.' : 'Enter this vendee’s undivided ownership percentage.',
-          source: 'Agreed ownership allocation entered by the drafter.', step: 7,
+          id: `${key}-share-${schedule.id}-${partyId}`,
+          label: `Schedule ${scheduleIndex + 1}: ${label} ${index + 1} undivided share`,
+          reason: value ? 'Enter a percentage greater than 0 and no more than 100, with at most two decimal places.' : `Enter this ${label.toLowerCase()}’s undivided ownership percentage.`,
+          source: 'Agreed ownership allocation entered by the drafter.', step: vendor ? 6 : 7,
         });
       } else totalCents += cents;
     });
     if (allValid && totalCents !== 10000) missing.push({
-      id: `vendee-share-total-${schedule.id}`,
-      label: `Schedule ${scheduleIndex + 1}: total vendee shares`,
+      id: `${key}-share-total-${schedule.id}`,
+      label: `Schedule ${scheduleIndex + 1}: total ${label.toLowerCase()} shares`,
       reason: `Undivided shares must total 100%; currently ${(totalCents / 100).toFixed(2).replace(/\.00$/, '')}%.`,
-      source: 'Agreed ownership allocation entered by the drafter.', step: 7,
+      source: 'Agreed ownership allocation entered by the drafter.', step: vendor ? 6 : 7,
     });
   });
+  }
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');

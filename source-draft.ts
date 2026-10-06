@@ -46,13 +46,14 @@ export type Draft = {
   structureDetailsBySchedule: Record<string, StructureDetails>;
   /** Optional for drafts saved before vendee allocations were introduced. */
   vendeeSharesBySchedule?: VendeeSharesBySchedule;
+  vendorSharesBySchedule?: VendeeSharesBySchedule;
   /** Instrument identity is part of the draft snapshot and cannot be inferred from its fields. */
   instrumentId: InstrumentId;
   variantId: string;
   definitionVersion: string;
 };
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
+export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'reset' }
   | { type: 'load'; draft: Draft }
@@ -67,6 +68,7 @@ export type Action =
   | { type: 'link-property'; record: string; propertyId: string }
   | { type: 'structure-details'; propertyId: string; value: StructureDetails }
   | { type: 'vendee-share'; scheduleId: string; claimantId: string; value: string }
+  | { type: 'vendor-share'; scheduleId: string; executantId: string; value: string }
   | { type: 'remove-party'; role: 'executant' | 'claimant'; record: string }
   | { type: 'instrument'; instrumentId: InstrumentId; variantId?: string }
   | { type: 'manual'; key: string; value: string }
@@ -91,6 +93,10 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     ...(draft.vendeeSharesBySchedule || {}),
     [action.scheduleId]: { ...(draft.vendeeSharesBySchedule?.[action.scheduleId] || {}), [action.claimantId]: action.value },
   } };
+  if (action.type === 'vendor-share') next = { ...draft, vendorSharesBySchedule: {
+    ...(draft.vendorSharesBySchedule || {}),
+    [action.scheduleId]: { ...(draft.vendorSharesBySchedule?.[action.scheduleId] || {}), [action.executantId]: action.value },
+  } };
   if (action.type === 'remove-party') {
     const prefix = `${action.role}|${action.record}|`;
     const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith(prefix)));
@@ -100,7 +106,12 @@ export function draftReducer(draft: Draft, action: Action): Draft {
       if (action.role === 'claimant') delete nextParties[action.record];
       return [scheduleId, nextParties];
     }));
-    next = { ...draft, manual, choices, vendeeSharesBySchedule: shares,
+    const vendorShares = Object.fromEntries(Object.entries(draft.vendorSharesBySchedule || {}).map(([scheduleId, parties]) => {
+      const nextParties = { ...parties };
+      if (action.role === 'executant') delete nextParties[action.record];
+      return [scheduleId, nextParties];
+    }));
+    next = { ...draft, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
       sources: draft.sources.filter(source => source.assignment?.role !== action.role || source.assignment.record !== action.record) };
   }
   if (action.type === 'instrument') {
@@ -321,6 +332,7 @@ export function appStateFor(draft: Draft): AppState {
     additionalExecutants: sellers.filter(r => r !== primarySeller).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
     additionalClaimants: buyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
     primaryClaimantId: primaryBuyer?.id || 'primary',
+    primaryExecutantId: primarySeller?.id || 'primary',
     additionalLinkDocuments: registeredLinks.slice(1),
     additionalSchedules: properties.slice(1).map(r => {
       const inferred = assessmentFor(r.id, r.values.category || '');
@@ -330,6 +342,7 @@ export function appStateFor(draft: Draft): AppState {
     supportingRecords: supportingLinks.map(r=>({id:r.id,scheduleId:draft.sources.find(s=>s.assignment?.record===r.id)?.assignment?.propertyRecord || 'primary',docName:draft.sources.find(s=>s.assignment?.record===r.id)?.name || '',values:r.values})),
     structureDetailsBySchedule: Object.fromEntries(propertyIds.map(id => [id, draft.structureDetailsBySchedule[id] || newStructureDetails()])),
     vendeeSharesBySchedule: draft.vendeeSharesBySchedule || {},
+    vendorSharesBySchedule: draft.vendorSharesBySchedule || {},
   };
 }
 

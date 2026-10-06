@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newStructureDetail, newStructureDetails, partyEntityFields, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
@@ -18,6 +18,9 @@ import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
 import { PaymentCard, AddPayment } from './paymentui';
+import { ExactReferenceStep } from './exact-reference-step';
+import { exactPlanFromDraft } from './exact-reference-integration';
+import type { PlanDocument as ExactPlanDocument } from './exact-reference-plan/src/types';
 import { PlanSketchStep } from './plan-sketch-step';
 import { planDocumentFromDraft } from './plan-sketch-mapping';
 import type { PlanDocument } from './plan-sketch-types';
@@ -37,7 +40,7 @@ import { deleteDeed, listSavedDeeds, saveDeed, type SavedDeed } from './saved-de
 const fileQueue = new WorkQueue(10);
 const ACCEPT = '.pdf,.docx,.txt,.md,image/jpeg,image/png,image/webp,image/gif';
 const LINK_FIELDS = ['linkOption', ...LINK_OPTIONS.flatMap(o => o.fields.map(f => f.id))];
-function StructureDetailsTable({ value, onChange, onNotice }: { value: StructureDetails; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
+function StructureDetailsTable({ value, defaultRoof, onChange, onNotice }: { value: StructureDetails; defaultRoof: string; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
   const total = Number(details.totalFloors);
   const ordinalFloor = (floor: number) => {
@@ -58,14 +61,21 @@ function StructureDetailsTable({ value, onChange, onNotice }: { value: Structure
     onChange({ ...details, totalFloors: next });
   };
   const canAdd = Number.isInteger(total) && total > details.rows.length;
+  const selectedRoof = (row: StructureDetails['rows'][number]) =>
+    row.structureType && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
+      ? ROOF_NATURE_OPTIONS.includes(row.structureType) ? row.structureType : 'Other / Custom Structure'
+      : defaultRoof ? ROOF_NATURE_OPTIONS.includes(defaultRoof) ? defaultRoof : 'Other / Custom Structure' : '';
+  const customRoof = (row: StructureDetails['rows'][number]) => row.structureType === 'Other / Custom Structure'
+    ? row.customStructureType : row.structureType && !ROOF_NATURE_OPTIONS.includes(row.structureType) && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
+      ? row.structureType : !row.structureType && !ROOF_NATURE_OPTIONS.includes(defaultRoof) ? defaultRoof : '';
   return <Section title="Structure Details" aside={<span style={{ fontSize: 11, color: C.muted }}>Annexure I-A</span>}>
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{['Total Floors*', 'Floor No.*', 'Structure Type*', 'Stage*', 'Building Age*', 'Built-up area (Sq. Ft.)*', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
+        <thead><tr>{['Total Floors*', 'Floor No.*', 'Nature of Roof*', 'Stage*', 'Building Age*', 'Built-up area (Sq. Ft.)*', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
         <tbody>{details.rows.map((row, index) => <tr key={row.id}>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.structureType} onChange={event => patchRow(row.id, { structureType: event.target.value, customStructureType: '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{STRUCTURE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Nature of Roof" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{ROOF_NATURE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom nature of roof" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.builtUpAreaSqFt} onChange={event => patchRow(row.id, { builtUpAreaSqFt: event.target.value })} style={{ width: 112, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
@@ -394,29 +404,32 @@ function AddPartyRecord({ noun, onAdd }: { noun: string; onAdd: (files: File[]) 
   </div>;
 }
 
-function VendeeSharesEditor({
-  claimants, schedules, shares, onChange,
+function PartySharesEditor({
+  parties, schedules, shares, side, onChange,
 }: {
-  claimants: { id: string; name: string }[];
+  parties: { id: string; name: string }[];
   schedules: { id: string }[];
   shares: VendeeSharesBySchedule;
-  onChange: (scheduleId: string, claimantId: string, value: string) => void;
+  side: 'Vendor' | 'Vendee';
+  onChange: (scheduleId: string, partyId: string, value: string) => void;
 }) {
-  return <Section title="Undivided ownership shares">
-    <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Enter each vendee’s percentage separately for every property. The shares for each schedule must total 100%.</p>
+  return <Section title={`${side} undivided ownership shares`}>
+    <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Enter each {side.toLowerCase()}’s percentage separately for every property. The shares for each schedule must total 100%.</p>
     {schedules.map((schedule, scheduleIndex) => {
-      const values = claimants.map(claimant => shares[schedule.id]?.[claimant.id] || '');
+      const values = parties.map(party => shares[schedule.id]?.[party.id] || '');
       const cents = values.map(vendeeShareCents);
       const complete = cents.every(value => value !== null);
       const total = cents.reduce<number>((sum, value) => sum + (value || 0), 0);
       return <div key={schedule.id} style={{ marginTop: scheduleIndex ? 22 : 0 }}>
         <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {scheduleIndex + 1}</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-          {claimants.map((claimant, index) => <label key={claimant.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: C.body }}>
-            <span>Vendee {index + 1}{claimant.name ? ` — ${claimant.name}` : ''} (%)</span>
-            <input type="text" inputMode="decimal" value={values[index]} aria-label={`Schedule ${scheduleIndex + 1} Vendee ${index + 1} undivided share percent`}
-              onChange={event => { const value = event.target.value; if (/^\d{0,3}(?:\.\d{0,2})?$/.test(value)) onChange(schedule.id, claimant.id, value); }}
+          {parties.map((party, index) => <label key={party.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: C.body }}>
+            <span>{side} {index + 1}{party.name ? ` — ${party.name}` : ''} (%)</span>
+            <input type="text" inputMode="decimal" value={values[index]} aria-label={`Schedule ${scheduleIndex + 1} ${side} ${index + 1} undivided share percent`}
+              aria-invalid={cents[index] === null}
+              onChange={event => onChange(schedule.id, party.id, event.target.value)}
               style={{ padding: '8px 2px', border: 0, borderBottom: `1px solid ${C.goldLight}`, background: 'transparent', fontSize: 14, color: C.ink }} />
+            {cents[index] === null && <small style={{ color: C.gold }}>{values[index] ? 'Enter more than 0% and no more than 100%, with up to two decimal places.' : 'Share required.'}</small>}
           </label>)}
         </div>
         <p style={{ margin: '9px 0 0', fontSize: 12, color: complete && total === 10000 ? C.green : C.gold }}>
@@ -433,9 +446,9 @@ function SchedulePreview({ merge }: { merge: ScheduleMerge }) {
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails, merge.vendeeShares).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
+    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails, merge.vendeeShares, merge.vendorShares).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
     return () => { live = false; };
-  }, [merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.structureDetails), JSON.stringify(merge.vendeeShares)]);
+  }, [merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.structureDetails), JSON.stringify(merge.vendeeShares), JSON.stringify(merge.vendorShares)]);
   if (error) return <p style={{ color: C.gold, fontSize: 12 }}>{error}</p>;
   if (!text) return <p style={{ color: C.mutedSoft, fontSize: 12 }}>Loading the schedule paragraph…</p>;
   return <div style={{ fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap' }}>{text}</div>;
@@ -519,6 +532,8 @@ export default function WizardApp() {
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
+  const [exactPlanDrafts, setExactPlanDrafts] = useState<Record<string, ExactPlanDocument>>({});
+  const [exactPlanSelectedSvgs, setExactPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
   const [sourceFiles, setSourceFiles] = useState<Record<string, File[]>>({});
   const referencePlanFrame = useRef<HTMLIFrameElement>(null);
@@ -537,6 +552,7 @@ export default function WizardApp() {
   // Every real edit goes through `dispatch`/`edit`, never this setter.
   const vm = useMemo(() => buildViewModel(state, () => {}), [state]);
   const notices = [...generationBlockers(state), ...(draft.sources.some(s=>s.status==='reading'||s.status==='queued') ? [{id:'pending-uploads',label:'Document verification',reason:'Wait for all uploads to finish verification.',source:'Uploaded documents',step:1}] : [])];
+  const shareBlockers = notices.filter(item => item.id.startsWith('vendee-share-') || item.id.startsWith('vendor-share-'));
   const recordOptions = (role: Role) => [...new Set(Object.keys(resolved.values).filter(k => k.startsWith(role + '|')).map(k => k.split('|')[1]))];
   const step = draft.step;
   const deedDefinition = definitionFor(draft.instrumentId);
@@ -545,7 +561,7 @@ export default function WizardApp() {
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
   const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}` : 'built-in'}:annexure-floor-stage-v2`;
   const hasStarted = draft.revision > 0 || !!customTemplate || templateMode === 'custom'
-    || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(exactPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
     id: draft.id,
@@ -556,7 +572,7 @@ export default function WizardApp() {
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
-    planDrafts, referencePlanDrafts, selectedPlanSvgs, extraPartyRecords,
+    planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
     templateMode, customTemplate,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
@@ -582,7 +598,7 @@ export default function WizardApp() {
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate]);
   const goto = (s: number) => dispatch({ type: 'step', step: s });
   const nextStep = STEPS.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
@@ -784,7 +800,7 @@ export default function WizardApp() {
   function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPendingReviews([]); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
+    setPendingReviews([]); setExactPlanDrafts({}); setExactPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
   }
@@ -820,6 +836,8 @@ export default function WizardApp() {
     setSourceFiles(deed.sourceFiles || {});
     setPlanDrafts(deed.planDrafts || {});
     setReferencePlanDrafts(deed.referencePlanDrafts || {});
+    setExactPlanDrafts(deed.exactPlanDrafts || {});
+    setExactPlanSelectedSvgs(deed.exactPlanSelectedSvgs || {});
     setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
     setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
     setTemplateMode(deed.templateMode || 'built-in');
@@ -848,8 +866,10 @@ export default function WizardApp() {
     const rows = schedule?.structureDetails?.rows.filter(row => row.structureType || row.builtUpAreaSqFt) || [];
     const houses = rows.map((row, index) => ({
       id: row.id, name: rows.length > 1 ? `${row.floorNo || 'Structure'} ${index + 1}` : 'Main House',
-      enabled: true, structureType: row.structureType === 'Other / Custom Structure' ? row.customStructureType : row.structureType,
-      roofType: schedule?.values.roofMaterial || '', plinthAreaSqFt: Number(row.builtUpAreaSqFt) || '',
+      enabled: true, structureType: schedule?.values.constructionDescription || (STRUCTURE_TYPE_OPTIONS.includes(row.structureType) ? row.structureType : ''),
+      roofType: row.structureType === 'Other / Custom Structure' ? row.customStructureType || schedule?.values.roofMaterial || ''
+        : STRUCTURE_TYPE_OPTIONS.includes(row.structureType) ? schedule?.values.roofMaterial || '' : row.structureType || schedule?.values.roofMaterial || '',
+      plinthAreaSqFt: Number(row.builtUpAreaSqFt) || '',
     }));
     return {
       ...base,
@@ -938,12 +958,29 @@ export default function WizardApp() {
   });
   const scheduleMerges = scheduleMergesFor(state);
   const activeScheduleMerge = scheduleMerges[activePropertyIndex];
+  const claimantIds = partyRecordIds('claimant');
+  const executantIds = partyRecordIds('executant');
+  const vendorShareEditor = executantIds.length > 1 && <PartySharesEditor
+    side="Vendor"
+    parties={executantIds.map(record => ({ id: record, name: resolved.values[fieldKey('executant', record, 'executantName')] || '' }))}
+    schedules={propertyRecords}
+    shares={draft.vendorSharesBySchedule || {}}
+    onChange={(scheduleId, executantId, value) => dispatch({ type: 'vendor-share', scheduleId, executantId, value })}
+  />;
+  const shareEditor = claimantIds.length > 1 && <PartySharesEditor
+    side="Vendee"
+    parties={claimantIds.map(record => ({ id: record, name: resolved.values[fieldKey('claimant', record, 'claimantName')] || '' }))}
+    schedules={propertyRecords}
+    shares={draft.vendeeSharesBySchedule || {}}
+    onChange={(scheduleId, claimantId, value) => dispatch({ type: 'vendee-share', scheduleId, claimantId, value })}
+  />;
 
   async function generate(kind: 'word' | 'pdf') {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
       if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
+      if (kind === 'word' && shareBlockers.length) throw new Error('Enter valid vendor and vendee shares totaling 100% for every property before downloading the Word deed');
       const templateSource = templateMode === 'custom' ? customTemplate! : BUILT_IN_TEMPLATE_SOURCE;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
@@ -1103,6 +1140,8 @@ export default function WizardApp() {
             <div><strong>{vm.doneIds.filter(id => id <= 8).length}<span> / 9</span></strong><span>Drafting steps complete</span></div>
             <div><strong>{vm.openCount}</strong><span>Readiness checks open</span></div>
           </div>
+          {vendorShareEditor}
+          {shareEditor}
           <section className="dashboard-section" aria-labelledby="workflow-title">
             <div className="dashboard-section-head"><div><p className="eyebrow">WORKFLOW</p><h2 id="workflow-title">Your drafting steps</h2></div><span>Choose any step to continue</span></div>
             {[1, 2, 3, 4].map(phase => <div className="dashboard-phase" key={phase}>
@@ -1218,6 +1257,7 @@ export default function WizardApp() {
                 fallbackValues={{ bltNo: id === 'primary' ? state.form.bltNo : record.values.bltNo || '' }} />
               {['Residential', 'Commercial', 'Flat'].includes(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
+                defaultRoof={record.values.roofMaterial || ''}
                 onChange={value => dispatch({ type: 'structure-details', propertyId: id, value })}
                 onNotice={setMessage}
               />}
@@ -1278,12 +1318,8 @@ export default function WizardApp() {
                 busy={!!busySource} />;
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
-            {role === 'claimant' && records.length > 1 && <VendeeSharesEditor
-              claimants={records.map(record => ({ id: record, name: resolved.values[fieldKey('claimant', record, 'claimantName')] || '' }))}
-              schedules={propertyRecords}
-              shares={draft.vendeeSharesBySchedule || {}}
-              onChange={(scheduleId, claimantId, value) => dispatch({ type: 'vendee-share', scheduleId, claimantId, value })}
-            />}
+            {role === 'executant' && vendorShareEditor}
+            {role === 'claimant' && shareEditor}
           </>;
         })()}
 
@@ -1326,7 +1362,8 @@ export default function WizardApp() {
           </div>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
           {!generationReady && <p>{deedRelease.reasons.join(' ')}</p>}
-          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          {shareBlockers.length > 0 && <p className="notice" role="alert">Vendor and vendee shares must total 100% for each property before downloading the Word deed. <button type="button" onClick={() => goto(-1)}>Enter shares on the dashboard</button></p>}
+          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || shareBlockers.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 
@@ -1337,6 +1374,21 @@ export default function WizardApp() {
             onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
         </section>}
 
+        {step === 12 && <section className="panel reference-plan-step">
+          <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
+          <ExactReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId}
+            seed={exactPlanFromDraft(state, activePropertyId)} doc={exactPlanDrafts[activePropertyId]}
+            selected={!!exactPlanSelectedSvgs[activePropertyId] && exactPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]}
+            onChange={doc => {
+              setExactPlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
+              if (exactPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]) {
+                setSelectedPlanSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
+              }
+              setExactPlanSelectedSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
+              setDownload(null);
+            }}
+            onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setExactPlanSelectedSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
+        </section>}
         {step === 11 && <section className="panel reference-plan-step">
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <iframe key={activePropertyId} ref={referencePlanFrame} title="Property Plan Generator" src="/reference-plan/index.html" onLoad={() => referencePlanFrame.current?.contentWindow?.postMessage({ type: 'deedcraft:reference-plan-seed', scheduleId: activePropertyId, doc: referenceSeedRef.current(activePropertyId) }, window.location.origin)} style={{ display: 'block', width: '100%', minHeight: '900px', height: 'calc(100vh - 170px)', border: 0, background: '#f1f5f9' }} />

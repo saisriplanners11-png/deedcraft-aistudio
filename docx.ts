@@ -13,7 +13,7 @@
 //      The variant the property category selects is kept; the rest are removed.
 
 import { loadSaleDeedTemplate } from './template';
-import type { StructureDetails } from './fields';
+import { STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
@@ -509,6 +509,11 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)));
   if (repeat) return repeat.records!.map((record, index) => {
     let paragraph = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
+    if (repeat.partyRole && record['UNDIVIDED SHARE RECITAL']) {
+      const panField = repeat.partyRole === 'executant' ? /<Executant PAN>/i : /<Claimant PAN>/i;
+      if (panField.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, panField, match => `${match[0]}, ${record['UNDIVIDED SHARE RECITAL']}`);
+      else paragraph = replaceRunText(paragraph, /\s*\(Hereinafter called the/i, match => `, ${record['UNDIVIDED SHARE RECITAL']} ${match[0].trimStart()}`);
+    }
     if (repeat.partyRole && index < repeat.records!.length - 1) {
       const closing = repeat.partyRole === 'executant'
         ? /,?\s*\(Hereinafter called the "VENDOR\/S"\) of the ONE PART\./i
@@ -649,6 +654,7 @@ export async function scheduleText(
   supportingRecords: string[] = [],
   structureDetails?: StructureDetails,
   vendeeShares?: VendeeShare[],
+  vendorShares?: VendeeShare[],
 ): Promise<string> {
   const bin = await loadSaleDeedTemplate();
   const entries = await readZip(bin);
@@ -683,9 +689,9 @@ export async function scheduleText(
   const missing = new Set<string>();
 
   const selected = markConsiderationRows(children.slice(start, stop).map(c => body.slice(c.start, c.end)).join(''));
-  const withEvidence = addVendeeShareParagraph(variant === 'IF HOUSE'
+  const withEvidence = addOwnershipShareParagraphs(variant === 'IF HOUSE'
     ? prepareHouseBlock(selected, values, structureDetails)
-    : prepareNonHouseIdentifiers(selected, variant, values), vendeeShares);
+    : prepareNonHouseIdentifiers(selected, variant, values), vendorShares, vendeeShares);
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
     .map(paragraph => plainText(fillParagraph(paragraph, values_, missing, [])).trim())
     .filter(Boolean)
@@ -710,53 +716,50 @@ export type ScheduleMerge = {
   supportingRecords?: string[];
   /** Repeatable Annexure I-A rows belonging only to this property schedule. */
   structureDetails?: StructureDetails;
+  vendorShares?: VendeeShare[];
   vendeeShares?: VendeeShare[];
 };
 
 export type VendeeShare = { partyNumber: number; name: string; percentage: string };
 
-/** Place an ownership allocation inside its own schedule, after the boundaries. */
-function addVendeeShareParagraph(block: string, shares?: VendeeShare[]): string {
-  if (!shares?.length) return block;
+/** Place each side's ownership allocation inside its schedule, after the boundaries. */
+function addOwnershipShareParagraphs(block: string, vendorShares?: VendeeShare[], vendeeShares?: VendeeShare[]): string {
+  if (!vendorShares?.length && !vendeeShares?.length) return block;
   const children = topLevelChildren(block);
   const boundary = children.find(child => {
     const chunk = block.slice(child.start, child.end);
     return /North\s*:/i.test(plainText(chunk)) && /West\s*:/i.test(plainText(chunk));
   });
-  if (!boundary) throw new Error('Template schedule boundaries are missing; vendee shares could not be placed.');
+  if (!boundary) throw new Error('Template schedule boundaries are missing; ownership shares could not be placed.');
   const description = children.map(child => block.slice(child.start, child.end))
     .find(chunk => /^\s*All that the\b/i.test(plainText(chunk)));
   const properties = description?.match(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/)?.[0] || '<w:pPr/>';
-  const allocations = shares.map(share =>
-    `(${share.partyNumber}) ${share.name || '________________'} — ${share.percentage || '____'}%`
-  ).join('; ');
-  const sentence = `The vendees acquire this Schedule Property in the following undivided shares: ${allocations}.`;
-  const paragraph = `<w:p>${properties}<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">${escapeXml(sentence)}</w:t></w:r></w:p>`;
-  return block.slice(0, boundary.end) + paragraph + block.slice(boundary.end);
+  const paragraph = (shares: VendeeShare[], side: 'vendors' | 'vendees') => {
+    const allocations = shares.map(share => `(${share.partyNumber}) ${share.name || '________________'} — ${share.percentage || '____'}%`).join('; ');
+    const sentence = `The ${side} ${side === 'vendors' ? 'convey' : 'acquire'} this Schedule Property in the following undivided shares: ${allocations}.`;
+    return `<w:p>${properties}<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">${escapeXml(sentence)}</w:t></w:r></w:p>`;
+  };
+  const paragraphs = (vendorShares?.length ? paragraph(vendorShares, 'vendors') : '') + (vendeeShares?.length ? paragraph(vendeeShares, 'vendees') : '');
+  return block.slice(0, boundary.end) + paragraphs + block.slice(boundary.end);
 }
 
-/** Add a labelled writing line for each party under the source signature headings. */
+/** Add compact name-free writing lines under the source signature headings. */
 function addPartySignatureLines(body: string, values: Map<string, string>, rewrites: Rewrite[]): string {
   const partyRewrite = (role: 'executant' | 'claimant') => rewrites.find(rewrite => rewrite.partyRole === role);
   const vendors = partyRewrite('executant')?.records?.map(record => record['EXECUTANT NAME'] || '')
     || [values.get(norm('EXECUTANT NAME')) || ''];
   const vendees = partyRewrite('claimant')?.records?.map(record => record['CLAIMANT NAME'] || '')
     || [values.get(norm('CLAIMANT NAME')) || ''];
-  if (vendors.length < 2 && vendees.length < 2) return body;
   const heading = topLevelChildren(body).find(child =>
     /SIGN\/S OF VENDOR\/S[\s\S]*SIGN\/S OF VENDEE\/S/i.test(plainText(body.slice(child.start, child.end)))
   );
   if (!heading) throw new Error('Template signature headings are missing; party signatures could not be numbered.');
-  const source = body.slice(heading.start, heading.end);
-  const properties = (source.match(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/)?.[0] || '<w:pPr/>')
-    .replace(/<w:tabs(?:\s[^>]*)?>[\s\S]*?<\/w:tabs>/, '')
-    .replace(/<w:jc w:val="both"\/>/, '<w:jc w:val="left"/>');
-  const label = (name: string, index: number, numbered: boolean) =>
-    `${numbered ? `${index + 1}. ` : ''}________________ (${name || 'NAME'})`;
+  const label = (index: number, numbered: boolean) =>
+    `${numbered ? `${index + 1}. ` : ''}________________`;
   const lines = Array.from({ length: Math.max(vendors.length, vendees.length) }, (_, index) => {
-    const vendor = index < vendors.length ? label(vendors[index], index, vendors.length > 1) : '';
-    const vendee = index < vendees.length ? label(vendees[index], index, vendees.length > 1) : '';
-    const cell = (value: string) => `<w:tc><w:tcPr><w:tcW w:w="4500" w:type="dxa"/></w:tcPr><w:p>${properties}<w:r><w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r></w:p></w:tc>`;
+    const vendor = index < vendors.length ? label(index, vendors.length > 1) : '';
+    const vendee = index < vendees.length ? label(index, vendees.length > 1) : '';
+    const cell = (value: string) => `<w:tc><w:tcPr><w:tcW w:w="4500" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r></w:p></w:tc>`;
     return `<w:tr>${cell(vendor)}${cell(vendee)}</w:tr>`;
   }).join('');
   const table = `<w:tbl><w:tblPr><w:tblW w:w="9000" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="4500"/><w:gridCol w:w="4500"/></w:tblGrid>${lines}</w:tbl>`;
@@ -774,7 +777,9 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     return Number(number[1]) < ordinal.length ? `${ordinal[Number(number[1])]} Floor` : name;
   };
   const structureName = (row: StructureDetails['rows'][number]) =>
-    row.structureType === 'Other / Custom Structure' ? row.customStructureType || row.structureType : row.structureType;
+    row.structureType === 'Other / Custom Structure' ? row.customStructureType || values['Roof Material'] || ''
+      : STRUCTURE_TYPE_OPTIONS.includes(row.structureType) ? values['Roof Material'] || ''
+        : row.structureType || values['Roof Material'] || '';
   const filled = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
     let paragraph = original;
@@ -834,7 +839,9 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     const areas = floorRows.map(floor => Number(floor.builtUpAreaSqFt.replace(/,/g, '')))
       .filter(number => Number.isFinite(number) && number > 0);
     const total = areas.length ? areaText(String(areas.reduce((sum, area) => sum + area, 0))) : '';
-    return table.replace(prototype, () => floorEntries)
+    const header = tableRows.find(row => /Structure Type/i.test(plainText(row)) && !/<Structure Type>/.test(plainText(row)));
+    const labelledTable = header ? table.replace(header, () => replaceRunText(header, /Structure Type/i, () => 'Nature of Roof')) : table;
+    return labelledTable.replace(prototype, () => floorEntries)
       .replace(totalRow, () => replaceRunText(totalRow, /<Total Built-up Area>/, () => total));
   });
   // Older compatible templates use an Annexure item 4 with separate number,
@@ -979,7 +986,7 @@ export async function fillSaleDeed(
       block = schedule.variant === 'IF HOUSE'
         ? prepareHouseBlock(block, schedule.values, schedule.structureDetails)
         : prepareNonHouseIdentifiers(block, schedule.variant, schedule.values);
-      block = addVendeeShareParagraph(block, schedule.vendeeShares);
+      block = addOwnershipShareParagraphs(block, schedule.vendorShares, schedule.vendeeShares);
       block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
           fillParagraph(
             landmarkRelation
