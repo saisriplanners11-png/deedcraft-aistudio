@@ -23,10 +23,20 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "docx": "^9.7.1",
+    "express": "^4.21.2",
+    "file-saver": "^2.0.5",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.546.0",
+    "mammoth": "^1.12.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.1.14"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

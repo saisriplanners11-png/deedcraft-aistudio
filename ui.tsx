@@ -91,6 +91,7 @@ export function Input({
   onAccept?: () => void;
   onDismiss?: () => void;
 }) {
+  const suggestionsId = React.useId();
   const span = field.span || 1;
   const readOnly = field.derived;
   // A derived field can receive an explicit display value from a parent, or
@@ -150,6 +151,7 @@ export function Input({
       ) : (
         <input
           type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
+          list={field.options?.length ? suggestionsId : undefined}
           value={shown}
           readOnly={readOnly}
           onChange={e => onChange(e.target.value)}
@@ -159,6 +161,7 @@ export function Input({
           )}
         />
       )}
+      {field.type !== 'select' && field.options?.length ? <datalist id={suggestionsId}>{field.options.map(option => <option key={option} value={option} />)}</datalist> : null}
       {conflict ? (
         <span style={css(`display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10.5px;color:${C.gold};border:1px solid ${C.goldLight};background:${C.goldBg};padding:5px 8px`)}>
           <span style={css('min-width:0')}>

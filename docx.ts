@@ -858,6 +858,10 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
         valueCell = floor.builtUpAreaSqFt
           ? replaceRunText(valueCell, /<Plinth Area>/i, () => floor.builtUpAreaSqFt)
           : replaceRunText(valueCell, /:\s*<Plinth Area>\s*sq\.fts/i, () => '');
+        const stage = floor.stage.trim();
+        if (floor.builtUpAreaSqFt && stage && stage.toLowerCase() !== 'finished') {
+          valueCell = replaceRunText(valueCell, /sq\.fts/i, () => `sq.fts (${stage})`);
+        }
         return valueCell;
       });
       return keepRowTogether(floorRow);

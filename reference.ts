@@ -13,7 +13,8 @@ export const STEPS = [
     { id: 7, label: 'Claimant Details', sub: 'Buyer / donee / second party', phase: 3 },
     { id: 8, label: 'Reverify', sub: 'Readiness checks & review', phase: 4 },
     { id: 9, label: 'Generate Deed', sub: 'Fill the template & download', phase: 4 },
-    { id: 10, label: 'Property Plan', sub: 'Draw, review, and use a registration plan for each schedule', phase: 4 }
+    { id: 10, label: 'Property Plan', sub: 'Draw, review, and use a registration plan for each schedule', phase: 4 },
+    { id: 11, label: 'Property Plan Generator', sub: 'Reference plan tools with deed details pre-filled', phase: 4 }
   ];
 
 export const DEEDS = [

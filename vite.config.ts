@@ -1,6 +1,9 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { resolve } from 'node:path';
 import { createProxyHandler } from './proxy.mjs';
+import { createReferencePlanApi } from './reference-plan/api.mjs';
 
 // The Anthropic key stays server-side. It is deliberately NOT passed to
 // `define`, so it never appears in the client bundle — the browser talks to
@@ -21,6 +24,17 @@ function aiProxy(env: Record<string, string>): Plugin {
   };
 }
 
+function referencePlanApi(env: Record<string, string>): Plugin {
+  const previous = process.env.GEMINI_API_KEY;
+  if (env.GEMINI_API_KEY && !previous) process.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
+  const api = createReferencePlanApi();
+  return {
+    name: 'reference-plan-api',
+    configureServer: server => void server.middlewares.use(api),
+    configurePreviewServer: server => void server.middlewares.use(api),
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const geminiExtraction = env.EXTRACTION_PROVIDER?.toLowerCase() === 'gemini';
@@ -29,7 +43,7 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), aiProxy(env)],
+    plugins: [react(), tailwindcss(), referencePlanApi(env), aiProxy(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),
@@ -38,6 +52,6 @@ export default defineConfig(({ mode }) => {
       'process.env.VERIFY_MODEL': JSON.stringify(geminiExtraction ? geminiVerifyModel : (env.VERIFY_MODEL ?? '')),
     },
     server: { port: 5173, open: true },
-    build: { outDir: 'dist', sourcemap: true },
+    build: { outDir: 'dist', sourcemap: true, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html') } } },
   };
 });

@@ -814,7 +814,7 @@ describe('sale deed template merge', () => {
     expect(text).toContain('Nature of roof\n: R.C.C.');
     expect(text).toContain('Type of structure\n: Framed with pillars & columns only');
     expect(text).not.toContain('Age of the house\n:');
-    expect(text).toContain('3.\nGround Floor\n: 700 sq.fts\nFirst Floor\n: 750 sq.fts\nSecond Floor\n: 800 sq.fts');
+    expect(text).toContain('3.\nGround Floor\n: 700 sq.fts\nFirst Floor\n: 750 sq.fts (Semi-Finished)\nSecond Floor\n: 800 sq.fts');
     expect(text).not.toContain('Total built-up area of the property');
     expect(text).toContain('R.C.C. Building');
     expect(text).toContain('Stone masonry');
@@ -837,14 +837,32 @@ describe('sale deed template merge', () => {
       .map(cell => [...cell.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(match => match[1]).join('').trim()));
     expect(cellTexts).toEqual([
       ['3.', 'Ground Floor', ': 700 sq.fts'],
-      ['', 'First Floor', ': 750 sq.fts'],
+      ['', 'First Floor', ': 750 sq.fts (Semi-Finished)'],
       ['', 'Second Floor', ': 800 sq.fts'],
     ]);
     for (const row of floorTableRows) expect(row).toContain('<w:cantSplit/>');
     const preview = await scheduleText('IF HOUSE', scheduleMergesFor(state)[0].values, [], state.structureDetailsBySchedule.primary);
     expect(preview).toContain('Ground Floor\n\nR.C.C. Building\n\nFinished\n\n5 Years\n\n700 Sq.Ft.');
     expect(preview).toContain('Ground Floor\n\n: 700 sq.fts');
+    expect(preview).toContain('First Floor\n\n: 750 sq.fts (Semi-Finished)');
     expect(preview).toContain('Second Floor\n\n: 800 sq.fts');
+  });
+
+  it('shows every unfinished stage beside its Annexure I-A floor area', async () => {
+    const stages = ['Foundation', 'Upto Lintel level', 'Upto Slab/Roof level', 'Semi-Finished', 'Finished'];
+    const rows = stages.map((stage, index) => ({
+      ...newStructureDetail(), floorNo: index ? `Floor No. ${index}` : 'Ground',
+      structureType: 'R.C.C. Building', stage, buildingAge: '1', builtUpAreaSqFt: String(101 + index),
+    }));
+    const details = { totalFloors: '5', rows };
+    const state = { ...initialState, category: 'Residential', structureDetailsBySchedule: { primary: details } };
+    const preview = await scheduleText('IF HOUSE', scheduleMergesFor(state)[0].values, [], details);
+    expect(preview).toContain('Ground Floor\n\n: 101 sq.fts (Foundation)');
+    expect(preview).toContain('First Floor\n\n: 102 sq.fts (Upto Lintel level)');
+    expect(preview).toContain('Second Floor\n\n: 103 sq.fts (Upto Slab/Roof level)');
+    expect(preview).toContain('Third Floor\n\n: 104 sq.fts (Semi-Finished)');
+    expect(preview).toContain('Fourth Floor\n\n: 105 sq.fts');
+    expect(preview).not.toContain('105 sq.fts (Finished)');
   });
 
   it('retains item 4 without invented floors in an incomplete house draft', async () => {

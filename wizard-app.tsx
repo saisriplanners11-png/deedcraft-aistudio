@@ -20,6 +20,7 @@ import { PaymentCard, AddPayment } from './paymentui';
 import { PlanSketchStep } from './plan-sketch-step';
 import { planDocumentFromDraft } from './plan-sketch-mapping';
 import type { PlanDocument } from './plan-sketch-types';
+import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
 import type { PlanDeedChange } from './plan-sketch-integration';
 import './wizard-app.css';
 import './plan-sketch.css';
@@ -508,6 +509,8 @@ export default function WizardApp() {
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
+  const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
+  const referencePlanFrame = useRef<HTMLIFrameElement>(null);
   const [selectedPlanSvgs, setSelectedPlanSvgs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -529,8 +532,9 @@ export default function WizardApp() {
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
   const generationReady = deedRelease.ready;
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}` : 'built-in';
+  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}` : 'built-in'}:annexure-floor-stage-v2`;
   const goto = (s: number) => dispatch({ type: 'step', step: s });
+  const nextStep = STEPS.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
     value = uppercasePartyIdentity(field, value);
     if (field === 'consid') {
@@ -718,7 +722,7 @@ export default function WizardApp() {
   function reset() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPlanDrafts({}); setSelectedPlanSvgs({});
+    setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false); dispatch({ type: 'reset' });
   }
@@ -727,6 +731,42 @@ export default function WizardApp() {
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
   const activePlan = planDrafts[activePropertyId] || planDocumentFromDraft(state, activePropertyId);
+  const referenceSeedFor = (scheduleId: string) => {
+    if (referencePlanDrafts[scheduleId]) return referencePlanDrafts[scheduleId];
+    const base = planDocumentFromDraft(state, scheduleId);
+    const schedule = scheduleRecords(state).find(record => record.id === scheduleId);
+    const rows = schedule?.structureDetails?.rows.filter(row => row.structureType || row.builtUpAreaSqFt) || [];
+    const houses = rows.map((row, index) => ({
+      id: row.id, name: rows.length > 1 ? `${row.floorNo || 'Structure'} ${index + 1}` : 'Main House',
+      enabled: true, structureType: row.structureType === 'Other / Custom Structure' ? row.customStructureType : row.structureType,
+      roofType: schedule?.values.roofMaterial || '', plinthAreaSqFt: Number(row.builtUpAreaSqFt) || '',
+    }));
+    return {
+      ...base,
+      title: `Property Plan — Schedule ${propertyIds.indexOf(scheduleId) + 1}`,
+      property: { ...base.property, propertyType: base.property.propertyType === 'Plot' ? 'Open Plot' : base.property.propertyType,
+        house: houses[0] || (base.property.house ? { ...base.property.house, structureType: base.property.house.structureType || schedule?.values.constructionDescription || '', roofType: schedule?.values.roofMaterial || '' } : { enabled: false }),
+        houses: houses.length ? houses : base.property.house ? [{ ...base.property.house, structureType: base.property.house.structureType || schedule?.values.constructionDescription || '', roofType: schedule?.values.roofMaterial || '' }] : [{ enabled: false }],
+      },
+      executant: base.executants?.length ? base.executants : [base.executant],
+      claimant: base.claimants?.length ? base.claimants : [base.claimant],
+    };
+  };
+  const referenceSeedRef = useRef(referenceSeedFor);
+  referenceSeedRef.current = referenceSeedFor;
+  useEffect(() => {
+    if (step !== 11) return;
+    const onReferenceMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== referencePlanFrame.current?.contentWindow) return;
+      if (event.data?.type === 'deedcraft:reference-plan-ready') {
+        referencePlanFrame.current?.contentWindow?.postMessage({ type: 'deedcraft:reference-plan-seed', scheduleId: activePropertyId, doc: referenceSeedRef.current(activePropertyId) }, window.location.origin);
+      } else if (event.data?.type === 'deedcraft:reference-plan-change' && event.data.scheduleId === activePropertyId && event.data.doc) {
+        setReferencePlanDrafts(old => ({ ...old, [activePropertyId]: event.data.doc }));
+      }
+    };
+    window.addEventListener('message', onReferenceMessage);
+    return () => window.removeEventListener('message', onReferenceMessage);
+  }, [step, activePropertyId]);
   const changePlan = (plan: PlanDocument) => {
     setPlanDrafts(old => ({ ...old, [activePropertyId]: { ...plan, updatedAt: new Date().toISOString() } }));
     setSelectedPlanSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
@@ -900,10 +940,10 @@ export default function WizardApp() {
       onCancel={cancelActiveUpload}
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
-    <header className="app-top"><a href="#" className="brand">DeedCraft <span>MULTI-INSTRUMENT</span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button><button className="quiet" onClick={reset}>New deed</button></div></header>
+    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); goto(-1); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button><button className="new-deed" onClick={reset}>＋ New deed</button></div></header>
     <div className="shell">
       <nav className="rail" aria-label="Deed steps">
-        <button className={`rail-overview${step === -1 ? ' active' : ''}`} onClick={() => goto(-1)}>Overview</button>
+        <button className={`rail-overview${step === -1 ? ' active' : ''}`} onClick={() => goto(-1)}><span aria-hidden="true">▦</span> Overview</button>
         {[1, 2, 3, 4].map(phase => <div className="rail-phase" key={phase}>
           <span className="rail-phase-label">Phase {phase}</span>
           {STEPS.filter(s => s.phase === phase).map(s => (
@@ -922,21 +962,44 @@ export default function WizardApp() {
           {step >= 0 && <p>{STEPS[step].sub}</p>}
         </div>
 
-        {step === -1 && <section className="panel overview">
-          <h2>Readiness</h2>
-          <div className="progress-bar"><div className="progress-fill" style={{ width: `${vm.pct}%` }} /></div>
-          <p>{vm.filled} of {vm.applicableCount} applicable fields entered · {vm.openCount} readiness check{vm.openCount === 1 ? '' : 's'} open</p>
-          <div className="overview-grid">{STEPS.map(s => (
-            <button key={s.id} className={`overview-card${vm.doneIds.includes(s.id) ? ' done' : ''}`} onClick={() => goto(s.id)}>
-              <b>{String(s.id + 1).padStart(2, '0')}</b>
-              <span>{s.label}</span>
-              <em>{s.id === 10 ? 'Plan editor' : vm.doneIds.includes(s.id) ? '✓ Done' : 'Open'}</em>
-            </button>
-          ))}</div>
-          <h2>Readiness checks</h2>
-          <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
-          <Button kind="solid" onClick={() => goto(0)}>Start at Step 01 →</Button>
-        </section>}
+        {step === -1 && <div className="dashboard">
+          <section className="dashboard-hero" aria-labelledby="dashboard-title">
+            <div className="dashboard-hero-copy">
+              <span className="dashboard-kicker">CURRENT DRAFT <span aria-hidden="true">·</span> {deedDefinition.label}</span>
+              <h2 id="dashboard-title">Your deed, at a glance</h2>
+              <p>Pick up where you left off and see what still needs attention.</p>
+              <button type="button" className="dashboard-cta" onClick={() => goto(nextStep.id)}>{vm.filled === 0 ? 'Start drafting' : `Continue with ${nextStep.label}`} <span aria-hidden="true">→</span></button>
+            </div>
+            <div className="dashboard-progress" aria-label={`${vm.pct}% of applicable fields entered`}>
+              <div className="dashboard-progress-number">{vm.pct}<span>%</span></div>
+              <span>Fields entered</span>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: `${vm.pct}%` }} /></div>
+            </div>
+          </section>
+          <div className="dashboard-stats">
+            <div><strong>{vm.filled}<span> / {vm.applicableCount}</span></strong><span>Applicable fields entered</span></div>
+            <div><strong>{vm.doneIds.filter(id => id <= 8).length}<span> / 9</span></strong><span>Drafting steps complete</span></div>
+            <div><strong>{vm.openCount}</strong><span>Readiness checks open</span></div>
+          </div>
+          <section className="dashboard-section" aria-labelledby="workflow-title">
+            <div className="dashboard-section-head"><div><p className="eyebrow">WORKFLOW</p><h2 id="workflow-title">Your drafting steps</h2></div><span>Choose any step to continue</span></div>
+            {[1, 2, 3, 4].map(phase => <div className="dashboard-phase" key={phase}>
+              <h3><span>Phase {phase}</span><i /></h3>
+              <div className="overview-grid">{STEPS.filter(s => s.phase === phase).map(s => (
+                <button key={s.id} type="button" className={`overview-card${vm.doneIds.includes(s.id) ? ' done' : ''}${s.id >= 10 ? ' optional' : ''}`} onClick={() => goto(s.id)}>
+                  <span className="overview-card-top"><b>{String(s.id + 1).padStart(2, '0')}</b><em>{s.id >= 10 ? 'Optional plan' : vm.doneIds.includes(s.id) ? 'Complete' : 'To do'}</em></span>
+                  <span className="overview-card-title">{s.label}</span>
+                  <small>{s.sub}</small>
+                  <span className="overview-card-arrow" aria-hidden="true">→</span>
+                </button>
+              ))}</div>
+            </div>)}
+          </section>
+          <section className="dashboard-section dashboard-readiness" aria-labelledby="readiness-title">
+            <div className="dashboard-section-head"><div><p className="eyebrow">FINAL REVIEW</p><h2 id="readiness-title">Readiness checks</h2></div><span>{vm.openCount === 0 ? 'All checks complete' : `${vm.openCount} still open`}</span></div>
+            <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
+          </section>
+        </div>}
 
         {step === 0 && <section className="panel">
           <Section title="Deed type" telugu="దస్తావేజు రకం">
@@ -1152,11 +1215,16 @@ export default function WizardApp() {
             onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
         </section>}
 
-        <footer className="navigation">
+        {step === 11 && <section className="panel reference-plan-step">
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <iframe key={activePropertyId} ref={referencePlanFrame} title="Property Plan Generator" src="/reference-plan/index.html" onLoad={() => referencePlanFrame.current?.contentWindow?.postMessage({ type: 'deedcraft:reference-plan-seed', scheduleId: activePropertyId, doc: referenceSeedRef.current(activePropertyId) }, window.location.origin)} style={{ display: 'block', width: '100%', minHeight: '900px', height: 'calc(100vh - 170px)', border: 0, background: '#f1f5f9' }} />
+        </section>}
+
+        {step >= 0 && <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(Math.max(-1, step - 1))}>{step <= 0 ? 'Overview' : STEPS[step - 1].label}</button>
           <span>New deed clears everything you've entered.</span>
           {step < STEPS.length - 1 && <button className="primary" onClick={() => goto(Math.min(STEPS.length - 1, step + 1))}>{step < 0 ? 'Start at Step 01' : `Continue → ${STEPS[step + 1]?.label ?? 'Generate'}`}</button>}
-        </footer>
+        </footer>}
       </main>
     </div>
   </div>;

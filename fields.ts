@@ -50,7 +50,8 @@ export type StructureDetails = { totalFloors: string; rows: StructureDetail[] };
 export const STRUCTURE_TYPE_OPTIONS = [
   'R.C.C. Building', 'R.C.C. Roof House', 'Ground Floor House', 'G + 1 Upper Floor',
   'G + 2 Upper Floors', 'Independent Villa', 'Tiled House', 'A.C. Sheet Roof House',
-  'Madras Terrace House', 'Commercial Building', 'Shed Structure', 'Other / Custom Structure',
+  'Madras Terrace House', 'Commercial Building', 'Shed Structure',
+  'FRAMED WITH WALLS ONLY', 'FRAMED WITH PILLORS & COLUMNS ONLY', 'Other / Custom Structure',
 ];
 
 export const STRUCTURE_STAGE_OPTIONS = [
@@ -264,6 +265,7 @@ export const GROUPS: Group[] = [
       { id: 'roofMaterial', label: 'Nature of roof', only: HOUSE_CATEGORIES,
         hint: 'Enter the roof material exactly as supported by the property record, e.g. R.C.C.' },
       { id: 'constructionDescription', label: 'Type of structure / construction', only: HOUSE_CATEGORIES,
+        options: STRUCTURE_TYPE_OPTIONS,
         hint: 'Enter the construction description for Annexure I-A, e.g. Framed with pillars & columns only.' },
       { id: 'bltNo', label: 'PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'], span: 2, only: HOUSE_CATEGORIES },
       { id: 'taxesPerAnnum', label: 'Tax per annum (₹)', ph: 'Taxes Per Annum', type: 'money', only: HOUSE_CATEGORIES },
