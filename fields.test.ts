@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, newStructureDetail, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, TITLE_SECTION_IDS } from './fields';
+import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, newStructureDetail, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, TITLE_SECTION_IDS } from './fields';
 import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, vendeeShareCents, withDerived, type AppState } from './logic';
 import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
@@ -34,7 +34,11 @@ describe('field mapping', () => {
     expect(ids).not.toContain('natureOfHouse');
     expect(ids).not.toContain('floors');
     expect(ids).not.toContain('ageOfHouse');
-    expect(STRUCTURE_TYPE_OPTIONS).toContain('Other / Custom Structure');
+    expect(ROOF_NATURE_OPTIONS).toContain('Other / Custom Structure');
+    expect(ROOF_NATURE_OPTIONS).toContain('R.C.C. Building');
+    expect(STRUCTURE_TYPE_OPTIONS).toEqual(['Framed with walls only', 'Framed with pillars & columns only']);
+    expect(ALL_FIELDS.find(field => field.id === 'roofMaterial')?.options).toEqual(ROOF_NATURE_OPTIONS);
+    expect(ALL_FIELDS.find(field => field.id === 'constructionDescription')?.options).toEqual(STRUCTURE_TYPE_OPTIONS);
     expect(STRUCTURE_STAGE_OPTIONS).toEqual(['Foundation', 'Upto Lintel level', 'Upto Slab/Roof level', 'Semi-Finished', 'Finished']);
     expect(newStructureDetail()).toMatchObject({ floorNo: '', structureType: '', stage: '', buildingAge: '', builtUpAreaSqFt: '' });
   });

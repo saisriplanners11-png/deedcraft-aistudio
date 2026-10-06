@@ -865,6 +865,22 @@ describe('sale deed template merge', () => {
     expect(preview).not.toContain('105 sq.fts (Finished)');
   });
 
+  it('uses the selected roof description and framing type in Annexure I-A', async () => {
+    const state = {
+      ...initialState,
+      category: 'Residential',
+      form: { ...initialState.form, roofMaterial: 'R.C.C. Building', constructionDescription: 'Framed with walls only' },
+      structureDetailsBySchedule: { primary: { totalFloors: '1', rows: [
+        { ...newStructureDetail(), floorNo: 'Ground', structureType: 'Framed with walls only', stage: 'Finished', buildingAge: '2', builtUpAreaSqFt: '500' },
+      ] } },
+    };
+    const merge = scheduleMergesFor(state)[0];
+    const preview = await scheduleText(merge.variant, merge.values, [], merge.structureDetails);
+    expect(preview).toContain('The R.C.C. Building with the open place');
+    expect(preview).toContain('Nature of roof\n\n: R.C.C. Building');
+    expect(preview).toContain('Type of structure\n\n: Framed with walls only');
+  });
+
   it('retains item 4 without invented floors in an incomplete house draft', async () => {
     const state = { ...initialState, category: 'Residential', structureDetailsBySchedule: { primary: { totalFloors: '', rows: [] } } };
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));

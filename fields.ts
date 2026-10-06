@@ -47,11 +47,15 @@ export type StructureDetail = {
 
 export type StructureDetails = { totalFloors: string; rows: StructureDetail[] };
 
-export const STRUCTURE_TYPE_OPTIONS = [
+export const ROOF_NATURE_OPTIONS = [
   'R.C.C. Building', 'R.C.C. Roof House', 'Ground Floor House', 'G + 1 Upper Floor',
   'G + 2 Upper Floors', 'Independent Villa', 'Tiled House', 'A.C. Sheet Roof House',
   'Madras Terrace House', 'Commercial Building', 'Shed Structure',
-  'FRAMED WITH WALLS ONLY', 'FRAMED WITH PILLORS & COLUMNS ONLY', 'Other / Custom Structure',
+  'Other / Custom Structure',
+];
+
+export const STRUCTURE_TYPE_OPTIONS = [
+  'Framed with walls only', 'Framed with pillars & columns only',
 ];
 
 export const STRUCTURE_STAGE_OPTIONS = [
@@ -263,10 +267,11 @@ export const GROUPS: Group[] = [
     fields: [
       { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', only: HOUSE_CATEGORIES },
       { id: 'roofMaterial', label: 'Nature of roof', only: HOUSE_CATEGORIES,
-        hint: 'Enter the roof material exactly as supported by the property record, e.g. R.C.C.' },
-      { id: 'constructionDescription', label: 'Type of structure / construction', only: HOUSE_CATEGORIES,
+        options: ROOF_NATURE_OPTIONS,
+        hint: 'Select the description supported by the property record, or enter a custom description.' },
+      { id: 'constructionDescription', label: 'Type of structure / construction', type: 'select', only: HOUSE_CATEGORIES,
         options: STRUCTURE_TYPE_OPTIONS,
-        hint: 'Enter the construction description for Annexure I-A, e.g. Framed with pillars & columns only.' },
+        hint: 'Select the construction description for Annexure I-A.' },
       { id: 'bltNo', label: 'PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'], span: 2, only: HOUSE_CATEGORIES },
       { id: 'taxesPerAnnum', label: 'Tax per annum (₹)', ph: 'Taxes Per Annum', type: 'money', only: HOUSE_CATEGORIES },
       { id: 'annualRentalValue', label: 'Annual rental value (₹)', ph: 'Annual Rental Value', type: 'money', only: HOUSE_CATEGORIES },

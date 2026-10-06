@@ -14,6 +14,16 @@
 .wizard-app .primary{background:var(--dc-ink);color:var(--dc-ground);border-color:var(--dc-ink)}
 .wizard-app .primary:hover{background:var(--dc-rule-soft)}
 .wizard-app .quiet{background:transparent;border-color:transparent}
+.wizard-app .saved-deeds-dashboard{max-width:1000px;margin:0 auto;padding:42px clamp(16px,4vw,48px) 70px}
+.wizard-app .saved-deeds-heading{display:flex;justify-content:space-between;align-items:center;gap:24px;border-bottom:2px solid var(--dc-ink);margin-bottom:24px}
+.wizard-app .saved-deeds-heading h1{margin:0}
+.wizard-app .saved-deeds-list{display:grid;gap:12px}
+.wizard-app .saved-deed-card{background:var(--dc-paper);border:1px solid var(--dc-rule);padding:18px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.wizard-app .saved-deed-card h2{margin:0}
+.wizard-app .saved-deed-card p{margin:4px 0 0;font-size:12px;color:var(--dc-muted)}
+.wizard-app .saved-deed-actions{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.wizard-app .save-indicator{font:600 11px 'IBM Plex Mono',monospace;color:var(--dc-muted);text-align:right;margin:0 0 8px}
+@media(max-width:700px){.wizard-app .saved-deeds-heading,.wizard-app .saved-deed-card{align-items:flex-start;flex-direction:column}.wizard-app .saved-deed-actions{width:100%}.wizard-app .header-actions{flex-wrap:wrap;justify-content:flex-end}}
 
 .wizard-app .shell{max-width:1280px;margin:auto;display:grid;grid-template-columns:280px 1fr;gap:0;align-items:start}
 .wizard-app .rail{position:sticky;top:0;padding:18px 0;border-right:1px solid var(--dc-rule);background:var(--dc-paper);min-height:100vh}

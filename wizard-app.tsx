@@ -4,6 +4,7 @@ import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
   plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
+  type Draft,
 } from './source-draft';
 import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
 import {
@@ -26,6 +27,7 @@ import './wizard-app.css';
 import './plan-sketch.css';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
+import { deleteDeed, listSavedDeeds, saveDeed, type SavedDeed } from './saved-deeds';
 
 // Raised from 4: Step 2 now lets a drafter add several document types (link
 // deed, house tax, title deed, NALA, permissions) at once, and each upload
@@ -63,7 +65,7 @@ function StructureDetailsTable({ value, onChange, onNotice }: { value: Structure
         <tbody>{details.rows.map((row, index) => <tr key={row.id}>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.structureType} onChange={event => patchRow(row.id, { structureType: event.target.value, customStructureType: event.target.value === 'Other / Custom Structure' ? row.customStructureType : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{STRUCTURE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select>{row.structureType === 'Other / Custom Structure' && <input value={row.customStructureType} onChange={event => patchRow(row.id, { customStructureType: event.target.value })} placeholder="Describe structure" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.structureType} onChange={event => patchRow(row.id, { structureType: event.target.value, customStructureType: '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{STRUCTURE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.builtUpAreaSqFt} onChange={event => patchRow(row.id, { builtUpAreaSqFt: event.target.value })} style={{ width: 112, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
@@ -498,6 +500,14 @@ export default function WizardApp() {
     try { localStorage.setItem('deedcraft-theme', theme); } catch { /* Storage may be disabled. */ }
   }, [theme]);
   const [draft, dispatch] = useReducer(draftReducer, undefined, newDraft);
+  const [libraryView, setLibraryView] = useState(true);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [savedDeeds, setSavedDeeds] = useState<SavedDeed[]>([]);
+  const [storageError, setStorageError] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const saveSequence = useRef(0);
+  const skipRestoreSave = useRef(false);
   const current = useRef(draft); current.current = draft;
   const controllers = useRef(new Map<string, AbortController>());
   const cache = useRef(new Map<string, Promise<SourceResult>>());
@@ -510,6 +520,7 @@ export default function WizardApp() {
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
   const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
+  const [sourceFiles, setSourceFiles] = useState<Record<string, File[]>>({});
   const referencePlanFrame = useRef<HTMLIFrameElement>(null);
   const [selectedPlanSvgs, setSelectedPlanSvgs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
@@ -533,6 +544,45 @@ export default function WizardApp() {
   const generationReady = deedRelease.ready;
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
   const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}` : 'built-in'}:annexure-floor-stage-v2`;
+  const hasStarted = draft.revision > 0 || !!customTemplate || templateMode === 'custom'
+    || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(selectedPlanSvgs).length;
+  const snapshot = (): SavedDeed => ({
+    id: draft.id,
+    updatedAt: new Date().toISOString(),
+    claimantNames: [...new Set(Object.entries(resolved.values)
+      .filter(([key, value]) => key.startsWith('claimant|') && key.endsWith('|claimantName') && value.trim())
+      .map(([, value]) => value.trim()))],
+    deedType: deedDefinition.label,
+    draft,
+    sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
+    planDrafts, referencePlanDrafts, selectedPlanSvgs, extraPartyRecords,
+    templateMode, customTemplate,
+  });
+  const persist = (deed: SavedDeed): Promise<void> => {
+    const sequence = ++saveSequence.current;
+    setSaveStatus('saving');
+    const task = saveQueue.current.catch(() => {}).then(() => saveDeed(deed));
+    saveQueue.current = task;
+    return task.then(() => {
+      setSavedDeeds(old => [deed, ...old.filter(item => item.id !== deed.id)]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      if (sequence === saveSequence.current) { setSaveStatus('saved'); setStorageError(''); }
+    }).catch(error => {
+      if (sequence === saveSequence.current) setSaveStatus('error');
+      setStorageError(`This deed was not saved: ${error?.message || String(error)}`);
+      throw error;
+    });
+  };
+  useEffect(() => {
+    listSavedDeeds().then(setSavedDeeds).catch(error =>
+      setStorageError(`Saved deeds could not be loaded: ${error?.message || String(error)}`)
+    ).finally(() => setLoadingLibrary(false));
+  }, []);
+  useEffect(() => {
+    if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
+    if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate]);
   const goto = (s: number) => dispatch({ type: 'step', step: s });
   const nextStep = STEPS.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
@@ -564,6 +614,7 @@ export default function WizardApp() {
   async function runUpload(files: File[], assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
     if (!files.length) return;
     const sourceId = crypto.randomUUID();
+    setSourceFiles(old => ({ ...old, [sourceId]: files }));
     const draftId = current.current.id;
     controllers.current.get(sourceId)?.abort();
     const controller = new AbortController(); controllers.current.set(sourceId, controller);
@@ -623,6 +674,13 @@ export default function WizardApp() {
     } finally {
       controllers.current.delete(sourceId);
     }
+  }
+  function retryUpload(source: Source) {
+    const files = sourceFiles[source.id];
+    if (!files?.length) { setMessage('The original upload is unavailable. Please upload the file again.'); return; }
+    dispatch({ type: 'remove', id: source.id });
+    setSourceFiles(old => { const next = { ...old }; delete next[source.id]; return next; });
+    void runUpload(files, source.assignment, (source.profile || 'general') as ExtractionProfile);
   }
   const uploadFor = (role: Role, record: string, profile?: ExtractionProfile, propertyRecord = activePropertyId) => (files: File[]) => {
     const scoped = profile || (role === 'executant' ? 'party:executant' : role === 'claimant' ? 'party:claimant' : 'general');
@@ -717,14 +775,66 @@ export default function WizardApp() {
   };
 
   useEffect(() => { setDownload(null); setMessage(''); }, [draft.id, draft.revision]);
-  useEffect(() => { setSelectedPlanSvgs({}); }, [draft.id, draft.manual, draft.sources, draft.propertyIds, draft.structureDetailsBySchedule, draft.instrumentId, draft.variantId]);
+  const selectedPlanDraftId = useRef(draft.id);
+  useEffect(() => {
+    if (selectedPlanDraftId.current !== draft.id) { selectedPlanDraftId.current = draft.id; return; }
+    setSelectedPlanSvgs({});
+  }, [draft.id, draft.manual, draft.sources, draft.propertyIds, draft.structureDetailsBySchedule, draft.instrumentId, draft.variantId]);
 
-  function reset() {
+  function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({});
+    setPendingReviews([]); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
-    setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false); dispatch({ type: 'reset' });
+    setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
+  }
+
+  async function saveBeforeSwitch(): Promise<boolean> {
+    if (libraryView || !hasStarted) return true;
+    try { await persist(snapshot()); return true; }
+    catch { return false; }
+  }
+
+  async function createDeed() {
+    if (!await saveBeforeSwitch()) return;
+    clearTransient();
+    dispatch({ type: 'load', draft: newDraft() });
+    setLibraryView(false);
+  }
+
+  async function showLibrary() {
+    if (!await saveBeforeSwitch()) return;
+    controllers.current.forEach(controller => controller.abort());
+    controllers.current.clear();
+    setLibraryView(true);
+  }
+
+  function openSaved(deed: SavedDeed) {
+    skipRestoreSave.current = true;
+    clearTransient();
+    const restored: Draft = { ...deed.draft, sources: deed.draft.sources.map(source =>
+      source.status === 'reading' || source.status === 'queued'
+        ? { ...source, status: 'error', error: 'Reading was interrupted. Retry this upload.' }
+        : source) };
+    dispatch({ type: 'load', draft: restored });
+    setSourceFiles(deed.sourceFiles || {});
+    setPlanDrafts(deed.planDrafts || {});
+    setReferencePlanDrafts(deed.referencePlanDrafts || {});
+    setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
+    setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
+    setTemplateMode(deed.templateMode || 'built-in');
+    setCustomTemplate(deed.customTemplate || null);
+    setLibraryView(false);
+  }
+
+  async function removeSaved(deed: SavedDeed) {
+    if (!window.confirm(`Delete ${deed.claimantNames.join(', ') || 'Unnamed deed'}? This removes the saved deed and its uploaded files.`)) return;
+    try {
+      await saveQueue.current.catch(() => {});
+      await deleteDeed(deed.id);
+      setSavedDeeds(old => old.filter(item => item.id !== deed.id));
+      setStorageError('');
+    } catch (error: any) { setStorageError(`Deed could not be deleted: ${error?.message || String(error)}`); }
   }
 
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
@@ -940,8 +1050,17 @@ export default function WizardApp() {
       onCancel={cancelActiveUpload}
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
-    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); goto(-1); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button><button className="new-deed" onClick={reset}>＋ New deed</button></div></header>
-    <div className="shell">
+    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button>{!libraryView && <button type="button" onClick={() => void showLibrary()}>Saved deeds</button>}<button className="new-deed" onClick={() => void createDeed()}>＋ New deed</button></div></header>
+    {libraryView ? <main className="saved-deeds-dashboard">
+      <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1><p>Continue a deed or start a new one. Deeds are saved in this browser.</p></div><button type="button" className="primary" onClick={() => void createDeed()}>＋ New deed</button></div>
+      {storageError && <p className="notice" role="alert">{storageError}</p>}
+      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{savedDeeds.map(deed =>
+        <article className="saved-deed-card" key={deed.id}>
+          <div><h2>{deed.claimantNames?.join(', ') || 'Unnamed deed'}</h2><p>{deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p></div>
+          <div className="saved-deed-actions"><button type="button" className="primary" onClick={() => openSaved(deed)}>Continue / Edit</button><button type="button" onClick={() => void removeSaved(deed)}>Delete</button></div>
+        </article>)}
+      </div> : <div className="panel"><h2>No saved deeds yet</h2><p>Start a deed and your entries will be saved here automatically.</p></div>}
+    </main> : <div className="shell">
       <nav className="rail" aria-label="Deed steps">
         <button className={`rail-overview${step === -1 ? ' active' : ''}`} onClick={() => goto(-1)}><span aria-hidden="true">▦</span> Overview</button>
         {[1, 2, 3, 4].map(phase => <div className="rail-phase" key={phase}>
@@ -956,6 +1075,9 @@ export default function WizardApp() {
       </nav>
 
       <main className="stage">
+        {storageError && <p className="notice" role="alert">{storageError}</p>}
+        {!storageError && hasStarted && <p className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</p>}
+        {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
         <div className="stage-head">
           <p className="eyebrow">{step < 0 ? 'OVERVIEW' : `STEP ${step + 1} OF ${STEPS.length}`}</p>
           <h1>{step < 0 ? `DeedCraft — ${deedDefinition.label}` : STEPS[step].label}</h1>
@@ -1222,10 +1344,10 @@ export default function WizardApp() {
 
         {step >= 0 && <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(Math.max(-1, step - 1))}>{step <= 0 ? 'Overview' : STEPS[step - 1].label}</button>
-          <span>New deed clears everything you've entered.</span>
+          <span>Your entries are saved automatically in this browser.</span>
           {step < STEPS.length - 1 && <button className="primary" onClick={() => goto(Math.min(STEPS.length - 1, step + 1))}>{step < 0 ? 'Start at Step 01' : `Continue → ${STEPS[step + 1]?.label ?? 'Generate'}`}</button>}
         </footer>}
       </main>
-    </div>
+    </div>}
   </div>;
 }

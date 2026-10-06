@@ -1,7 +1,7 @@
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
-import { ALL_FIELDS, GROUPS, LINK_OPTIONS, SCHEDULE_VARIANT } from './fields';
+import { ALL_FIELDS, GROUPS, LINK_OPTIONS, ROOF_NATURE_OPTIONS, SCHEDULE_VARIANT } from './fields';
 import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
@@ -39,8 +39,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Near / Adjacent'] = f.nearAdjacent || '';
   const houseRows = state.structureDetailsBySchedule.primary?.rows || [];
   const firstStructure = houseRows.find(row => row.structureType);
-  out['Nature of House'] = firstStructure?.structureType === 'Other / Custom Structure'
-    ? firstStructure.customStructureType || '' : firstStructure?.structureType || '';
+  out['Nature of House'] = (ROOF_NATURE_OPTIONS.includes(f.roofMaterial) ? f.roofMaterial : '') || (firstStructure?.structureType === 'Other / Custom Structure'
+    ? firstStructure.customStructureType || '' : firstStructure?.structureType || '');
   out['Roof Material'] = f.roofMaterial || '';
   out['Construction Description'] = f.constructionDescription || '';
   out['Type of structure'] = out['Construction Description'];

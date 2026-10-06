@@ -55,6 +55,7 @@ const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-
 export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'reset' }
+  | { type: 'load'; draft: Draft }
   | { type: 'step'; step: number }
   | { type: 'add'; source: Source }
   | { type: 'replace'; id: string; name: string }
@@ -74,6 +75,7 @@ export type Action =
 
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
+  if (action.type === 'load') return action.draft;
   if (action.type === 'step') return { ...draft, step: action.step };
   let next = draft;
   if (action.type === 'add') next = { ...draft, sources: [...draft.sources, action.source] };

@@ -111,6 +111,13 @@ describe('source-backed drafts', () => {
     const removed = draftReducer(original, { type: 'remove', id: 'a' });
     expect(draftReducer(removed, { type: 'job', draftId: original.id, sourceId: 'a', sourceRevision: 0, patch: { status: 'done' } })).toBe(removed);
   });
+  it('restores a saved draft without merging values from the current deed', () => {
+    const saved = draftReducer(newDraft(), { type: 'manual', key: 'claimant|primary|claimantName', value: 'Saved Buyer' });
+    const current = draftReducer(newDraft(), { type: 'manual', key: 'claimant|primary|claimantName', value: 'Current Buyer' });
+    const restored = draftReducer(current, { type: 'load', draft: saved });
+    expect(restored).toBe(saved);
+    expect(appStateFor(restored).form.claimantName).toBe('SAVED BUYER');
+  });
   it('blanks conflicting extractions, then recovers from remaining evidence', () => {
     let draft = draftWith(source('a', [candidate('executantMobile','9876543210')]), source('b', [candidate('executantMobile','9876543211')]));
     expect(appStateFor(draft).form.executantMobile).toBe('');
