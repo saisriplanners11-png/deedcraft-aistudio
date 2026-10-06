@@ -320,13 +320,12 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
 /** Which SCHEDULE OF PROPERTY block of the template this deed uses. */
 export const variantFor = (category: string) => SCHEDULE_VARIANT[category] || 'IF OPEN PLOT';
 
-/** Filename for the generated deed, from whatever identifies the property. */
+/** Filename for the generated deed, identified by instrument and claimant. */
 export function deedFilename(state: AppState): string {
-  const f = state.form;
-  const who = (f.executantName || '').split(/\s+/)[0];
-  const what = f.plotNo ? `Plot-${f.plotNo}` : f.bearingHNo ? `HNo-${f.bearingHNo}` : '';
-  const parts = ['Sale-Deed', what, who].filter(Boolean);
-  return parts.join('-').replace(/[^\w.-]+/g, '-') + '.docx';
+  const claimant = state.form.claimantName || state.additionalClaimants
+    .map(record => record.values.claimantName).find(Boolean) || 'Unnamed deed';
+  const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
+  return `${safe(state.deedType || 'Deed')}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
 }
 
 export { money, words };
