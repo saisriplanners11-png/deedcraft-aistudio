@@ -219,8 +219,6 @@ export const GROUPS: Group[] = [
       { id: 'district', label: 'District', ph: 'District' },
       { id: 'mandal', label: 'Mandal', ph: 'Mandal' },
       { id: 'village', label: 'Village', ph: 'Village' },
-      { id: 'ulbAuthority', label: 'ULB name / Authority', type: 'select', options: ['Municipality', 'Gram Panchayit', 'Municipal Corporation', 'GHMC'],
-        hint: 'Select the local urban body / authority explicitly named for this property.' },
       { id: 'executionDate', label: 'Sale deed execution month and year', type: 'month', hint: 'Select the month and year. Leave the day blank to write it by hand after printing.' },
     ],
   },

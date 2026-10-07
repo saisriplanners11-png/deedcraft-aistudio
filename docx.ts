@@ -1037,6 +1037,14 @@ export async function fillSaleDeed(
     .join('');
   body = addPartySignatureLines(body, values_, rewrites);
 
+  // This optional attribution belongs after the witness signature block at the
+  // end of the deed, including when a compatible custom template is selected.
+  if (values_.get(norm('Include Prepared By'))) {
+    const preparedBy = '<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="6495"/></w:tabs><w:spacing w:before="120" w:line="264" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">Prepared By:____________________________</w:t></w:r><w:r><w:tab/></w:r><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:u w:val="single"/></w:rPr><w:t>Gundlapelli Sampath (98662 70006)</w:t></w:r></w:p>';
+    const sectionAt = body.lastIndexOf('<w:sectPr');
+    body = sectionAt >= 0 ? body.slice(0, sectionAt) + preparedBy + body.slice(sectionAt) : body + preparedBy;
+  }
+
   // Anything still in <Angle Brackets> is a placeholder no field maps to.
   const unmapped = [
     ...new Set(

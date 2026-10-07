@@ -9,7 +9,7 @@ const pass = (values: PaymentPass['values']): PaymentPass => ({
 
 describe('payment extraction safeguards', () => {
   it('omits empty date phrases in every payment mode and keeps supplied dates', () => {
-    for (const mode of ['rtgs', 'cheque', 'dd', 'upi', 'cash'] as const) {
+    for (const mode of ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'] as const) {
       const payment: Payment = { id: mode, mode, advance: false, tds: false, amount: '100', refNo: '123456', bank: 'Bank', branch: '', date: '', payer: '', payee: '' };
       for (const recital of [recitalFor([payment]), deedPaymentRecital([payment])]) {
         expect(recital).not.toContain('dated ____');

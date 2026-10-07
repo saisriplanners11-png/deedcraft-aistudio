@@ -15,7 +15,7 @@ export type BulkKind = DocKind | 'payment' | 'unknown';
 export type BulkClassification = {
   kind: BulkKind;
   /** Present only for payment instruments. */
-  paymentMode: 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | null;
+  paymentMode: 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan' | null;
   /** Sale is the only template currently supported by this application. */
   deedType: 'Sale' | null;
   category: string | null;
@@ -76,7 +76,7 @@ export const DOC_KINDS: Record<DocKind, { label: string; blurb: string; accept: 
 const party = (side: 'executant' | 'claimant') =>
   ALL_FIELDS.filter(f => f.id.startsWith(side) && !f.id.endsWith('Age')).map(f => f.id);
 
-const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState', 'ulbAuthority'];
+const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState'];
 const PROPERTY = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARIES = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE = ['bltNo'];
@@ -214,7 +214,7 @@ export type Stage = { title: string; ids: string[] };
 export const STAGES: Record<DocKind, Stage[]> = {
   'link-deed': [
     { title: 'Document & registration', ids: ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro', 'sro', 'districtRegistrar'] },
-    { title: 'Jurisdiction', ids: ['district', 'mandal', 'village', 'locality', 'pinCode', 'propState', 'ulbAuthority'] },
+    { title: 'Jurisdiction', ids: ['district', 'mandal', 'village', 'locality', 'pinCode', 'propState'] },
     { title: 'Property & extent', ids: [...PROPERTY] },
     { title: 'Boundaries', ids: [...BOUNDARIES] },
     { title: 'Structure & valuation', ids: [...STRUCTURE, 'govtRate'] },
@@ -260,7 +260,7 @@ Rules you must follow:
 
 export const EXTRACTION_PROMPTS: Record<DocKind, string> = {
   'link-deed':
-    'This registered deed is being used as the link/title document for a new sale deed. A registered sale deed is a valid link deed for a later transaction, so do not reject it merely because it is itself a sale deed. Transcribe its particulars, including the link deed execution date shown in the opening recital on the first page (not the SRO registration/presentation date), the property it describes, its jurisdiction, extent, boundaries and valuation. For nearHNo, inspect the complete schedule/property description and return a value only when it explicitly identifies a nearby, adjacent or neighbouring H.No./door number as a landmark. Return the house number alone in nearHNo and return nearAdjacent as Near or Adjacent only when that relationship is explicitly printed. Never copy the subject property house number into nearHNo. Set ulbAuthority only when the document explicitly identifies Municipality, Gram Panchayit, Municipal Corporation or GHMC. Do not extract party identity details here; those are read from the dedicated executant and claimant uploads.',
+    'This registered deed is being used as the link/title document for a new sale deed. A registered sale deed is a valid link deed for a later transaction, so do not reject it merely because it is itself a sale deed. Transcribe its particulars, including the link deed execution date shown in the opening recital on the first page (not the SRO registration/presentation date), the property it describes, its jurisdiction, extent, boundaries and valuation. For nearHNo, inspect the complete schedule/property description and return a value only when it explicitly identifies a nearby, adjacent or neighbouring H.No./door number as a landmark. Return the house number alone in nearHNo and return nearAdjacent as Near or Adjacent only when that relationship is explicitly printed. Never copy the subject property house number into nearHNo. Do not extract party identity details here; those are read from the dedicated executant and claimant uploads.',
   'executant-id':
     'These are identity documents for the executant (vendor / first party) of a sale deed. Transcribe the party particulars. When an Aadhaar card or letter is shown, read its printed 12-digit Aadhaar number; do not substitute its VID or enrolment number.',
   'claimant-id':
@@ -644,7 +644,7 @@ async function fileToSupportingParts(file: File, signal?: AbortSignal): Promise<
 
 const CLASSIFY_SYSTEM = `You classify Indian property-registration documents. Read only what is visibly present. Do not guess a party role from a person's name alone.
 
-Return link-deed for a prior registered title/conveyance document; plan for a layout plan or survey sketch; supporting for a tax receipt, electricity/water bill, NALA conversion order, passbook, pahani, municipal record or other property evidence; executant-id only when the document itself identifies the vendor/first party; claimant-id only when it identifies the purchaser/second party; payment for a cheque, DD, bank-transfer receipt, UPI receipt or cash receipt; otherwise unknown. If an Aadhaar or PAN does not establish whether its holder is vendor or purchaser, return unknown.
+Return link-deed for a prior registered title/conveyance document; plan for a layout plan or survey sketch; supporting for a tax receipt, electricity/water bill, NALA conversion order, passbook, pahani, municipal record or other property evidence; executant-id only when the document itself identifies the vendor/first party; claimant-id only when it identifies the purchaser/second party; payment for a cheque, housing-loan disbursement cheque/advice, DD, bank-transfer receipt, UPI receipt or cash receipt; otherwise unknown. If an Aadhaar or PAN does not establish whether its holder is vendor or purchaser, return unknown.
 
 For property category, use Part open place when the schedule explicitly says "part open plot", "part open place" or equivalent. Use Vacant Plot only for a whole open/vacant plot, not a part. Omit category when the distinction is not explicit.`;
 
@@ -652,7 +652,7 @@ const CLASSIFY_SCHEMA = {
   type: 'object' as const,
   properties: {
     kind: { type: 'string' as const, description: 'One of link-deed, executant-id, claimant-id, plan, supporting, payment, unknown.' },
-    paymentMode: { type: 'string' as const, description: 'For payment only: rtgs, cheque, dd, upi or cash. Otherwise omit.' },
+    paymentMode: { type: 'string' as const, description: 'For payment only: rtgs, cheque, dd, upi, cash or housing-loan. Otherwise omit.' },
     deedType: { type: 'string' as const, description: 'Return Sale only if this is clearly a sale-deed document. Otherwise omit.' },
     category: { type: 'string' as const, description: 'Property category when clearly shown: Vacant Plot, Open Place, Agricultural land, Residential, Commercial, Flat, Demolished or Part open place. Otherwise omit.' },
     reason: { type: 'string' as const, description: 'A short description of visible evidence supporting the classification.' },
@@ -661,7 +661,7 @@ const CLASSIFY_SCHEMA = {
 };
 
 const BULK_KINDS: BulkKind[] = ['link-deed', 'executant-id', 'claimant-id', 'plan', 'supporting', 'payment', 'unknown'];
-const PAY_MODES = ['rtgs', 'cheque', 'dd', 'upi', 'cash'] as const;
+const PAY_MODES = ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'] as const;
 const CATEGORIES = ['Vacant Plot', 'Open Place', 'Agricultural land', 'Residential', 'Commercial', 'Flat', 'Demolished', 'Part open place'];
 
 /** Classify a single upload before extraction. Ambiguous identity documents stay unknown. */

@@ -10,7 +10,7 @@ import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { getClient, EXTRACT_MODEL, readableError } from './claude';
 import { fileToVisualParts } from './extract';
 
-export type PayMode = 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash';
+export type PayMode = 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan';
 
 export type Payment = {
   id: string;
@@ -137,6 +137,18 @@ export const MODES: ModeSpec[] = [
     accept: '.pdf,image/*',
     recital: p => `₹${money0(p.amount)} in cash${p.date ? ` on ${p.date}` : ''}`,
   },
+  {
+    key: 'housing-loan',
+    label: 'Housing Loan',
+    telugu: 'గృహ రుణం',
+    refLabel: 'Cheque no.',
+    refHint: 'Cheque issued by the housing loan bank',
+    bankLabel: 'Housing loan bank',
+    shows: { ref: true, bank: true, branch: false, parties: true },
+    docLabel: 'Housing loan cheque or bank disbursement advice',
+    accept: '.pdf,image/*',
+    recital: p => `₹${money0(p.amount)} housing loan from ${p.bank || '____'}, ${p.bank || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''}`,
+  },
 ];
 
 export const modeSpec = (mode: PayMode): ModeSpec =>
@@ -191,6 +203,7 @@ export const deedPaymentRecital = (ps: Payment[]) =>
       const prefix = `${index ? `${String.fromCharCode(97 + index)}) ` : ''}Rs. ${money0(p.amount)}/-`;
       const advance = p.advance ? ' (paid in advance)' : '';
       if (p.mode === 'cash') return `${prefix} in cash${p.date ? ` on ${deedDate(p.date)}` : ''}${advance}`;
+      if (p.mode === 'housing-loan') return `${prefix} paid through having availed housing loan from ${p.bank || '____'}, ${p.bank || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? `, dated ${deedDate(p.date)}` : ''} by the Vendee/s, namely ${p.payer || '____'}, to the Vendor/s, namely ${p.payee || '____'}${advance}`;
       if (p.mode === 'cheque') {
         return `${prefix} through Cheque bearing No. ${p.refNo || '____'} drawn on ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
       }
@@ -219,6 +232,7 @@ const PROMPT: Record<PayMode, string> = {
   dd: 'This is a demand draft or its counterfoil. Transcribe the amount, the DD number, the issuing bank and branch, the date of issue, the applicant (purchaser) and the payee.',
   upi: 'This is a UPI or online payment receipt. Transcribe the amount, the transaction / UTR reference, the app or bank used, the date, and the payer and payee names.',
   cash: 'This is a cash receipt or acknowledgement. Transcribe the amount, the receipt number if any, the date, and who paid whom.',
+  'housing-loan': 'This is a housing-loan disbursement cheque or bank advice. Transcribe the amount paid through the housing loan, housing loan bank and branch, cheque number (or bank reference shown), date, purchaser/borrower who paid, and vendor/payee. Do not substitute a loan account number for cheque number.',
 };
 
 const SCHEMA = {
@@ -237,7 +251,7 @@ const SCHEMA = {
     detectedMode: {
       type: 'string' as const,
       description:
-        'What this instrument actually is. One of: rtgs, cheque, dd, upi, cash. Say what you see, even if it is not what was asked for.',
+        'What this instrument actually is. One of: rtgs, cheque, dd, upi, cash, housing-loan. Say what you see, even if it is not what was asked for.',
     },
     _unreadable: {
       type: 'string' as const,
@@ -313,7 +327,7 @@ export function cleanPaymentValue(key: string, raw: unknown, mode: PayMode): str
   if (key === 'refNo') {
     const digits = v.replace(/\s+/g, '');
     if (mode === 'cash') return digits; // receipt no. is genuinely free-form
-    if (mode === 'cheque') return /^\d{6,10}$/.test(digits) ? digits : '';
+    if (mode === 'cheque' || mode === 'housing-loan') return /^\d{6,10}$/.test(digits) ? digits : '';
     return /^\d{6,22}$/.test(digits) ? digits : '';
   }
   if (key === 'payer' || key === 'payee') {
@@ -331,7 +345,7 @@ export type PaymentExtraction = {
   unreadable: string;
 };
 
-const MODE_KEYS: PayMode[] = ['rtgs', 'cheque', 'dd', 'upi', 'cash'];
+const MODE_KEYS: PayMode[] = ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'];
 
 export type PaymentPass = {
   values: Partial<Payment>;
@@ -495,16 +509,16 @@ export async function extractPayment(mode: PayMode, files: File[]): Promise<Paym
       readPaymentPass(mode, parts, 'Independent date-only check. Read the upright image. For a cheque, return only the handwritten DATE-box value in YYYY-MM-DD if every digit is visible. Ignore all printed CTS, issue and validity dates; do not infer a date.'),
       readPaymentPass(mode, parts, 'Branch-only check. Read the upright image and return only the exact branch name printed below the bank name. Do not invent a city or use any account, IFSC, CTS, issue, validity or MICR text.'),
       readPaymentPass(mode, parts, 'Independent branch-only check. Read the upright image and return the exact printed bank branch name only when legible. Omit it if uncertain.'),
-      mode === 'cheque'
+      mode === 'cheque' || mode === 'housing-loan'
         ? readPaymentPass(mode, parts, 'Cheque party check: return payer only as the printed drawer/account-holder name and payee only as the handwritten name after PAY. Never reverse them. PAY, RUPEES, FOR BEARER and account numbers are labels, not party names. Omit either party unless it is clearly visible.')
         : Promise.resolve({ values: {}, detectedMode: null, unreadable: '' }),
-      mode === 'cheque'
+      mode === 'cheque' || mode === 'housing-loan'
         ? readPaymentPass(mode, parts, 'Independent cheque party check: inspect only the drawer/account-holder and PAY line. Payer means drawer/account holder; payee means the name after PAY. Do not infer either name from the transaction or sale parties.')
         : Promise.resolve({ values: {}, detectedMode: null, unreadable: '' }),
     ]);
 
     const verified = applyPaymentVerification(agreePaymentPasses(first, second), verification);
-    if (mode !== 'cheque') return verified;
+    if (mode !== 'cheque' && mode !== 'housing-loan') return verified;
     return applyChequePartyVerification(
       applyChequeBranchVerification(applyChequeDateVerification(verified, dateFirst, dateSecond), branchFirst, branchSecond),
       partyFirst,

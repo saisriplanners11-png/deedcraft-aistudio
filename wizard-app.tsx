@@ -985,7 +985,8 @@ export default function WizardApp() {
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
-        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMerges, templateSource);
+        const deedValues = { ...mergeValues(state), 'Include Prepared By': snapshot.manual.includePreparedBy === 'true' ? '1' : '' };
+        const merged = await fillSaleDeed(deedValues, variantFor(state.category), rewritesFor(state), scheduleMerges, templateSource);
         const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
           selectedPlanSvgs[record.id] ? [{ schedule: index + 1, svg: selectedPlanSvgs[record.id] }] : []
         ).map(async plan => ({ schedule: plan.schedule, png: await planPng(plan.svg) })));
@@ -1140,6 +1141,13 @@ export default function WizardApp() {
             <div><strong>{vm.doneIds.filter(id => id <= 8).length}<span> / 9</span></strong><span>Drafting steps complete</span></div>
             <div><strong>{vm.openCount}</strong><span>Readiness checks open</span></div>
           </div>
+          <section className="dashboard-section" aria-label="Document options">
+            <h2>Document options</h2>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input type="checkbox" checked={draft.manual.includePreparedBy === 'true'} onChange={event => dispatch({ type: 'manual', key: 'includePreparedBy', value: event.target.checked ? 'true' : '' })} />
+              <span><b>Include Prepared By line</b><small style={{ display: 'block' }}>Adds “Prepared By: Gundlapelli Sampath (98662 70006)” after the witness signatures.</small></span>
+            </label>
+          </section>
           {vendorShareEditor}
           {shareEditor}
           <section className="dashboard-section" aria-labelledby="workflow-title">

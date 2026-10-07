@@ -46,7 +46,7 @@ describe('link deed extraction mapping', () => {
   it('targets adjacent house numbers and explicitly forbids subject-number copying', () => {
     expect(TARGETS['link-deed']).toContain('nearHNo');
     expect(TARGETS['link-deed']).toContain('nearAdjacent');
-    expect(TARGETS['link-deed']).toContain('ulbAuthority');
+    expect(TARGETS['link-deed']).not.toContain('ulbAuthority');
     expect(EXTRACTION_PROMPTS['link-deed']).toContain('nearby, adjacent or neighbouring');
     expect(EXTRACTION_PROMPTS['link-deed']).toContain('Never copy the subject property house number');
   });

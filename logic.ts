@@ -225,7 +225,7 @@ export const scheduleRecords = (state: AppState): ScheduleRecord[] => {
 export const supportingRecordsForSchedule = (state: AppState, scheduleId: string) =>
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
-const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'ulbAuthority'];
+const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
 const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters'];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
@@ -436,11 +436,13 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   });
 
   if (!state.payments.some(payment => has(payment.amount))) {
-    missing.push({ id: 'payment', label: 'Payment details', reason: 'The receipt clause must state how the consideration was paid.', source: 'Cheque, DD, transfer/UPI receipt or payment acknowledgement.', step: 5 });
+      missing.push({ id: 'payment', label: 'Payment details', reason: 'The receipt clause must state how the consideration was paid.', source: 'Cheque, housing-loan disbursement, DD, transfer/UPI receipt or payment acknowledgement.', step: 5 });
   } else {
     state.payments.filter(payment => has(payment.amount)).forEach((payment, index) => {
       const fields = payment.mode === 'cash'
         ? ['amount', 'date', 'payer', 'payee']
+        : payment.mode === 'housing-loan'
+        ? ['amount', 'bank', 'refNo', 'date', 'payer', 'payee']
         : payment.mode === 'upi'
         ? ['amount', 'refNo', 'bank', 'date', 'payer', 'payee']
         : ['amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee'];

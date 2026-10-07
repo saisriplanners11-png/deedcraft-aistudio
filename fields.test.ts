@@ -87,12 +87,10 @@ describe('field mapping', () => {
     expect(receiptAssessment?.hidden).toBe(true);
   });
 
-  it('adds the approved ULB selector without a Word-template binding', () => {
+  it('omits the ULB selector from Jurisdiction', () => {
     const jurisdiction = GROUPS.find(group => group.title === 'Jurisdiction')!;
-    const ulb = jurisdiction.fields.find(field => field.id === 'ulbAuthority');
-    expect(ulb?.type).toBe('select');
-    expect(ulb?.options).toEqual(['Municipality', 'Gram Panchayit', 'Municipal Corporation', 'GHMC']);
-    expect(ulb?.ph).toBeUndefined();
+    expect(jurisdiction.fields.map(field => field.id)).not.toContain('ulbAuthority');
+    expect(ALL_FIELDS.map(field => field.id)).not.toContain('ulbAuthority');
   });
 
   it('requires a landmark relationship whenever a nearby house number is entered', () => {

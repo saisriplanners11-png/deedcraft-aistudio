@@ -142,6 +142,8 @@ export function rewritesFor(state: AppState): Rewrite[] {
     [refName]: payment.refNo || '',
     'Utr/Reference No.': payment.refNo || '',
     'Bank Name': [payment.bank, payment.branch].filter(Boolean).join(', '),
+    'Housing Loan Bank': payment.bank || '',
+    'Housing Loan Branch': payment.branch || '',
     'Remitting Bank': [payment.bank, payment.branch].filter(Boolean).join(', '),
     Date: deedDate(payment.date),
     'Claimant Name': payment.payer || state.form.claimantName || '',
@@ -155,6 +157,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     { mode: 'dd', find: /Demand Draft:\s*Amount of Rs\./i, refName: 'DD No.' },
     { mode: 'upi', find: /UPI\/Online:\s*Amount of Rs\./i, refName: 'Transaction ID' },
     { mode: 'cash', find: /Cash:\s*Amount of Rs\./i, refName: 'Cash Receipt No.' },
+    { mode: 'housing-loan', find: /Housing Loan:\s*Amount of Rs\./i, refName: 'Cheque No.' },
   ];
   for (const { mode, find, refName } of v2PaymentParagraphs) {
     rewrites.push({ find, replace: '', records: paid.filter(payment => payment.mode === mode).map(payment => paymentRecord(payment, refName)) });

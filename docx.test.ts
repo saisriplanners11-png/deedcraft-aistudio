@@ -533,6 +533,19 @@ describe('sale deed template merge', () => {
     expect(signatures).not.toContain('PURCHASER NAME');
   });
 
+  it('appends the optional Prepared By line after witnesses only when selected', async () => {
+    const values = mergeValues(initialState);
+    const omitted = await fillSaleDeed(values, 'IF OPEN PLOT');
+    const omittedText = await docxToText(new Uint8Array(await omitted.blob.arrayBuffer()));
+    expect(omittedText).not.toContain('Gundlapelli Sampath');
+
+    const included = await fillSaleDeed({ ...values, 'Include Prepared By': '1' }, 'IF OPEN PLOT');
+    const includedText = await docxToText(new Uint8Array(await included.blob.arrayBuffer()));
+    expect(includedText).toContain('Prepared By:');
+    expect(includedText).toContain('Gundlapelli Sampath (98662 70006)');
+    expect(includedText.indexOf('Gundlapelli Sampath')).toBeGreaterThan(includedText.indexOf('WITNESSES:'));
+  });
+
   it('recites each payment amount instead of assigning the combined total to the cheque', async () => {
     const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
     form.executantName = 'Vendor Name';
@@ -573,13 +586,13 @@ describe('sale deed template merge', () => {
   });
 
   it('omits missing payment dates from every generated payment paragraph', async () => {
-    const payments = (['rtgs', 'cheque', 'dd', 'upi', 'cash'] as const).map((mode, index) => ({
+    const payments = (['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'] as const).map((mode, index) => ({
       ...newPayment(mode), amount: '100', refNo: `REF-${index}`, bank: 'Test Bank', date: '',
     }));
     const state = { ...initialState, payments };
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    for (const label of ['RTGS/NEFT:', 'Cheque:', 'Demand Draft:', 'UPI/Online:', 'Cash:']) expect(text).toContain(label);
+    for (const label of ['RTGS/NEFT:', 'Cheque:', 'Demand Draft:', 'UPI/Online:', 'Cash:', 'Housing Loan:']) expect(text).toContain(label);
     expect(text).not.toMatch(/\bdated\s*(?:[,.;]|_{2,}|\n|$)/i);
     expect(text).not.toContain('dated __________');
   });
