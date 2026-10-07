@@ -8,14 +8,14 @@
 //      the template's 145 placeholders sit inside a single run. So each paragraph
 //      is merged, substituted, then written back into its first run.
 //   2. The template carries all five SCHEDULE OF PROPERTY variants, marked
-//      <IF OPEN PLACE>, <IF OPEN PLOT>, <IF HOUSE>, <IF DIMOLISHED HOUSE> and
-//      <IF PART OPEN PLACE>.
+//      <IF OPEN PLACE>, <IF OPEN PLOT>, <IF HOUSE>, <IF FLAT>,
+//      <IF DIMOLISHED HOUSE> and <IF PART OPEN PLACE>.
 //      The variant the property category selects is kept; the rest are removed.
 
 import { loadSaleDeedTemplate } from './template';
 import { STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
 
-const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
+const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF FLAT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
 const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
 const LEGACY_TEMPLATE_TAGS = new Set([
@@ -614,7 +614,7 @@ function selectOperativeClauses(body: string, variant: string): string {
   if (firstSchedule < 0 || houseMarker >= firstSchedule) {
     throw new Error('Template operative-clause markers are not before the schedule sections.');
   }
-  const keepHouse = variant === 'IF HOUSE';
+  const keepHouse = variant === 'IF HOUSE' || variant === 'IF FLAT';
   const kept = children.filter((_, index) =>
     index < vacantMarker
     || (keepHouse ? index > houseMarker && index < firstSchedule : index > vacantMarker && index < houseMarker)

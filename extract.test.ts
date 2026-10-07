@@ -31,6 +31,10 @@ describe('link deed extraction mapping', () => {
     expect(profileFields('jurisdiction')).not.toContain('plotNo');
     expect(profileFields('property-schedule')).toEqual(expect.arrayContaining(['plotNo', 'boundaryNorth', 'extentSqYards', 'category', 'unit']));
     expect(profileFields('property-schedule')).not.toContain('districtRegistrar');
+    expect(profileFields('property-schedule')).toEqual(expect.arrayContaining([
+      'flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards',
+      'flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest',
+    ]));
   });
 
   it('includes every legal-entity and authorized-signatory field in the scoped party read', () => {

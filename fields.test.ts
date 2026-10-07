@@ -93,6 +93,39 @@ describe('field mapping', () => {
     expect(ALL_FIELDS.map(field => field.id)).not.toContain('ulbAuthority');
   });
 
+  it('shows Flat-only fields and keeps apartment and flat boundaries separate', () => {
+    const flat = groupsForStep(3, 'Flat');
+    const house = groupsForStep(3, 'Residential');
+    expect(flat.find(group => group.title === 'Flat / apartment particulars')?.fields.map(field => field.id))
+      .toEqual(expect.arrayContaining(['flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards']));
+    expect(flat.find(group => group.title === 'Boundaries of Apartment')?.fields.map(field => field.id))
+      .toEqual(['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest']);
+    expect(flat.find(group => group.title === 'Boundaries of Flat')?.fields.map(field => field.id))
+      .toEqual(['flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest']);
+    expect(house.some(group => group.title === 'Boundaries of Flat')).toBe(false);
+    expect(house.flatMap(group => group.fields.map(field => field.id))).not.toContain('flatNo');
+  });
+
+  it('requires Flat schedule details and both boundary sets for every Flat property', () => {
+    const flatState = { ...initialState, category: 'Flat' };
+    const primaryMissing = generationBlockers(flatState).map(issue => issue.id);
+    expect(primaryMissing).toEqual(expect.arrayContaining([
+      'flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards',
+      'boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest',
+      'flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest',
+    ]));
+    const additional = {
+      ...initialState,
+      additionalSchedules: [{ id: 'flat-2', docNames: [], category: 'Flat', unit: 'Sq. Yards', values: {} }],
+    };
+    const additionalMissing = generationBlockers(additional).map(issue => issue.id);
+    expect(additionalMissing).toEqual(expect.arrayContaining([
+      'flat-2-flatStage', 'flat-2-flatNo', 'flat-2-flatFloorNo', 'flat-2-apartmentName',
+      'flat-2-superBuiltUpAreaSqFt', 'flat-2-udsSqYards', 'flat-2-flatBoundaryNorth',
+      'flat-2-flatBoundarySouth', 'flat-2-flatBoundaryEast', 'flat-2-flatBoundaryWest',
+    ]));
+  });
+
   it('requires a landmark relationship whenever a nearby house number is entered', () => {
     const state = { ...initialState, category: 'Residential', form: { ...initialState.form, nearHNo: '10-1-36/1' } };
     expect(generationBlockers(state).map(item => item.id)).toContain('nearAdjacent');

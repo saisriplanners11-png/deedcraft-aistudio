@@ -491,6 +491,35 @@ describe('sale deed template merge', () => {
     }
   });
 
+  it('renders a separate Flat schedule with apartment and unit boundaries', async () => {
+    const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, 'TEST']));
+    Object.assign(form, {
+      flatStage: 'Semi-Finished', flatNo: 'A-502', flatFloorNo: '5',
+      apartmentName: 'Sky Residency', superBuiltUpAreaSqFt: '1250', udsSqYards: '42',
+      extentSqYards: '1200', plotNo: '12, 13', bearingHNo: '10-1-1, 10-1-2',
+      surveyNo: '90/A', locality: 'Madhapur', village: 'Hitech City', mandal: 'Serilingampally',
+      district: 'Rangareddy', pinCode: '500081', sro: 'Kukatpally', districtRegistrar: 'Rangareddy',
+      boundaryNorth: 'Apartment North', boundarySouth: 'Apartment South',
+      boundaryEast: 'Apartment East', boundaryWest: 'Apartment West',
+      flatBoundaryNorth: 'Flat North', flatBoundarySouth: 'Flat South',
+      flatBoundaryEast: 'Flat East', flatBoundaryWest: 'Flat West',
+    });
+    const state = { ...initialState, category: 'Flat', form };
+    expect(variantFor('Flat')).toBe('IF FLAT');
+    const text = await scheduleText('IF FLAT', mergeValues(state));
+    for (const value of ['A-502', 'Semi-Finished', 'Sky Residency', '1250', '42', '1,200', '10-1-1, 10-1-2',
+      'Apartment North', 'Apartment South', 'Apartment East', 'Apartment West',
+      'Flat North', 'Flat South', 'Flat East', 'Flat West']) expect(text).toContain(value);
+    expect(text).toContain('Boundaries of Apartment:');
+    expect(text).toContain('Boundaries of Flat No.A-502 in 5 Floor:');
+    const deed = await fillSaleDeed(mergeValues(state), 'IF FLAT');
+    const deedText = await docxToText(new Uint8Array(await deed.blob.arrayBuffer()));
+    expect(deedText).toContain('All that a Semi-Finished Flat No. A-502');
+    expect(deedText).toContain('North : Apartment North,');
+    expect(deedText).toContain('North : Flat North,');
+    expect(deedText).not.toContain('<IF FLAT>');
+  });
+
   it('cleans opted-in empty fields across split Word runs in a custom template', async () => {
     const bytes = await customizedTemplate(xml => xml.replace(
       '&lt;Claimant Locality&gt;',

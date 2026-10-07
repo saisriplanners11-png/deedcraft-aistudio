@@ -77,8 +77,8 @@ const party = (side: 'executant' | 'claimant') =>
   ALL_FIELDS.filter(f => f.id.startsWith(side) && !f.id.endsWith('Age')).map(f => f.id);
 
 const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState'];
-const PROPERTY = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters'];
-const BOUNDARIES = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
+const PROPERTY = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters', 'flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards'];
+const BOUNDARIES = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest', 'flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest'];
 const STRUCTURE = ['bltNo'];
 const UTILITIES = ['taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const SUPPORTING = SUPPORTING_RECORD_FIELDS.map(field => field.id);

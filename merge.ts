@@ -37,6 +37,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   // This is a renderer-only value: the supplied template has no placeholder
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
   out['Near / Adjacent'] = f.nearAdjacent || '';
+  out['Municipal House Nos.'] = f.bearingHNo || '';
   const houseRows = state.structureDetailsBySchedule.primary?.rows || [];
   const firstStructure = houseRows.find(row => row.structureType && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType));
   out['Nature of House'] = (ROOF_NATURE_OPTIONS.includes(f.roofMaterial) ? f.roofMaterial : '') || (firstStructure?.structureType === 'Other / Custom Structure'
@@ -62,6 +63,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   for (const field of ['extentSqYards', 'extentSqMeters']) {
     if (state.unresolvedFields?.includes(field)) out[field === 'extentSqYards' ? 'Extent in Sq.yards' : 'Extent in Sq.Meters'] = '';
   }
+  out['Total Land Extent'] = out['Extent in Sq.yards'];
 
   // The deed's first page prints the sale consideration itself, not the
   // calculated basic-rate market value (which stays visible to the drafter

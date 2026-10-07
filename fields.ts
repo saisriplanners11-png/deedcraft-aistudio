@@ -100,7 +100,7 @@ export const SCHEDULE_VARIANT: Record<string, string> = {
   'Agricultural land': 'IF OPEN PLOT',
   Residential: 'IF HOUSE',
   Commercial: 'IF HOUSE',
-  Flat: 'IF HOUSE',
+  Flat: 'IF FLAT',
   Demolished: 'IF DIMOLISHED HOUSE',
   'Part open place': 'IF PART OPEN PLACE',
 };
@@ -228,7 +228,7 @@ export const GROUPS: Group[] = [
     telugu: 'ఆస్తి గుర్తింపు',
     note: 'What is being conveyed. The fields shown follow this schedule\'s selected property type.',
     fields: [
-      { id: 'plotNo', label: 'Plot number', ph: 'Plot No.' },
+      { id: 'plotNo', label: 'Plot number', ph: ['Plot No.', 'Plot Nos.'] },
       { id: 'extentSqYards', label: 'Extent (Sq. Yards)', ph: 'Extent in Sq.yards', type: 'number',
         hint: 'Required extent. Enter the exact area in square yards.' },
       { id: 'extentSqMeters', label: 'Extent (Sq. Meters)', ph: 'Extent in Sq.Meters', type: 'number',
@@ -251,10 +251,23 @@ export const GROUPS: Group[] = [
     note: 'The four abutments as they will read in the schedule. Each is recited in the deed exactly as typed.',
     cols: 2,
     fields: [
-      { id: 'boundaryNorth', label: 'North', ph: 'North Boundary' },
-      { id: 'boundarySouth', label: 'South', ph: 'South Boundary' },
-      { id: 'boundaryEast', label: 'East', ph: 'East Boundary' },
-      { id: 'boundaryWest', label: 'West', ph: 'West Boundary' },
+      { id: 'boundaryNorth', label: 'North', ph: ['North Boundary', 'North Boundary of Apartment'] },
+      { id: 'boundarySouth', label: 'South', ph: ['South Boundary', 'South Boundary of Apartment'] },
+      { id: 'boundaryEast', label: 'East', ph: ['East Boundary', 'East Boundary of Apartment'] },
+      { id: 'boundaryWest', label: 'West', ph: ['West Boundary', 'West Boundary of Apartment'] },
+    ],
+  },
+  {
+    step: 3,
+    title: 'Boundaries of Flat',
+    telugu: 'ఫ్లాట్ చతుస్సీమలు',
+    note: 'The four abutments of this individual flat, separate from the apartment property boundaries.',
+    cols: 2,
+    fields: [
+      { id: 'flatBoundaryNorth', label: 'North', ph: 'North Boundary of Flat', only: ['Flat'] },
+      { id: 'flatBoundarySouth', label: 'South', ph: 'South Boundary of Flat', only: ['Flat'] },
+      { id: 'flatBoundaryEast', label: 'East', ph: 'East Boundary of Flat', only: ['Flat'] },
+      { id: 'flatBoundaryWest', label: 'West', ph: 'West Boundary of Flat', only: ['Flat'] },
     ],
   },
   {
@@ -281,12 +294,15 @@ export const GROUPS: Group[] = [
     step: 3,
     title: 'Flat / apartment particulars',
     telugu: 'ఫ్లాట్ వివరాలు',
-    note: 'Not part of the sale deed template’s fixed clauses — recorded here for reference only. These do not appear in the generated Word document, which keeps the template’s wording unchanged.',
+    note: 'Flat-specific details used in the IF FLAT schedule. The car parking phrase is included in the deed wording.',
     fields: [
-      { id: 'apartmentName', label: 'Apartment / project name', span: 2, only: ['Flat'] },
-      { id: 'udsSqYards', label: 'Undivided share (Sq. Yards)', type: 'number', only: ['Flat'] },
+      { id: 'flatStage', label: 'Flat stage', ph: 'Stage', only: ['Flat'] },
+      { id: 'flatNo', label: 'Flat number', ph: 'Flat No.', only: ['Flat'] },
+      { id: 'flatFloorNo', label: 'Floor number', ph: 'Floor No.', only: ['Flat'] },
+      { id: 'apartmentName', label: 'Apartment complex name', ph: 'Apartment Complex Name', span: 2, only: ['Flat'] },
+      { id: 'udsSqYards', label: 'Undivided share (Sq. Yards)', ph: 'UDS', type: 'number', only: ['Flat'] },
       { id: 'udsSqMeters', label: 'Undivided share (Sq. Meters)', type: 'number', only: ['Flat'] },
-      { id: 'superBuiltUpAreaSqFt', label: 'Super built-up area (Sq. Ft.)', type: 'number', only: ['Flat'] },
+      { id: 'superBuiltUpAreaSqFt', label: 'Built-up area including common area (Sq. Ft.)', ph: 'Built-up Area', type: 'number', only: ['Flat'] },
       { id: 'carpetAreaSqFt', label: 'Carpet area (Sq. Ft.)', type: 'number', only: ['Flat'] },
       { id: 'parkingSlotNos', label: 'Parking slot no(s).', only: ['Flat'] },
       { id: 'buildingPermitNo', label: 'Building permit number', only: ['Flat'] },
@@ -415,13 +431,19 @@ export const ALL_FIELDS: Field[] = Object.values(
   )
 );
 
+export const FLAT_SCHEDULE_FIELDS = ['flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards'] as const;
+export const FLAT_BOUNDARY_FIELDS = ['flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest'] as const;
+
 /** Groups for one step, with category-inapplicable fields removed. */
 export function groupsForStep(step: number, category: string): Group[] {
   return GROUPS.filter(g => g.step === step)
-    .map(g => ({ ...g, fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
+    .map(g => ({ ...g,
+      ...(category === 'Flat' && g.title === 'Boundaries' ? { title: 'Boundaries of Apartment', note: 'The four apartment-level property boundaries. Enter the individual flat boundaries separately below.' } : {}),
+      fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
       && !(f.id === 'nearAdjacent' && ['Demolished', 'Part open place'].includes(category)))
       .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
-        ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' } : f) }))
+        ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' }
+        : f.id === 'bearingHNo' && category === 'Flat' ? { ...f, label: 'Municipal H.Nos.' } : f) }))
     .filter(g => g.fields.length > 0);
 }
 

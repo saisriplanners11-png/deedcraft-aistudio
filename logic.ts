@@ -3,7 +3,7 @@
 // anything computed from a blank field reads as blank too, never as zero.
 
 import { STEPS, DEEDS, DRAFTS, CATEGORIES, RULES } from './reference';
-import { ALL_FIELDS, EMPTY_FORM, SCHEDULE_VARIANT, groupsForStep, type StructureDetails } from './fields';
+import { ALL_FIELDS, EMPTY_FORM, FLAT_BOUNDARY_FIELDS, FLAT_SCHEDULE_FIELDS, SCHEDULE_VARIANT, groupsForStep, type StructureDetails } from './fields';
 import type { DocKind } from './extract';
 import { newPayment, totalOf, netTotalOf, tdsTotalOf, recitalFor, type Payment } from './payments';
 import { instrumentIdForLegacyType } from './instruments';
@@ -226,7 +226,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters'];
+const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
@@ -284,7 +284,7 @@ const FIELD_STEPS: Record<string, number> = Object.fromEntries(
 function GROUPS_FOR_MISSING() {
   return [
     ...groupsForStep(1, 'Vacant Plot'), ...groupsForStep(2, 'Vacant Plot'),
-    ...groupsForStep(3, 'Residential'), ...groupsForStep(4, 'Vacant Plot'),
+    ...groupsForStep(3, 'Residential'), ...groupsForStep(3, 'Flat'), ...groupsForStep(4, 'Vacant Plot'),
     ...groupsForStep(6, 'Vacant Plot'), ...groupsForStep(7, 'Vacant Plot'),
   ];
 }
@@ -368,6 +368,10 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
     addStructureDetails(state.structureDetailsBySchedule.primary, 'Structure Details', 3);
   }
+  if (state.category === 'Flat') {
+    FLAT_SCHEDULE_FIELDS.forEach(id => add(id, 'The Flat schedule requires this detail.', 'Flat title record, apartment record or manual entry.', 3));
+    FLAT_BOUNDARY_FIELDS.forEach(id => add(id, 'All four boundaries of the individual flat are required.', 'Flat plan, apartment record or manual entry.', 3));
+  }
 
   for (const side of ['executant', 'claimant']) {
     ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode']
@@ -431,6 +435,10 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     if (['Residential', 'Commercial', 'Flat'].includes(record.category)) {
       ids.push('bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
       addStructureDetails(state.structureDetailsBySchedule[record.id], `Schedule ${index + 2}: Structure Details`, 3);
+    }
+    if (record.category === 'Flat') {
+      [...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS].forEach(id =>
+        addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'The Flat schedule requires this detail.', 'Flat title record, apartment record or manual entry.', 3));
     }
     ids.forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'Every property schedule must be complete before combined registration.', 'Link deed, property record, plan or manual entry.', 3));
   });
@@ -729,7 +737,9 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     { label: 'Property schedules typed', ok: scheduleRecords(state).every(record => !!record.category), note: 'Each schedule selects its own legal wording and fields' },
     { label: 'Link document recited', ok: !!(f.linkDocNo && f.linkDocDate), note: 'Title flow must be traceable' },
     { label: 'Jurisdiction complete', ok: !!(f.district && f.mandal && f.village && f.sro), note: 'Determines the registering office' },
-    { label: 'Extent and boundaries entered', ok: hasExtent && !!(f.boundaryNorth && f.boundarySouth && f.boundaryEast && f.boundaryWest), note: 'All four abutments are required' },
+    { label: 'Extent and boundaries entered', ok: hasExtent && !!(f.boundaryNorth && f.boundarySouth && f.boundaryEast && f.boundaryWest)
+        && (state.category !== 'Flat' || FLAT_BOUNDARY_FIELDS.every(id => !!f[id])),
+      note: state.category === 'Flat' ? 'All four apartment and all four flat abutments are required' : 'All four abutments are required' },
     { label: 'Valuation entered', ok: hasBase, note: 'Duty is computed on the higher of the two' },
     { label: 'Consideration fully received', ok: payMatched, note: 'Payments must total the consideration' },
     { label: 'Executant details complete', ok: stepIsDone(6), note: 'Identity and capacity of the vendor' },
