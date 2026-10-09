@@ -144,10 +144,11 @@ export const MODES: ModeSpec[] = [
     refLabel: 'Cheque no.',
     refHint: 'Cheque issued by the housing loan bank',
     bankLabel: 'Housing loan bank',
-    shows: { ref: true, bank: true, branch: false, parties: true },
+    branchLabel: 'Housing loan branch',
+    shows: { ref: true, bank: true, branch: true, parties: true },
     docLabel: 'Housing loan cheque or bank disbursement advice',
     accept: '.pdf,image/*',
-    recital: p => `₹${money0(p.amount)} housing loan from ${p.bank || '____'}, ${p.bank || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''}`,
+    recital: p => `₹${money0(p.amount)} housing loan from ${p.bank || '____'}, ${p.branch || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''}`,
   },
 ];
 
@@ -203,7 +204,7 @@ export const deedPaymentRecital = (ps: Payment[]) =>
       const prefix = `${index ? `${String.fromCharCode(97 + index)}) ` : ''}Rs. ${money0(p.amount)}/-`;
       const advance = p.advance ? ' (paid in advance)' : '';
       if (p.mode === 'cash') return `${prefix} in cash${p.date ? ` on ${deedDate(p.date)}` : ''}${advance}`;
-      if (p.mode === 'housing-loan') return `${prefix} paid through having availed housing loan from ${p.bank || '____'}, ${p.bank || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? `, dated ${deedDate(p.date)}` : ''} by the Vendee/s, namely ${p.payer || '____'}, to the Vendor/s, namely ${p.payee || '____'}${advance}`;
+      if (p.mode === 'housing-loan') return `${prefix} paid through having availed housing loan from ${p.bank || '____'}, ${p.branch || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? `, dated ${deedDate(p.date)}` : ''} by the Vendee/s, namely ${p.payer || '____'}, to the Vendor/s, namely ${p.payee || '____'}${advance}`;
       if (p.mode === 'cheque') {
         return `${prefix} through Cheque bearing No. ${p.refNo || '____'} drawn on ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
       }

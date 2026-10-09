@@ -450,7 +450,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       const fields = payment.mode === 'cash'
         ? ['amount', 'date', 'payer', 'payee']
         : payment.mode === 'housing-loan'
-        ? ['amount', 'bank', 'refNo', 'date', 'payer', 'payee']
+        ? ['amount', 'bank', 'branch', 'refNo', 'date', 'payer', 'payee']
         : payment.mode === 'upi'
         ? ['amount', 'refNo', 'bank', 'date', 'payer', 'payee']
         : ['amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee'];

@@ -39,7 +39,16 @@ export type DeedTemplateSource =
 export const BUILT_IN_TEMPLATE_SOURCE: DeedTemplateSource = { kind: 'built-in' };
 
 /** A literal phrase in the template to rewrite once the placeholders are filled. */
-export type Rewrite = { find: RegExp; replace: string; records?: Record<string, string>[]; partyRole?: 'executant' | 'claimant' };
+export type Rewrite = {
+  find: RegExp;
+  replace: string;
+  records?: Record<string, string>[];
+  partyRole?: 'executant' | 'claimant';
+  /** Restrict a rewrite to template paragraphs with the intended structure. */
+  when?: (paragraph: string) => boolean;
+  /** Clear direct bold formatting from the generated paragraph. */
+  regularWeight?: boolean;
+};
 
 // ---------------------------------------------------------------- zip reading
 
@@ -506,7 +515,7 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
 
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
   // Apply structural recitals first, then merge placeholders into their own runs.
-  const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)));
+  const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)) && (!rw.when || rw.when(p)));
   if (repeat) return repeat.records!.map((record, index) => {
     let paragraph = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
     if (repeat.partyRole && record['UNDIVIDED SHARE RECITAL']) {
@@ -521,9 +530,10 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
       paragraph = replaceRunText(paragraph, closing, () => '.');
     }
     const filled = fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([key, value]) => [norm(key), value] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
-    return repeat.partyRole && index < repeat.records!.length - 1
+    const completed = repeat.partyRole && index < repeat.records!.length - 1
       ? replaceRunText(filled, /[.,;]{2,}$/, () => '.')
       : filled;
+    return repeat.regularWeight ? regularWeight(completed) : completed;
   }).join('');
   // This placeholder is reused by the original template for different concepts.
   if (/WHEREAS[\s\S]*agreed consideration amount/i.test(plainText(p))) {
@@ -542,9 +552,16 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   if (/Property Tax:/i.test(plainText(p))) {
     p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
   }
+  // The supplied template accidentally uses the housing-loan bank placeholder
+  // twice. The second value is the separately collected loan branch.
+  if (/Housing Loan:\s*Amount of Rs\./i.test(plainText(p))) {
+    p = replaceRunText(p, /<Housing Loan Bank>\s*,\s*<Housing Loan Bank>\s+Branch/i, () => '<Housing Loan Bank>, <Housing Loan Branch> Branch');
+    p = replaceRunText(p, /,\s*<Housing Loan Branch>\s+Branch(?=,?\s*Cheque)/i, match =>
+      values.get(norm('Housing Loan Branch')) ? match[0] : '');
+  }
   // Amounts written in words are consistently parenthesized throughout the deed.
   p = replaceRunText(p, /<\s*(Consideration in words|Sale Consideration Words)\s*>/gi, match => `(${match[0]})`);
-  for (const rw of rewrites.filter(rw => !rw.records)) {
+  for (const rw of rewrites.filter(rw => !rw.records && (!rw.when || rw.when(p)))) {
     p = replaceRunText(p, rw.find, () => rw.replace);
   }
   // Remove the whole optional phrase, including its comma, while the field
@@ -559,6 +576,14 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     return values.get(norm(name)) || '';
   });
   return replaceRunText(p, /\uE000/g, () => '    ');
+}
+
+/** Remove direct bold styling while preserving the template's fonts and size. */
+function regularWeight(paragraph: string): string {
+  return paragraph
+    .replace(/<w:b(?:\s[^>]*)?\/>/g, '<w:b w:val="0"/>')
+    .replace(/<w:bCs(?:\s[^>]*)?\/>/g, '<w:bCs w:val="0"/>')
+    .replace(/<w:rStyle w:val="Strong"\s*\/>/g, '');
 }
 
 function markConsiderationRows(xml: string): string {
@@ -1040,7 +1065,9 @@ export async function fillSaleDeed(
   // This optional attribution belongs after the witness signature block at the
   // end of the deed, including when a compatible custom template is selected.
   if (values_.get(norm('Include Prepared By'))) {
-    const preparedBy = '<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="6495"/></w:tabs><w:spacing w:before="120" w:line="264" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">Prepared By:____________________________</w:t></w:r><w:r><w:tab/></w:r><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:u w:val="single"/></w:rPr><w:t>Gundlapelli Sampath (98662 70006)</w:t></w:r></w:p>';
+    // Keep the label, writing line and contact inside the printable width.
+    // Word then moves this single line together if a page boundary is reached.
+    const preparedBy = '<w:p><w:pPr><w:keepLines/><w:tabs><w:tab w:val="left" w:pos="4800"/></w:tabs><w:spacing w:before="120" w:line="264" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">Prepared By:____________________</w:t></w:r><w:r><w:tab/></w:r><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:u w:val="single"/></w:rPr><w:t>Gundlapelli Sampath (98662 70006)</w:t></w:r></w:p>';
     const sectionAt = body.lastIndexOf('<w:sectPr');
     body = sectionAt >= 0 ? body.slice(0, sectionAt) + preparedBy + body.slice(sectionAt) : body + preparedBy;
   }

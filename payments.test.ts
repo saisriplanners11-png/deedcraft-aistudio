@@ -20,6 +20,15 @@ describe('payment extraction safeguards', () => {
       expect(deedPaymentRecital([{ ...payment, date: '2026-02-03' }])).toContain(mode === 'cash' ? 'on 03-02-2026' : 'dated 03-02-2026');
     }
   });
+  it('uses the housing-loan branch rather than repeating the bank name', () => {
+    const payment: Payment = {
+      id: 'housing', mode: 'housing-loan', advance: false, tds: false,
+      amount: '1000000', refNo: '1250110', bank: 'IFIL', branch: 'Hyderabad',
+      date: '2026-02-22', payer: 'SAMPATH', payee: 'USHA',
+    };
+    expect(recitalFor([payment])).toContain('from IFIL, Hyderabad Branch');
+    expect(deedPaymentRecital([payment])).toContain('from IFIL, Hyderabad Branch');
+  });
   it('allows payment evidence before consideration but respects explicit zero', () => {
     const payments = [{ id: 'one', mode: 'cheque', amount: '' }] as Payment[];
     expect(paymentPatchError(payments, 'one', { amount: '100' }, '')).toBeNull();

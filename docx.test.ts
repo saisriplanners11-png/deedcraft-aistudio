@@ -573,6 +573,14 @@ describe('sale deed template merge', () => {
     expect(includedText).toContain('Prepared By:');
     expect(includedText).toContain('Gundlapelli Sampath (98662 70006)');
     expect(includedText.indexOf('Gundlapelli Sampath')).toBeGreaterThan(includedText.indexOf('WITNESSES:'));
+
+    const entries = await readZip(new Uint8Array(await included.blob.arrayBuffer()));
+    const document = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
+    const preparedByParagraph = document.match(/<w:p(?:\s[^>]*)?>[\s\S]*?Prepared By:[\s\S]*?<\/w:p>/)?.[0] || '';
+    expect(preparedByParagraph).toContain('<w:keepLines/>');
+    expect(preparedByParagraph).toContain('<w:tab w:val="left" w:pos="4800"/>');
+    expect(preparedByParagraph).toContain('<w:jc w:val="left"/>');
+    expect(preparedByParagraph).not.toContain('<w:jc w:val="both"/>');
   });
 
   it('recites each payment amount instead of assigning the combined total to the cheque', async () => {
@@ -624,6 +632,27 @@ describe('sale deed template merge', () => {
     for (const label of ['RTGS/NEFT:', 'Cheque:', 'Demand Draft:', 'UPI/Online:', 'Cash:', 'Housing Loan:']) expect(text).toContain(label);
     expect(text).not.toMatch(/\bdated\s*(?:[,.;]|_{2,}|\n|$)/i);
     expect(text).not.toContain('dated __________');
+  });
+
+  it('keeps one regular-weight housing-loan recital and uses the loan branch', async () => {
+    const payment = {
+      ...newPayment('housing-loan'), amount: '1000000', refNo: '1250110',
+      bank: 'IFIL', branch: 'Karimnagar', date: '2026-02-22',
+      payer: 'SAMPATH', payee: 'USHA',
+    };
+    const state = { ...initialState, payments: [payment] };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const bytes = new Uint8Array(await result.blob.arrayBuffer());
+    const text = await docxToText(bytes);
+    const housingRecital = 'Housing Loan: Amount of Rs.10,00,000/- paid through having availed housing loan from IFIL, Karimnagar Branch';
+    expect(text.split('Housing Loan:').length - 1).toBe(1);
+    expect(text).toContain(housingRecital);
+
+    const entries = await readZip(bytes);
+    const document = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
+    const paragraph = document.match(/<w:p(?:\s[^>]*)?>[\s\S]*?Housing Loan:[\s\S]*?<\/w:p>/)?.[0] || '';
+    expect(paragraph).toContain('<w:b w:val="0"/>');
+    expect(paragraph).not.toContain('<w:b/>');
   });
 
   it('keeps RTGS reference and bank fields in the updated draft', async () => {

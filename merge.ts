@@ -162,6 +162,19 @@ export function rewritesFor(state: AppState): Rewrite[] {
     { mode: 'housing-loan', find: /Housing Loan:\s*Amount of Rs\./i, refName: 'Cheque No.' },
   ];
   for (const { mode, find, refName } of v2PaymentParagraphs) {
+    if (mode === 'housing-loan') {
+      // The supplied template has this sample sentence twice. Remove the
+      // unnumbered first copy; retain its numbered copy at regular weight.
+      rewrites.push({ find, replace: '', records: [], when: paragraph => !/<w:numPr\b/.test(paragraph) });
+      rewrites.push({
+        find,
+        replace: '',
+        records: paid.filter(payment => payment.mode === mode).map(payment => paymentRecord(payment, refName)),
+        when: paragraph => /<w:numPr\b/.test(paragraph),
+        regularWeight: true,
+      });
+      continue;
+    }
     rewrites.push({ find, replace: '', records: paid.filter(payment => payment.mode === mode).map(payment => paymentRecord(payment, refName)) });
   }
   if (paid.length && !(paid.length === 1 && paid[0].mode === 'cash')) {
