@@ -532,6 +532,8 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
 }
 
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
+  const authority = values.get(norm('Local Authority Type'));
+  if (authority) p = replaceRunText(p, /Competent Local Authority\s*,\s*(?=<Village>)/gi, () => `${authority}, `);
   // Apply structural recitals first, then merge placeholders into their own runs.
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)) && (!rw.when || rw.when(p)));
   if (repeat) return repeat.records!.map((record, index) => {
@@ -926,6 +928,10 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   const filled = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
     let paragraph = original;
+    if (/^\s*All that the\b/i.test(text) && /having a plinth area[\s\S]*consisting of Ground Floor/i.test(text)) {
+      const floors = floorRows.map(floor => `${floorName(floor.floorNo)}, ${floor.builtUpAreaSqFt ? Number(floor.builtUpAreaSqFt.replace(/,/g, '')).toLocaleString('en-IN') + ' square feet' : 'area not supplied'}`).join('; ');
+      paragraph = replaceRunText(paragraph, /having a plinth area[\s\S]*?(?=\s+in plot no\.)/i, () => floors ? `consisting of ${floors}` : '');
+    }
     // Keep the house schedule opening and floor-table heading with their content.
     if (/SCHEDULE OF PROPERTY|Description of the property hereby sold|^\s*All that the\b|BUILDING\s*\/\s*FLOOR DETAILS/i.test(text) && !/<w:keepNext\b/.test(paragraph)) {
       paragraph = /<w:pPr(?:\s[^>]*)?>/.test(paragraph)

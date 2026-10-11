@@ -229,7 +229,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
+const PROPERTY_IDS = ['localAuthorityType', 'plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
@@ -472,7 +472,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
         : ['amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee'];
       fields.forEach(name => {
         if (!has((payment as any)[name])) {
-          missing.push({ id: `payment-${payment.id}-${name}`, label: `Payment ${index + 1}: ${name}`, reason: 'The receipt clause requires a complete payment record.', source: 'Payment instrument or manual entry.', step: 5 });
+          missing.push({ id: `payment-${payment.id}-${name}`, label: `Payment ${index + 1}: ${name === 'payer' ? 'Vendee' : name === 'payee' ? 'Vendor' : name}`, reason: 'The receipt clause requires a complete payment record.', source: 'Payment instrument or manual entry.', step: 5 });
         }
       });
     });

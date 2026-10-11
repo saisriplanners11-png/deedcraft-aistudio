@@ -144,7 +144,7 @@ export function PaymentCard({
       const { values, detectedMode, unreadable } = await extractPayment(payment.mode, files);
       const keys = Object.keys(values);
       const expected = ['amount', ...(spec.shows.ref ? ['refNo'] : []), ...(spec.shows.bank ? ['bank'] : []), ...(spec.shows.branch ? ['branch'] : []), 'date', ...(spec.shows.parties ? ['payer', 'payee'] : [])];
-      const label = (key: string) => ({ amount: 'Amount', refNo: spec.refLabel, bank: spec.bankLabel || 'Bank', branch: spec.branchLabel || 'Branch', date: 'Date', payer: 'Payer', payee: 'Payee' } as Record<string, string>)[key] || key;
+      const label = (key: string) => ({ amount: 'Amount', refNo: spec.refLabel, bank: spec.bankLabel || 'Bank', branch: spec.branchLabel || 'Branch', date: 'Date', payer: 'Vendee', payee: 'Vendor' } as Record<string, string>)[key] || key;
       setAudit({ found: keys.map(label), notFound: expected.filter(key => !keys.includes(key)).map(label), unreadable });
       // persist which fields were filled by this instrument so they can be
       // treated as read-only across the app
@@ -272,8 +272,8 @@ export function PaymentCard({
         <PInput label="Date" type="date" value={payment.date} onChange={set('date')} filled={(payment.filled ?? []).includes('date')} />
         {spec.shows.parties ? (
           <>
-            <PInput label="Payer (purchaser)" span={2} value={payment.payer} onChange={set('payer')} filled={(payment.filled ?? []).includes('payer')} />
-            <PInput label="Payee (vendor)" span={2} value={payment.payee} onChange={set('payee')} filled={(payment.filled ?? []).includes('payee')} />
+            <PInput label="Vendee (purchaser)" span={2} value={payment.payer} onChange={set('payer')} filled={(payment.filled ?? []).includes('payer')} />
+            <PInput label="Vendor (seller)" span={2} value={payment.payee} onChange={set('payee')} filled={(payment.filled ?? []).includes('payee')} />
           </>
         ) : null}
       </div>

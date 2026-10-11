@@ -17,14 +17,33 @@ describe('final supplied sale deed template', () => {
   const previous = globalThis.fetch;
   let bytes: Uint8Array;
   beforeAll(async () => {
-    bytes = new Uint8Array(await readFile(new URL('./sale-deed-template-v4.docx', import.meta.url)));
-    globalThis.fetch = async input => new Response(await readFile(new URL(String(input).includes('v4') ? './sale-deed-template-v4.docx' : './sale-deed-template.docx', import.meta.url)));
+    bytes = new Uint8Array(await readFile(new URL('./sale-deed-template-v5.docx', import.meta.url)));
+    globalThis.fetch = async input => new Response(await readFile(new URL(String(input).includes('v5') ? './sale-deed-template-v5.docx' : './sale-deed-template.docx', import.meta.url)));
   });
   afterAll(() => { globalThis.fetch = previous; });
   const generate = async (state: AppState, source?: DeedTemplateSource) => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category, state.form.flatStage), rewritesFor(state), scheduleMergesFor(state), source);
     return { result, text: await docxToText(new Uint8Array(await result.blob.arrayBuffer())) };
   };
+  it.each(['Municipality', 'Corporation', 'Gram Panchayati'])('uses %s in each schedule and preserves its saved selection', async authority => {
+    const state: AppState = fixture('', 'Residential'); state.form.localAuthorityType = authority;
+    state.additionalSchedules = [{ id: 'other', category: 'Vacant Plot', unit: 'Sq. Yards', docNames: [], values: { ...state.form, localAuthorityType: 'Gram Panchayati', village: 'Other Village' } }];
+    const { text } = await generate(state);
+    expect(text).toContain(`Within the jurisdictional limits of the ${authority}, Sircilla`);
+    expect(text).toContain('Within the jurisdictional limits of the Gram Panchayati, Other Village');
+    expect(text).not.toContain('Competent Local Authority');
+    const draft = newDraft(); draft.manual['property|primary|localAuthorityType'] = authority;
+    expect(appStateFor(draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) })).form.localAuthorityType).toBe(authority);
+  });
+  it('writes revised house floor prose once with a correct Annexure total', async () => {
+    const state: AppState = fixture('', 'Residential');
+    state.structureDetailsBySchedule.primary!.rows.push({ ...state.structureDetailsBySchedule.primary!.rows[0], id: 'upper', floorNo: 'First Floor', builtUpAreaSqFt: '320' });
+    const { text } = await generate(state);
+    expect(text).toContain('consisting of Ground Floor, 532 square feet; First Floor, 320 square feet in plot');
+    expect(text).toContain('852 sq.fts');
+    expect(text).not.toContain('HOUSE / BUILDING / FLOOR DETAILS');
+    expect(text).not.toMatch(/<[^>]+>/);
+  });
   it.each(['built-in', 'legacy-custom'])('emits the requested Through Bank recital for each payment in %s', async kind => {
     const state: AppState = fixture();
     state.payments = [{ ...newPayment('through-bank'), amount: '100000', payer: 'BANK BUYER', payee: 'BANK SELLER' }, { ...newPayment('through-bank'), amount: '200000' }];
@@ -83,7 +102,7 @@ describe('final supplied sale deed template', () => {
     const { result, text } = await generate(fixture('Finished', category));
     expect(text.match(/SCHEDULE OF PROPERTY/g)).toHaveLength(1);
     expect(text).not.toMatch(/<[^>]+>|DEV-55|SUP-66|700 Sq|2100 Sq/);
-    if (['Residential', 'Commercial'].includes(category)) { expect(text).toContain('532 Sq.Ft.'); expect(text).not.toContain('Second Floor'); }
+    if (['Residential', 'Commercial'].includes(category)) { expect(text).toContain('Ground Floor, 532 square feet'); expect(text).not.toContain('Second Floor'); }
     if (process.env.FLAT_QA_DIR && category === 'Residential') await writeFile(`${process.env.FLAT_QA_DIR}/House.docx`, new Uint8Array(await result.blob.arrayBuffer()));
   });
   it('preserves legacy stage values and does not guess unknown completion', async () => {

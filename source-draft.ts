@@ -388,7 +388,7 @@ export function plansFor(draft: Draft, record: string): SourcePlan[] {
   return supplied.length ? supplied : candidates.filter(p => p.linked);
 }
 
-export const labelFor = (field: string) => ALL_FIELDS.find(f => f.id === field)?.label || field.replace(/([A-Z])/g, ' $1');
+export const labelFor = (field: string) => field === 'payer' ? 'Vendee (purchaser)' : field === 'payee' ? 'Vendor (seller)' : ALL_FIELDS.find(f => f.id === field)?.label || field.replace(/([A-Z])/g, ' $1');
 
 /** Shared limiter bounds actual API requests, including nested verification calls. */
 export class WorkQueue {
