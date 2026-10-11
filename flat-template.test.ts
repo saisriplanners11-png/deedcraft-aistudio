@@ -17,8 +17,8 @@ describe('final supplied sale deed template', () => {
   const previous = globalThis.fetch;
   let bytes: Uint8Array;
   beforeAll(async () => {
-    bytes = new Uint8Array(await readFile(new URL('./sale-deed-template-v5.docx', import.meta.url)));
-    globalThis.fetch = async input => new Response(await readFile(new URL(String(input).includes('v5') ? './sale-deed-template-v5.docx' : './sale-deed-template.docx', import.meta.url)));
+    bytes = new Uint8Array(await readFile(new URL('./sale-deed-template-v6.docx', import.meta.url)));
+    globalThis.fetch = async input => new Response(await readFile(new URL(String(input).includes('v6') ? './sale-deed-template-v6.docx' : './sale-deed-template.docx', import.meta.url)));
   });
   afterAll(() => { globalThis.fetch = previous; });
   const generate = async (state: AppState, source?: DeedTemplateSource) => {
@@ -35,12 +35,12 @@ describe('final supplied sale deed template', () => {
     const draft = newDraft(); draft.manual['property|primary|localAuthorityType'] = authority;
     expect(appStateFor(draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) })).form.localAuthorityType).toBe(authority);
   });
-  it('writes revised house floor prose once with a correct Annexure total', async () => {
+  it('writes revised house floor prose once with independent Annexure floor areas', async () => {
     const state: AppState = fixture('', 'Residential');
     state.structureDetailsBySchedule.primary!.rows.push({ ...state.structureDetailsBySchedule.primary!.rows[0], id: 'upper', floorNo: 'First Floor', builtUpAreaSqFt: '320' });
     const { text } = await generate(state);
-    expect(text).toContain('consisting of Ground Floor, 532 square feet; First Floor, 320 square feet in plot');
-    expect(text).toContain('852 sq.fts');
+    expect(text).toContain('consisting of Ground Floor: 532 square feet; First Floor: 320 square feet, in plot');
+    expect(text).toContain('532 sq.fts'); expect(text).toContain('320 sq.fts'); expect(text).not.toContain('852 sq.fts');
     expect(text).not.toContain('HOUSE / BUILDING / FLOOR DETAILS');
     expect(text).not.toMatch(/<[^>]+>/);
   });
@@ -102,7 +102,7 @@ describe('final supplied sale deed template', () => {
     const { result, text } = await generate(fixture('Finished', category));
     expect(text.match(/SCHEDULE OF PROPERTY/g)).toHaveLength(1);
     expect(text).not.toMatch(/<[^>]+>|DEV-55|SUP-66|700 Sq|2100 Sq/);
-    if (['Residential', 'Commercial'].includes(category)) { expect(text).toContain('Ground Floor, 532 square feet'); expect(text).not.toContain('Second Floor'); }
+    if (['Residential', 'Commercial'].includes(category)) { expect(text).toContain('Ground Floor: 532 square feet'); expect(text).not.toContain('Second Floor'); }
     if (process.env.FLAT_QA_DIR && category === 'Residential') await writeFile(`${process.env.FLAT_QA_DIR}/House.docx`, new Uint8Array(await result.blob.arrayBuffer()));
   });
   it('preserves legacy stage values and does not guess unknown completion', async () => {

@@ -929,8 +929,9 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     const text = plainText(original);
     let paragraph = original;
     if (/^\s*All that the\b/i.test(text) && /having a plinth area[\s\S]*consisting of Ground Floor/i.test(text)) {
-      const floors = floorRows.map(floor => `${floorName(floor.floorNo)}, ${floor.builtUpAreaSqFt ? Number(floor.builtUpAreaSqFt.replace(/,/g, '')).toLocaleString('en-IN') + ' square feet' : 'area not supplied'}`).join('; ');
-      paragraph = replaceRunText(paragraph, /having a plinth area[\s\S]*?(?=\s+in plot no\.)/i, () => floors ? `consisting of ${floors}` : '');
+      const colon = /Ground Floor:/i.test(text);
+      const floors = floorRows.map(floor => `${floorName(floor.floorNo)}${colon ? ':' : ','} ${floor.builtUpAreaSqFt ? Number(floor.builtUpAreaSqFt.replace(/,/g, '')).toLocaleString('en-IN') + ' square feet' : 'area not supplied'}`).join('; ');
+      paragraph = replaceRunText(paragraph, /having a plinth area[\s\S]*?(?=\s+in plot no\.)/i, () => floors ? `consisting of ${floors}${colon ? ',' : ''}` : '');
     }
     // Keep the house schedule opening and floor-table heading with their content.
     if (/SCHEDULE OF PROPERTY|Description of the property hereby sold|^\s*All that the\b|BUILDING\s*\/\s*FLOOR DETAILS/i.test(text) && !/<w:keepNext\b/.test(paragraph)) {
@@ -973,6 +974,20 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   // The revised draft's five-column schedule table contains example floors.
   // Use its first body row as the styled prototype for the actual floor count.
   const withFloorTable = filled.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
+    if (/Built-up area of the property/i.test(plainText(table)) && /Ground Floor/.test(plainText(table)) && /<Nature of House>\s*<Plinth Area>/i.test(plainText(table))) {
+      const sourceRows = table.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
+      const ground = sourceRows.find(row => /Ground Floor/.test(plainText(row)));
+      const first = sourceRows.find(row => /First Floor/.test(plainText(row)));
+      if (ground) {
+        const actualRows = floorRows.map(floor => {
+          let row = replaceRunText(ground, /Ground Floor/, () => floorName(floor.floorNo));
+          row = replaceRunText(row, /<Nature of House>/i, () => structureName(floor));
+          row = replaceRunText(row, /<Plinth Area>/i, () => floor.builtUpAreaSqFt ? Number(floor.builtUpAreaSqFt.replace(/,/g, '')).toLocaleString('en-IN') : '');
+          return keepRowTogether(row);
+        }).join('');
+        return table.replace(ground, () => actualRows).replace(first || /$^/, '');
+      }
+    }
     if (!/Floor No\./i.test(plainText(table))) return table;
     const tableRows = table.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
     const exampleRows = tableRows.filter(row => /(?:Ground|First|Second) Floor/.test(plainText(row)) && !/<Floor No\.>/.test(plainText(row)));
