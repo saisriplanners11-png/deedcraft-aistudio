@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { flatStage } from './flat-options';
 import { getClient, EXTRACT_MODEL, VISION_MODEL, VERIFY_MODEL, readableError } from './claude';
-import { ALL_FIELDS, GROUPS, LINK_OPTIONS } from './fields';
+import { ALL_FIELDS, PERSON_FIELDS, PARTY_ENTITY_FIELDS, partyEntityFields, type PartyType, GROUPS, LINK_OPTIONS } from './fields';
 import { docxToText, readZip } from './docx';
 import { WorkQueue, type Candidate, type Role, type SourceResult, type SourcePlan } from './source-draft';
 import { directionRegion } from './plan-regions';
@@ -15,10 +16,11 @@ export const LINK_DEED_STEP2_PAGES = 2;
 export type ExtractionProfile =
   | 'phase1:linkDoc' | 'phase1:houseTax' | 'phase1:titleDeed' | 'phase1:nala' | 'phase1:permissions' | 'phase1:layoutLrs' | 'phase1:landLayoutLrs'
   | 'phase1:vacantTax' | 'phase1:approvedLayout' | 'phase1:assessment' | 'phase1:lrsApplication' | 'phase1:lrsProceeding'
-  | 'party:executant' | 'party:claimant' | 'jurisdiction' | 'property-schedule' | 'general';
+  | 'party:executant' | 'party:claimant' | 'entity:executant' | 'entity:claimant' | 'authorization:executant' | 'authorization:claimant' | 'party-person' | `${'entity' | 'authorization'}:${'executant' | 'claimant'}:${PartyType}` | 'jurisdiction' | 'property-schedule' | 'general';
 export type ExtractionProgress = string | { id: string; title: string; state: 'queued' | 'running' | 'done' | 'review' | 'error' };
 export function sectionFields(profile: ExtractionProfile) {
   const allowed = new Set(profileFields(profile));
+  if (profile === 'party-person' || profile.startsWith('entity:') || profile.startsWith('authorization:')) return [{ id: profile, title: profile === 'party-person' ? 'Representative / member details' : profile.startsWith('authorization:') ? 'Authorization details' : 'Entity particulars', fields: [...allowed] }];
   if (profile === 'jurisdiction') return [{
     id: 'jurisdiction', title: 'Jurisdiction details', fields: [...allowed],
   }];
@@ -111,7 +113,7 @@ export function sameTranscription(a: Candidate, b: Candidate) {
 // over a minute.
 const apiQueue = new WorkQueue(8);
 const pageQueue = new WorkQueue(16);
-const roles: Role[] = ['property', 'executant', 'claimant', 'payment', 'link', 'unassigned'];
+const roles: Role[] = ['party-person', 'property', 'executant', 'claimant', 'payment', 'link', 'unassigned'];
 const linkFields = LINK_OPTIONS.flatMap(o => o.fields.map(f => f.id));
 const paymentFields = ['mode', 'amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee'];
 const extraFields = ['category', 'unit'];
@@ -142,6 +144,14 @@ export function profileFields(profile: ExtractionProfile): string[] {
   if (option) return profile === 'phase1:linkDoc'
     ? [...new Set([...option.fields.map(field => field.id), ...phaseOnePropertyFields, ...extraFields])]
     : option.fields.map(field => field.id);
+  if (profile === 'party-person') return PERSON_FIELDS.map(f => f.id);
+  if (profile.startsWith('entity:') || profile.startsWith('authorization:')) {
+    const side = profile.split(':')[1];
+    const type = profile.split(':')[2] as PartyType | undefined;
+    const catalog = type ? partyEntityFields(side as 'executant' | 'claimant', type) : PARTY_ENTITY_FIELDS;
+    const fields = [...new Set(catalog.filter(f => f.id.startsWith(side) && !f.hidden).map(f => f.id))];
+    return profile.startsWith('authorization:') ? fields.filter(id => /Authority|BoardResolution|ResolutionNo|Noc/.test(id)) : fields;
+  }
   if (profile === 'party:executant') return partyFields('executant');
   if (profile === 'party:claimant') return partyFields('claimant');
   if (profile === 'jurisdiction') return jurisdictionFields;
@@ -151,6 +161,8 @@ export function profileFields(profile: ExtractionProfile): string[] {
 
 const historicalTransactionFields = new Set(['consid', 'executionDate', 'stampValue', 'amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee']);
 function profileInstruction(profile: ExtractionProfile) {
+  if (profile === 'party-person') return 'Read only the selected person identity, relationship, designation, contact and complete postal address into person-prefixed fields with role=party-person, record=primary. Do not return organisation or ownership-party fields. Omit printed age: age is derived from DOB. Never infer authority from committee membership. If the source contains several different people, preserve distinct record identifiers for review; never combine their details.';
+  if (profile.startsWith('entity:') || profile.startsWith('authorization:')) return 'Read only the organisation particulars / authority references requested for this ' + profile.split(':')[1] + ' with that role and record=primary. Separate organisation identifiers, office and branch addresses from representative personal particulars. Do not return person, property, payment or historical party facts. Copy only visible evidence; do not infer an act or authorization.';
   const option = profileOption(profile);
   if (option) return profile === 'phase1:linkDoc'
     ? `This is a ${option.label} uploaded in Phase 1. For its own card fields use role="link". For every supported Phase 2 fact use role="property" and record="primary" — never role="link". Inspect any SCHEDULE OF PROPERTY especially carefully and return every visible property identifier and boundary, including flatStage, flatNo, flatFloorNo, apartmentName, superBuiltUpAreaSqFt, udsSqYards, flatBoundaryNorth, flatBoundarySouth, flatBoundaryEast and flatBoundaryWest when explicitly printed. Keep the apartment-level boundaries in boundaryNorth, boundarySouth, boundaryEast and boundaryWest, and the individual flat boundaries in the flatBoundary fields; never substitute one boundary set for the other. Return bltNo only for a subject-property identifier explicitly labelled PTIN, P.T.I. No., Property Tax Identification No., Property Tax ID or Assessment No.; do not use demand, receipt, survey, house-number or amount values. Return nearAdjacent only as Near or Adjacent when explicitly printed; return the house number alone in nearHNo. If it literally says "part open plot" or "part open place", category MUST be "Part open place"; use "Vacant Plot" only for a whole open/vacant plot. Do not return current executant, claimant, payment, sale consideration, stamp-paper value, or current execution-date facts from this historical/property record.`
@@ -166,13 +178,15 @@ function allowedByProfile(candidate: Candidate, profile: ExtractionProfile) {
   if (profile.startsWith('phase1:') && historicalTransactionFields.has(candidate.field)) return false;
   // Aadhaar age text is a point-in-time print. The dashboard derives a fresh,
   // user-editable age from its DOB instead of accepting that stale value.
-  if (profile.startsWith('party:') && /Age$/.test(candidate.field)) return false;
+  if ((profile.startsWith('party:') || profile === 'party-person') && /Age$/.test(candidate.field)) return false;
+  if (profile === 'party-person') return candidate.role === 'party-person' && candidate.field.startsWith('person');
+  if (profile.startsWith('entity:') || profile.startsWith('authorization:')) return candidate.role === profile.split(':')[1] && candidate.field.startsWith(profile.split(':')[1]);
   if (profile === 'party:executant') return candidate.role === 'executant' && candidate.field.startsWith('executant');
   if (profile === 'party:claimant') return candidate.role === 'claimant' && candidate.field.startsWith('claimant');
   if (profile === 'jurisdiction' || profile === 'property-schedule') return candidate.role === 'property';
   return true;
 }
-const catalog = ALL_FIELDS.map(f => `${f.id}: ${f.label}`).join('\n') + '\n' +
+const catalog = [...ALL_FIELDS, ...PERSON_FIELDS].map(f => `${f.id}: ${f.label}`).join('\n') + '\n' +
   'partyName, partyRelation, partyRelativeName, partyDob, partyAge, partyOccupation, partyMobile, partyAadhaar, partyPan, partyHNo, partyLocality, partyVillage, partyMandal, partyDistrict, partyState, partyPinCode: party details when seller/buyer role is unknown\n' +
   'mode: rtgs|cheque|dd|upi|cash|housing-loan; amount: payment amount; refNo: payment reference; bank; branch; date: payment date; payer; payee\ncategory: Vacant Plot|Open Place|Residential|Commercial|Flat|Demolished|Agricultural land|Part open place\nunit: Sq. Yards|Sq. Feet|Sq. Meters|Guntas|Acres|Cents';
 
@@ -185,7 +199,7 @@ For a single property/person/link/payment of a given role use record='primary'. 
 Use the allowed field catalog only. Supporting tax, NALA and passbook records may fill existing PROPERTY fields when the exact label supports them; do not fabricate new prose. Skip evidence that has no template field. Unknown category and unit are omitted. Keep printed alternate area figures separately. Never choose a unit just from a default.
 Dates may be normalized to YYYY-MM-DD only if complete and unambiguous; money to decimal digits. Preserve all punctuation and leading zeros in identifiers. The relation prefix (S/o, W/o, D/o, C/o) and the related person's name are separate fields (the Relation and RelativeName suffixes) — never combine them into one value. When a supported source value is printed in Telugu, populate the field value in clear English translation or faithful English transliteration (especially names, addresses, villages, mandals, districts, authorities and occupations); do not leave Telugu script in the input value. Preserve the original Telugu wording in the candidate quote for auditability. Do not translate unclear text or invent an English equivalent. No gender-to-occupation or PIN-to-district inference.
 Allowed fields:\n${catalog}
-Return only JSON: {"candidates":[{"field":"field id","value":"transcription","role":"property|executant|claimant|payment|link|unassigned","record":"primary or explicit record identifier","quote":"verbatim visible words including label","region":"precise label/location","handwritten":false,"historical":false}],"plan":null,"notes":[]}.
+Return only JSON: {"candidates":[{"field":"field id","value":"transcription","role":"property|executant|claimant|payment|link|unassigned|party-person","record":"primary or explicit record identifier","quote":"verbatim visible words including label","region":"precise label/location","handwritten":false,"historical":false}],"plan":null,"notes":[]}.
 When a property drawing is visible, plan can be {"record":"property record","linked":true,"bounds":[x,y,width,height],"drawing":{"lines":[{"points":[[x,y],[x,y]]}],"labels":[{"text":"exact text","x":0,"y":0,"rotation":0}],"scale":"exact printed scale or empty"}}. Bounds are the drawing-region rectangle on the full page in 0..1000 coordinates, enclosing plot, all dimensions, roads and direction symbol but excluding page title and parties. Drawing coordinates 0..1000 in a square region, preserving source proportions with equal x/y scale. Include roads, dimension strokes and direction symbol. Transcribe only the drawing, not old parties/signatures/page border. Do not redraw a generic rectangle, infer missing geometry from area or add an arrow not visible. If geometry cannot be traced confidently return plan=null. linked=true ONLY when this is within the old title deed. Notes explain unreadable regions briefly.`;
 
 function base64(bytes: Uint8Array) {
@@ -253,6 +267,7 @@ async function ask(parts: Part[], instruction: string, signal: AbortSignal, mode
 // here instead of trusting the model's own casing/wording.
 const SELECT_OPTIONS = new Map(ALL_FIELDS.filter(f => f.type === 'select' && f.options?.length).map(f => [f.id, f.options!]));
 function normalizeSelectValue(fieldId: string, value: string): string | null {
+  if (fieldId === 'flatStage') return flatStage(value);
   const options = SELECT_OPTIONS.get(fieldId);
   if (!options) return value;
   const exact = options.find(o => o === value);
@@ -267,7 +282,7 @@ function normalizeSelectValue(fieldId: string, value: string): string | null {
 export function cleanCandidate(raw: any, page: number, index: number): Candidate | null {
   if (!raw || typeof raw.field !== 'string' || typeof raw.value !== 'string' || !roles.includes(raw.role)) return null;
   const lookup = raw.field.replace(/^party/, 'executant');
-  if (!ALL_FIELDS.some(f => f.id === lookup) && !paymentFields.includes(raw.field) && !extraFields.includes(raw.field)) return null;
+  if (![...ALL_FIELDS, ...PERSON_FIELDS].some(f => f.id === lookup) && !paymentFields.includes(raw.field) && !extraFields.includes(raw.field)) return null;
   let value = raw.value.trim().replace(/\s+/g, ' ');
   if (!value || /^(?:unknown|null|none|n\/?a|not (?:found|available)|[_?]+)$/i.test(value)) return null;
   if (typeof raw.quote !== 'string' || !raw.quote.trim() || typeof raw.region !== 'string' || !raw.region.trim()) return null;
@@ -285,7 +300,7 @@ export function cleanCandidate(raw: any, page: number, index: number): Candidate
   // what role the model guessed (it sometimes reasons "property" since a house-tax or
   // NALA record describes the property) — the field id alone settles it.
   if (linkFields.includes(field)) raw.role = 'link';
-  if (SELECT_OPTIONS.has(lookup)) {
+  if (SELECT_OPTIONS.has(lookup) && !ALL_FIELDS.find(f => f.id === lookup)?.allowCustom) {
     const normalized = normalizeSelectValue(lookup, value);
     if (!normalized) return null;
     value = normalized;
@@ -294,13 +309,15 @@ export function cleanCandidate(raw: any, page: number, index: number): Candidate
   if (/Pan$/.test(field) && !/^[A-Z]{5}\d{4}[A-Z]$/.test(value)) return null;
   if (/Mobile$/.test(field) && !/^(?:\+91[ -]?)?\d{5}[ -]?\d{5}$/.test(value)) return null;
   if (/PinCode$/.test(field) && !/^\d{6}$/.test(value)) return null;
-  const isDate = ALL_FIELDS.find(f => f.id === lookup)?.type === 'date' || field === 'date';
+  const isDate = [...ALL_FIELDS, ...PERSON_FIELDS].find(f => f.id === lookup)?.type === 'date' || field === 'date';
   if (isDate && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) return null;
   const fieldType = ALL_FIELDS.find(f => f.id === lookup)?.type;
   if ((fieldType === 'number' || fieldType === 'money' || field === 'amount') && !/^\d+(?:\.\d+)?$/.test(value)) return null;
   if (field === 'mode' && !['rtgs','cheque','dd','upi','cash','housing-loan'].includes(value)) return null;
   if (field === 'category' && !['Vacant Plot','Open Place','Residential','Commercial','Flat','Demolished','Agricultural land','Part open place'].includes(value)) return null;
   if (field === 'unit' && !['Sq. Yards','Sq. Feet','Sq. Meters','Guntas','Acres','Cents'].includes(value)) return null;
+  if (raw.role === 'party-person' && !PERSON_FIELDS.some(f => f.id === field)) return null;
+  if (raw.role !== 'party-person' && field.startsWith('person')) return null;
   if (raw.role === 'executant' && !field.startsWith('executant')) return null;
   if (raw.role === 'claimant' && !field.startsWith('claimant')) return null;
   if (raw.role === 'unassigned' && !field.startsWith('party')) return null;
@@ -892,6 +909,7 @@ export async function extractUpload(input: File | File[], signal: AbortSignal, p
     const publish = (index: number, value: SourceResult) => {
       completed.set(index,value);
       const ordered = [...completed].sort(([a],[b])=>a-b).map(([,value])=>value);
+      if (profile === 'party-person' || profile.startsWith('entity:')) return;
       onPartial?.({ candidates: ordered.flatMap(r=>r.candidates), plans: ordered.flatMap(r=>r.plans), notes: [...notes,...ordered.flatMap(r=>r.notes)] });
     };
     const results = await Promise.allSettled(pages.map((page, pageIndex) => pageQueue.run(async () => {
@@ -992,6 +1010,12 @@ export async function extractUpload(input: File | File[], signal: AbortSignal, p
       else output.notes.push(`${pages[index].region} could not be read: ${readableError(result.reason).message}. Other successful regions were retained.`);
     });
     if (results.length && results.every(r => r.status === 'rejected')) throw new Error(output.notes.join(' '));
+    if (profile === 'party-person' || profile.startsWith('entity:')) {
+      const nameField = profile === 'party-person' ? 'personName' : profile.split(':')[1] + 'EntityName';
+      const names = new Set(output.candidates.filter(c => c.field === nameField).map(c => c.value.trim().toLowerCase()));
+      if (names.size > 1) { output.candidates = []; output.notes.push('This upload contains several people / organisations. Upload a crop or separate document for the selected record.'); }
+      onPartial?.(output);
+    }
     return output;
   } catch (error) { if (signal.aborted) throw error; throw readableError(error); }
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { FLAT_OPTIONS, propertyChoice } from './flat-options';
 import { ALL_FIELDS } from './fields';
 import { appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, labelFor, newDraft, plansFor, resolveDraft, type Draft, type Role, type SourceResult, WorkQueue } from './source-draft';
 import { extractUpload, fileHash } from './upload-extraction';
@@ -162,7 +163,7 @@ export default function UploadApp() {
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision
         ? download : { draftId: snapshot.id, revision: snapshot.revision, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
-        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+        const merged = await fillSaleDeed(mergeValues(state), variantFor(state.category, state.form.flatStage), rewritesFor(state), scheduleMergesFor(state));
         artifact = { ...artifact, docx: merged.blob };
       }
       if (kind === 'pdf' && !artifact.pdf) {
@@ -269,7 +270,7 @@ export default function UploadApp() {
           const records = ['consid','executionDate','stampValue'].includes(field.id) ? ['transaction'] : recordOptions(role).filter(r => r !== 'transaction'); if (!records.length) records.push('primary');
           return records.map(record => <label key={`${record}:${field.id}`}>{field.label}{records.length > 1 ? ` · ${record}` : ''}<input type={field.type === 'date' ? 'date' : 'text'} value={resolved.values[fieldKey(role, record, field.id)] || ''} onChange={e => edit(role, record, field.id, e.target.value)} /></label>);
         })}</div>
-        {draft.step === 0 && <label>Property category <select value={state.category} onChange={e => edit('property', propertyIds[0] || 'primary', 'category', e.target.value)}><option value="">Blank / not established</option>{['Vacant Plot','Residential','Commercial','Flat','Demolished','Agricultural land','Part open place'].map(category => <option key={category}>{category}</option>)}</select></label>}
+        {draft.step === 0 && <label>Property category <select value={propertyChoice(state.category, state.form.flatStage)} onChange={e => { const option = FLAT_OPTIONS.find(item => item.key === e.target.value); edit('property', propertyIds[0] || 'primary', 'category', option ? 'Flat' : e.target.value); if (option) edit('property', propertyIds[0] || 'primary', 'flatStage', option.stage); }}><option value="">Blank / not established</option>{['Vacant Plot','Open Place','Residential','Commercial','Demolished','Agricultural land','Part open place'].map(category => <option key={category}>{category}</option>)}{FLAT_OPTIONS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>}
         {draft.step === 1 && <div className="fields">{[...new Set(['primary', ...recordOptions('payment')])].map(record => ['mode','amount','refNo','bank','branch','date','payer','payee'].map(field => <label key={`${record}:${field}`}>{labelFor(field)} · {record}{field === 'mode' ? <select value={resolved.values[fieldKey('payment', record, field)] || ''} onChange={e => edit('payment', record, field, e.target.value)}><option value="">Blank</option>{['rtgs','cheque','dd','upi','cash','housing-loan'].map(mode => <option key={mode} value={mode}>{mode === 'housing-loan' ? 'Housing Loan' : mode.toUpperCase()}</option>)}</select> : <input type={field === 'date' ? 'date' : 'text'} value={resolved.values[fieldKey('payment', record, field)] || ''} onChange={e => edit('payment', record, field, e.target.value)} />}</label>))}</div>}
       </details>
       {(draft.step === 0 || draft.step === 2) && <details className="panel" open={draft.step === 2}><summary>Registration plan preview</summary>{previews.map(preview => <div key={preview.id}><p>{preview.error || preview.note}</p>{preview.svg && <img className="plan-preview" alt="Registration plan preview" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(preview.svg)}`} />}</div>)}</details>}

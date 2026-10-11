@@ -1,9 +1,11 @@
+import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
+import { flatStage, flatLabel } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
 // There is no seeded record: a field is blank until someone types into it, and
 // anything computed from a blank field reads as blank too, never as zero.
 
 import { STEPS, DEEDS, DRAFTS, CATEGORIES, RULES } from './reference';
-import { ALL_FIELDS, EMPTY_FORM, FLAT_BOUNDARY_FIELDS, FLAT_SCHEDULE_FIELDS, SCHEDULE_VARIANT, groupsForStep, type StructureDetails } from './fields';
+import { ALL_FIELDS, EMPTY_FORM, FLAT_BOUNDARY_FIELDS, FLAT_SCHEDULE_FIELDS, SCHEDULE_VARIANT, groupsForStep, type PartyPeople, type PartyType, type StructureDetails } from './fields';
 import type { DocKind } from './extract';
 import { newPayment, totalOf, netTotalOf, tdsTotalOf, recitalFor, type Payment } from './payments';
 import { instrumentIdForLegacyType } from './instruments';
@@ -90,6 +92,7 @@ export type AppState = {
   linkRecordsBySchedule: Record<string, ValueRecord[]>;
   additionalExecutants: ValueRecord[];
   additionalClaimants: ValueRecord[];
+  partyPeopleByParty?: Record<string, PartyPeople>;
   primaryClaimantId?: string;
   primaryExecutantId?: string;
   additionalSchedules: ScheduleRecord[];
@@ -226,7 +229,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS];
+const PROPERTY_IDS = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
@@ -363,20 +366,18 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     add('nearAdjacent', 'Choose whether the landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   }
   if (f.nearHNo && !['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
-  if (['Residential', 'Commercial', 'Flat'].includes(state.category)) {
+  if (['Residential', 'Commercial'].includes(state.category)) {
     ['bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
     addStructureDetails(state.structureDetailsBySchedule.primary, 'Structure Details', 3);
   }
   if (state.category === 'Flat') {
+    ['roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue'].forEach(id => add(id, 'The flat Annexure I-A requires this value.', 'Flat property record or manual entry.'));
+    if (flatStage(f.flatStage) === 'Finished') add('bearingHNo', 'The finished-flat schedule names its municipal house numbers.', 'Flat title record or municipal record.');
+    if (flatStage(f.flatStage) === 'Semi-Finished') { add('nearHNo', 'The semi-finished schedule identifies the nearby/adjacent house.', 'Flat title record or plan.'); add('nearAdjacent', 'Choose Near or Adjacent for the landmark house.', 'Flat title record or plan.'); }
+    if (f.flatStage && !flatStage(f.flatStage)) missing.push({ id: 'flat-stage-choice', label: 'Flat completion option', reason: 'Choose Finished Flat or Semi-finished Flat; the saved stage is retained until you choose.', source: 'Deed setup or flat particulars.', step: 0 });
     FLAT_SCHEDULE_FIELDS.forEach(id => add(id, 'The Flat schedule requires this detail.', 'Flat title record, apartment record or manual entry.', 3));
     FLAT_BOUNDARY_FIELDS.forEach(id => add(id, 'All four boundaries of the individual flat are required.', 'Flat plan, apartment record or manual entry.', 3));
-  }
-
-  for (const side of ['executant', 'claimant']) {
-    ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode']
-      .forEach(suffix => add(`${side}${suffix}`, 'The party recital requires this identity or address detail.', 'Aadhaar, PAN, address proof or party declaration'));
-    if (Number(f.consid) >= 5000000) add(`${side}Pan`, 'PAN is required for consideration of ₹50 lakh or more.', 'PAN card or party declaration');
   }
 
   const addRecordField = (record: ValueRecord, id: string, label: string, reason: string, source: string, step: number) => {
@@ -388,13 +389,24 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     }
   });
   for (const side of ['executant', 'claimant'] as const) {
-    const records = side === 'executant' ? state.additionalExecutants : state.additionalClaimants;
-    records.forEach((record, index) => {
-      ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode'].forEach(suffix => {
-        const id = `${side}${suffix}`;
-        addRecordField(record, id, `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 2}: ${fieldLabel(id)}`, 'Every party recital requires this identity or address detail.', 'Aadhaar, PAN, address proof or manual entry.', side === 'executant' ? 6 : 7);
+    partyRecords(state, side).forEach((record, index) => {
+      const values = record.values;
+      const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
+      const step = side === 'executant' ? 6 : 7;
+      const entity = isEntity(values, side);
+      const required = entity ? entityRequiredFields(side, values[side + 'PartyType'] as PartyType) : ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => side + suffix);
+      if (Number(f.consid) >= 5000000) required.push(side + (entity ? 'EntityPan' : 'Pan'));
+      required.forEach(field => {
+        if (index === 0) add(field, 'Complete the active party particulars.', 'Party document or manual entry.', step);
+        else addRecordField(record, field, (side === 'executant' ? 'Executant' : 'Claimant') + ' ' + (index + 1) + ': ' + fieldLabel(field), 'Complete the active party particulars.', 'Party document or manual entry.', step);
       });
-      if (Number(f.consid) >= 5000000) addRecordField(record, `${side}Pan`, `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 2}: PAN`, 'PAN is required for consideration of ₹50 lakh or more.', 'PAN card or manual entry.', side === 'executant' ? 6 : 7);
+      if (entity) {
+        const people = state.partyPeopleByParty?.[side + '|' + id];
+        if (!people?.representatives.length) missing.push({ id: side + '-' + id + '-representatives', label: 'Authorised representative required', reason: 'Add a person authorised to represent this organisation.', source: 'Authorization or resolution.', step });
+        for (const [i, person] of (people?.representatives || []).entries()) for (const field of ['name', 'relation', 'relationName', 'designation', 'dob', 'mobile', 'hNo', 'village', 'mandal', 'district', 'state', 'pinCode'] as const) {
+          if (!person[field]) missing.push({ id: person.id + '-' + field, label: 'Representative ' + (i + 1) + ': ' + field, reason: 'Complete the representative particulars.', source: 'ID / authorization or manual entry.', step });
+        }
+      }
     });
   }
   for (const side of ['executant', 'claimant'] as const) {
@@ -432,11 +444,13 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
     if (['Vacant Plot', 'Open Place', 'Agricultural land'].includes(record.category) || (record.values.nearHNo && !['Demolished', 'Part open place'].includes(record.category))) ids.push('nearAdjacent');
-    if (['Residential', 'Commercial', 'Flat'].includes(record.category)) {
+    if (['Residential', 'Commercial'].includes(record.category)) {
       ids.push('bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
       addStructureDetails(state.structureDetailsBySchedule[record.id], `Schedule ${index + 2}: Structure Details`, 3);
     }
     if (record.category === 'Flat') {
+      ['roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', ...(flatStage(record.values.flatStage) === 'Finished' ? ['bearingHNo'] : flatStage(record.values.flatStage) === 'Semi-Finished' ? ['nearHNo', 'nearAdjacent'] : [])].forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'The selected flat schedule and Annexure require this value.', 'Flat property record or manual entry.', 3));
+      if (record.values.flatStage && !flatStage(record.values.flatStage)) missing.push({ id: record.id + '-flat-stage-choice', label: `Schedule ${index + 2}: Flat completion option`, reason: 'Choose Finished Flat or Semi-finished Flat.', source: 'Property type selection.', step: 3 });
       [...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS].forEach(id =>
         addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'The Flat schedule requires this detail.', 'Flat title record, apartment record or manual entry.', 3));
     }
@@ -462,7 +476,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     });
   }
   for (const id of Object.keys(state.conflicts)) {
-    missing.push({ id: `conflict-${id}`, label: displayLabel(id), reason: 'Uploaded documents disagree about this value.', source: 'Review and choose the correct source value.', step: FIELD_STEPS[id] ?? 0 });
+    missing.push({ id: `conflict-${id}`, label: displayLabel(id), reason: 'Uploaded documents disagree about this value.', source: 'Review and choose the correct source value.', step: FIELD_STEPS[id] ?? (id.startsWith('executant') ? 6 : id.startsWith('claimant') ? 7 : 0) });
   }
   const invalid = (id: string, reason: string, step: number) => {
     if (!missing.some(item=>item.id===id)) missing.push({id,label:displayLabel(id),reason,source:'Correct or manually enter the verified value.',step});
@@ -510,7 +524,7 @@ export function todayISO(now = new Date()): string {
 
 /** Legal-party identity values are displayed and generated in deed-style capitals. */
 export function uppercasePartyIdentity(field: string, value: string): string {
-  return /^(?:executant|claimant)(?:Name|RelativeName)$/.test(field)
+  return /^(?:(?:executant|claimant)(?:Name|RelativeName|EntityName)|person(?:Name|RelationName))$/.test(field)
     ? value.toLocaleUpperCase('en-IN')
     : value;
 }
@@ -714,7 +728,14 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
 
   // ---- completeness --------------------------------------------------------
   const required = ALL_FIELDS.filter(x => !x.derived);
-  const applicable = required.filter(x => !x.only || x.only.includes(state.category));
+  const applicable = required.filter(x => {
+    if (x.only && !x.only.includes(state.category)) return false;
+    for (const side of ['executant', 'claimant'] as const) if (x.id.startsWith(side)) {
+      if (x.id === side + 'PartyType') return true;
+      return isEntity(f, side) ? activePartyFields(f, side).includes(x.id) : groupsForStep(side === 'executant' ? 6 : 7, '').some(g => g.fields.some(field => field.id === x.id));
+    }
+    return true;
+  });
   const filled = applicable.filter(x => has(f[x.id])).length;
   const pct = applicable.length ? Math.round((filled / applicable.length) * 100) : 0;
 
@@ -722,6 +743,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     if (id === 0) return !!(state.deedType && state.category && state.draft);
     if (id === 5) return payMatched;
     if (id === 3) return !!state.scheduleText;
+    if (id === 6 || id === 7) return !generationBlockers(state).some(item => item.step === id);
     const gs = groupsForStep(id, state.category);
     if (gs.length) {
       const fs = gs.flatMap(g => g.fields).filter(x => !x.derived);
@@ -751,7 +773,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const blockers = generationBlockers(state);
 
   const cur = STEPS[state.step];
-  const partyName = (side: 'executant' | 'claimant') => f[side + 'Name'] || '';
+  const partyName = (side: 'executant' | 'claimant') => partyDisplayName(f, side);
 
   return {
     state,
@@ -778,7 +800,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     deedLabel: deed ? deed.label : '',
     deedTelugu: deed ? deed.telugu : '',
     category: state.category,
-    categoryLabel: cat ? cat.label : '',
+    categoryLabel: state.category === 'Flat' ? flatLabel(f.flatStage) : cat ? cat.label : '',
     draft: state.draft,
     drafts,
     variant,

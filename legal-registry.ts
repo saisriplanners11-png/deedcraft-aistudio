@@ -34,12 +34,15 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   variantIds: [saleDefinition.variants[0].id], jurisdiction: 'Telangana',
   effectiveFrom: '2026-09-01', version: '1.0.0', status: 'approved',
-  templateVersionId: 'sale-deed-v3', approvedBy: 'Updated supplied reference',
+  templateVersionId: 'sale-deed-v4', approvedBy: 'Updated supplied reference',
   propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Agricultural land','Part open place'],
   requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'sale-deed-v4', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
+  version: '4.0.0', asset: 'sale-deed-template-v4.docx', sha256: '2438d11326af53b9e19c8a2b2fb5ce0780e20e6a9b4840b46e01bddced437462', immutable: true,
+}, {
   id: 'sale-deed-v3', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   version: '3.0.0', asset: 'sale-deed-template.docx', sha256: '1b90862161006e6505b5ad013642b2548169b300e065eb66f1cb9cda507ab9f4', immutable: true,
 }, {

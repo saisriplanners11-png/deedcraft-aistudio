@@ -1,11 +1,11 @@
-import { ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
+import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
 
-export const EXTRACTION_VERSION = 'evidence-v9-full-document-verification';
-export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned';
+export const EXTRACTION_VERSION = 'evidence-v11-final-flat-options';
+export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned' | 'party-person';
 export type Candidate = {
   id: string; field: string; value: string; role: Role; record: string;
   quote: string; page: number; region: string; handwritten: boolean;
@@ -47,6 +47,7 @@ export type Draft = {
   /** Optional for drafts saved before vendee allocations were introduced. */
   vendeeSharesBySchedule?: VendeeSharesBySchedule;
   vendorSharesBySchedule?: VendeeSharesBySchedule;
+  partyPeople?: Record<string, PartyPeopleIds>;
   /** Instrument identity is part of the draft snapshot and cannot be inferred from its fields. */
   instrumentId: InstrumentId;
   variantId: string;
@@ -69,6 +70,8 @@ export type Action =
   | { type: 'structure-details'; propertyId: string; value: StructureDetails }
   | { type: 'vendee-share'; scheduleId: string; claimantId: string; value: string }
   | { type: 'vendor-share'; scheduleId: string; executantId: string; value: string }
+  | { type: 'add-person'; side: 'executant' | 'claimant'; record: string; id: string; kind: 'representativeIds' | 'memberIds' }
+  | { type: 'remove-person'; side: 'executant' | 'claimant'; record: string; id: string }
   | { type: 'remove-party'; role: 'executant' | 'claimant'; record: string }
   | { type: 'instrument'; instrumentId: InstrumentId; variantId?: string }
   | { type: 'manual'; key: string; value: string }
@@ -77,12 +80,12 @@ export type Action =
 
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
-  if (action.type === 'load') return action.draft;
+  if (action.type === 'load') return migratePartyPeople(action.draft);
   if (action.type === 'step') return { ...draft, step: action.step };
   let next = draft;
   if (action.type === 'add') next = { ...draft, sources: [...draft.sources, action.source] };
   if (action.type === 'remove') next = { ...draft, sources: draft.sources.filter(s => s.id !== action.id) };
-  if (action.type === 'replace') next = { ...draft, sources: draft.sources.map(s => s.id === action.id ? { id: s.id, name: action.name, revision: s.revision + 1, hash: '', status: 'queued' } : s) };
+  if (action.type === 'replace') next = { ...draft, sources: draft.sources.map(s => s.id === action.id ? { id: s.id, name: action.name, revision: s.revision + 1, hash: '', status: 'queued', assignment: s.assignment, profile: s.profile } : s) };
   if (action.type === 'unassign') next = { ...draft, sources: draft.sources.map(s => s.id === action.id ? { ...s, assignment: undefined } : s) };
   if (action.type === 'assign') next = { ...draft, sources: draft.sources.map(s => s.id === action.id ? { ...s, assignment: { role: action.role, record: action.record, fromRecord: action.fromRecord } } : s) };
   if (action.type === 'add-property') next = { ...draft, propertyIds: draft.propertyIds.includes(action.id) || action.id === 'primary' ? draft.propertyIds : [...draft.propertyIds, action.id], activePropertyId: action.id };
@@ -97,6 +100,12 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     ...(draft.vendorSharesBySchedule || {}),
     [action.scheduleId]: { ...(draft.vendorSharesBySchedule?.[action.scheduleId] || {}), [action.executantId]: action.value },
   } };
+  if (action.type === 'add-person') {
+    const key = partyKey(action.side, action.record);
+    const people = draft.partyPeople?.[key] || { representativeIds: [], memberIds: [] };
+    next = { ...draft, partyPeople: { ...draft.partyPeople, [key]: { ...people, [action.kind]: [...new Set([...people[action.kind], action.id])] } } };
+  }
+  if (action.type === 'remove-person') next = removePerson(draft, action.side, action.record, action.id);
   if (action.type === 'remove-party') {
     const prefix = `${action.role}|${action.record}|`;
     const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith(prefix)));
@@ -111,8 +120,13 @@ export function draftReducer(draft: Draft, action: Action): Draft {
       if (action.role === 'executant') delete nextParties[action.record];
       return [scheduleId, nextParties];
     }));
-    next = { ...draft, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
-      sources: draft.sources.filter(source => source.assignment?.role !== action.role || source.assignment.record !== action.record) };
+    const people = draft.partyPeople?.[partyKey(action.role, action.record)];
+    const ids = [...(people?.representativeIds || []), ...(people?.memberIds || [])];
+    const partyPeople = { ...draft.partyPeople }; delete partyPeople[partyKey(action.role, action.record)];
+    for (const id of ids) for (const key of Object.keys(manual)) if (key.startsWith('party-person|' + id + '|')) delete manual[key];
+    for (const id of ids) for (const key of Object.keys(choices)) if (key.startsWith('party-person|' + id + '|')) delete choices[key];
+    next = { ...draft, partyPeople, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
+      sources: draft.sources.filter(source => !(source.assignment?.role === 'party-person' && ids.includes(source.assignment.record)) && (source.assignment?.role !== action.role || source.assignment.record !== action.record)) };
   }
   if (action.type === 'instrument') {
     const definition = definitionFor(action.instrumentId);
@@ -257,10 +271,15 @@ export function resolveDraft(draft: Draft) {
       values[ageKey] = ageFrom(dob, todayISO());
     }
   }
+  for (const [key, dob] of Object.entries(values)) if (key.startsWith('party-person|') && key.endsWith('|personDob')) {
+    const ageKey = key.replace(/personDob$/, 'personAge');
+    if (!(ageKey in draft.manual)) values[ageKey] = ageFrom(dob, todayISO());
+  }
   return { values, evidence, conflicts, unassigned };
 }
 
 export function appStateFor(draft: Draft): AppState {
+  draft = migratePartyPeople(draft);
   const { values, conflicts } = resolveDraft(draft);
   const records = new Map<string, Record<string, string>>();
   for (const [key, value] of Object.entries(values)) {
@@ -304,7 +323,14 @@ export function appStateFor(draft: Draft): AppState {
   const paymentRecords = forRole('payment');
   const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
-  const unresolvedFields = Object.keys(conflicts).filter(key => !(key in draft.manual)).map(key => key.split('|')[2]);
+  const unresolvedFields = Object.keys(conflicts).filter(key => {
+    if (key in draft.manual) return false;
+    const [role, record] = key.split('|');
+    if (role === 'party-person') return false; // person conflicts are resolved on that child only
+    if (role === 'executant') return record === primarySeller?.id;
+    if (role === 'claimant') return record === primaryBuyer?.id;
+    return true;
+  }).map(key => key.split('|')[2]);
   const derived = withDerived(form);
   for (const field of unresolvedFields) derived[field] = '';
   // Most parties are individuals related as S/o, and nearly every deed is
@@ -331,6 +357,7 @@ export function appStateFor(draft: Draft): AppState {
     linkRecordsBySchedule,
     additionalExecutants: sellers.filter(r => r !== primarySeller).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
     additionalClaimants: buyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
+    partyPeopleByParty: Object.fromEntries(Object.keys(draft.partyPeople || {}).map(key => [key, peopleFor(draft, key, { values, conflicts })])),
     primaryClaimantId: primaryBuyer?.id || 'primary',
     primaryExecutantId: primarySeller?.id || 'primary',
     additionalLinkDocuments: registeredLinks.slice(1),
@@ -374,4 +401,41 @@ export class WorkQueue {
     try { return await work(); }
     finally { const next = this.waiting.shift(); if (next) next(); else this.active--; }
   }
+}
+
+/** People remain subordinate to their organisation, never ownership parties. */
+export function peopleFor(draft: Draft, key: string, resolved: { values: Record<string, string>; conflicts?: Record<string, unknown> } = resolveDraft(draft)): PartyPeople {
+  const ids = draft.partyPeople?.[key];
+  const person = (id: string) => {
+    const blank = newPartyRepresentative();
+    return Object.fromEntries(Object.keys(blank).map(k => [k, k === 'id' ? id : resolved.values[fieldKey('party-person', id, personField(k))] || (k === 'relation' && !resolved.conflicts?.[fieldKey('party-person', id, 'personRelation')] ? 'S/O' : '')])) as typeof blank;
+  };
+  return { representatives: (ids?.representativeIds || []).map(person), members: (ids?.memberIds || []).map(person) };
+}
+function removePerson(draft: Draft, side: 'executant' | 'claimant', record: string, id: string): Draft {
+  const key = partyKey(side, record); const people = draft.partyPeople?.[key];
+  if (!people) return draft;
+  const keep = (key: string) => !key.startsWith('party-person|' + id + '|');
+  return { ...draft, partyPeople: { ...draft.partyPeople, [key]: { representativeIds: people.representativeIds.filter(p => p !== id), memberIds: people.memberIds.filter(p => p !== id) } }, manual: Object.fromEntries(Object.entries(draft.manual).filter(([k]) => keep(k))), choices: Object.fromEntries(Object.entries(draft.choices).filter(([k]) => keep(k))), sources: draft.sources.filter(s => s.assignment?.role !== 'party-person' || s.assignment.record !== id) };
+}
+/** Idempotent migration; legacy values are retained for recovery. */
+export function migratePartyPeople(draft: Draft): Draft {
+  const resolved = resolveDraft(draft); let changed = false;
+  const partyPeople = { ...draft.partyPeople }; const manual = { ...draft.manual };
+  const keys = [...new Set(Object.keys(resolved.values).filter(k => /^(executant|claimant)\|/.test(k)).map(k => k.split('|').slice(0, 2).join('|')))];
+  for (const key of keys) {
+    if (partyPeople[key]) continue;
+    const [side, record] = key.split('|'); const v = (suffix: string) => resolved.values[key + '|' + side + suffix] || '';
+    if (!v('PartyType') || v('PartyType') === 'Individual') continue;
+    let reps: any[] = [];
+    try { const parsed = JSON.parse(v('Representatives') || '[]'); if (Array.isArray(parsed)) reps = parsed.filter(p => p && typeof p === 'object'); } catch { /* retain malformed legacy value */ }
+    if (!reps.length && v('Name')) reps = [{ ...newPartyRepresentative(), name: v('Name'), relation: v('Relation'), relationName: v('RelativeName'), designation: v('SignatoryDesignation'), dob: v('Dob'), age: v('Age'), aadhaar: v('Aadhaar'), pan: v('Pan'), mobile: v('Mobile'), hNo: v('HNo'), locality: v('Locality'), village: v('Village'), mandal: v('Mandal'), district: v('District'), state: v('State'), pinCode: v('PinCode') }];
+    partyPeople[key] = { representativeIds: [], memberIds: [] }; changed = true;
+    for (const [index, p] of reps.entries()) {
+      const id = 'legacy-' + side + '-' + encodeURIComponent(record) + '-' + index;
+      partyPeople[key].representativeIds.push(id);
+      for (const k of Object.keys(newPartyRepresentative())) if (k !== 'id' && typeof p[k] === 'string' && p[k]) manual[fieldKey('party-person', id, personField(k))] = p[k];
+    }
+  }
+  return changed ? { ...draft, partyPeople, manual } : draft;
 }

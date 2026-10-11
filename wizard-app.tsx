@@ -1,10 +1,12 @@
+import { isEntity, partyDisplayName } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
+import { FLAT_OPTIONS, propertyChoice, flatLabel } from './flat-options';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
-  plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
-  type Draft,
+  peopleFor, plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
+  type Draft, type Action,
 } from './source-draft';
 import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
 import {
@@ -116,7 +118,7 @@ function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
   if (!review) return null;
   const { candidate } = review;
   const target = reviewTarget(review);
-  const label = ALL_FIELDS.find(field => field.id === candidate.field)?.label || candidate.field;
+  const label = [...ALL_FIELDS, ...PERSON_FIELDS].find(field => field.id === candidate.field)?.label || candidate.field;
   return <div className="dc-veil" role="dialog" aria-modal="true" aria-labelledby="unverified-review-title"
     style={{ position: 'fixed', inset: 0, zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(22,19,15,.44)', backdropFilter: 'blur(2px)' }}>
     <div className="dc-card" style={{ width: 'min(540px,100%)', background: C.paper, border: `1px solid ${C.rule}`, boxShadow: '0 24px 60px rgba(22,19,15,.28)', padding: '22px 24px 20px' }}>
@@ -194,17 +196,18 @@ function ScopedSectionUpload({ label, busy, onUpload }: { label: string; busy?: 
 /** The named passes a document goes through while it's being read, ticked off as each completes. */
 /** One role-scoped field group, bound to a specific record through the draft's manual-edit dispatch. */
 function RecordFieldGroup({
-  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues,
+  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
   label?: string;
   fallbackValues?: Record<string, string>;
+  hidePartyType?: boolean;
   /** When set, the first group renders a delete action for this whole record. */
   onDelete?: () => void;
   deleteLabel?: string;
 }) {
-  const groups = groupsForStep(step, category).map(group => {
+  const groups = groupsForStep(step, category).map(group => ({ ...group, fields: group.fields.filter(f => !hidePartyType || !f.id.endsWith('PartyType')) })).map(group => {
     if (step !== 4 || role !== 'property') return group;
     const rateIndex = group.fields.findIndex(field => field.id === 'govtRate');
     if (rateIndex < 0) return group;
@@ -352,43 +355,66 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
  * different record's — the same way LinkRecordCard scopes an upload to one row.
  */
 function PartyRecordCard({
-  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources,
+  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose,
 }: {
-  role: Role; record: string; category: string; step: number;
+  role: 'executant' | 'claimant'; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
-  label?: string; onDelete?: () => void;
-  onUpload: (files: File[]) => void;
-  busy?: boolean;
-  sources: Source[];
+  label?: string; onDelete?: () => void; onUpload: (files: File[]) => void; busy?: boolean; sources: Source[];
+  draft: Draft; dispatch: React.Dispatch<Action>;
+  upload: (files: File[], assignment: { role: Role; record: string }, profile: ExtractionProfile) => void;
+  choose: (key: string, candidateId: string) => void;
 }) {
-  const noun = role === 'executant' ? 'executant' : 'claimant';
-  const input = useRef<HTMLInputElement>(null);
-  const partyType = (resolved.values[fieldKey(role, record, `${role}PartyType`)] || 'Individual') as PartyType;
-  const entityFields = partyType === 'Individual' ? [] : partyEntityFields(role as 'executant' | 'claimant', partyType);
-  const entityForm = Object.fromEntries(entityFields.map(field => [field.id, resolved.values[fieldKey(role, record, field.id)] || '']));
-  const entityTitle = partyType === 'Firm / LLP' ? 'Firm / LLP details'
-    : partyType === 'Society / Trust' ? 'Registered society / trust details'
-    : partyType === 'Company' ? 'Company details' : 'Other entity / HUF details';
+  const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || 'Individual') as PartyType;
+  const entity = partyType !== 'Individual';
+  const people = peopleFor(draft, partyKey(role, record), resolved);
+  const society = partyType === 'Society / Association' || partyType === 'Society / Trust';
+  const entityFields = partyEntityFields(role, partyType).filter(f => !f.hidden).sort((a, b) => Number(b.id === role + 'EntityName') - Number(a.id === role + 'EntityName'));
+  const addressField = (id: string) => /Entity(?:Address|CommunicationAddress|CommunicationSame|HNo|Locality|Village|Mandal|District|State|PinCode|Landmark|BranchOffice)$/.test(id);
+  const same = resolved.values[fieldKey(role, record, role + 'EntityCommunicationSame')] === 'Yes';
+  const entityForm = Object.fromEntries(entityFields.map(f => [f.id, f.id === role + 'EntityCommunicationAddress' && same ? resolved.values[fieldKey(role, record, role + 'EntityAddress')] || '' : resolved.values[fieldKey(role, record, f.id)] || '']));
+  const personList = (kind: 'representativeIds' | 'memberIds') => {
+    const members = kind === 'memberIds';
+    const rows = members ? people.members : people.representatives;
+    return <Section title={members ? 'General body / managing committee members' : 'Authorised representatives'}>
+      <p>{members ? 'Committee membership is separate from authority to sign. Add signatories under Authorised representatives.' : 'Add every person authorised to represent this organisation. Each person has an independent ID upload and complete address.'}</p>
+      {rows.map((person, index) => {
+        const ownSources = draft.sources.filter(s => s.assignment?.role === 'party-person' && s.assignment.record === person.id);
+        const form = Object.fromEntries(PERSON_FIELDS.map(f => [f.id, resolved.values[fieldKey('party-person', person.id, f.id)] || (f.id === 'personRelation' ? 'S/O' : '')]));
+        const fields = members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS;
+        return <div className="representative-card" key={person.id} data-person-id={person.id}>
+          <div className="representative-heading"><b>{members ? 'Member' : 'Representative'} {index + 1}</b><button type="button" className="quiet" onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })}>Remove {members ? 'member' : 'representative'}</button></div>
+          <ScopedSectionUpload label={members ? 'member' : 'representative'} busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
+          <SourceFeedback sources={ownSources} />
+          <FieldGroup group={{ step, title: (members ? 'Member' : 'Representative') + ' ' + (index + 1) + ' details', cols: 3, fields }} form={form} setField={(id, value) => edit('party-person', person.id, id, value)} />
+          {fields.map(f => {
+            const key = fieldKey('party-person', person.id, f.id); const conflict = resolved.conflicts[key]; const evidence = resolved.evidence[key];
+            return conflict ? <div className="notice" key={key}><b>Review {f.label}</b>{conflict.map(c => <button type="button" key={c.id} className="quiet" onClick={() => choose(key, c.id)}>Use {c.value} — {c.sourceName}</button>)}</div> : evidence?.length ? <small className="person-evidence" key={key}>{f.label}: {evidence[0].sourceName} · {evidence[0].quote}</small> : null;
+          })}
+        </div>;
+      })}
+      <button type="button" className="quiet" onClick={() => { const id = crypto.randomUUID(); dispatch({ type: 'add-person', side: role, record, id, kind }); edit('party-person', id, 'personRelation', 'S/O'); }}>+ Add {members ? 'member' : 'representative'}</button>
+    </Section>;
+  };
   return <>
-    <Section title={`Upload party document${label ? ` — ${label}` : ''}`} telugu="పార్టీ పత్రం అప్‌లోడ్">
-      <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>
-        Upload the {noun}'s Aadhaar/ID proof, or the entity’s registration, incorporation, deed, resolution or authorization. Front and back may be uploaded separately. Only visibly supported identity, entity, authorization and address details are filled; anything not printed stays blank for review.
-      </p>
-      <label className="link-upload" aria-disabled={busy}>
-        <span>{busy ? 'Reading…' : 'Upload party / entity document'}</span>
-        <input ref={input} type="file" accept={ACCEPT} multiple disabled={busy} hidden
-          onChange={e => { const files = [...(e.target.files || [])]; if (files.length) onUpload(files); e.target.value = ''; }} />
-        <button type="button" className="gold" disabled={busy} onClick={() => input.current?.click()}>Choose file(s) or photo</button>
-      </label>
-      <SourceFeedback sources={sources} />
-    </Section>
-    <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} label={label}
-      onDelete={onDelete} deleteLabel={`Delete this ${noun}`} />
-    {entityFields.length > 0 && <FieldGroup
-      group={{ step, title: entityTitle, note: 'These particulars identify the legal entity. The individual details above are the authorized signatory / representative.', fields: entityFields }}
-      form={entityForm}
-      setField={(id, value) => edit(role, record, id, value)}
-    />}
+    <FieldGroup group={{ step, title: label || (role === 'executant' ? 'Executant' : 'Claimant'), fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType') }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => edit(role, record, id, value)} />
+    {entity ? <>
+      <Section title={society ? 'Society / association details' : partyType === 'Company' ? 'Company details' : 'Firm / entity details'}>
+        <ScopedSectionUpload label="entity particulars" busy={busy} onUpload={files => upload(files, { role, record }, ('entity:' + role + ':' + partyType) as ExtractionProfile)} />
+        <SourceFeedback sources={sources.filter(s => !s.profile?.startsWith('authorization:'))} />
+        <FieldGroup group={{ step, title: 'Organisation particulars', cols: 3, fields: entityFields.filter(f => !addressField(f.id)) }} form={entityForm} setField={(id, value) => edit(role, record, id, value)} />
+        <FieldGroup group={{ step, title: 'Office and communication addresses', cols: 3, fields: entityFields.filter(f => addressField(f.id) && f.id !== role + 'EntityCommunicationSame' && !(same && f.id === role + 'EntityCommunicationAddress')) }} form={entityForm} setField={(id, value) => edit(role, record, id, value)} />
+        <label className="entity-same-address"><input type="checkbox" checked={same} onChange={e => edit(role, record, role + 'EntityCommunicationSame', e.target.checked ? 'Yes' : 'No')} /> Same as registered office address</label>
+        <ScopedSectionUpload label="board resolution / authorization" busy={busy} onUpload={files => upload(files, { role, record }, ('authorization:' + role + ':' + partyType) as ExtractionProfile)} />
+        <SourceFeedback sources={sources.filter(s => s.profile?.startsWith('authorization:'))} />
+        {entityFields.map(f => { const key = fieldKey(role, record, f.id); return resolved.conflicts[key] ? <div className="notice" key={key}>Review {f.label}: {resolved.conflicts[key].map(c => <button className="quiet" type="button" key={c.id} onClick={() => choose(key, c.id)}>Use {c.value} — {c.sourceName}</button>)}</div> : null; })}
+      </Section>
+      {personList('representativeIds')}
+      {society && personList('memberIds')}
+    </> : <>
+      <Section title="Upload party document"><ScopedSectionUpload label="party identity" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} /></Section>
+      <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType />
+    </>}
+    {onDelete && <button type="button" className="quiet" onClick={onDelete}>Delete this {role}</button>}
   </>;
 }
 
@@ -456,18 +482,20 @@ function SchedulePreview({ merge }: { merge: ScheduleMerge }) {
 
 /** One compact, schedule-scoped type choice. It appears only until the type is
  * known; afterwards the user sees context, not the same question again. */
-function ScheduleTypeControl({ scheduleNumber, category, onChange }: { scheduleNumber: number; category: string; onChange: (category: string) => void }) {
+function ScheduleTypeControl({ scheduleNumber, category, stage, onChange }: { scheduleNumber: number; category: string; stage: string; onChange: (category: string, stage?: string) => void }) {
   const [changing, setChanging] = useState(false);
-  const selected = CATEGORIES.find(item => item.key === category);
+  const options = [...CATEGORIES.filter(item => item.key !== 'Flat'), ...FLAT_OPTIONS];
+  const choice = propertyChoice(category, stage);
+  const selected = options.find(item => item.key === choice);
   if (selected && !changing) return <div className="add-document-row" aria-label={`Schedule ${scheduleNumber} property type`}>
     <span><b>Schedule {scheduleNumber}</b> · {selected.label}</span>
     <button type="button" className="quiet" onClick={() => setChanging(true)}>Change type</button>
   </div>;
   return <div className="add-document-row" aria-label={`Schedule ${scheduleNumber} property type`}>
     <label className="field"><span>What is this property?</span>
-      <select value={category} onChange={event => { onChange(event.target.value); setChanging(false); }}>
+      <select value={choice} onChange={event => { const option = FLAT_OPTIONS.find(item => item.key === event.target.value); onChange(option ? 'Flat' : event.target.value, option?.stage); setChanging(false); }}>
         <option value="">Choose property type</option>
-        {CATEGORIES.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
+        {options.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
       </select>
     </label>
     {selected && <span style={{ fontSize: 12, color: C.muted }}>Changing type may change the fields required for this schedule.</span>}
@@ -478,7 +506,7 @@ function ScheduleSwitcher({ records, activeId, onSelect }: { records: ReturnType
   if (records.length < 2) return null;
   return <div className="add-document-row" aria-label="Property schedules">
     {records.map((record, index) => <button key={record.id} type="button" className={record.id === activeId ? 'primary' : 'quiet'} onClick={() => onSelect(record.id)}>
-      Schedule {index + 1}{record.category ? ` · ${record.category}` : ''}
+      Schedule {index + 1}{record.category ? ` · ${record.category === 'Flat' ? flatLabel(record.values.flatStage) : record.category}` : ''}
     </button>)}
   </div>;
 }
@@ -566,9 +594,7 @@ export default function WizardApp() {
   const snapshot = (): SavedDeed => ({
     id: draft.id,
     updatedAt: new Date().toISOString(),
-    claimantNames: [...new Set(Object.entries(resolved.values)
-      .filter(([key, value]) => key.startsWith('claimant|') && key.endsWith('|claimantName') && value.trim())
-      .map(([, value]) => value.trim()))],
+    claimantNames: [...new Set(partyRecords(state, 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean))],
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
@@ -640,7 +666,7 @@ export default function WizardApp() {
       label: option?.label || (assignment?.role === 'executant' ? 'Executant ID' : assignment?.role === 'claimant' ? 'Claimant ID' : 'Document'),
       names: files.map(file => file.name),
     });
-    const valid = () => !controller.signal.aborted && current.current.id === draftId;
+    const valid = () => !controller.signal.aborted && current.current.id === draftId && (assignment?.role !== 'party-person' || Object.values(current.current.partyPeople || {}).some(p => [...p.representativeIds, ...p.memberIds].includes(assignment.record)));
     const job = (patch: any) => dispatch({ type: 'job', draftId, sourceId, sourceRevision: 0, patch });
     dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'queued', assignment, profile } });
     setUploadSteps(s => ({ ...s, [sourceId]: [] }));
@@ -962,14 +988,14 @@ export default function WizardApp() {
   const executantIds = partyRecordIds('executant');
   const vendorShareEditor = executantIds.length > 1 && <PartySharesEditor
     side="Vendor"
-    parties={executantIds.map(record => ({ id: record, name: resolved.values[fieldKey('executant', record, 'executantName')] || '' }))}
+    parties={executantIds.map(record => ({ id: record, name: partyDisplayName(Object.fromEntries(ALL_FIELDS.filter(f => f.id.startsWith('executant')).map(f => [f.id, resolved.values[fieldKey('executant', record, f.id)] || ''])), 'executant') }))}
     schedules={propertyRecords}
     shares={draft.vendorSharesBySchedule || {}}
     onChange={(scheduleId, executantId, value) => dispatch({ type: 'vendor-share', scheduleId, executantId, value })}
   />;
   const shareEditor = claimantIds.length > 1 && <PartySharesEditor
     side="Vendee"
-    parties={claimantIds.map(record => ({ id: record, name: resolved.values[fieldKey('claimant', record, 'claimantName')] || '' }))}
+    parties={claimantIds.map(record => ({ id: record, name: partyDisplayName(Object.fromEntries(ALL_FIELDS.filter(f => f.id.startsWith('claimant')).map(f => [f.id, resolved.values[fieldKey('claimant', record, f.id)] || ''])), 'claimant') }))}
     schedules={propertyRecords}
     shares={draft.vendeeSharesBySchedule || {}}
     onChange={(scheduleId, claimantId, value) => dispatch({ type: 'vendee-share', scheduleId, claimantId, value })}
@@ -986,7 +1012,7 @@ export default function WizardApp() {
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
         const deedValues = { ...mergeValues(state), 'Include Prepared By': snapshot.manual.includePreparedBy === 'true' ? '1' : '' };
-        const merged = await fillSaleDeed(deedValues, variantFor(state.category), rewritesFor(state), scheduleMerges, templateSource);
+        const merged = await fillSaleDeed(deedValues, variantFor(state.category, state.form.flatStage), rewritesFor(state), scheduleMerges, templateSource);
         const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
           selectedPlanSvgs[record.id] ? [{ schedule: index + 1, svg: selectedPlanSvgs[record.id] }] : []
         ).map(async plan => ({ schedule: plan.schedule, png: await planPng(plan.svg) })));
@@ -1094,7 +1120,7 @@ export default function WizardApp() {
       {storageError && <p className="notice" role="alert">{storageError}</p>}
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{savedDeeds.map(deed =>
         <article className="saved-deed-card" key={deed.id}>
-          <div><h2>{deed.claimantNames?.join(', ') || 'Unnamed deed'}</h2><p>{deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p></div>
+          <div><h2>{partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || 'Unnamed deed'}</h2><p>{deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p></div>
           <div className="saved-deed-actions"><button type="button" className="primary" onClick={() => openSaved(deed)}>Continue / Edit</button><button type="button" onClick={() => void removeSaved(deed)}>Delete</button></div>
         </article>)}
       </div> : <div className="panel"><h2>No saved deeds yet</h2><p>Start a deed and your entries will be saved here automatically.</p></div>}
@@ -1148,6 +1174,12 @@ export default function WizardApp() {
               <span><b>Include Prepared By line</b><small style={{ display: 'block' }}>Adds “Prepared By: Gundlapelli Sampath (98662 70006)” after the witness signatures.</small></span>
             </label>
           </section>
+          <section className="dashboard-section" aria-label="Party summaries"><h2>Parties and representatives</h2>{(['executant', 'claimant'] as const).flatMap(side => partyRecords(state, side).map((party, index) => {
+            const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id;
+            const count = state.partyPeopleByParty?.[partyKey(side, id)]?.representatives.length || 0;
+            const open = notices.filter(n => n.step === (side === 'executant' ? 6 : 7)).length;
+            return <div className="party-summary" key={side + id}><b>{partyDisplayName(party.values, side) || 'Unnamed ' + side}</b><span>{party.values[side + 'PartyType'] || 'Individual'}{isEntity(party.values, side) ? ' · ' + count + ' representative(s)' : ''} · {open ? open + ' outstanding details on this side' : 'Complete'}</span><button type="button" className="quiet" onClick={() => goto(side === 'executant' ? 6 : 7)}>Edit {side}</button></div>;
+          }))}</section>
           {vendorShareEditor}
           {shareEditor}
           <section className="dashboard-section" aria-labelledby="workflow-title">
@@ -1171,6 +1203,7 @@ export default function WizardApp() {
         </div>}
 
         {step === 0 && <section className="panel">
+          <Section title="Property type" telugu="ఆస్తి రకం"><ScheduleTypeControl scheduleNumber={1} category={state.category} stage={state.form.flatStage || ''} onChange={(value, stage) => { edit('property', 'primary', 'category', value); if (stage) edit('property', 'primary', 'flatStage', stage); }} /></Section>
           <Section title="Deed type" telugu="దస్తావేజు రకం">
             <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Choose the legal instrument. Generation opens only when an effective, professionally approved reference template has been registered.</p>
             <div className="picker-grid">{INSTRUMENT_IDS.map(id => {
@@ -1203,7 +1236,7 @@ export default function WizardApp() {
           });
           return <>
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
-          <section className="panel"><ScheduleTypeControl scheduleNumber={activePropertyIndex + 1} category={category} onChange={value => edit('property', activePropertyId, 'category', value)} /></section>
+          <section className="panel"><ScheduleTypeControl scheduleNumber={activePropertyIndex + 1} category={category} stage={activeProperty?.values.flatStage || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, 'flatStage', stage); }} /></section>
           {!category ? <Empty>Choose this schedule's property type to add its documents.</Empty> : <>
           {options.map(option => {
             const related = sectionRecords(option.id);
@@ -1258,12 +1291,13 @@ export default function WizardApp() {
             const multipleProperties = propertyRecords.length > 1;
             return <section className="panel" key={record.id}>
               <h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}{record.category ? ` — ${record.category}` : ''}</h2>
+              <ScheduleTypeControl scheduleNumber={i + 1} category={record.category} stage={record.values.flatStage || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, 'flatStage', stage); }} />
               {multipleProperties && <div className="add-document-row"><button type="button" className="quiet" onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }}>Edit documents for Property {i + 1}</button></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} resolved={resolved} edit={edit}
                 fallbackValues={{ bltNo: id === 'primary' ? state.form.bltNo : record.values.bltNo || '' }} />
-              {['Residential', 'Commercial', 'Flat'].includes(record.category) && <StructureDetailsTable
+              {['Residential', 'Commercial'].includes(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
                 defaultRoof={record.values.roofMaterial || ''}
                 onChange={value => dispatch({ type: 'structure-details', propertyId: id, value })}
@@ -1321,6 +1355,7 @@ export default function WizardApp() {
               return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
                 label={all.length > 1 ? `${noun} ${i + 1}` : undefined}
                 onDelete={all.length > 1 && record !== 'primary' ? () => clearPartyRecord(role, record) : undefined}
+                draft={draft} dispatch={dispatch} upload={(files, assignment, profile) => void runUpload(files, assignment, profile)} choose={(key, candidateId) => dispatch({ type: 'choose', key, candidateId })}
                 onUpload={uploadFor(role, record)}
                 sources={draft.sources.filter(s => s.assignment?.role === role && s.assignment.record === record)}
                 busy={!!busySource} />;

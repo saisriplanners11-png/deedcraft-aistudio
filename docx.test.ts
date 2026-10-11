@@ -749,8 +749,8 @@ describe('sale deed template merge', () => {
     expect(first).not.toContain('PURCHASER ONE — 25%');
     expect(second).not.toContain('PURCHASER ONE — 60%');
     const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
-    expect(signatures).toMatch(/1\. ________________\n1\. ________________/);
-    expect(signatures).toMatch(/2\. ________________\n2\. ________________/);
+    expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(4);
+    expect(signatures).not.toMatch(/\d+\. ________________/);
     expect(signatures).not.toContain('VENDOR ONE');
     expect(signatures).not.toContain('PURCHASER ONE');
     expect(signatures).toContain('WITNESSES:');
@@ -780,7 +780,8 @@ describe('sale deed template merge', () => {
     expect(text).toContain('(1) FIRST BUYER — 70%; (2) SECOND BUYER — ____%');
     const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
     expect(signatures).toContain('________________');
-    expect(signatures).toContain('2. ________________');
+    expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(3);
+    expect(signatures).not.toMatch(/\d+\. ________________/);
     expect(signatures).not.toContain('ONLY VENDOR');
     expect(signatures).not.toContain('SECOND BUYER');
   });

@@ -1,3 +1,5 @@
+import { entityRecital, isEntity, partyDisplayName } from './party-entities';
+import { flatStage, flatVariant } from './flat-options';
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
@@ -38,6 +40,10 @@ export function mergeValues(state: AppState): Record<string, string> {
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
   out['Near / Adjacent'] = f.nearAdjacent || '';
   out['Municipal House Nos.'] = f.bearingHNo || '';
+  out['Municipality/Municipal Corporation/Gram Panchayat Name'] = f.permissionAuthorityName || '';
+  out['House Permission No.'] = f.permBuildingPermitNo || f.buildingPermitNo || '';
+  out['Stage'] = state.category === 'Flat' ? flatStage(f.flatStage) : out['Stage'] || '';
+  out['Plot Nos.'] = f.plotNo || '';
   const houseRows = state.structureDetailsBySchedule.primary?.rows || [];
   const firstStructure = houseRows.find(row => row.structureType && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType));
   out['Nature of House'] = (ROOF_NATURE_OPTIONS.includes(f.roofMaterial) ? f.roofMaterial : '') || (firstStructure?.structureType === 'Other / Custom Structure'
@@ -136,6 +142,9 @@ export function rewritesFor(state: AppState): Rewrite[] {
     replace: 'in the presence of the following witnesses.',
   });
   const paid = state.payments.filter(payment => payment.amount !== '');
+  // This alternate source sentence has no distinct supported payment mode.
+  // Actual transfers are emitted by their RTGS/NEFT/UPI/cheque records.
+  rewrites.push({ find: /Through Bank:\s*Amount of Rs\./i, replace: '', records: [] });
   // The v2 template contains one sample paragraph for each payment method.
   // Replace each sample with one cloned paragraph per actual payment, or remove
   // it entirely when that method was not used.
@@ -148,9 +157,9 @@ export function rewritesFor(state: AppState): Rewrite[] {
     'Housing Loan Branch': payment.branch || '',
     'Remitting Bank': [payment.bank, payment.branch].filter(Boolean).join(', '),
     Date: deedDate(payment.date),
-    'Claimant Name': payment.payer || state.form.claimantName || '',
+    'Claimant Name': payment.payer || partyDisplayName(state.form, 'claimant') || '',
     'CLAIMANT NAME': payment.payer || state.form.claimantName || '',
-    'Executant Name': payment.payee || state.form.executantName || '',
+    'Executant Name': payment.payee || partyDisplayName(state.form, 'executant') || '',
     'EXECUTANT NAME': payment.payee || state.form.executantName || '',
   });
   const v2PaymentParagraphs: Array<{ mode: Payment['mode']; find: RegExp; refName: string }> = [
@@ -191,7 +200,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
   }
   for (const side of ['executant', 'claimant'] as const) {
     const records = partyRecords(state, side);
-    if (records.length < 2) continue;
+    if (records.length < 2 && !records.some(record => isEntity(record.values, side))) continue;
     const schedules = scheduleRecords(state);
     const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
     rewrites.push({
@@ -205,7 +214,8 @@ export function rewritesFor(state: AppState): Rewrite[] {
           const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || '');
           return schedules.length === 1 ? `${cents === null ? '____' : cents / 100}%` : `Schedule ${scheduleIndex + 1}: ${cents === null ? '____' : cents / 100}%`;
         });
-        return { ...mergeValues({ ...state, form }), 'UNDIVIDED SHARE RECITAL': `Holding Undivided Share of ${allocations.join('; ')}` };
+        const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
+        return { ...mergeValues({ ...state, form }), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': records.length > 1 ? 'Holding Undivided Share of ' + allocations.join('; ') : '' };
       }),
     });
   }
@@ -320,9 +330,10 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     titleValues['P.T.I.No.'] = assessment;
     titleValues['P.T.I. No.'] = assessment;
     const permission = mapped(complete(['permissions'], ['permBuildingPermitNo', 'permissionAuthorityName']));
-    titleValues['House Permission No.'] = permission?.['House Permission No.'] || '';
+    titleValues['House Permission No.'] = permission?.['House Permission No.'] || record.values.buildingPermitNo || '';
     titleValues['Permission Date'] = permission?.['Permission Date'] || '';
     titleValues['Municipality/Gram Panchayat Name'] = permission?.['Municipality/Gram Panchayat Name'] || '';
+    titleValues['Municipality/Municipal Corporation/Gram Panchayat Name'] = titleValues['Municipality/Gram Panchayat Name'];
     titleValues['LRS Application No.'] = preferredField('lrsApplicationNo', ['landLayoutLrs', 'lrsApplication', 'layoutLrs']);
     titleValues['Application Date'] = deedDate(preferredField('lrsApplicationDate', ['landLayoutLrs', 'lrsApplication', 'layoutLrs']));
     titleValues['LRS Proceeding No.'] = preferredField('lrsProceedingNo', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']);
@@ -335,7 +346,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       const cents = vendeeShareCents(state.vendeeSharesBySchedule?.[record.id]?.[partyId] || '');
       return {
         partyNumber: index + 1,
-        name: uppercasePartyIdentity('claimantName', vendee.values.claimantName || ''),
+        name: partyDisplayName(vendee.values, 'claimant').toLocaleUpperCase('en-IN'),
         percentage: cents === null ? '' : String(cents / 100),
       };
     }) : undefined;
@@ -344,21 +355,21 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       const cents = vendeeShareCents(state.vendorSharesBySchedule?.[record.id]?.[partyId] || '');
       return {
         partyNumber: index + 1,
-        name: uppercasePartyIdentity('executantName', vendor.values.executantName || ''),
+        name: partyDisplayName(vendor.values, 'executant').toLocaleUpperCase('en-IN'),
         percentage: cents === null ? '' : String(cents / 100),
       };
     }) : undefined;
-    return { variant: variantFor(record.category), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
+    return { variant: variantFor(record.category, record.values.flatStage), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
   });
 }
 
 /** Which SCHEDULE OF PROPERTY block of the template this deed uses. */
-export const variantFor = (category: string) => SCHEDULE_VARIANT[category] || 'IF OPEN PLOT';
+export const variantFor = (category: string, stage = '') => category === 'Flat' ? flatVariant(stage) : SCHEDULE_VARIANT[category] || 'IF OPEN PLOT';
 
 /** Filename for the generated deed, identified by instrument and claimant. */
 export function deedFilename(state: AppState): string {
-  const claimant = state.form.claimantName || state.additionalClaimants
-    .map(record => record.values.claimantName).find(Boolean) || 'Unnamed deed';
+  const claimant = partyDisplayName(state.form, 'claimant') || state.additionalClaimants
+    .map(record => partyDisplayName(record.values, 'claimant')).find(Boolean) || 'Unnamed deed';
   const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
   return `${safe(state.deedType || 'Deed')}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
 }

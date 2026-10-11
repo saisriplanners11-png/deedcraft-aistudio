@@ -21,6 +21,7 @@ export type Field = {
   only?: string[];
   /** Retained for extraction and document generation, but not shown to drafters. */
   hidden?: boolean;
+  allowCustom?: boolean;
   /** Omit this field's tagged recital segment, rather than printing a blank, when no value is supplied. */
   omitWhenEmpty?: boolean;
 };
@@ -112,7 +113,7 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
   const C = side === 'executant' ? 'EXECUTANT' : 'CLAIMANT';
   const k = (n: string) => `${side}${n}`;
   return [
-    { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Firm / LLP', 'Society / Trust', 'Company', 'Others / HUF'], span: 2,
+    { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Firm / LLP', 'Society / Association', 'Company', 'Others / HUF'], span: 2,
       hint: 'Choose the legal capacity of this executant or claimant.' },
     { id: k('Name'), label: 'Full name', ph: `${C} NAME`, span: 2 },
     { id: k('Relation'), label: 'Relation', type: 'select', options: ['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'] },
@@ -133,25 +134,51 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
   ];
 };
 
-export type PartyType = 'Individual' | 'Firm / LLP' | 'Society / Trust' | 'Company' | 'Others / HUF';
+/** `Society / Trust` is retained only so previously saved drafts remain readable. */
+export type PartyType = 'Individual' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF';
 
-/**
- * Legal-entity particulars collected in addition to the individual/signatory
- * fields above. They deliberately have no Word-template placeholders: the
- * supplied sale-deed template only contains individual-party blanks, while
- * these source-backed facts remain available for review and future entity
- * recital templates.
- */
+/** An authorised signatory for a non-individual party, with each postal
+ * component retained separately for registration use. */
+export type PartyRepresentative = {
+  id: string; name: string; relation: string; relationName: string;
+  designation: string; dob: string; age: string; aadhaar: string; pan: string;
+  mobile: string; hNo: string; locality: string; village: string; mandal: string;
+  district: string; state: string; pinCode: string;
+};
+
+export const newPartyRepresentative = (): PartyRepresentative => ({
+  id: globalThis.crypto?.randomUUID?.() || `representative-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  name: '', relation: 'S/O', relationName: '', designation: '', dob: '', age: '', aadhaar: '', pan: '', mobile: '',
+  hNo: '', locality: '', village: '', mandal: '', district: '', state: '', pinCode: '',
+});
+
+/** Entity particulars feed the organisation recital; people are stored separately. */
 export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyType): Field[] => {
+  if (type === 'Individual') return [];
   const k = (name: string) => `${side}${name}`;
   const common = [
     { id: k('EntityName'), label: 'Entity name (English)', span: 2 as const },
     { id: k('EntityPan'), label: 'Entity PAN' },
     { id: k('EntityMobile'), label: 'Official mobile number', type: 'tel' as const },
+    { id: k('EntityEmail'), label: 'Email' },
+    { id: k('EntityIncorporationDate'), label: 'Date of incorporation', type: 'date' as const },
+    { id: k('EntityNature'), label: 'Nature of business / society' },
+    { id: k('EntityAadhaar'), label: 'Aadhaar no. (if any)' },
+    { id: k('EntityTin'), label: 'TIN (in case of builder)' },
+    { id: k('EntityTan'), label: 'TAN' },
+    { id: k('EntityIdProof'), label: 'ID proof', type: 'select' as const, options: ['Aadhaar', 'PAN', 'Registration certificate', 'Other'], allowCustom: true },
+    { id: k('EntityIdProofNo'), label: 'ID proof number' },
+    { id: k('EntityForm9798'), label: 'Form 97/98', type: 'select' as const, options: ['Yes', 'No'] },
     { id: k('EntityAddress'), label: 'Registered / principal office address', type: 'textarea' as const, span: 2 as const },
-    { id: k('SignatoryDesignation'), label: 'Signatory designation / role in entity', span: 2 as const },
+    { id: k('EntityCommunicationSame'), label: 'Same as registered office address', type: 'select' as const, options: ['Yes', 'No'] },
+    { id: k('EntityCommunicationAddress'), label: 'Communication address', type: 'textarea' as const, span: 2 as const },
+    ...(['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode', 'Landmark'] as const).map((suffix, index) => ({ id: k('Entity' + suffix), label: ['Door / house no.', 'Locality / street', 'Village / city / town', 'Mandal', 'District', 'State', 'PIN code', 'Landmark'][index] })),
+    { id: k('EntityBranchOffice'), label: 'Branch office address', type: 'textarea' as const, span: 2 as const },
+    { id: k('SignatoryDesignation'), label: 'Legacy signatory designation', hidden: true, span: 2 as const },
   ];
   if (type === 'Firm / LLP') return [
+    { id: k('FirmCin'), label: 'Corporation identification no. (if applicable)' },
+    { id: k('FirmDin'), label: 'DIN (if applicable)' },
     { id: k('FirmSubtype'), label: 'Firm sub-type', type: 'select', options: ['Partnership Firm', 'Limited Liability Partnership (LLP)'] },
     ...common,
     { id: k('FirmRegistrationNo'), label: 'ROF registration no. / LLPIN' },
@@ -161,17 +188,21 @@ export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyTyp
     { id: k('FirmGstin'), label: 'Firm GSTIN (optional)' },
     { id: k('FirmAuthority'), label: 'Partnership consent / authority resolution ref. & date', span: 2 as const },
   ];
-  if (type === 'Society / Trust') return [
-    { id: k('SocietyClassification'), label: 'Society / entity classification', type: 'select', options: ['Registered Society', 'Public Trust', 'Private Trust', 'Co-operative Society', 'Other registered entity'] },
-    ...common,
+  if (type === 'Society / Association' || type === 'Society / Trust') return [
+    { id: k('SocietyClassification'), label: 'Society / entity classification', type: 'select', options: ['Registered Society', 'Public Trust', 'Private Trust', 'Co-operative Society', 'Other registered entity'], allowCustom: true },
+    ...common.filter(f => !['EntityIncorporationDate', 'EntityTin', 'EntityIdProof', 'EntityIdProofNo', 'EntityForm9798'].some(suffix => f.id === k(suffix))),
     { id: k('SocietyRegistrationNo'), label: 'Society / trust registration no.' },
+    { id: k('SocietyRegistrationDate'), label: 'Date of registration', type: 'date' },
+    { id: k('SocietyRegisteredAct'), label: 'Registered under act', type: 'select', options: ['Societies Registration Act', 'Co-operative Societies Act', 'Other'], allowCustom: true },
+    { id: k('SocietyTenureFrom'), label: 'Society tenure from', type: 'date' },
+    { id: k('SocietyTenureTo'), label: 'Society tenure to', type: 'date' },
     { id: k('SocietyRegistrationYear'), label: 'Registration year', type: 'number' },
     { id: k('SocietyRegistrarOffice'), label: 'Registrar / district office' },
     { id: k('SocietyNoc'), label: 'Competent authority NOC / permission ref.' },
     { id: k('SocietyResolutionNo'), label: 'Governing-body resolution no. / authorization', span: 2 as const },
   ];
   if (type === 'Company') return [
-    { id: k('CompanyClassification'), label: 'Company classification', type: 'select', options: ['Private Limited Company', 'Public Limited Company', 'One Person Company', 'Section 8 Company', 'Other company'] },
+    { id: k('CompanyClassification'), label: 'Company classification', type: 'select', options: ['Private Limited Company', 'Public Limited Company', 'One Person Company', 'Section 8 Company', 'Other company'], allowCustom: true },
     ...common,
     { id: k('CompanyCin'), label: 'Corporate Identification Number (CIN)' },
     { id: k('CompanyDin'), label: 'Director Identification Number (DIN)' },
@@ -186,7 +217,7 @@ export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyTyp
 };
 
 export const PARTY_ENTITY_FIELDS: Field[] = ([
-  'Individual', 'Firm / LLP', 'Society / Trust', 'Company', 'Others / HUF',
+  'Individual', 'Firm / LLP', 'Society / Association', 'Society / Trust', 'Company', 'Others / HUF',
 ] as PartyType[]).flatMap(type => ['executant', 'claimant'].flatMap(side => partyEntityFields(side as 'executant' | 'claimant', type)));
 
 // Step 05 (payment) has no field group: a deed can recite any number of
@@ -294,9 +325,9 @@ export const GROUPS: Group[] = [
     step: 3,
     title: 'Flat / apartment particulars',
     telugu: 'ఫ్లాట్ వివరాలు',
-    note: 'Flat-specific details used in the IF FLAT schedule. The car parking phrase is included in the deed wording.',
+    note: 'The selected completion option controls the matching flat deed. Enter the parking area and building/title particulars from the supporting records.',
     fields: [
-      { id: 'flatStage', label: 'Flat stage', ph: 'Stage', only: ['Flat'] },
+      { id: 'flatStage', label: 'Flat stage', ph: 'Stage', type: 'select', options: ['Finished', 'Semi-Finished'], only: ['Flat'] },
       { id: 'flatNo', label: 'Flat number', ph: 'Flat No.', only: ['Flat'] },
       { id: 'flatFloorNo', label: 'Floor number', ph: 'Floor No.', only: ['Flat'] },
       { id: 'apartmentName', label: 'Apartment complex name', ph: 'Apartment Complex Name', span: 2, only: ['Flat'] },
@@ -305,7 +336,13 @@ export const GROUPS: Group[] = [
       { id: 'superBuiltUpAreaSqFt', label: 'Built-up area including common area (Sq. Ft.)', ph: 'Built-up Area', type: 'number', only: ['Flat'] },
       { id: 'carpetAreaSqFt', label: 'Carpet area (Sq. Ft.)', type: 'number', only: ['Flat'] },
       { id: 'parkingSlotNos', label: 'Parking slot no(s).', only: ['Flat'] },
-      { id: 'buildingPermitNo', label: 'Building permit number', only: ['Flat'] },
+      { id: 'parkingAreaSqFt', label: 'Car parking area (Sq. Ft.)', ph: ['Car Parking Area', '100'], type: 'number', only: ['Flat'] },
+      { id: 'stiltFloors', label: 'Number of stilt floors', ph: ['Stilt Floors', '1'], type: 'number', only: ['Flat'] },
+      { id: 'upperFloors', label: 'Number of upper floors', ph: ['Upper Floors', '5'], type: 'number', only: ['Flat'] },
+      { id: 'developmentDocNo', label: 'Development agreement-cum-GPA document number', ph: 'Document No.', only: ['Flat'] },
+      { id: 'developmentDocDate', label: 'Development agreement-cum-GPA date', ph: 'Document Date', type: 'date', only: ['Flat'] },
+      { id: 'supplementalDocNo', label: 'Supplemental agreement document number', ph: 'Supplemental Agreement No.', only: ['Flat'] },
+      { id: 'buildingPermitNo', label: 'Building permit number', only: ['Flat'], hint: 'Add the permission date and issuing local authority in Link Deed & Enclosures → Permissions.' },
     ],
   },
   {
@@ -451,3 +488,19 @@ export function groupsForStep(step: number, category: string): Group[] {
 export const EMPTY_FORM: Record<string, string> = Object.fromEntries(
   ALL_FIELDS.map(f => [f.id, ''])
 );
+export type PartyPeople = { representatives: PartyRepresentative[]; members: PartyRepresentative[] };
+export type PartyPeopleIds = { representativeIds: string[]; memberIds: string[] };
+export const partyKey = (side: string, record: string) => side + '|' + record;
+export const PERSON_FIELDS: Field[] = [
+  { id: 'personName', label: 'Name *', span: 2 },
+  { id: 'personRelation', label: 'Relation', type: 'select', options: ['S/O', 'W/O', 'D/O', 'C/O'] },
+  { id: 'personRelationName', label: "Father’s / spouse’s name" },
+  { id: 'personDesignation', label: 'Designation' },
+  { id: 'personDob', label: 'Date of birth', type: 'date' },
+  { id: 'personAge', label: 'Age', type: 'number' },
+  { id: 'personMobile', label: 'Mobile no.', type: 'tel' },
+  { id: 'personAadhaar', label: 'Aadhaar no.' },
+  { id: 'personPan', label: 'PAN' },
+  ...(['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'] as const).map((suffix, i) => ({ id: 'person' + suffix, label: ['Door / house no.', 'Locality / street', 'Village / city / town', 'Mandal', 'District', 'State', 'PIN code'][i] })),
+];
+export const personField = (key: string) => 'person' + key[0].toUpperCase() + key.slice(1);

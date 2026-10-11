@@ -1,4 +1,5 @@
 import React from 'react';
+import { flatStage } from './flat-options';
 import { css } from './css';
 import type { Field, Group } from './fields';
 import type { Conflict, FieldEvidence } from './logic';
@@ -101,7 +102,7 @@ export function Input({
   // A saved execution date may predate the month-only control and still include
   // a day. Display its year/month in the native month picker without losing it
   // until the drafter changes the field.
-  const shown = field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(rawShown) ? rawShown.slice(0, 7) : rawShown;
+  const shown = field.id === 'flatStage' ? flatStage(rawShown) || rawShown : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(rawShown) ? rawShown.slice(0, 7) : rawShown;
 
   return (
     <label style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
@@ -116,14 +117,17 @@ export function Input({
         ) : null}
         {sourceDocument ? <span style={css(`font-size:9px;color:${C.mutedSoft};max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`)} title={sourceDocument}>{sourceDocument}</span> : null}
       </span>
-      {field.type === 'select' ? (
+      {field.type === 'select' && field.allowCustom ? (
+        <><input list={suggestionsId} value={shown} onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{field.options?.map(o => <option key={o} value={o} />)}</datalist></>
+      ) : field.type === 'select' ? (
         <select
           value={shown}
           onChange={e => onChange(e.target.value)}
           style={css(`padding:7px 2px;border:0;border-bottom:1px solid ${C.goldLight};background:transparent;font-size:13.5px;color:${C.ink};outline:none`)}
         >
           <option value=""></option>
-          {(field.options || []).map(o => (
+            {field.id === 'flatStage' && shown && !field.options?.includes(shown) && <option value={shown}>Unverified: {shown}</option>}
+            {(field.options || []).map(o => (
             <option key={o} value={o}>{o}</option>
           ))}
         </select>

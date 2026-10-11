@@ -13,7 +13,9 @@
     "test:e2e": "node qa/section-upload-flow.mjs",
     "test:plan-e2e": "node qa/property-plan-flow.mjs",
     "test:exact-plan-e2e": "node qa/exact-reference-flow.mjs",
-    "benchmark": "node benchmark-runner.mjs benchmarks/manifest.json benchmarks/report.json"
+    "benchmark": "node benchmark-runner.mjs benchmarks/manifest.json benchmarks/report.json",
+    "test:entity-e2e": "node qa/entity-party-flow.mjs",
+    "test:flat-e2e": "node qa/flat-template-flow.mjs"
   },
   "keywords": [],
   "author": "",

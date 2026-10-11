@@ -12,12 +12,15 @@
 //      <IF DIMOLISHED HOUSE> and <IF PART OPEN PLACE>.
 //      The variant the property category selects is kept; the rest are removed.
 
-import { loadSaleDeedTemplate } from './template';
-import { STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
+import { loadSaleDeedTemplate, loadTemplate } from './template';
+import { ALL_FIELDS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
+import { flatVariant } from './flat-options';
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF FLAT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
+const FLAT_VARIANTS = ['IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
+const ALL_VARIANTS = [...VARIANTS, ...FLAT_VARIANTS];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
-const STRUCTURAL_TAGS = new Set([...VARIANTS, 'FOR ALL THE DOCUMENTS'].map(value => value.toLowerCase()));
+const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'FOR ALL THE DOCUMENTS', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE'].map(value => value.toLowerCase()));
 const LEGACY_TEMPLATE_TAGS = new Set([
   'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
@@ -335,11 +338,13 @@ export async function validateSaleDeedTemplate(
       errors.push('Template is missing a readable Word document body.');
       return empty;
     }
-    const body = xml.slice(bodyOpen + '<w:body>'.length, bodyEnd);
+    const prepared = prepareTemplate(xml.slice(bodyOpen + '<w:body>'.length, bodyEnd));
+    const body = prepared.body;
     const children = topLevelChildren(body);
     const paragraphs = children.map(child => plainText(body.slice(child.start, child.end)).trim());
-    for (const marker of VARIANTS) if (!paragraphs.includes(`<${marker}>`)) errors.push(`Template is missing the <${marker}> schedule marker.`);
-    const markerIndexes = VARIANTS.map(marker => paragraphs.indexOf(`<${marker}>`)).filter(index => index >= 0);
+    for (const marker of VARIANTS.filter(marker => marker !== 'IF FLAT')) if (!paragraphs.includes(`<${marker}>`)) errors.push(`Template is missing the <${marker}> schedule marker.`);
+    if (!paragraphs.includes('<IF FLAT>')) for (const marker of FLAT_VARIANTS) if (!paragraphs.includes(`<${marker}>`)) errors.push(`Template is missing the <${marker}> schedule marker.`);
+    const markerIndexes = ALL_VARIANTS.map(marker => paragraphs.indexOf(`<${marker}>`)).filter(index => index >= 0);
     const firstMarker = markerIndexes.length ? Math.min(...markerIndexes) : -1;
     const lastMarker = markerIndexes.length ? Math.max(...markerIndexes) : -1;
     const flowStart = paragraphs.findIndex(text => text.startsWith('1. FLOW OF TITLE & LINK DEED DETAILS:'));
@@ -366,7 +371,13 @@ export async function validateSaleDeedTemplate(
     if (!referenceDocument) throw new Error('The built-in template is missing word/document.xml.');
     const supported = angleTags(new TextDecoder().decode(referenceDocument.data))
       .filter(tag => !STRUCTURAL_TAGS.has(norm(tag)));
+    if (!referenceBytes) {
+      const legacy = await readZip(await loadTemplate('sale-deed-v3'));
+      const legacyDoc = legacy.find(entry => entry.name === 'word/document.xml');
+      if (legacyDoc) supported.push(...angleTags(new TextDecoder().decode(legacyDoc.data)).filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supported.some(value => norm(value) === norm(tag))));
+    }
     const supportedByName = new Map(supported.map(tag => [norm(tag), tag]));
+    for (const field of ALL_FIELDS) for (const tag of field.ph ? Array.isArray(field.ph) ? field.ph : [field.ph] : []) if (!supportedByName.has(norm(tag))) supportedByName.set(norm(tag), tag);
     const detectedPlaceholders = customTags.filter(tag => supportedByName.has(norm(tag)));
     const unknown = customTags.filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)) && !LEGACY_TEMPLATE_TAGS.has(norm(tag)));
     if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
@@ -393,6 +404,13 @@ function paragraphLike(sample: string, text: string, alignment?: 'left' | 'cente
   }
   const rPr = sample.match(/<w:rPr(?:\s[^>]*)?>[\s\S]*?<\/w:rPr>/)?.[0] ?? '';
   return `${open}${pPr}<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+}
+
+function keepWithNext(paragraph: string): string {
+  if (/<w:keepNext\b/.test(paragraph)) return paragraph.replace(/<w:keepNext\b[^>]*\/>/, '<w:keepNext/>');
+  return /<w:pPr(?:\s[^>]*)?>/.test(paragraph)
+    ? paragraph.replace(/<w:pPr(?:\s[^>]*)?>/, tag => tag + '<w:keepNext/>')
+    : paragraph.replace(/<w:p(?:\s[^>]*)?>/, tag => tag + '<w:pPr><w:keepNext/></w:pPr>');
 }
 
 /** Insert uploaded supporting evidence before the schedule's market statement. */
@@ -517,6 +535,13 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   // Apply structural recitals first, then merge placeholders into their own runs.
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)) && (!rw.when || rw.when(p)));
   if (repeat) return repeat.records!.map((record, index) => {
+    if (repeat.partyRole && record['ENTITY RECITAL']) {
+      const originalClosing = plainText(p).match(/\(Hereinafter[\s\S]*$/i)?.[0];
+      const closing = index === repeat.records!.length - 1 ? originalClosing || (repeat.partyRole === 'executant' ? '(Hereinafter called the "VENDOR/S") of the ONE PART.' : '(Hereinafter called the "VENDEE/S") of the OTHER PART.') : '';
+      const recital = (repeat.records!.length > 1 ? (index + 1) + '. ' : '') + record['ENTITY RECITAL'] + (record['UNDIVIDED SHARE RECITAL'] ? ', ' + record['UNDIVIDED SHARE RECITAL'] : '') + (closing ? ', ' + closing : '.');
+      const paragraph = replaceRunText(p, /[\s\S]+/, () => recital);
+      return fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([k, v]) => [norm(k), v] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
+    }
     let paragraph = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
     if (repeat.partyRole && record['UNDIVIDED SHARE RECITAL']) {
       const panField = repeat.partyRole === 'executant' ? /<Executant PAN>/i : /<Claimant PAN>/i;
@@ -570,6 +595,7 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     values.get(norm(match[1])) ? match[0] : '');
   p = replaceRunText(p, /\s+on\s+<Date>/gi, match =>
     values.get(norm('Date')) ? match[0] : '');
+  if (!values.get(norm('District Registrar'))) p = replaceRunText(p, /\s+and\s+within the Registration District:\s*<District Registrar>/gi, () => '');
   p = removeEmptyFields(p, values, missing);
   p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
@@ -603,6 +629,8 @@ function markConsiderationRows(xml: string): string {
 function removeOptionalTitleRecitals(body: string, values: Map<string, string>, variant: string): string {
   const has = (...names: string[]) => names.every(name => !!values.get(norm(name)));
   const optional: Array<{ test: RegExp; keep: () => boolean }> = [
+    { test: /jointly executed a Registered Development Agreement/i, keep: () => has('Document No.', 'Document Date') },
+    { test: /was allotted to the share of the Vendor/i, keep: () => has('Supplemental Agreement No.') },
     { test: /Registered Deed:/i, keep: () => has('Link Doc Type', 'Link Doct.No.') },
     { test: /Vacant Land Tax\/Assessment/i, keep: () => has('V.L.T. No.') },
     { test: /Approved Layout:/i, keep: () => has('Layout File No.') },
@@ -648,6 +676,98 @@ function selectOperativeClauses(body: string, variant: string): string {
   return kept.map(child => body.slice(child.start, child.end)).join('');
 }
 
+type PreparedTemplate = { body: string; titles: Record<string, string>; clauses: Record<string, string> };
+
+/** Use one fresh source-styled list per schedule: the final reference splits
+ * its semi-finished clauses across lists that start at 1, 5 and 13. */
+function restartClauseNumbering(block: string, entries: Entry[]): string {
+  const first = block.match(/<w:numId\b[^>]*w:val="(\d+)"[^>]*\/>/);
+  if (!first) return block;
+  const numbering = entries.find(entry => entry.name === 'word/numbering.xml');
+  if (!numbering) throw new Error('Template is missing its clause numbering definitions.');
+  let xml = new TextDecoder().decode(numbering.data);
+  const definitions = [...xml.matchAll(/<w:num\b[^>]*w:numId="(\d+)"[^>]*>[\s\S]*?<\/w:num>/g)];
+  const original = definitions.find(match => match[1] === first[1]);
+  const abstract = original?.[0].match(/<w:abstractNumId\b[^>]*w:val="(\d+)"/);
+  if (!abstract) throw new Error('Template clause numbering is damaged.');
+  const id = Math.max(0, ...definitions.map(match => Number(match[1]))) + 1;
+  const definition = `<w:num w:numId="${id}"><w:abstractNumId w:val="${abstract[1]}"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`;
+  xml = xml.replace('</w:numbering>', definition + '</w:numbering>');
+  numbering.data = new TextEncoder().encode(xml);
+  return block.replace(/<w:numId\b[^>]*w:val="\d+"[^>]*\/>/g, `<w:numId w:val="${id}"/>`);
+}
+
+/** The supplied final draft has complete flat deeds and unmarked land schedules.
+ * Keep its actual XML paragraphs/tables, arranging them into the merge contract. */
+function prepareTemplate(body: string): PreparedTemplate {
+  // Numeric examples are editable slots, including legacy single-digit tags.
+  body = body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (/Stilt|Upper Floors/.test(plainText(paragraph))) {
+      paragraph = replaceRunText(paragraph, /<1>/g, () => '<Stilt Floors>');
+      paragraph = replaceRunText(paragraph, /<5>/g, () => '<Upper Floors>');
+    }
+    if (/Car Parking/i.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, /<100>/g, () => '<Car Parking Area>');
+    if (/RTGS\/NEFT:/i.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, /Transaction No\.\/UTR No\.(?=\s+dated)/i, () => 'Transaction No./UTR No. <Utr/Reference No.>');
+    return paragraph;
+  });
+  const children = topLevelChildren(body);
+  const chunks = children.map(child => body.slice(child.start, child.end));
+  const text = chunks.map(chunk => plainText(chunk).trim());
+  const titles: Record<string, string> = {}, clauses: Record<string, string> = {};
+  const land = text.indexOf('<IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE>');
+  if (land < 0 || text.includes('<IF OPEN PLACE>')) return { body, titles, clauses };
+  const house = text.indexOf('<IF HOUSE>');
+  const semi = text.indexOf('<IF FLAT SEMI FINISHED>');
+  const finished = text.indexOf('<IF FLAT FINISHED>');
+  const tail = text.findIndex((value, index) => index > finished && value === 'DECLARATION');
+  const flow = text.findIndex(value => /^(?:1\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:/.test(value));
+  const payment = text.findIndex(value => /^2\.\s*CONSIDERATION & PAYMENT TERMS:/.test(value));
+  const landSchedules = text.map((value, index) => value === 'SCHEDULE OF PROPERTY' && index > land && index < house ? index : -1).filter(index => index >= 0);
+  const houseSchedule = text.findIndex((value, index) => value === 'SCHEDULE OF PROPERTY' && index > house && index < semi);
+  if (flow < 0 || payment <= flow || landSchedules.length !== 4 || houseSchedule < 0 || semi <= house || finished <= semi || tail < 0) throw new Error('Final template deed sections are missing or damaged.');
+  const join = (start: number, stop: number) => chunks.slice(start, stop).join('');
+  const trimBlock = (start: number, stop: number) => {
+    while (stop > start && !text[stop - 1] && !/<w:(?:tbl|drawing|br)\b/.test(chunks[stop - 1])) stop--;
+    return join(start, stop);
+  };
+  const marker = (name: string) => paragraphLike(chunks[semi], `<${name}>`);
+  const schedules: Record<string, string> = {};
+  const landNames = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
+  landNames.forEach((name, index) => {
+    schedules[name] = trimBlock(landSchedules[index], landSchedules[index + 1] ?? house);
+    clauses[name] = trimBlock(land + 1, landSchedules[0]);
+  });
+  schedules['IF HOUSE'] = trimBlock(houseSchedule, semi);
+  clauses['IF HOUSE'] = trimBlock(house + 1, houseSchedule);
+  for (const [name, start, stop] of [['IF FLAT SEMI FINISHED', semi, finished], ['IF FLAT FINISHED', finished, tail]] as const) {
+    const pay = text.findIndex((value, index) => index > start && index < stop && /^2\.\s*CONSIDERATION & PAYMENT TERMS:/.test(value));
+    const operative = text.findIndex((value, index) => index > pay && index < stop && /^3\.\s*OPERATIVE CLAUSES & COVENANTS:/.test(value));
+    const schedule = text.findIndex((value, index) => index > operative && index < stop && value === 'SCHEDULE OF PROPERTY');
+    if (pay < 0 || operative < 0 || schedule < 0) throw new Error(`Final template ${name} sections are missing or damaged.`);
+    titles[name] = join(start + 1, pay).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+      /^(?:1\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:/.test(plainText(paragraph).trim())
+        ? replaceRunText(paragraph, /^(?:1\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:/, () => '1. FLOW OF TITLE & LINK DEED DETAILS:') : paragraph);
+    // The supplemental agreement is independent of the registered title deed.
+    titles[name] = titles[name].replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+      /was allotted to the share of the Vendor/i.test(plainText(paragraph))
+        ? replaceRunText(paragraph, /<Link Doct\.No\.>/g, () => '<Supplemental Agreement No.>') : paragraph);
+    clauses[name] = trimBlock(operative, schedule);
+    schedules[name] = trimBlock(schedule, stop);
+  }
+  return { body: join(0, land) + Object.entries(schedules).map(([name, block]) => marker(name) + block).join('') + join(tail, chunks.length), titles, clauses };
+}
+
+function selectedTemplateVariant(variant: string, markers: Map<string, number>, values: Record<string, string>): string {
+  if (markers.has(variant)) return variant;
+  if (FLAT_VARIANTS.includes(variant) && markers.has('IF FLAT')) return 'IF FLAT';
+  if (variant === 'IF FLAT') {
+    const selected = flatVariant(values.Stage || '');
+    if (markers.has(selected)) return selected;
+    throw new Error('Choose Finished Flat or Semi-finished Flat before downloading this deed.');
+  }
+  throw new Error(`Template does not contain the selected ${variant} schedule.`);
+}
+
 // ------------------------------------------------------------------- the merge
 
 /**
@@ -688,17 +808,17 @@ export async function scheduleText(
   const xml = new TextDecoder().decode(doc.data);
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  const body = xml.slice(bodyStart, bodyEnd);
+  const body = prepareTemplate(xml.slice(bodyStart, bodyEnd)).body;
 
   const children = topLevelChildren(body);
   const markerAt = new Map<string, number>();
   children.forEach((c, i) => {
     const t = plainText(body.slice(c.start, c.end)).trim();
-    for (const v of VARIANTS) if (t === `<${v}>`) markerAt.set(v, i);
+    for (const v of ALL_VARIANTS) if (t === `<${v}>`) markerAt.set(v, i);
   });
-  if (!markerAt.has(variant)) return '';
+  variant = selectedTemplateVariant(variant, markerAt, values);
 
-  const order = VARIANTS
+  const order = ALL_VARIANTS
     .filter(v => markerAt.has(v))
     .map(v => ({ v, i: markerAt.get(v)! }))
     .sort((a, b) => a.i - b.i);
@@ -778,12 +898,10 @@ function addPartySignatureLines(body: string, values: Map<string, string>, rewri
   const heading = topLevelChildren(body).find(child =>
     /SIGN\/S OF VENDOR\/S[\s\S]*SIGN\/S OF VENDEE\/S/i.test(plainText(body.slice(child.start, child.end)))
   );
-  if (!heading) throw new Error('Template signature headings are missing; party signatures could not be numbered.');
-  const label = (index: number, numbered: boolean) =>
-    `${numbered ? `${index + 1}. ` : ''}________________`;
+  if (!heading) throw new Error('Template signature headings are missing; party signature lines could not be placed.');
   const lines = Array.from({ length: Math.max(vendors.length, vendees.length) }, (_, index) => {
-    const vendor = index < vendors.length ? label(index, vendors.length > 1) : '';
-    const vendee = index < vendees.length ? label(index, vendees.length > 1) : '';
+    const vendor = index < vendors.length ? '________________' : '';
+    const vendee = index < vendees.length ? '________________' : '';
     const cell = (value: string) => `<w:tc><w:tcPr><w:tcW w:w="4500" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r></w:p></w:tc>`;
     return `<w:tr>${cell(vendor)}${cell(vendee)}</w:tr>`;
   }).join('');
@@ -808,6 +926,12 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   const filled = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
     let paragraph = original;
+    // Keep the house schedule opening and floor-table heading with their content.
+    if (/SCHEDULE OF PROPERTY|Description of the property hereby sold|^\s*All that the\b|BUILDING\s*\/\s*FLOOR DETAILS/i.test(text) && !/<w:keepNext\b/.test(paragraph)) {
+      paragraph = /<w:pPr(?:\s[^>]*)?>/.test(paragraph)
+        ? paragraph.replace(/<w:pPr(?:\s[^>]*)?>/, tag => tag + '<w:keepNext/>')
+        : paragraph.replace(/<w:p(?:\s[^>]*)?>/, tag => tag + '<w:pPr><w:keepNext/></w:pPr>');
+    }
     if (text.includes('<Nature of House>') && /roof house/i.test(text)) {
       paragraph = replaceRunText(paragraph, /<Nature of House>\s+roof house/gi,
         () => values['Nature of House'] ? '<Nature of House>' : 'house');
@@ -843,10 +967,16 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   // The revised draft's five-column schedule table contains example floors.
   // Use its first body row as the styled prototype for the actual floor count.
   const withFloorTable = filled.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
-    if (!/Floor No\./i.test(plainText(table)) || !/<Floor No\.>/.test(plainText(table))) return table;
+    if (!/Floor No\./i.test(plainText(table))) return table;
     const tableRows = table.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
-    const prototype = tableRows.find(row => /<Floor No\.>/.test(plainText(row)));
-    const totalRow = tableRows.find(row => /<Total Built-up Area>/.test(plainText(row)));
+    const exampleRows = tableRows.filter(row => /(?:Ground|First|Second) Floor/.test(plainText(row)) && !/<Floor No\.>/.test(plainText(row)));
+    const sourcePrototype = tableRows.find(row => /<Floor No\.>/.test(plainText(row))) || exampleRows[0];
+    const sourceTotal = tableRows.find(row => /<Total Built-up Area>/.test(plainText(row)) || /TOTAL/i.test(plainText(row)));
+    const prototype = sourcePrototype && exampleRows.length ? sourcePrototype.replace(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g, (() => {
+      let column = 0; const names = ['Floor No.', 'Structure Type', 'Stage', 'Building Age', 'Built-up Area'];
+      return (cell: string) => { const name = names[column++]; let written = false; return cell.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => { if (written) return ''; written = true; return paragraphLike(paragraph, `<${name}>`); }); };
+    })()) : sourcePrototype;
+    const totalRow = sourceTotal && !/<Total Built-up Area>/.test(plainText(sourceTotal)) ? replaceRunText(sourceTotal, /[\d,]+\s*Sq\.Ft\./i, () => '<Total Built-up Area>') : sourceTotal;
     if (!prototype || !totalRow) return table;
     const floorEntries = floorRows.map(floor => {
       let entry = prototype;
@@ -866,8 +996,9 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     const total = areas.length ? areaText(String(areas.reduce((sum, area) => sum + area, 0))) : '';
     const header = tableRows.find(row => /Structure Type/i.test(plainText(row)) && !/<Structure Type>/.test(plainText(row)));
     const labelledTable = header ? table.replace(header, () => replaceRunText(header, /Structure Type/i, () => 'Nature of Roof')) : table;
-    return labelledTable.replace(prototype, () => floorEntries)
-      .replace(totalRow, () => replaceRunText(totalRow, /<Total Built-up Area>/, () => total));
+    let result = labelledTable.replace(sourcePrototype!, () => floorEntries);
+    for (const example of exampleRows.slice(1)) result = result.replace(example, '');
+    return result.replace(sourceTotal!, () => replaceRunText(totalRow, /<Total Built-up Area>/, () => total));
   });
   // Older compatible templates use an Annexure item 4 with separate number,
   // description and value cells. Preserve their floor-row behavior too.
@@ -903,6 +1034,14 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
 
 /** Recite identifiers the non-house template variants leave out of their description. */
 function prepareNonHouseIdentifiers(block: string, variant: string, values: Record<string, string>): string {
+  if (variant.startsWith('IF FLAT')) return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (/^\s*:\s*Framed with pillars and columns\.\s*$/.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, /Framed with pillars and columns\./, () => '<Construction Description>');
+    if (!values['Car Parking Area']) {
+      if (/^\s*:\s*<Car Parking Area>\s*sq\.fts\s*\(Car Parking\)/i.test(plainText(paragraph))) return '';
+      paragraph = replaceRunText(paragraph, /Car Parking area\s*<Car Parking Area>\s*sq\.fts/i, () => 'Car Parking area');
+    }
+    return paragraph;
+  });
   if (!['IF OPEN PLACE', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(variant)) return block;
   return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     const text = plainText(paragraph);
@@ -943,7 +1082,11 @@ export async function fillSaleDeed(
   let xml = new TextDecoder().decode(doc.data);
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  let body = selectOperativeClauses(markConsiderationRows(xml.slice(bodyStart, bodyEnd)), variant);
+  const prepared = prepareTemplate(markConsiderationRows(xml.slice(bodyStart, bodyEnd)));
+  if (Object.keys(prepared.clauses).length) rewrites = rewrites
+    .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))
+    .map(rewrite => rewrite.find.source.startsWith('Housing Loan:') ? { ...rewrite, when: undefined } : rewrite);
+  let body = Object.keys(prepared.clauses).length ? prepared.body : selectOperativeClauses(prepared.body, variant.startsWith('IF FLAT') ? 'IF FLAT' : variant);
   const values_ = new Map<string, string>();
   for (const [k, v] of Object.entries(values)) values_.set(norm(k), v ?? '');
 
@@ -952,20 +1095,20 @@ export async function fillSaleDeed(
   const markerAt = new Map<string, number>();
   children.forEach((c, i) => {
     const t = plainText(body.slice(c.start, c.end)).trim();
-    for (const v of VARIANTS) if (t === `<${v}>`) markerAt.set(v, i);
+    for (const v of ALL_VARIANTS) if (t === `<${v}>`) markerAt.set(v, i);
   });
 
   const missing = new Set<string>();
-  if (markerAt.size !== VARIANTS.length) throw new Error('Template schedule markers are missing or damaged.');
-  if (markerAt.size === VARIANTS.length) {
-    const order = VARIANTS.map(v => ({ v, i: markerAt.get(v)! })).sort((a, b) => a.i - b.i);
+  if (VARIANTS.filter(v => v !== 'IF FLAT').some(v => !markerAt.has(v)) || (!markerAt.has('IF FLAT') && FLAT_VARIANTS.some(v => !markerAt.has(v)))) throw new Error('Template schedule markers are missing or damaged.');
+  {
+    const order = ALL_VARIANTS.filter(v => markerAt.has(v)).map(v => ({ v, i: markerAt.get(v)! })).sort((a, b) => a.i - b.i);
     // Everything from this marker onward is shared by every property schedule.
     // Without this boundary the final schedule variant incorrectly owns the
     // declaration, signatures, witnesses and prepared-by paragraphs too.
     const sharedTail = children.findIndex((c, i) =>
       i > order[order.length - 1].i && ['<FOR ALL THE DOCUMENTS>', 'DECLARATION'].includes(plainText(body.slice(c.start, c.end)).trim())
     );
-    const selected = schedules.length ? schedules : [{ variant, values }];
+    const selected = (schedules.length ? schedules : [{ variant, values }]).map(schedule => ({ ...schedule, variant: selectedTemplateVariant(schedule.variant, markerAt, schedule.values) }));
     const firstMarker = order[0].i;
     const flowStart = children.findIndex(child =>
       plainText(body.slice(child.start, child.end)).trim().startsWith('1. FLOW OF TITLE & LINK DEED DETAILS:')
@@ -985,7 +1128,7 @@ export async function fillSaleDeed(
         ? [{ find: /(?:\(a\)\s+)?Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
         : [];
       let block = removeOptionalTitleRecitals(
-        children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''),
+        prepared.titles[schedule.variant] || children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''),
         titleValues,
         schedule.variant,
       );
@@ -996,6 +1139,15 @@ export async function fillSaleDeed(
         return fillParagraph(paragraph, titleValues, missing, titleRewrites);
       });
       return block;
+    }).join('');
+    const clauseBlocks = selected.map((schedule, index) => {
+      const block = prepared.clauses[schedule.variant];
+      if (!block) return '';
+      const clauseValues = new Map(Object.entries(schedule.values).map(([key, value]) => [norm(key), value ?? '']));
+      return restartClauseNumbering(block, entries).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+        if (selected.length > 1) paragraph = replaceRunText(paragraph, /3\. OPERATIVE CLAUSES & COVENANTS:/, () => `3. OPERATIVE CLAUSES & COVENANTS - SCHEDULE ${index + 1}:`);
+        return fillParagraph(paragraph, clauseValues, missing, []);
+      });
     }).join('');
     const scheduleBlocks = selected.map((schedule, scheduleIndex) => {
       const selectedIndex = order.findIndex(item => item.v === schedule.variant);
@@ -1039,6 +1191,7 @@ export async function fillSaleDeed(
     body = children.slice(0, flowStart).map(c => body.slice(c.start, c.end)).join('')
       + titleBlocks
       + children.slice(flowEnd, firstMarker).map(c => body.slice(c.start, c.end)).join('')
+      + clauseBlocks
       + scheduleBlocks
       + children.slice(tailStart).map(c => body.slice(c.start, c.end)).join('');
   }
@@ -1061,6 +1214,15 @@ export async function fillSaleDeed(
     })
     .join('');
   body = addPartySignatureLines(body, values_, rewrites);
+  if (Object.keys(prepared.clauses).length) {
+    let signing = false;
+    body = body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+      const text = plainText(paragraph).trim();
+      if (/SIGN\/S OF VENDOR\/S/.test(text)) signing = true;
+      if (signing && /^2\.\s*$/.test(text)) { signing = false; return paragraph; }
+      return signing ? keepWithNext(paragraph) : paragraph;
+    });
+  }
 
   // This optional attribution belongs after the witness signature block at the
   // end of the deed, including when a compatible custom template is selected.
