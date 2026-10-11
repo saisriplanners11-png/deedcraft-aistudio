@@ -1087,6 +1087,16 @@ export async function fillSaleDeed(
     .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))
     .map(rewrite => rewrite.find.source.startsWith('Housing Loan:') ? { ...rewrite, when: undefined } : rewrite);
   let body = Object.keys(prepared.clauses).length ? prepared.body : selectOperativeClauses(prepared.body, variant.startsWith('IF FLAT') ? 'IF FLAT' : variant);
+  // Older templates have no Through Bank sample. Reuse their payment paragraph
+  // formatting so the new mode is also emitted when such a template is used.
+  if (!/Through Bank:\s*Amount of Rs\./i.test(plainText(body)) && rewrites.some(rewrite => rewrite.find.source.startsWith('Through Bank:') && rewrite.records?.length)) {
+    const paymentParagraph = topLevelChildren(body).find(child => /Cash:\s*Amount of Rs\./i.test(plainText(body.slice(child.start, child.end))));
+    if (paymentParagraph) {
+      const paragraph = body.slice(paymentParagraph.start, paymentParagraph.end);
+      const bankParagraph = replaceRunText(paragraph, /[\s\S]+/, () => 'Through Bank: Amount of Rs.<Amount>/- paid through bank by the Vendee/s, namely <Claimant Name>, to the Vendor/s, namely <Executant Name>.');
+      body = body.slice(0, paymentParagraph.end) + bankParagraph + body.slice(paymentParagraph.end);
+    }
+  }
   const values_ = new Map<string, string>();
   for (const [k, v] of Object.entries(values)) values_.set(norm(k), v ?? '');
 

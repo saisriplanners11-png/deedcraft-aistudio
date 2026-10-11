@@ -15,7 +15,7 @@ export type BulkKind = DocKind | 'payment' | 'unknown';
 export type BulkClassification = {
   kind: BulkKind;
   /** Present only for payment instruments. */
-  paymentMode: 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan' | null;
+  paymentMode: 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan' | 'through-bank' | null;
   /** Sale is the only template currently supported by this application. */
   deedType: 'Sale' | null;
   category: string | null;
@@ -652,7 +652,7 @@ const CLASSIFY_SCHEMA = {
   type: 'object' as const,
   properties: {
     kind: { type: 'string' as const, description: 'One of link-deed, executant-id, claimant-id, plan, supporting, payment, unknown.' },
-    paymentMode: { type: 'string' as const, description: 'For payment only: rtgs, cheque, dd, upi, cash or housing-loan. Otherwise omit.' },
+    paymentMode: { type: 'string' as const, description: 'For payment only: rtgs, cheque, dd, upi, cash, housing-loan or through-bank. Otherwise omit.' },
     deedType: { type: 'string' as const, description: 'Return Sale only if this is clearly a sale-deed document. Otherwise omit.' },
     category: { type: 'string' as const, description: 'Property category when clearly shown: Vacant Plot, Open Place, Agricultural land, Residential, Commercial, Flat, Demolished or Part open place. Otherwise omit.' },
     reason: { type: 'string' as const, description: 'A short description of visible evidence supporting the classification.' },
@@ -661,7 +661,7 @@ const CLASSIFY_SCHEMA = {
 };
 
 const BULK_KINDS: BulkKind[] = ['link-deed', 'executant-id', 'claimant-id', 'plan', 'supporting', 'payment', 'unknown'];
-const PAY_MODES = ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'] as const;
+const PAY_MODES = ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan', 'through-bank'] as const;
 const CATEGORIES = ['Vacant Plot', 'Open Place', 'Agricultural land', 'Residential', 'Commercial', 'Flat', 'Demolished', 'Part open place'];
 
 /** Classify a single upload before extraction. Ambiguous identity documents stay unknown. */

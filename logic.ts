@@ -461,7 +461,9 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       missing.push({ id: 'payment', label: 'Payment details', reason: 'The receipt clause must state how the consideration was paid.', source: 'Cheque, housing-loan disbursement, DD, transfer/UPI receipt or payment acknowledgement.', step: 5 });
   } else {
     state.payments.filter(payment => has(payment.amount)).forEach((payment, index) => {
-      const fields = payment.mode === 'cash'
+      const fields = payment.mode === 'through-bank'
+        ? ['amount', 'payer', 'payee']
+        : payment.mode === 'cash'
         ? ['amount', 'date', 'payer', 'payee']
         : payment.mode === 'housing-loan'
         ? ['amount', 'bank', 'branch', 'refNo', 'date', 'payer', 'payee']

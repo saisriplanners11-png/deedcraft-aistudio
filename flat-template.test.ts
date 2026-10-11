@@ -25,6 +25,20 @@ describe('final supplied sale deed template', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category, state.form.flatStage), rewritesFor(state), scheduleMergesFor(state), source);
     return { result, text: await docxToText(new Uint8Array(await result.blob.arrayBuffer())) };
   };
+  it.each(['built-in', 'legacy-custom'])('emits the requested Through Bank recital for each payment in %s', async kind => {
+    const state: AppState = fixture();
+    state.payments = [{ ...newPayment('through-bank'), amount: '100000', payer: 'BANK BUYER', payee: 'BANK SELLER' }, { ...newPayment('through-bank'), amount: '200000' }];
+    const legacy = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
+    const source: DeedTemplateSource | undefined = kind === 'legacy-custom' ? { kind: 'custom', name: 'legacy.docx', hash: 'qa', bytes: legacy, validation: await validateSaleDeedTemplate(legacy, 'legacy.docx') } : undefined;
+    const { result, text } = await generate(state, source);
+    expect(text).toContain('Through Bank: Amount of Rs.1,00,000/- paid through bank by the Vendee/s, namely BANK BUYER, to the Vendor/s, namely BANK SELLER.');
+    expect(text).toContain('Through Bank: Amount of Rs.2,00,000/- paid through bank by the Vendee/s, namely QA BUYER, to the Vendor/s, namely QA SELLER.');
+    expect(text.match(/Through Bank:/g)).toHaveLength(2);
+    expect(text).not.toContain('Housing Loan:');
+    expect(text).not.toContain('UPI/Online:');
+    expect(generationBlockers(state).filter(item => item.id.startsWith('payment-') && /refNo|bank|branch|date/.test(item.id))).toEqual([]);
+    if (process.env.FLAT_QA_DIR && kind === 'built-in') { await mkdir(process.env.FLAT_QA_DIR, { recursive: true }); await writeFile(`${process.env.FLAT_QA_DIR}/Through-Bank.docx`, new Uint8Array(await result.blob.arrayBuffer())); }
+  });
   it.each(['built-in', 'legacy-custom'])('keeps multiple-party numbering in recitals and leaves signature lines unnumbered in %s', async kind => {
     const state: AppState = fixture('', 'Vacant Plot');
     state.additionalExecutants = [{ id: 'seller-2', docNames: [], values: { ...state.form, executantName: 'SECOND SELLER' } }];

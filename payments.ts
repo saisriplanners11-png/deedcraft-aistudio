@@ -10,7 +10,7 @@ import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { getClient, EXTRACT_MODEL, readableError } from './claude';
 import { fileToVisualParts } from './extract';
 
-export type PayMode = 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan';
+export type PayMode = 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan' | 'through-bank';
 
 export type Payment = {
   id: string;
@@ -150,6 +150,16 @@ export const MODES: ModeSpec[] = [
     accept: '.pdf,image/*',
     recital: p => `₹${money0(p.amount)} housing loan from ${p.bank || '____'}, ${p.branch || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? ` dated ${p.date}` : ''}`,
   },
+  {
+    key: 'through-bank',
+    label: 'Through Bank',
+    telugu: 'బ్యాంకు ద్వారా',
+    refLabel: 'Bank reference no.',
+    shows: { ref: false, bank: false, branch: false, parties: true },
+    docLabel: 'Bank payment advice or acknowledgement',
+    accept: '.pdf,image/*',
+    recital: p => `₹${money0(p.amount)} paid through bank by the Vendee/s, namely ${p.payer || '____'}, to the Vendor/s, namely ${p.payee || '____'}`,
+  },
 ];
 
 export const modeSpec = (mode: PayMode): ModeSpec =>
@@ -204,6 +214,7 @@ export const deedPaymentRecital = (ps: Payment[]) =>
       const prefix = `${index ? `${String.fromCharCode(97 + index)}) ` : ''}Rs. ${money0(p.amount)}/-`;
       const advance = p.advance ? ' (paid in advance)' : '';
       if (p.mode === 'cash') return `${prefix} in cash${p.date ? ` on ${deedDate(p.date)}` : ''}${advance}`;
+      if (p.mode === 'through-bank') return `${prefix} paid through bank by the Vendee/s, namely ${p.payer || '____'}, to the Vendor/s, namely ${p.payee || '____'}${advance}`;
       if (p.mode === 'housing-loan') return `${prefix} paid through having availed housing loan from ${p.bank || '____'}, ${p.branch || '____'} Branch, Cheque No. ${p.refNo || '____'}${p.date ? `, dated ${deedDate(p.date)}` : ''} by the Vendee/s, namely ${p.payer || '____'}, to the Vendor/s, namely ${p.payee || '____'}${advance}`;
       if (p.mode === 'cheque') {
         return `${prefix} through Cheque bearing No. ${p.refNo || '____'} drawn on ${[p.bank, p.branch].filter(Boolean).join(', ') || '____'}${p.date ? ` dated ${deedDate(p.date)}` : ''}${advance}`;
@@ -234,6 +245,7 @@ const PROMPT: Record<PayMode, string> = {
   upi: 'This is a UPI or online payment receipt. Transcribe the amount, the transaction / UTR reference, the app or bank used, the date, and the payer and payee names.',
   cash: 'This is a cash receipt or acknowledgement. Transcribe the amount, the receipt number if any, the date, and who paid whom.',
   'housing-loan': 'This is a housing-loan disbursement cheque or bank advice. Transcribe the amount paid through the housing loan, housing loan bank and branch, cheque number (or bank reference shown), date, purchaser/borrower who paid, and vendor/payee. Do not substitute a loan account number for cheque number.',
+  'through-bank': 'This is a bank payment advice or acknowledgement. Transcribe only the stated amount, date, payer and payee. Do not infer a specific transfer instrument or housing loan.',
 };
 
 const SCHEMA = {
@@ -252,7 +264,7 @@ const SCHEMA = {
     detectedMode: {
       type: 'string' as const,
       description:
-        'What this instrument actually is. One of: rtgs, cheque, dd, upi, cash, housing-loan. Say what you see, even if it is not what was asked for.',
+        'What this instrument actually is. One of: rtgs, cheque, dd, upi, cash, housing-loan, through-bank. Say what you see, even if it is not what was asked for.',
     },
     _unreadable: {
       type: 'string' as const,
@@ -346,7 +358,7 @@ export type PaymentExtraction = {
   unreadable: string;
 };
 
-const MODE_KEYS: PayMode[] = ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'];
+const MODE_KEYS: PayMode[] = ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan', 'through-bank'];
 
 export type PaymentPass = {
   values: Partial<Payment>;

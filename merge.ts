@@ -142,9 +142,6 @@ export function rewritesFor(state: AppState): Rewrite[] {
     replace: 'in the presence of the following witnesses.',
   });
   const paid = state.payments.filter(payment => payment.amount !== '');
-  // This alternate source sentence has no distinct supported payment mode.
-  // Actual transfers are emitted by their RTGS/NEFT/UPI/cheque records.
-  rewrites.push({ find: /Through Bank:\s*Amount of Rs\./i, replace: '', records: [] });
   // The v2 template contains one sample paragraph for each payment method.
   // Replace each sample with one cloned paragraph per actual payment, or remove
   // it entirely when that method was not used.
@@ -169,6 +166,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     { mode: 'upi', find: /UPI\/Online:\s*Amount of Rs\./i, refName: 'Transaction ID' },
     { mode: 'cash', find: /Cash:\s*Amount of Rs\./i, refName: 'Cash Receipt No.' },
     { mode: 'housing-loan', find: /Housing Loan:\s*Amount of Rs\./i, refName: 'Cheque No.' },
+    { mode: 'through-bank', find: /Through Bank:\s*Amount of Rs\./i, refName: 'Bank Reference No.' },
   ];
   for (const { mode, find, refName } of v2PaymentParagraphs) {
     if (mode === 'housing-loan') {
@@ -194,6 +192,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
       const bank = [payment.bank, payment.branch].filter(Boolean).join(', ');
       const date = deedDate(payment.date);
       const prefix = `(${index + 1}) Amount of Rs.${amount}/-`;
+      if (payment.mode === 'through-bank') return `${prefix} paid through bank by the Vendee/s, namely ${payment.payer || partyDisplayName(state.form, 'claimant') || ''}, to the Vendor/s, namely ${payment.payee || partyDisplayName(state.form, 'executant') || ''}.`;
       return payment.mode === 'cash' ? `${prefix} paid via cash${date ? ` dated ${date}` : ''}.`
         : `${prefix} paid${mode ? ` through ${mode}` : ''}${ref ? ` bearing No. ${ref}` : ''}${bank ? ` drawn on ${bank}` : ''}${date ? ` dated ${date}` : ''}.`;
     }).join('; ') });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agreePaymentPasses, applyChequeBranchVerification, applyChequeDateVerification, applyChequePartyVerification, applyPaymentVerification, cleanPaymentValue, deedPaymentRecital, paymentPatchError, recitalFor, type Payment, type PaymentPass } from './payments';
+import { MODES, newPayment, agreePaymentPasses, applyChequeBranchVerification, applyChequeDateVerification, applyChequePartyVerification, applyPaymentVerification, cleanPaymentValue, deedPaymentRecital, paymentPatchError, recitalFor, type Payment, type PaymentPass } from './payments';
 
 const pass = (values: PaymentPass['values']): PaymentPass => ({
   values,
@@ -8,6 +8,14 @@ const pass = (values: PaymentPass['values']): PaymentPass => ({
 });
 
 describe('payment extraction safeguards', () => {
+  it('places Through Bank directly after Housing Loan and renders a bank payment without loan particulars', () => {
+    const loanIndex = MODES.findIndex(mode => mode.key === 'housing-loan');
+    expect(MODES[loanIndex + 1].key).toBe('through-bank');
+    const payment = { ...newPayment('through-bank', 'BUYER', 'SELLER'), amount: '100000' };
+    expect(deedPaymentRecital([payment])).toBe('Rs. 1,00,000/- paid through bank by the Vendee/s, namely BUYER, to the Vendor/s, namely SELLER');
+    expect(recitalFor([payment])).toContain('paid through bank');
+    expect(MODES[loanIndex + 1].shows).toEqual({ ref: false, bank: false, branch: false, parties: true });
+  });
   it('omits empty date phrases in every payment mode and keeps supplied dates', () => {
     for (const mode of ['rtgs', 'cheque', 'dd', 'upi', 'cash', 'housing-loan'] as const) {
       const payment: Payment = { id: mode, mode, advance: false, tds: false, amount: '100', refNo: '123456', bank: 'Bank', branch: '', date: '', payer: '', payee: '' };
