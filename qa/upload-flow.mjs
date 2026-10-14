@@ -49,7 +49,7 @@ try {
  await page.locator('.custom-template input[type=file]').setInputFiles({name:'invalid.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('not a docx')});
  await page.getByText('is not compatible',{exact:false}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).isDisabled(),true);
- await page.getByLabel('Built-in template',{exact:false}).check();
+ await page.getByLabel('Published / pinned template',{exact:false}).check();
  assert.equal(await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).isEnabled(),true);
  let wait=page.waitForEvent('download');
  await page.getByRole('button',{name:'Download Word deed + plan',exact:true}).click();
@@ -63,7 +63,7 @@ try {
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.getByRole('button',{name:'New deed',exact:true}).click();
  await page.getByRole('button',{name:'Generate Deed',exact:false}).first().click();
- assert.equal(await page.getByLabel('Built-in template',{exact:false}).isChecked(),true);
+ assert.equal(await page.getByLabel('Published / pinned template',{exact:false}).isChecked(),true);
  await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
  await page.getByLabel('What is this property?').selectOption('Vacant Plot');
  assert.equal(await page.locator('.source').count(),0);

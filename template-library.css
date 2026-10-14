@@ -1,0 +1,28 @@
+.template-library { max-width: 1120px; margin: auto; }
+.template-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.template-panel { border: 1px solid var(--border, #a99a7b); border-radius: 12px; padding: 24px; margin: 20px 0; }
+.template-panel h2 { margin-top: 0; }
+.template-panel p { line-height: 1.6; }
+.template-panel small { overflow-wrap: anywhere; }
+.template-actions, .template-samples { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
+.template-panel a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.template-panel details { padding: 10px 0; }
+.template-panel summary { cursor: pointer; }
+.placeholder-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px; }
+.placeholder-list code { border: 1px solid #aa997a; padding: 4px 8px; border-radius: 4px; }
+.template-panel form { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+.template-panel input[type=password] { display: block; padding: 10px; margin-top: 8px; }
+.template-review { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; }
+.template-library button { cursor: pointer; }
+.template-library button:disabled { cursor: wait; opacity: .55; }
+.field-configurator fieldset { border: 1px solid #aa997a; margin: 18px 0; padding: 20px; border-radius: 8px; }
+.field-configurator label { display: block; margin: 12px 0; }
+.field-configurator input:not([type=checkbox]), .field-configurator select, .field-configurator textarea { display: block; width: 100%; padding: 8px; margin-top: 5px; color: inherit; background: transparent; border: 1px solid #aa997a; }
+.field-configurator select option { color: #222; background: #fff; }
+.field-config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.field-context { border-left: 3px solid #aa997a; padding-left: 12px; overflow-wrap: anywhere; }
+.template-additional-fields label { display: block; margin: 14px 0; }
+.template-additional-fields input, .template-additional-fields select, .template-additional-fields textarea { display: block; width: 100%; padding: 8px; margin-top: 6px; color: inherit; background: transparent; border: 1px solid #aa997a; }
+.template-additional-fields select option { background: #fff; color: #222; }
+.template-evidence { border-left: 3px solid #aa997a; padding: 10px 16px; margin: 12px 0; }
+.template-evidence button { margin: 6px 10px 6px 0; }

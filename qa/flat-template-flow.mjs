@@ -41,7 +41,7 @@ try {
   await page.getByRole('radio', { name: /My template/ }).check();
   await page.locator('.custom-template input[type=file]').setInputFiles({ name: 'final.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: await readFile(new URL('../sale-deed-template-v4.docx', import.meta.url)) });
   await page.locator('.template-status.valid').waitFor(); await download('Custom-Semi-Finished.docx');
-  await page.getByRole('radio', { name: /Built-in template/ }).check();
+  await page.getByRole('radio', { name: /Published \/ pinned template/ }).check();
   await step('04'); await page.getByRole('button', { name: '+ Add another property', exact: true }).click();
   await type().selectOption({ label: 'Finished Flat' });
   await step('04'); await page.getByLabel('Flat number', { exact: true }).fill('204');

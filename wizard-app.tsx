@@ -8,12 +8,19 @@ import {
   peopleFor, plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
   type Draft, type Action,
 } from './source-draft';
-import { acreGuntasToSqYards, extractUpload, fileHash, type ExtractionProfile } from './upload-extraction';
+import { acreGuntasToSqYards, extractUpload, extractTemplateFields, fileHash, type ExtractionProfile } from './upload-extraction';
 import {
-  appendRegistrationPlans, BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, validateSaleDeedTemplate,
+  appendRegistrationPlans, BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, validateSaleDeedTemplate, inspectTemplateFields,
   type DeedTemplateSource, type ScheduleMerge,
 } from './docx';
-import { loadSaleDeedTemplate } from './template';
+import { templateBytes } from './docx';
+import { TemplateLibrary } from './template-library';
+import { currentSaleTemplate, listTemplates, pinFor, sha256 } from './template-library-client';
+import type { TemplatePin } from './template-library-types';
+import { compileDeed, renderArtifact, type GenerationManifest } from './deed-compiler';
+import { EMPTY_FIELD_CONTRACT, canonicalContract, fieldName, recordScope } from './template-fields';
+import { bindTemplateFields, resolveTemplateFieldData, type TemplateRecord } from './template-field-values';
+import { TemplateAdditionalFields } from './template-additional-fields';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity, vendeeShareCents, type VendeeSharesBySchedule } from './logic';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
@@ -467,14 +474,15 @@ function PartySharesEditor({
 }
 
 /** The real template SCHEDULE OF PROPERTY paragraph, loaded live for one property record. */
-function SchedulePreview({ merge }: { merge: ScheduleMerge }) {
+function SchedulePreview({ merge, templateSource }: { merge: ScheduleMerge; templateSource: DeedTemplateSource }) {
   const [text, setText] = useState<string>('');
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails, merge.vendeeShares, merge.vendorShares).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
+    setText(''); setError('');
+    scheduleText(merge.variant, merge.values, merge.supportingRecords, merge.structureDetails, merge.vendeeShares, merge.vendorShares, templateSource).then(t => { if (live) setText(t); }, e => { if (live) setError(e.message || String(e)); });
     return () => { live = false; };
-  }, [merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.structureDetails), JSON.stringify(merge.vendeeShares), JSON.stringify(merge.vendorShares)]);
+  }, [templateSource, merge.variant, JSON.stringify(merge.values), JSON.stringify(merge.supportingRecords), JSON.stringify(merge.structureDetails), JSON.stringify(merge.vendeeShares), JSON.stringify(merge.vendorShares)]);
   if (error) return <p style={{ color: C.gold, fontSize: 12 }}>{error}</p>;
   if (!text) return <p style={{ color: C.mutedSoft, fontSize: 12 }}>Loading the schedule paragraph…</p>;
   return <div style={{ fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap' }}>{text}</div>;
@@ -542,6 +550,14 @@ export default function WizardApp() {
   }, [theme]);
   const [draft, dispatch] = useReducer(draftReducer, undefined, newDraft);
   const [libraryView, setLibraryView] = useState(true);
+  const [templatesView, setTemplatesView] = useState(false);
+  const [libraryTemplate, setLibraryTemplate] = useState<TemplatePin | null>(null);
+  const [latestTemplate, setLatestTemplate] = useState<TemplatePin | null>(null);
+  const [templateLibraryError, setTemplateLibraryError] = useState('');
+  const [generationManifest, setGenerationManifest] = useState<GenerationManifest | null>(null);
+  const [extractingTemplateFields, setExtractingTemplateFields] = useState(false);
+  const [templateFieldMessage, setTemplateFieldMessage] = useState('');
+  const templateExtractionGeneration = useRef(0);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [savedDeeds, setSavedDeeds] = useState<SavedDeed[]>([]);
   const [storageError, setStorageError] = useState('');
@@ -586,9 +602,19 @@ export default function WizardApp() {
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
   const generationReady = deedRelease.ready;
+  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : libraryTemplate ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate]);
+  const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
+  const templateFieldState = useMemo(() => ({ ...state,
+    additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
+    additionalClaimants: [...state.additionalClaimants, ...extraPartyRecords.claimant.filter(id => !state.additionalClaimants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
+  }), [state, extraPartyRecords]);
+  const templateFieldResolution = useMemo(() => resolveTemplateFieldData(draft, templateFieldState, fieldContract), [draft, templateFieldState, fieldContract]);
+  const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}` : 'built-in'}:annexure-floor-stage-v2`;
-  const hasStarted = draft.revision > 0 || !!customTemplate || templateMode === 'custom'
+  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v6'}:annexure-floor-stage-v2`;
+  const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
+  useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
+  const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
     || !!Object.keys(exactPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
@@ -599,7 +625,7 @@ export default function WizardApp() {
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
     planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
-    templateMode, customTemplate,
+    templateMode, customTemplate, libraryTemplate, generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
     const sequence = ++saveSequence.current;
@@ -624,7 +650,30 @@ export default function WizardApp() {
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
+  async function refreshPublishedTemplate() {
+    try {
+      const listing = await listTemplates();
+      const version = listing.versions.find(item => item.id === listing.active.sale);
+      if (!version) throw new Error('No published Sale template is available.');
+      setLatestTemplate(pinFor(version)); setTemplateLibraryError('');
+    } catch (error: any) { setTemplateLibraryError(error.message); }
+  }
+  useEffect(() => {
+    void refreshPublishedTemplate();
+    const refresh = () => { void refreshPublishedTemplate(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
+  async function updateDraftTemplate() {
+    const id = current.current.id;
+    try {
+      const pin = await currentSaleTemplate();
+      if (current.current.id !== id) return;
+      setLibraryTemplate(pin); setLatestTemplate(pin); setDownload(null); setGenerationManifest(null); setTemplateLibraryError('');
+      setMessage('Draft updated to the published template. Review the refreshed wording before downloading.');
+    } catch (error: any) { setTemplateLibraryError(error.message); }
+  }
   const goto = (s: number) => dispatch({ type: 'step', step: s });
   const nextStep = STEPS.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
@@ -706,6 +755,10 @@ export default function WizardApp() {
           if (uncertain.length) setPendingReviews(queue => [...queue, ...uncertain.map(candidate => ({
             id: `${sourceId}:${candidate.id}`, sourceName: files.map(file => file.name).join(' · '), assignment, candidate,
           }))]);
+          const scope = assignment?.role === 'link' ? 'property' : assignment?.role;
+          const recordId = assignment?.role === 'link' ? assignment.propertyRecord || 'primary' : assignment?.record;
+          const customRecord = templateFieldResolution.data.records.find(record => record.scope === scope && record.id === recordId);
+          if (customRecord && templateFieldResolution.instances.some(instance => instance.record.scope === customRecord.scope && instance.record.id === customRecord.id && instance.field.extractionEnabled)) void runTemplateExtraction(files, customRecord, { id: sourceId, revision: 0 } as Source);
         }
       });
     } catch (error: any) {
@@ -732,6 +785,45 @@ export default function WizardApp() {
       for (const file of files) void runUpload([file], { role, record, ...(role === 'link' ? { propertyRecord } : {}) }, scoped);
     }
   };
+  async function runTemplateExtraction(files: File[], record: TemplateRecord, existingSource?: Source) {
+    const fields = templateFieldResolution.instances.filter(instance => instance.record.scope === record.scope && instance.record.id === record.id && instance.field.extractionEnabled).map(instance => instance.field);
+    if (!files.length || !fields.length) return;
+    const sourceId = crypto.randomUUID(); const draftId = current.current.id; const key = activeTemplateKeyRef.current; const generation = templateExtractionGeneration.current;
+    const controller = new AbortController(); controllers.current.set(sourceId, controller);
+    const valid = () => !controller.signal.aborted && current.current.id === draftId && activeTemplateKeyRef.current === key && generation === templateExtractionGeneration.current && current.current.sources.some(source => source.id === sourceId) && (!existingSource || current.current.sources.some(source => source.id === existingSource.id && source.revision === existingSource.revision)) && (record.scope === 'transaction' || record.scope === 'property' ? record.scope === 'transaction' || ['primary', ...current.current.propertyIds].includes(record.id) || Object.keys(resolveDraft(current.current).values).some(value => value.startsWith('property|' + record.id + '|')) : record.id === 'primary' || Object.keys(resolveDraft(current.current).values).some(value => value.startsWith(record.scope + '|' + record.id + '|')) || extraPartyRecords[record.scope]?.includes(record.id));
+    setSourceFiles(old => ({ ...old, [sourceId]: files }));
+    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'reading', profile: 'template-fields', templateCandidates: [], templateParent: existingSource ? { id: existingSource.id, revision: existingSource.revision } : undefined } });
+    setExtractingTemplateFields(true); setTemplateFieldMessage('Reading additional template fields…');
+    try {
+      const hash = await fileHash(files);
+      const candidates = await fileQueue.run(() => extractTemplateFields(files, fields, { id: record.id, label: record.label }, controller.signal, message => { if (valid()) setTemplateFieldMessage(message); }));
+      const original = existingSource && current.current.sources.find(source => source.id === existingSource.id);
+      if (original?.profile === 'phase1:linkDoc') for (const candidate of candidates) {
+        if (fields.find(field => field.id === candidate.fieldId)?.evidenceContext === 'current') { candidate.historical = true; candidate.issue = 'A prior title deed cannot establish this current fact. Enter the current value or upload current evidence.'; }
+      }
+      if (valid()) { dispatch({ type: 'job', draftId, sourceId, sourceRevision: 0, patch: { status: 'done', hash, templateCandidates: candidates } }); setTemplateFieldMessage(candidates.length ? `${candidates.length} proposed values need your review.` : 'No supported additional values were found. Enter them manually or upload clearer evidence.'); }
+      else dispatch({ type: 'remove', id: sourceId });
+    } catch (error: any) { if (valid()) { dispatch({ type: 'job', draftId, sourceId, sourceRevision: 0, patch: { status: 'error', error: error.message } }); setTemplateFieldMessage(`Additional-field extraction failed: ${error.message}. Retry or enter values manually.`); } }
+    finally { controllers.current.delete(sourceId); if (generation === templateExtractionGeneration.current) setExtractingTemplateFields(false); }
+  }
+  async function readSavedTemplateFields() {
+    const generation = templateExtractionGeneration.current;
+    const sources = draft.sources.filter(source => source.profile !== 'template-fields' && sourceFiles[source.id]?.length);
+    if (!sources.length) { setTemplateFieldMessage('No original documents are saved with this draft. Upload evidence using the additional-fields section.'); return; }
+    for (const source of sources) for (const record of templateFieldResolution.data.records) {
+      if (generation !== templateExtractionGeneration.current) return;
+      const permitted = record.scope === 'transaction' ? true : record.scope === 'property' ? source.assignment?.record === record.id && source.assignment.role === 'property' || source.assignment?.propertyRecord === record.id : source.assignment?.role === record.scope && source.assignment.record === record.id;
+      if (permitted) await runTemplateExtraction(sourceFiles[source.id], record, source);
+    }
+  }
+  function cancelTemplateExtraction() {
+    templateExtractionGeneration.current++;
+    for (const source of current.current.sources.filter(source => source.profile === 'template-fields' && source.status === 'reading')) {
+      controllers.current.get(source.id)?.abort();
+      dispatch({ type: 'job', draftId: current.current.id, sourceId: source.id, sourceRevision: source.revision, patch: { status: 'error', error: 'Additional-field read cancelled.' } });
+    }
+    setExtractingTemplateFields(false); setTemplateFieldMessage('Additional-field read cancelled.');
+  }
   const sourceBusyFor = (role: Role, record: string) => draft.sources.find(s => s.assignment?.role === role && s.assignment?.record === record && (s.status === 'reading' || s.status === 'queued'));
   const linkStageStatus = (stageId: string, propertyRecord = activePropertyId): LinkStageStatus => {
     const states = draft.sources
@@ -829,6 +921,8 @@ export default function WizardApp() {
     setPendingReviews([]); setExactPlanDrafts({}); setExactPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
+    setLibraryTemplate(null); setGenerationManifest(null);
+    templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage('');
   }
 
   async function saveBeforeSwitch(): Promise<boolean> {
@@ -839,16 +933,20 @@ export default function WizardApp() {
 
   async function createDeed() {
     if (!await saveBeforeSwitch()) return;
-    clearTransient();
-    dispatch({ type: 'load', draft: newDraft() });
-    setLibraryView(false);
+    try {
+      const pin = await currentSaleTemplate();
+      clearTransient();
+      setLibraryTemplate(pin); setLatestTemplate(pin); setTemplateLibraryError('');
+      dispatch({ type: 'load', draft: newDraft() });
+      setTemplatesView(false); setLibraryView(false);
+    } catch (error: any) { setTemplateLibraryError(error.message); }
   }
 
   async function showLibrary() {
     if (!await saveBeforeSwitch()) return;
     controllers.current.forEach(controller => controller.abort());
     controllers.current.clear();
-    setLibraryView(true);
+    setLibraryView(true); setTemplatesView(false);
   }
 
   function openSaved(deed: SavedDeed) {
@@ -868,6 +966,9 @@ export default function WizardApp() {
     setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
     setTemplateMode(deed.templateMode || 'built-in');
     setCustomTemplate(deed.customTemplate || null);
+    setLibraryTemplate(deed.libraryTemplate || null);
+    setGenerationManifest(deed.generationManifest || null);
+    setTemplatesView(false);
     setLibraryView(false);
   }
 
@@ -983,6 +1084,7 @@ export default function WizardApp() {
     } catch (error: any) { return { id, svg: '', note: '', error: error.message }; }
   });
   const scheduleMerges = scheduleMergesFor(state);
+  const templateBoundPreview = bindTemplateFields(fieldContract, templateFieldResolution.data, mergeValues(state), scheduleMerges, rewritesFor(state));
   const activeScheduleMerge = scheduleMerges[activePropertyIndex];
   const claimantIds = partyRecordIds('claimant');
   const executantIds = partyRecordIds('executant');
@@ -1007,16 +1109,21 @@ export default function WizardApp() {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
       if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
       if (kind === 'word' && shareBlockers.length) throw new Error('Enter valid vendor and vendee shares totaling 100% for every property before downloading the Word deed');
-      const templateSource = templateMode === 'custom' ? customTemplate! : BUILT_IN_TEMPLATE_SOURCE;
+      if (kind === 'word' && templateFieldErrors.length) throw new Error(templateFieldErrors.join(' '));
+      const templateSource = activeTemplateSource;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
         const deedValues = { ...mergeValues(state), 'Include Prepared By': snapshot.manual.includePreparedBy === 'true' ? '1' : '' };
-        const merged = await fillSaleDeed(deedValues, variantFor(state.category, state.form.flatStage), rewritesFor(state), scheduleMerges, templateSource);
+        const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
+        const compiled = compileDeed({ instrumentId: snapshot.instrumentId, variantId: snapshot.variantId, snapshotHash: inputSnapshotHash, values: deedValues, schedules: scheduleMerges, rewrites: rewritesFor(state), unresolvedWarnings: [...notices.map(item => item.reason), ...templateFieldResolution.instances.filter(instance => !instance.value).map(instance => `${instance.field.label}: write-in blank`)], templateFieldData: templateFieldResolution.data }, templateSource);
+        const { result: merged, manifest } = await renderArtifact(compiled, 'docx', templateSource);
         const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
           selectedPlanSvgs[record.id] ? [{ schedule: index + 1, svg: selectedPlanSvgs[record.id] }] : []
         ).map(async plan => ({ schedule: plan.schedule, png: await planPng(plan.svg) })));
         artifact = { ...artifact, docx: await appendRegistrationPlans(merged.blob, reviewed) };
+        const outputHash = await sha256(new Uint8Array(await artifact.docx.arrayBuffer()));
+        if (current.current.id === snapshot.id && current.current.revision === snapshot.revision) setGenerationManifest({ ...manifest, outputHash });
       }
       if (kind === 'pdf' && !artifact.pdf) {
         if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
@@ -1026,7 +1133,8 @@ export default function WizardApp() {
       }
       setDownload(artifact);
       saveBlob(kind === 'word' ? artifact.docx! : artifact.pdf!, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
-      setMessage(notices.length ? `Downloaded an incomplete draft with ${notices.length} outstanding items. Review and complete it before signing or registration.` : 'Downloaded using the current verified and manually entered details.');
+      const outstandingCount = notices.length + templateFieldResolution.instances.filter(instance => !instance.value).length;
+      setMessage(outstandingCount ? `Downloaded an incomplete draft with ${outstandingCount} outstanding items. Review and complete it before signing or registration.` : 'Downloaded using the current verified and manually entered details.');
     } catch (error: any) { setMessage(`Download could not be prepared: ${error.message}. Please retry.`); }
     finally { setExporting(false); }
   }
@@ -1045,9 +1153,11 @@ export default function WizardApp() {
       }
       const [buffer, hash] = await Promise.all([file.arrayBuffer(), fileHash(file)]);
       const bytes = new Uint8Array(buffer);
-      const validation = await validateSaleDeedTemplate(bytes, file.name);
+      const inspection = await inspectTemplateFields(bytes, fieldContract);
+      const compatibleContract = { version: 1 as const, fields: fieldContract.fields.filter(field => inspection.occurrences.some(occurrence => fieldName(occurrence.placeholder) === fieldName(field.placeholder))) };
+      const validation = await validateSaleDeedTemplate(bytes, file.name, undefined, compatibleContract);
       if (validationRevision !== templateValidationRevision.current) return;
-      setCustomTemplate({ kind: 'custom', name: file.name, hash, bytes, validation });
+      setCustomTemplate({ kind: 'custom', name: file.name, hash, bytes, validation, fieldContract: compatibleContract });
     } catch (error: any) {
       if (validationRevision !== templateValidationRevision.current) return;
       setCustomTemplate(null);
@@ -1062,7 +1172,7 @@ export default function WizardApp() {
 
   async function downloadStarterTemplate() {
     try {
-      const bytes = await loadSaleDeedTemplate();
+      const bytes = await templateBytes(activeTemplateSource);
       saveBlob(new Blob([bytes as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), 'DeedCraft-Sale-Deed-Template.docx');
     } catch (error: any) {
       setMessage(`Starter template could not be downloaded: ${error?.message || 'Please retry.'}`);
@@ -1114,8 +1224,9 @@ export default function WizardApp() {
       onCancel={cancelActiveUpload}
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
-    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button>{!libraryView && <button type="button" onClick={() => void showLibrary()}>Saved deeds</button>}<button className="new-deed" onClick={() => void createDeed()}>＋ New deed</button></div></header>
-    {libraryView ? <main className="saved-deeds-dashboard">
+    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾ Dark mode' : '☀ Light mode'}</button>{!libraryView && <button type="button" onClick={() => void showLibrary()}>Saved deeds</button>}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}>Templates</button><button className="new-deed" onClick={() => void createDeed()}>＋ New deed</button></div></header>
+    {templateLibraryError && <p className="notice" role="alert">Shared template library: {templateLibraryError} <button onClick={() => void refreshPublishedTemplate()}>Retry</button></p>}
+    {templatesView ? <TemplateLibrary onClose={() => setTemplatesView(false)} onPublished={() => void refreshPublishedTemplate()} /> : libraryView ? <main className="saved-deeds-dashboard">
       <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1><p>Continue a deed or start a new one. Deeds are saved in this browser.</p></div><button type="button" className="primary" onClick={() => void createDeed()}>＋ New deed</button></div>
       {storageError && <p className="notice" role="alert">{storageError}</p>}
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{savedDeeds.map(deed =>
@@ -1142,11 +1253,13 @@ export default function WizardApp() {
         {storageError && <p className="notice" role="alert">{storageError}</p>}
         {!storageError && hasStarted && <p className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</p>}
         {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
+        {templateMode === 'built-in' && <p className="save-indicator">Template: {libraryTemplate?.name || 'Built-in Sale v6'} · {libraryTemplate?.versionId || 'sale-deed-v6'} {latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v6') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</p>}
         <div className="stage-head">
           <p className="eyebrow">{step < 0 ? 'OVERVIEW' : `STEP ${step + 1} OF ${STEPS.length}`}</p>
           <h1>{step < 0 ? `DeedCraft — ${deedDefinition.label}` : STEPS[step].label}</h1>
           {step >= 0 && <p>{STEPS[step].sub}</p>}
         </div>
+        {[-1, 3, 6, 7, 8, 9].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
 
         {step === -1 && <div className="dashboard">
           <section className="dashboard-hero" aria-labelledby="dashboard-title">
@@ -1304,7 +1417,7 @@ export default function WizardApp() {
                 onNotice={setMessage}
               />}
               {merge && <Section title="Schedule of property" telugu="ఆస్తి వివరణ">
-                <SchedulePreview merge={merge} />
+                <SchedulePreview merge={templateBoundPreview.schedules[activePropertyIndex] || merge} templateSource={activeTemplateSource} />
               </Section>}
             </section>;
           })}
@@ -1371,7 +1484,7 @@ export default function WizardApp() {
           <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
           {notices.length > 0 && <details><summary>{notices.length} outstanding items — draft download is available</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
           <h2>Schedule{scheduleMerges.length > 1 ? 's' : ''} of property</h2>
-          {scheduleMerges.map((merge, i) => <Section key={i} title={scheduleMerges.length > 1 ? `Property ${i + 1}` : 'Schedule of property'}><SchedulePreview merge={merge} /></Section>)}
+          {templateBoundPreview.schedules.map((merge, i) => <Section key={i} title={scheduleMerges.length > 1 ? `Property ${i + 1}` : 'Schedule of property'}><SchedulePreview merge={merge} templateSource={activeTemplateSource} /></Section>)}
         </section>}
 
         {step === 9 && <section className="panel download">
@@ -1382,7 +1495,7 @@ export default function WizardApp() {
             <div className="template-choices">
               <label className={templateMode === 'built-in' ? 'selected' : ''}>
                 <input type="radio" name="template-mode" checked={templateMode === 'built-in'} onChange={() => { setTemplateMode('built-in'); setDownload(null); setMessage(''); }} />
-                <span><b>Built-in template</b><small>Use DeedCraft’s approved Sale Deed template.</small></span>
+                <span><b>Published / pinned template</b><small>Use DeedCraft’s approved Sale Deed template.</small></span>
               </label>
               <label className={templateMode === 'custom' ? 'selected' : ''}>
                 <input type="radio" name="template-mode" checked={templateMode === 'custom'} onChange={() => { setTemplateMode('custom'); setDownload(null); setMessage(''); }} />
@@ -1400,13 +1513,13 @@ export default function WizardApp() {
               {customTemplate?.validation.valid && <div className="template-status valid"><b>{customTemplate.name}</b><span>Compatible — {customTemplate.validation.detectedPlaceholders.length} supported placeholders found.</span>{customTemplate.validation.omittedPlaceholders.length > 0 && <small>{customTemplate.validation.omittedPlaceholders.length} optional starter placeholders are omitted from this template.</small>}</div>}
               {customTemplate && !customTemplate.validation.valid && <div className="template-status invalid" role="alert"><b>{customTemplate.name} is not compatible</b><ul>{customTemplate.validation.errors.map(error => <li key={error}>{error}</li>)}</ul></div>}
               {!customTemplate && !validatingTemplate && <small>No custom template selected. Upload a compatible .docx or choose the built-in template.</small>}
-              <small>Templates are checked locally and are not sent to the extraction AI or stored on the server. Compatibility checks do not legally approve customer-authored wording.</small>
+              <small>Per-deed custom templates are checked locally and are not sent to the extraction AI. Publish shared revisions from Dashboard → Templates. Compatibility checks do not legally approve customer-authored wording.</small>
             </div>}
           </div>
           {notices.length > 0 && <details open><summary>{notices.length} outstanding items — incomplete draft</summary><ul>{notices.map(item => <li key={item.id}><button className="quiet" onClick={()=>goto(item.step)}>{item.label}</button> — {item.reason}</li>)}</ul></details>}
           {!generationReady && <p>{deedRelease.reasons.join(' ')}</p>}
           {shareBlockers.length > 0 && <p className="notice" role="alert">Vendor and vendee shares must total 100% for each property before downloading the Word deed. <button type="button" onClick={() => goto(-1)}>Enter shares on the dashboard</button></p>}
-          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || shareBlockers.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
+          <div className="download-actions"><button className="primary" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || shareBlockers.length > 0 || templateFieldErrors.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button><button disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button></div>
           {message && <p role="status">{message}</p>}
         </section>}
 

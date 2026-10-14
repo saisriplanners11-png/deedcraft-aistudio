@@ -1,0 +1,45 @@
+import type { LibraryListing, LibraryRevision, TemplatePin } from './template-library-types';
+import { canonicalContract } from './template-fields';
+
+export async function templateRequest<T>(path = '', init?: RequestInit): Promise<T> {
+  const response = await fetch('/api/templates' + path, { ...init, credentials: 'same-origin', cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Template request failed.');
+  return data;
+}
+export const listTemplates = () => templateRequest<LibraryListing>();
+export const pinFor = (version: LibraryRevision): TemplatePin => ({ versionId: version.id, hash: version.hash, name: version.filename, fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
+
+const cache = new Map<string, Promise<Uint8Array>>();
+export async function sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+export async function verifyTemplateBytes(bytes: Uint8Array, expectedHash: string): Promise<Uint8Array> {
+  const actual = await sha256(bytes);
+  if (actual !== expectedHash) throw new Error('Template integrity check failed. Retry downloading this version.');
+  return bytes;
+}
+export async function loadLibraryBytes(pin: TemplatePin): Promise<Uint8Array> {
+  if (pin.schemaHash) await verifyTemplateBytes(new TextEncoder().encode(canonicalContract(pin.fieldContract)), pin.schemaHash);
+  if (pin.packageHash && pin.schemaHash && pin.contractVersion) await verifyTemplateBytes(new TextEncoder().encode(pin.hash + ':' + pin.schemaHash + ':' + pin.contractVersion), pin.packageHash);
+  if (pin.bytes) return verifyTemplateBytes(pin.bytes, pin.hash);
+  const key = pin.versionId + ':' + pin.hash + ':' + (pin.packageHash || 'legacy');
+  let pending = cache.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const response = await fetch(`/api/templates/versions/${encodeURIComponent(pin.versionId)}/download`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('The selected template version could not be downloaded. Retry when the library is available.');
+      return verifyTemplateBytes(new Uint8Array(await response.arrayBuffer()), pin.hash);
+    })().catch(error => { cache.delete(key); throw error; });
+    cache.set(key, pending);
+  }
+  return pending;
+}
+export async function currentSaleTemplate(): Promise<TemplatePin> {
+  const listing = await listTemplates();
+  const version = listing.versions.find(item => item.id === listing.active.sale);
+  if (!version) throw new Error('No published Sale template is available.');
+  const pin = pinFor(version);
+  return { ...pin, bytes: await loadLibraryBytes(pin) };
+}

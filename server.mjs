@@ -8,6 +8,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createProxyHandler, PROXY_PREFIX } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
+import { createTemplateApi } from './template-api.mjs';
 
 const PORT = Number(process.env.PORT) || 4173;
 const DIST = fileURLToPath(new URL('./dist/', import.meta.url));
@@ -31,6 +32,7 @@ const proxy = createProxyHandler(() => ({
   draftModel: process.env.DRAFT_MODEL || 'claude-sonnet-4-6',
 }));
 const referencePlanApi = createReferencePlanApi();
+const templateApi = createTemplateApi({ production: true });
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
@@ -40,6 +42,7 @@ const MIME = {
 };
 
 createServer(async (req, res) => {
+  if (req.url?.startsWith('/api/templates')) return templateApi(req, res);
   if (req.url?.startsWith(PROXY_PREFIX)) return proxy(req, res, () => {});
   if (req.url?.startsWith('/api/analyze-sketch') || req.url?.startsWith('/api/parse-document')) return referencePlanApi(req, res);
 

@@ -13,6 +13,7 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173/');
+  await page.getByRole('button', { name: /New deed/ }).first().click();
   await page.getByRole('button', { name: '04 Property Schedules' }).click();
   await page.getByRole('button', { name: '+ Add another property' }).click();
   await page.getByRole('button', { name: '11 Property Plan' }).click();

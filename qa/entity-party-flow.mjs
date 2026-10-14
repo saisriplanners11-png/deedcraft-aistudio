@@ -84,7 +84,7 @@ try {
   await page.locator('.template-status.valid').waitFor();
   event = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download Word 2007 deed (.docx)', exact: true }).click();
   await (await event).saveAs(new URL('custom-entity-deed.docx', out).pathname.replace(/^\/(\w:)/, '$1'));
-  await page.getByRole('radio', { name: /Built-in template/ }).check();
+  await page.getByRole('radio', { name: /Published \/ pinned template/ }).check();
   await page.getByRole('button', { name: 'Overview', exact: false }).first().click();
   const summaries = page.getByRole('region', { name: 'Party summaries' });
   assert((await summaries.innerText()).includes('TEST FIRM LLP')); assert((await summaries.innerText()).includes('2 representative(s)'));

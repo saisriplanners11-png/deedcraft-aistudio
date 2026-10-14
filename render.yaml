@@ -2,15 +2,24 @@ services:
   - type: web
     name: deedcraft-aistudio
     runtime: node
-    plan: free
+    # Persistent template storage requires a paid instance and disk.
+    plan: starter
     branch: main
-    autoDeploy: true
+    autoDeployTrigger: commit
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /
+    disk:
+      name: deedcraft-templates
+      mountPath: /var/data/deedcraft
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: TEMPLATE_STORAGE_DIR
+        value: /var/data/deedcraft/templates
+      - key: TEMPLATE_ADMIN_PASSWORD
+        sync: false
       - key: EXTRACTION_PROVIDER
         value: gemini
       - key: GEMINI_MODEL

@@ -1,8 +1,10 @@
+import { localAuthorityName } from './fields';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
+import type { TemplateFieldCandidate, TemplateFieldValues } from './template-fields';
 
 export const EXTRACTION_VERSION = 'evidence-v11-final-flat-options';
 export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned' | 'party-person';
@@ -31,6 +33,8 @@ export type Source = {
    */
   assignment?: { role: Role; record: string; fromRecord?: string; /** Property schedule this source bundle may populate. */ propertyRecord?: string };
   result?: SourceResult; error?: string; durationMs?: number;
+  templateCandidates?: TemplateFieldCandidate[];
+  templateParent?: { id: string; revision: number };
 };
 export type Draft = {
   id: string; revision: number; sources: Source[];
@@ -52,10 +56,15 @@ export type Draft = {
   instrumentId: InstrumentId;
   variantId: string;
   definitionVersion: string;
+  templateFieldValues?: TemplateFieldValues;
+  templateFieldReviews?: Record<string, 'accepted' | 'rejected'>;
 };
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
+  | { type: 'template-field-clear'; fieldId: string; recordId: string }
+  | { type: 'template-field'; fieldId: string; recordId: string; value: string }
+  | { type: 'template-review'; candidateKey: string; decision: 'accepted' | 'rejected' }
   | { type: 'reset' }
   | { type: 'load'; draft: Draft }
   | { type: 'step'; step: number }
@@ -83,6 +92,13 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'load') return migratePartyPeople(action.draft);
   if (action.type === 'step') return { ...draft, step: action.step };
   let next = draft;
+  if (action.type === 'template-field-clear') {
+    const values = { ...draft.templateFieldValues?.[action.fieldId] };
+    delete values[action.recordId];
+    next = { ...draft, templateFieldValues: { ...draft.templateFieldValues, [action.fieldId]: values }, manualEdits: draft.manualEdits + 1 };
+  }
+  if (action.type === 'template-field') next = { ...draft, templateFieldValues: { ...draft.templateFieldValues, [action.fieldId]: { ...draft.templateFieldValues?.[action.fieldId], [action.recordId]: action.value } }, manualEdits: draft.manualEdits + 1 };
+  if (action.type === 'template-review') next = { ...draft, templateFieldReviews: { ...draft.templateFieldReviews, [action.candidateKey]: action.decision } };
   if (action.type === 'add') next = { ...draft, sources: [...draft.sources, action.source] };
   if (action.type === 'remove') next = { ...draft, sources: draft.sources.filter(s => s.id !== action.id) };
   if (action.type === 'replace') next = { ...draft, sources: draft.sources.map(s => s.id === action.id ? { id: s.id, name: action.name, revision: s.revision + 1, hash: '', status: 'queued', assignment: s.assignment, profile: s.profile } : s) };
@@ -126,6 +142,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     for (const id of ids) for (const key of Object.keys(manual)) if (key.startsWith('party-person|' + id + '|')) delete manual[key];
     for (const id of ids) for (const key of Object.keys(choices)) if (key.startsWith('party-person|' + id + '|')) delete choices[key];
     next = { ...draft, partyPeople, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
+      templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([id, values]) => [id, Object.fromEntries(Object.entries(values).filter(([key]) => key !== `${action.role}:${action.record}`))])),
       sources: draft.sources.filter(source => !(source.assignment?.role === 'party-person' && ids.includes(source.assignment.record)) && (source.assignment?.role !== action.role || source.assignment.record !== action.record)) };
   }
   if (action.type === 'instrument') {
@@ -259,6 +276,7 @@ export function resolveDraft(draft: Draft) {
     values[key] = uppercasePartyIdentity(key.split('|')[2], value);
     if (groups[key]?.some(c => exact(c.value) !== exact(value))) conflicts[key] = groups[key];
   }
+  for (const key of Object.keys(values)) if (key.endsWith('|localAuthorityType')) values[key] = localAuthorityName(values[key]);
   // RecordFieldGroup renders resolveDraft() directly, before appStateFor()
   // applies form derivations. Put the Aadhaar-DOB age suggestion here as well
   // so the Executant and Claimant inputs fill immediately after upload.

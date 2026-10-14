@@ -1,5 +1,6 @@
 node_modules/
 dist/
+template-storage/
 tmp/
 output/
 .env

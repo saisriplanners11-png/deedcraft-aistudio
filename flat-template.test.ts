@@ -4,7 +4,7 @@ import { docxToText, fillSaleDeed, readZip, validateSaleDeedTemplate, type DeedT
 import { initialState, generationBlockers, type AppState } from './logic';
 import { mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { flatStage, propertyChoice } from './flat-options';
-import { newDraft, appStateFor, draftReducer } from './source-draft';
+import { newDraft, appStateFor, draftReducer, resolveDraft } from './source-draft';
 import { newPayment } from './payments';
 
 const fixture = (stage = 'Finished', category = 'Flat') => ({ ...initialState, category,
@@ -25,15 +25,29 @@ describe('final supplied sale deed template', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category, state.form.flatStage), rewritesFor(state), scheduleMergesFor(state), source);
     return { result, text: await docxToText(new Uint8Array(await result.blob.arrayBuffer())) };
   };
-  it.each(['Municipality', 'Corporation', 'Gram Panchayati'])('uses %s in each schedule and preserves its saved selection', async authority => {
+  it.each(['Municipal Council', 'Municipal Corporation', 'Gram Panchayat'])('uses %s in each schedule and preserves its saved selection', async authority => {
     const state: AppState = fixture('', 'Residential'); state.form.localAuthorityType = authority;
-    state.additionalSchedules = [{ id: 'other', category: 'Vacant Plot', unit: 'Sq. Yards', docNames: [], values: { ...state.form, localAuthorityType: 'Gram Panchayati', village: 'Other Village' } }];
+    state.additionalSchedules = [{ id: 'other', category: 'Vacant Plot', unit: 'Sq. Yards', docNames: [], values: { ...state.form, localAuthorityType: 'Gram Panchayat', village: 'Other Village' } }];
     const { text } = await generate(state);
     expect(text).toContain(`Within the jurisdictional limits of the ${authority}, Sircilla`);
-    expect(text).toContain('Within the jurisdictional limits of the Gram Panchayati, Other Village');
+    expect(text).toContain('Within the jurisdictional limits of the Gram Panchayat, Other Village');
     expect(text).not.toContain('Competent Local Authority');
     const draft = newDraft(); draft.manual['property|primary|localAuthorityType'] = authority;
     expect(appStateFor(draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) })).form.localAuthorityType).toBe(authority);
+  });
+  it.each([['Corporation', 'Municipal Corporation'], ['Municipality', 'Municipal Council'], ['Gram Panchayati', 'Gram Panchayat']])('maps saved %s selections without changing their original values', async (oldName, newName) => {
+    const draft = newDraft();
+    draft.manual['property|primary|localAuthorityType'] = oldName;
+    draft.manual['property|second|localAuthorityType'] = oldName;
+    const loaded = draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) });
+    expect(appStateFor(loaded).form.localAuthorityType).toBe(newName);
+    expect(resolveDraft(loaded).values['property|second|localAuthorityType']).toBe(newName);
+    expect(loaded.manual['property|primary|localAuthorityType']).toBe(oldName);
+    const state: AppState = fixture('', 'Residential'); state.form.localAuthorityType = oldName;
+    state.additionalSchedules = [{ id: 'second', category: 'Vacant Plot', unit: 'Sq. Yards', docNames: [], values: { ...state.form, village: 'Other Village' } }];
+    const { text } = await generate(state);
+    expect(text).toContain(`limits of the ${newName}, Sircilla`);
+    expect(text).toContain(`limits of the ${newName}, Other Village`);
   });
   it('writes revised house floor prose once with independent Annexure floor areas', async () => {
     const state: AppState = fixture('', 'Residential');

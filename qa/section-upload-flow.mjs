@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { expect } from 'playwright/test';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,7 @@ const own = {
 const party = (side,name,aadhaar) => Object.fromEntries(Object.entries({Name:name,Relation:'S/o',RelativeName:'Test Parent',Dob:'1990-01-01',Occupation:'Teacher',Aadhaar:aadhaar,HNo:'1-2-3',Locality:'Ganeshnagar',Village:'Sircilla',Mandal:'Sircilla',District:'Karimnagar',State:'Telangana',PinCode:'505301'}).map(([k,v])=>[side+k,v]));
 const fixtures={...Object.fromEntries(Object.entries(own).map(([k,v])=>[k,{...v,...(k==='DEED'?property:{})}])),SELLER:party('executant','Current Seller','2345 6789 0123'),BUYER:party('claimant','Current Buyer','3456 7890 1234')};
 const payload=key=>({name:key+'.txt',mimeType:'text/plain',buffer:Buffer.from(key+' fixture\n'+Object.entries(fixtures[key]||{}).map(([k,v])=>`${k}: ${v}`).join('\n'))});
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined});
 try {
   const p=await browser.newPage({viewport:{width:1280,height:1000}}); const errors=[];
   p.on('pageerror',e=>errors.push(e.message));
@@ -50,37 +51,44 @@ try {
   const idle=async()=>{ await p.waitForFunction(()=>!Array.from(document.querySelectorAll('.link-upload')).some(x=>x.textContent.includes('Reading…'))); const close=p.getByRole('button',{name:'Close',exact:true}); if(await close.isVisible()) await close.click(); };
   const value=label=>p.getByLabel(label,{exact:false}).inputValue();
   await p.goto(process.env.BASE_URL||'http://127.0.0.1:5173');
-  await step('02 Link Deed & Enclosures'); await step('+ Add / upload document');
+  await p.getByRole('button',{name:/New deed/}).first().click();
+  await step('02 Link Deed & Enclosures');
+  await p.locator('[aria-label="Schedule 1 property type"] select').selectOption({ label: 'Part Open Place' });
+  await step('+ Add / upload document');
   const types=[['DEED','Link Document No. రిజిస్టర్డ్ లింక్ దస్తావేజు'],['PASSBOOK','Title Deed No. పట్టాదారు పాస్ పుస్తకం'],['NALA','Nala Order No. నాలా ఉత్తర్వు'],['PERMISSION','Permissions / Approved details అనుమతులు']];
   for(const [,title] of types) await step(title); await step('Continue with 4 documents');
   for(const [key,title] of types) await p.locator('.link-record').filter({has:p.getByRole('heading',{name:english(title),exact:false})}).locator('input[type=file]').setInputFiles(payload(key));
   await idle(); assert.equal(await p.locator('.source').count(),4);
   assert.equal(await value('Document number'),'1263/2016'); assert.equal(await value('Document type'),'Sale Deed');
   assert.equal(await value('Title deed number'),'PPB42'); assert.equal(await value('NALA order number'),'NALA42');
-  await step('03 Jurisdiction'); assert.equal(await value('Mandal'),'Sircilla');
+  await step('03 Jurisdiction');
+  await p.locator('input[type=file]').first().setInputFiles(payload('DEED'));
+  await expect(p.getByLabel('Mandal',{exact:false})).toHaveValue('Sircilla', { timeout: 30000 });
   await step('04 Property Schedules');
-  await step('10 Generate Deed'); assert.equal(await p.getByRole('button',{name:'Download Word deed + plan',exact:true}).isEnabled(),true);
-  const incompleteDownload=p.waitForEvent('download'); await step('Download Word deed + plan');
+  await p.locator('input[type=file]').first().setInputFiles(payload('DEED'));
+  await expect(p.getByLabel('Survey no(s).',{exact:true})).toHaveValue('795/B&D', { timeout: 30000 });
+  await step('10 Generate Deed'); assert.equal(await p.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true}).isEnabled(),true);
+  const incompleteDownload=p.waitForEvent('download'); await step('Download Word 2007 deed (.docx)');
   await (await incompleteDownload).saveAs(out+'incomplete-flow.docx');
-  assert((await p.getByRole('status').innerText()).includes('incomplete draft'));
+  await expect(p.getByRole('status').filter({ hasText: 'incomplete draft' })).toBeVisible();
   for(const [name,key] of [['07 Executant Details','SELLER'],['08 Claimant Details','BUYER']]) {
-    await step(name); assert.equal(await value('Full name'),''); await p.locator('input[type=file]').first().setInputFiles(payload(key)); await idle(); assert.equal(await value('Full name'),key==='SELLER'?'Current Seller':'Current Buyer');
+    await step(name); assert.equal(await value('Full name'),''); await p.locator('input[type=file]').first().setInputFiles(payload(key)); await idle(); assert.equal(await value('Full name'),key==='SELLER'?'CURRENT SELLER':'CURRENT BUYER');
   }
   await step('05 Market Value'); await p.getByLabel('Basic rate per Sq. Yard (₹)',{exact:true}).fill('1000'); await p.getByLabel('Sale consideration (₹)',{exact:true}).fill('100000'); await p.getByLabel('Stamp paper value (₹)',{exact:false}).fill('100');
-  assert((await p.locator('main').innerText()).includes('1,57,220'));
+  await expect(p.getByLabel('Calculated market value (extent × basic rate)', { exact: true })).toHaveValue('1,57,220');
   await step('06 Payment Details'); await step('+ Cheque');
   const amount=p.getByLabel('Amount (₹)',{exact:true}); await amount.fill('100001'); assert.equal(await amount.inputValue(),'1,00,000');
   await p.locator('input[type=file]').first().setInputFiles({name:'cheque.txt',mimeType:'text/plain',buffer:Buffer.from('CHEQUE fixture')});
   await p.waitForFunction(()=>document.querySelector('input[value="123456"]')!==null);
   await p.getByRole('button',{name:'Close',exact:true}).click();
-  await p.getByLabel('Payer (purchaser)',{exact:true}).fill('Edited Buyer');
-  await p.getByLabel('Payee (vendor)',{exact:true}).fill('Edited Seller');
-  assert.equal(await p.getByLabel('Payer (purchaser)',{exact:true}).inputValue(),'Edited Buyer');
-  assert.equal(await p.getByLabel('Payee (vendor)',{exact:true}).inputValue(),'Edited Seller');
-  await amount.fill('50000'); await step('10 Generate Deed'); assert.equal(await p.getByRole('button',{name:'Download Word deed + plan',exact:true}).isEnabled(),true);
+  await p.getByLabel('Vendee (purchaser)',{exact:true}).fill('Edited Buyer');
+  await p.getByLabel('Vendor (seller)',{exact:true}).fill('Edited Seller');
+  assert.equal(await p.getByLabel('Vendee (purchaser)',{exact:true}).inputValue(),'Edited Buyer');
+  assert.equal(await p.getByLabel('Vendor (seller)',{exact:true}).inputValue(),'Edited Seller');
+  await amount.fill('50000'); await step('10 Generate Deed'); assert.equal(await p.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true}).isEnabled(),true);
   await step('06 Payment Details'); await p.getByLabel('Amount (₹)',{exact:true}).fill('100000'); await step('10 Generate Deed');
-  assert.equal(await p.getByRole('button',{name:'Download Word deed + plan',exact:true}).isEnabled(),true);
-  const download=p.waitForEvent('download'); await step('Download Word deed + plan'); await (await download).saveAs(out+'verified-flow.docx');
+  assert.equal(await p.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true}).isEnabled(),true);
+  const download=p.waitForEvent('download'); await step('Download Word 2007 deed (.docx)'); await (await download).saveAs(out+'verified-flow.docx');
   assert.deepEqual(errors,[]);
   console.log('PASS: four Phase 1 uploads, separate current parties, market calculation, overage rejection, editable extracted payer/payee, incomplete draft downloads and successful Word generation.');
 } finally {await browser.close();}

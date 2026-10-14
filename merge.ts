@@ -1,3 +1,4 @@
+import { localAuthorityName } from './fields';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
 import { flatStage, flatVariant } from './flat-options';
 // Builds the placeholder -> value map the template expects, from live form state.
@@ -38,6 +39,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Nala Order No.'] = out['Nala Order No'] || '';
   // This is a renderer-only value: the supplied template has no placeholder
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
+  out['Local Authority Type'] = localAuthorityName(f.localAuthorityType || '');
   out['Near / Adjacent'] = f.nearAdjacent || '';
   out['Municipal House Nos.'] = f.bearingHNo || '';
   out['Municipality/Municipal Corporation/Gram Panchayat Name'] = f.permissionAuthorityName || '';

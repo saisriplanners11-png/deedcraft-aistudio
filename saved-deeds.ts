@@ -3,6 +3,8 @@ import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
 import type { PlanDocument as ExactPlanDocument } from './exact-reference-plan/src/types';
 import type { DeedTemplateSource } from './docx';
+import type { GenerationManifest } from './deed-compiler';
+import type { TemplatePin } from './template-library-types';
 
 export type SavedDeed = {
   id: string;
@@ -19,6 +21,8 @@ export type SavedDeed = {
   extraPartyRecords: { executant: string[]; claimant: string[] };
   templateMode: 'built-in' | 'custom';
   customTemplate: Extract<DeedTemplateSource, { kind: 'custom' }> | null;
+  libraryTemplate?: TemplatePin | null;
+  generationManifest?: GenerationManifest | null;
 };
 
 const DATABASE = 'deedcraft-saved-deeds';

@@ -1,0 +1,98 @@
+import { describe, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { readZip, writeZip, inspectTemplateFields, validateSaleDeedTemplate, templateBindingCatalog, docxToText } from './docx';
+import { loadTemplateRuntime } from './template-runtime-loader.mjs';
+import { fieldFingerprint, validateFieldValue, validateFieldContract, type TemplateField, type TemplateFieldContract } from './template-fields';
+import { resolveTemplateFieldData, fieldInstances, templateRecords } from './template-field-values';
+import { draftReducer, newDraft, appStateFor, type Source } from './source-draft';
+import { initialState } from './logic';
+import { compileDeed, renderArtifact } from './deed-compiler';
+import { DEED_DEFINITIONS } from './instruments';
+
+export const fieldFixture = (patch: Partial<TemplateField> = {}): TemplateField => ({ id: 'maintenance', placeholder: 'Maintenance Amount', label: 'Maintenance amount', help: '', type: 'currency', scope: 'transaction', required: true, options: [], sampleValue: '1000', extractionEnabled: true, extractionDescription: 'Current maintenance charge', evidenceContext: 'current', variants: [], ...patch });
+
+describe('configurable template fields', () => {
+  it('keeps proposals out until reviewed, retains manual overrides, and removes deleted evidence', () => {
+    const field = fieldFixture(); const contract: TemplateFieldContract = { version: 1, fields: [field] };
+    let draft = newDraft();
+    const source: Source = { id: 'evidence', revision: 0, name: 'note.txt', hash: 'hash', status: 'done', templateCandidates: [{ id: 'proposal', fieldId: field.id, recordId: 'deed', value: '2500', quote: 'Maintenance amount: 2500', page: 0, region: 'Printed label', historical: false, verified: true, fingerprint: fieldFingerprint(field) }] };
+    draft = draftReducer(draft, { type: 'add', source });
+    const value = () => resolveTemplateFieldData(draft, appStateFor(draft), contract).instances[0];
+    expect(value().value).toBe('');
+    draft = draftReducer(draft, { type: 'template-review', candidateKey: 'evidence:0:proposal', decision: 'accepted' });
+    expect(value().value).toBe('2500');
+    draft = draftReducer(draft, { type: 'template-field', fieldId: field.id, recordId: 'transaction:deed', value: '3000' });
+    expect(value().value).toBe('3000'); expect(value().conflict).toBe(true);
+    draft = draftReducer(draft, { type: 'template-field-clear', fieldId: field.id, recordId: 'transaction:deed' });
+    expect(value().value).toBe('2500'); expect(value().conflict).toBe(false);
+    draft = draftReducer(draft, { type: 'template-field', fieldId: field.id, recordId: 'transaction:deed', value: '' });
+    expect(value().value).toBe('');
+    draft = draftReducer(draft, { type: 'template-field-clear', fieldId: field.id, recordId: 'transaction:deed' });
+    expect(value().value).toBe('2500');
+    draft = draftReducer(draft, { type: 'template-field', fieldId: field.id, recordId: 'transaction:deed', value: '3000' });
+    draft = draftReducer(draft, { type: 'remove', id: source.id });
+    expect(value().value).toBe('3000');
+    expect(resolveTemplateFieldData({ ...draft, templateFieldValues: {} }, appStateFor(draft), contract).instances[0].value).toBe('');
+  });
+  it('invalidates evidence when its parent source or field definition changes', () => {
+    const field = fieldFixture(); const contract: TemplateFieldContract = { version: 1, fields: [field] };
+    const parent: Source = { id: 'parent', revision: 0, name: 'source', hash: '', status: 'done' };
+    const child: Source = { id: 'child', revision: 0, name: 'source', hash: '', status: 'done', templateParent: { id: 'parent', revision: 0 }, templateCandidates: [{ id: 'candidate', fieldId: field.id, recordId: 'deed', value: '2000', quote: '2000', page: 0, region: 'label', historical: false, verified: true, fingerprint: fieldFingerprint(field) }] };
+    const draft = { ...newDraft(), sources: [parent, child], templateFieldReviews: { 'child:0:candidate': 'accepted' as const } };
+    expect(resolveTemplateFieldData(draft, appStateFor(draft), contract).instances[0].value).toBe('2000');
+    const removed = draftReducer(draft, { type: 'remove', id: 'parent' });
+    expect(resolveTemplateFieldData(removed, appStateFor(removed), contract).instances[0].value).toBe('');
+    expect(resolveTemplateFieldData(draft, appStateFor(draft), { version: 1, fields: [{ ...field, extractionDescription: 'Different meaning' }] }).instances[0].value).toBe('');
+  });
+  it('does not reuse a first party value for another party and scopes required fields to selected variants', () => {
+    const state = { ...initialState, category: 'Vacant Plot', form: { ...initialState.form, executantName: 'FIRST', executantPan: 'FIRSTPAN' }, additionalExecutants: [{ id: 'second', values: { executantName: 'SECOND' }, docNames: [] }] };
+    const records = templateRecords(state);
+    expect(records.find(record => record.id === 'second')?.values['Executant PAN']).toBe('');
+    const field = fieldFixture({ scope: 'property', variants: ['IF FLAT FINISHED'] });
+    expect(fieldInstances({ version: 1, fields: [field] }, { records, values: {} })).toHaveLength(0);
+  });
+  it('validates types and rejects reserved, conflicting, unsupported and incompatible configurations', () => {
+    expect(validateFieldValue(fieldFixture({ type: 'date' }), '2026-02-30')).toMatch(/valid date/);
+    expect(validateFieldValue(fieldFixture({ type: 'boolean' }), 'false')).toBeNull();
+    expect(validateFieldValue(fieldFixture({ type: 'currency' }), '1.234')).toMatch(/two decimals/);
+    const locations = [{ placeholder: 'Maintenance Amount', text: 'clause', part: 'word/document.xml', variants: [], supported: true }];
+    const field = fieldFixture();
+    expect(validateFieldContract({ version: 1, fields: [field] }, [], locations).fields).toHaveLength(1);
+    expect(() => validateFieldContract({ version: 1, fields: [field, field] }, [], locations)).toThrow(/unique/);
+    expect(() => validateFieldContract({ version: 1, fields: [{ ...field, placeholder: 'IF TEST' }] }, [], locations)).toThrow(/reserved/);
+    expect(() => validateFieldContract({ version: 1, fields: [{ ...field, type: 'text' }] }, [], locations, { version: 1, fields: [field] })).toThrow(/new field ID/);
+  });
+  it('inspects split-run placeholders and generates configured new wording without losing fonts or blank clauses', async () => {
+    const runtime = await loadTemplateRuntime();
+    const entries = await runtime.readZip(await readFile(new URL('./sale-deed-template-v6.docx', import.meta.url)));
+    const document = entries.find((entry: any) => entry.name === 'word/document.xml');
+    const paragraph = '<w:p><w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t>Maintenance charges of &lt;Maintenance </w:t></w:r><w:r><w:t>Amount&gt; start on &lt;Maintenance Start Date&gt;.</w:t></w:r></w:p>';
+    document.data = new TextEncoder().encode(new TextDecoder().decode(document.data).replace('<w:body>', '<w:body>' + paragraph));
+    const bytes = await runtime.writeZip(entries);
+    const inspection = await runtime.inspectTemplateFields(bytes);
+    expect(inspection.unresolved).toContain('Maintenance Amount');
+    expect(inspection.occurrences.every((item: any) => item.supported)).toBe(true);
+    const fields = [fieldFixture(), fieldFixture({ id: 'startdate', placeholder: 'Maintenance Start Date', label: 'Start date', type: 'date', sampleValue: '2026-11-01', required: false })];
+    const contract = runtime.validateFieldContract({ version: 1, fields }, await runtime.templateBindingCatalog(), inspection.occurrences);
+    const validation = await runtime.validateSaleDeedTemplate(bytes, 'updated.docx', undefined, contract);
+    expect(validation.valid).toBe(true);
+    const source = { kind: 'custom', bytes, name: 'updated.docx', hash: '', fieldContract: contract, validation };
+    const sample = await runtime.renderSample('plot', source);
+    expect(await runtime.docxToText(sample)).toContain('Maintenance charges of 1,000 start on 01-11-2026.');
+    const outputEntries = await runtime.readZip(sample);
+    expect(outputEntries.find((entry: any) => entry.name === 'word/styles.xml').data).toEqual(entries.find((entry: any) => entry.name === 'word/styles.xml').data);
+    expect(new TextDecoder().decode(outputEntries.find((entry: any) => entry.name === 'word/document.xml').data)).toContain('<w:sz w:val="30"/>');
+  }, 30000);
+  it('prints optional date write-in blanks without deleting new wording and blocks missing required fields', async () => {
+    const bytes = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
+    const entries = await readZip(bytes); const document = entries.find(entry => entry.name === 'word/document.xml')!;
+    document.data = new TextEncoder().encode(new TextDecoder().decode(document.data).replace('<w:body>', '<w:body><w:p><w:r><w:t>Maintenance of &lt;Maintenance Amount&gt; is due dated &lt;Extra Date&gt;.</w:t></w:r></w:p>'));
+    const custom = await writeZip(entries);
+    const contract: TemplateFieldContract = { version: 1, fields: [fieldFixture(), fieldFixture({ id: 'date', placeholder: 'Extra Date', label: 'Extra date', type: 'date', required: false, sampleValue: '2026-11-01' })] };
+    const source = { kind: 'custom' as const, name: 'custom.docx', bytes: custom, hash: '', fieldContract: contract, validation: { valid: true, errors: [], detectedPlaceholders: [], omittedPlaceholders: [] } };
+    const snapshot = { instrumentId: 'sale' as const, variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: '', values: {}, schedules: [{ variant: 'IF OPEN PLOT', values: {} }], unresolvedWarnings: [], templateFieldData: { records: [{ scope: 'transaction', id: 'deed', label: 'Whole deed', values: {} }, { scope: 'property', id: 'primary', label: 'Property 1', variant: 'IF OPEN PLOT', values: {} }], values: { maintenance: { deed: '2500' } } } };
+    const result = await renderArtifact(compileDeed(snapshot, source), 'docx');
+    expect(await docxToText(new Uint8Array(await result.result.blob.arrayBuffer()))).toContain('Maintenance of 2,500 is due dated ____.');
+    await expect(renderArtifact(compileDeed({ ...snapshot, templateFieldData: { ...snapshot.templateFieldData, values: {} } }, source), 'docx')).rejects.toThrow(/Maintenance amount is required/);
+  });
+});

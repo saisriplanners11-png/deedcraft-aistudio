@@ -15,7 +15,8 @@
     "test:exact-plan-e2e": "node qa/exact-reference-flow.mjs",
     "benchmark": "node benchmark-runner.mjs benchmarks/manifest.json benchmarks/report.json",
     "test:entity-e2e": "node qa/entity-party-flow.mjs",
-    "test:flat-e2e": "node qa/flat-template-flow.mjs"
+    "test:flat-e2e": "node qa/flat-template-flow.mjs",
+    "test:templates-e2e": "node qa/template-library-flow.mjs"
   },
   "keywords": [],
   "author": "",
@@ -29,6 +30,7 @@
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "docx": "^9.7.1",
+    "esbuild": "0.25.12",
     "express": "^4.21.2",
     "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",

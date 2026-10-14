@@ -15,6 +15,9 @@
 import { loadSaleDeedTemplate, loadTemplate } from './template';
 import { ALL_FIELDS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
 import { flatVariant } from './flat-options';
+import { loadLibraryBytes } from './template-library-client';
+import type { TemplatePin } from './template-library-types';
+import { EMPTY_FIELD_CONTRACT, fieldName, type TemplateFieldContract, type BindingCatalogItem, type PlaceholderOccurrence, type TemplateFieldInspection } from './template-fields';
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF FLAT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const FLAT_VARIANTS = ['IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
@@ -37,9 +40,19 @@ export type TemplateValidationResult = {
 
 export type DeedTemplateSource =
   | { kind: 'built-in' }
-  | { kind: 'custom'; name: string; hash: string; bytes: Uint8Array; validation: TemplateValidationResult };
+  | ({ kind: 'library' } & TemplatePin)
+  | { kind: 'custom'; name: string; hash: string; bytes: Uint8Array; validation: TemplateValidationResult; fieldContract?: TemplateFieldContract };
 
 export const BUILT_IN_TEMPLATE_SOURCE: DeedTemplateSource = { kind: 'built-in' };
+
+export async function templateBytes(source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<Uint8Array> {
+  if (source.kind === 'library') return loadLibraryBytes(source);
+  if (source.kind === 'custom') {
+    if (!source.validation.valid) throw new Error(`Custom template is not compatible: ${source.validation.errors.join(' ')}`);
+    return source.bytes;
+  }
+  return loadSaleDeedTemplate();
+}
 
 /** A literal phrase in the template to rewrite once the placeholders are filled. */
 export type Rewrite = {
@@ -316,6 +329,7 @@ export async function validateSaleDeedTemplate(
   bytes: Uint8Array,
   filename = 'template.docx',
   referenceBytes?: Uint8Array,
+  fieldContract: TemplateFieldContract = EMPTY_FIELD_CONTRACT,
 ): Promise<TemplateValidationResult> {
   const errors: string[] = [];
   const empty = { valid: false, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
@@ -378,6 +392,7 @@ export async function validateSaleDeedTemplate(
     }
     const supportedByName = new Map(supported.map(tag => [norm(tag), tag]));
     for (const field of ALL_FIELDS) for (const tag of field.ph ? Array.isArray(field.ph) ? field.ph : [field.ph] : []) if (!supportedByName.has(norm(tag))) supportedByName.set(norm(tag), tag);
+    for (const field of fieldContract.fields) supportedByName.set(norm(field.placeholder), field.placeholder);
     const detectedPlaceholders = customTags.filter(tag => supportedByName.has(norm(tag)));
     const unknown = customTags.filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)) && !LEGACY_TEMPLATE_TAGS.has(norm(tag)));
     if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
@@ -388,6 +403,57 @@ export async function validateSaleDeedTemplate(
     errors.push(error?.message || 'Template is not a readable Word document.');
     return empty;
   }
+}
+
+export async function templateBindingCatalog(): Promise<BindingCatalogItem[]> {
+  const validation = await validateSaleDeedTemplate(await loadSaleDeedTemplate());
+  return [...new Set([...validation.detectedPlaceholders, ...validation.omittedPlaceholders])].map(placeholder => {
+    const field = ALL_FIELDS.find(field => (field.ph ? Array.isArray(field.ph) ? field.ph : [field.ph] : []).some(name => norm(name) === norm(placeholder)));
+    const party = field?.id.startsWith('executant') || /^executant/i.test(placeholder) ? 'vendor' : field?.id.startsWith('claimant') || /^claimant/i.test(placeholder) || norm(placeholder) === 'pan' ? 'purchaser' : undefined;
+    const transaction = /consideration|amount|payment|execution|stamp|prepared|words|^cheque\.|remitting bank|utr\/reference|market of value/i.test(placeholder) || ['executionDate', 'consid', 'stampValue'].includes(field?.id || '');
+    return { placeholder, label: field?.label || placeholder, scope: party ? 'party' : transaction ? 'transaction' : 'property', roleId: party, type: field?.type === 'money' ? 'currency' : field?.type === 'date' || field?.type === 'month' ? 'date' : field?.type === 'number' ? 'number' : 'text' } as BindingCatalogItem;
+  });
+}
+
+/** Inspect unknown/configured tags without treating configuration as structural damage. */
+export async function inspectTemplateFields(bytes: Uint8Array, contract: TemplateFieldContract = EMPTY_FIELD_CONTRACT): Promise<TemplateFieldInspection> {
+  const baseline = await validateSaleDeedTemplate(bytes);
+  const structureErrors = baseline.errors.filter(error => !error.startsWith('Unsupported placeholder'));
+  const catalog = await templateBindingCatalog();
+  const known = new Set([...catalog.map(item => norm(item.placeholder)), ...STRUCTURAL_TAGS, ...LEGACY_TEMPLATE_TAGS]);
+  const configured = new Set(contract.fields.map(field => norm(field.placeholder)));
+  const occurrences: PlaceholderOccurrence[] = [];
+  try {
+    const entries = await readZip(bytes, { maxEntries: 2000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
+    const doc = entries.find(entry => entry.name === 'word/document.xml');
+    if (!doc) return { occurrences, unresolved: [], structureErrors };
+    const xml = new TextDecoder().decode(doc.data);
+    const variantUses = new Map<string, Set<string>>();
+    const use = (text: string, variant: string) => { for (const tag of angleTags(text)) { const key = norm(tag); const set = variantUses.get(key) || new Set<string>(); set.add(variant); variantUses.set(key, set); } };
+    try {
+      const prepared = prepareTemplate(xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>')));
+      let variant = '';
+      for (const child of topLevelChildren(prepared.body)) {
+        const chunk = prepared.body.slice(child.start, child.end); const text = plainText(chunk).trim();
+        const marker = ALL_VARIANTS.find(name => text === `<${name}>`);
+        if (marker) { variant = marker; continue; }
+        if (text === '<FOR ALL THE DOCUMENTS>' || text === 'DECLARATION') variant = '';
+        use(chunk, variant);
+      }
+      for (const [name, block] of [...Object.entries(prepared.titles), ...Object.entries(prepared.clauses)]) use(block, name);
+    } catch { /* Structural errors are already reported. */ }
+    for (const entry of entries.filter(entry => /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes|comments)\.xml$/.test(entry.name))) {
+      const content = new TextDecoder().decode(entry.data);
+      const textboxes = (content.match(/<w:txbxContent\b[\s\S]*?<\/w:txbxContent>/g) || []).map(plainText).join('\n');
+      for (const paragraph of content.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || []) {
+        for (const placeholder of angleTags(paragraph).filter(tag => !known.has(norm(tag)) || configured.has(norm(tag)))) {
+          const uses = variantUses.get(norm(placeholder));
+          occurrences.push({ placeholder, text: plainText(paragraph).slice(0, 500), part: entry.name, variants: uses?.has('') ? [] : [...(uses || [])], supported: entry.name === 'word/document.xml' && !angleTags(textboxes).some(tag => norm(tag) === norm(placeholder)) && !!uses });
+        }
+      }
+    }
+  } catch { /* Return the existing bounded ZIP validation errors. */ }
+  return { occurrences, unresolved: [...new Set(occurrences.filter(item => !configured.has(norm(item.placeholder))).map(item => item.placeholder))], structureErrors };
 }
 
 /** Clone one paragraph's formatting while replacing its visible text. */
@@ -470,7 +536,7 @@ export function replaceRunText(p: string, find: RegExp, replacement: (match: Reg
     const value = texts[index++];
     if (unescapeXml(original.replace(/^<w:t(?:\s[^>]*)?>/, '').replace(/<\/w:t>$/, '')) === value) return tag;
     const opening = tag.slice(0, tag.indexOf('>')).replace(/\s+xml:space="[^"]*"/, '');
-    return opening + ' xml:space="preserve">' + escapeXml(value) + '</w:t>';
+    return opening + ' xml:space="preserve">' + escapeXml(value).replace(/\r?\n/g, '</w:t><w:br/><w:t xml:space="preserve">') + '</w:t>';
   });
 }
 
@@ -802,8 +868,9 @@ export async function scheduleText(
   structureDetails?: StructureDetails,
   vendeeShares?: VendeeShare[],
   vendorShares?: VendeeShare[],
+  templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<string> {
-  const bin = await loadSaleDeedTemplate();
+  const bin = await templateBytes(templateSource);
   const entries = await readZip(bin);
   const doc = entries.find(e => e.name === 'word/document.xml');
   if (!doc) throw new Error('Template is missing word/document.xml.');
@@ -842,7 +909,7 @@ export async function scheduleText(
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
     .map(paragraph => plainText(fillParagraph(paragraph, values_, missing, [])).trim())
     .filter(Boolean)
-    .join('\n\n');
+    .join('\n\n').replace(/\uE100[^\uE101]*\uE101/g, '');
 }
 
 export type MergeResult = {
@@ -1094,7 +1161,7 @@ export async function fillSaleDeed(
   if (templateSource.kind === 'custom' && !templateSource.validation.valid) {
     throw new Error(`Custom template is not compatible: ${templateSource.validation.errors.join(' ')}`);
   }
-  const bin = templateSource.kind === 'custom' ? templateSource.bytes : await loadSaleDeedTemplate();
+  const bin = await templateBytes(templateSource);
   const entries = await readZip(bin);
 
   const doc = entries.find(e => e.name === 'word/document.xml');

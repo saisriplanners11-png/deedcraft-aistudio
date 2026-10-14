@@ -22,7 +22,7 @@ try {
   await page.getByRole('button', { name: '+ Add another property', exact: true }).click();
   await step.click();
   await page.getByRole('button', { name: 'Schedule 1', exact: true }).click();
-  await expect(frame.locator('#input-survey-no')).toHaveValue('CURRENT/123');
+  await expect(frame.locator('#input-survey-no')).toHaveValue('CURRENT/123', { timeout: 30000 });
   await expect(frame.locator('#input-north-dim')).toHaveValue('');
   await expect(frame.locator('#input-area-sq-yards')).toHaveValue('');
   const child = page.frames().find(item => item.url().includes('/exact-reference-plan/index.html'));

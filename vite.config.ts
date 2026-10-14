@@ -4,6 +4,17 @@ import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 import { createProxyHandler } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
+import { createTemplateApi } from './template-api.mjs';
+
+function templateLibraryApi(env: Record<string, string>): Plugin {
+  let handler: ReturnType<typeof createTemplateApi>;
+  const getHandler = () => handler ||= createTemplateApi({ storageDir: env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR, password: env.TEMPLATE_ADMIN_PASSWORD || process.env.TEMPLATE_ADMIN_PASSWORD });
+  return {
+    name: 'template-library-api',
+    configureServer: server => void server.middlewares.use(getHandler()),
+    configurePreviewServer: server => void server.middlewares.use(getHandler()),
+  };
+}
 
 // The Anthropic key stays server-side. It is deliberately NOT passed to
 // `define`, so it never appears in the client bundle — the browser talks to
@@ -43,7 +54,7 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), referencePlanApi(env), aiProxy(env)],
+    plugins: [react(), tailwindcss(), templateLibraryApi(env), referencePlanApi(env), aiProxy(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),
@@ -51,7 +62,7 @@ export default defineConfig(({ mode }) => {
       'process.env.VISION_MODEL': JSON.stringify(geminiExtraction ? geminiVisionModel : (env.VISION_MODEL ?? '')),
       'process.env.VERIFY_MODEL': JSON.stringify(geminiExtraction ? geminiVerifyModel : (env.VERIFY_MODEL ?? '')),
     },
-    server: { port: 5173, open: true },
+    server: { port: 5173, open: true, fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/template-storage/**', resolve(env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR || 'template-storage').replace(/\\/g, '/') + '/**'] } },
     build: { outDir: 'dist', sourcemap: true, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), exactReferencePlan: resolve(__dirname, 'exact-reference-plan/index.html') } } },
   };
 });
