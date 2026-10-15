@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
-import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { loadTemplateRuntime } from './template-runtime-loader.mjs';
+import { createTemplateStorage } from './template-storage.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const LIMIT = 20 * 1024 * 1024;
@@ -12,7 +13,7 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (status, message) => Object.assign(new Error(message), { status });
 
 export function createTemplateApi(options = {}) {
-  const storage = resolve(options.storageDir || process.env.TEMPLATE_STORAGE_DIR || join(ROOT, 'template-storage'));
+  const storage = createTemplateStorage(options, ROOT);
   const password = () => options.password ?? process.env.TEMPLATE_ADMIN_PASSWORD ?? '';
   const sessions = new Map();
   const attempts = new Map();
@@ -22,20 +23,16 @@ export function createTemplateApi(options = {}) {
     queue = next.catch(() => {});
     return next;
   };
-  async function atomic(name, bytes) {
-    const target = join(storage, name);
-    const temporary = target + '.' + randomUUID() + '.tmp';
-    await writeFile(temporary, bytes, { flag: 'wx' });
-    await rename(temporary, target);
-  }
-  const save = data => atomic('library.json', JSON.stringify(data, null, 2));
-  const read = async () => JSON.parse(await readFile(join(storage, 'library.json'), 'utf8'));
+  const atomic = (name, bytes) => storage.put(name, bytes);
+  const save = data => storage.save(data);
+  const read = async () => {
+    const data = await storage.read();
+    if (!data) throw fail(503, 'Template metadata is missing. Restore the library and retry.');
+    return data;
+  };
   async function seedLibrary() {
-    const fromBuild = relative(join(ROOT, 'dist'), storage);
-    if (!fromBuild || (!fromBuild.startsWith('..') && !isAbsolute(fromBuild))) throw fail(503, 'Template storage must be outside the build directory.');
-    if (options.production && !options.storageDir && !process.env.TEMPLATE_STORAGE_DIR) throw fail(503, 'Configure TEMPLATE_STORAGE_DIR on a persistent disk before using the shared library.');
-    await mkdir(storage, { recursive: true });
-    try { await read(); return; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await storage.init();
+    if (await storage.read()) return;
     const bytes = await readFile(join(ROOT, 'sale-deed-template-v6.docx'));
     const runtime = await loadTemplateRuntime();
     const validation = await runtime.validateSaleDeedTemplate(bytes, 'sale-deed-template-v6.docx');
@@ -43,7 +40,8 @@ export function createTemplateApi(options = {}) {
     const at = new Date().toISOString();
     const version = { id: 'sale-deed-v6', instrumentId: 'sale', filename: 'sale-deed-template-v6.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [] };
     await atomic(version.id + '.docx', bytes);
-    await save({ active: { sale: version.id }, versions: [version], history: [{ versionId: version.id, at, action: 'seed' }] });
+    try { await save({ active: { sale: version.id }, versions: [version], history: [{ versionId: version.id, at, action: 'seed' }] }); }
+    catch (error) { if (error.status !== 409 || !await storage.read()) throw error; }
   }
   let initialization;
   const ensureInitialized = () => initialization ??= serial(seedLibrary).catch(error => { initialization = undefined; throw error; });
@@ -83,7 +81,7 @@ export function createTemplateApi(options = {}) {
     return current;
   }
   async function checkedBytes(version) {
-    const bytes = await readFile(join(storage, version.id + '.docx'));
+    const bytes = await storage.get(version.id + '.docx');
     if (hash(bytes) !== version.hash) throw fail(503, 'Stored template failed its integrity check.');
     return bytes;
   }
@@ -110,8 +108,9 @@ export function createTemplateApi(options = {}) {
     for (const [id, label] of runtime.sampleCasesFor(version.fieldContract)) {
       try {
         const output = await runtime.renderSample(id, source);
-        await atomic(version.id + '-' + id + '.docx', output);
-        version.samples.push({ id, label });
+        const file = version.id + '-' + id + '-' + hash(output) + '.docx';
+        await atomic(file, output);
+        version.samples.push({ id, label, file });
       } catch (error) { version.samples.push({ id, label, error: error.message }); }
     }
     version.samplesSchemaHash = version.schemaHash;
@@ -233,7 +232,7 @@ export function createTemplateApi(options = {}) {
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.setHeader('Content-Disposition', `attachment; filename="SAMPLE-${sampleId}.docx"`);
         res.setHeader('Cache-Control', 'no-store');
-        res.end(await readFile(join(storage, version.id + '-' + sampleId + '.docx'))); return;
+        res.end(await storage.get(sample.file || version.id + '-' + sampleId + '.docx')); return;
       }
       if (!action && req.method === 'GET') return send(200, version);
       if (action === 'validate' && req.method === 'POST') {
@@ -256,7 +255,7 @@ export function createTemplateApi(options = {}) {
             if (item.fieldContract?.fields.length && (input.expectedSchemaRevision !== item.schemaRevision || input.expectedSchemaHash !== item.schemaHash)) throw fail(409, 'Field configuration changed. Refresh and review the current samples before publishing.');
             if (!item.validation.valid || item.contractVersion !== CONTRACT || item.samples.length !== runtime.sampleCasesFor(item.fieldContract).length || item.samples.some(sample => sample.error) || item.samplesSchemaHash !== item.schemaHash) throw fail(400, 'Validation and every sample must succeed for the current field configuration before publishing.');
             if (input.reviewed !== true) throw fail(400, 'Confirm that sample wording and layout have been reviewed.');
-            for (const sample of item.samples) await readFile(join(storage, item.id + '-' + sample.id + '.docx'));
+            for (const sample of item.samples) await storage.get(sample.file || item.id + '-' + sample.id + '.docx');
           }
           await checkedBytes(item);
           const at = new Date().toISOString();

@@ -8,7 +8,7 @@ import { createTemplateApi } from './template-api.mjs';
 
 function templateLibraryApi(env: Record<string, string>): Plugin {
   let handler: ReturnType<typeof createTemplateApi>;
-  const getHandler = () => handler ||= createTemplateApi({ storageDir: env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR, password: env.TEMPLATE_ADMIN_PASSWORD || process.env.TEMPLATE_ADMIN_PASSWORD });
+  const getHandler = () => handler ||= createTemplateApi({ storageDir: env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR, password: env.TEMPLATE_ADMIN_PASSWORD || process.env.TEMPLATE_ADMIN_PASSWORD, backend: env.TEMPLATE_STORAGE_BACKEND || process.env.TEMPLATE_STORAGE_BACKEND, supabaseUrl: env.SUPABASE_URL || process.env.SUPABASE_URL, supabaseKey: env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY, supabaseBucket: env.SUPABASE_TEMPLATE_BUCKET || process.env.SUPABASE_TEMPLATE_BUCKET });
   return {
     name: 'template-library-api',
     configureServer: server => void server.middlewares.use(getHandler()),

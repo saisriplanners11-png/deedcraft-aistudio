@@ -2,22 +2,24 @@ services:
   - type: web
     name: deedcraft-aistudio
     runtime: node
-    # Persistent template storage requires a paid instance and disk.
-    plan: starter
+    # DOCX files and metadata persist in Supabase; no Render disk required.
+    plan: free
     branch: main
     autoDeployTrigger: commit
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /
-    disk:
-      name: deedcraft-templates
-      mountPath: /var/data/deedcraft
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
-      - key: TEMPLATE_STORAGE_DIR
-        value: /var/data/deedcraft/templates
+      - key: TEMPLATE_STORAGE_BACKEND
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_TEMPLATE_BUCKET
+        value: deed-templates
       - key: TEMPLATE_ADMIN_PASSWORD
         sync: false
       - key: EXTRACTION_PROVIDER

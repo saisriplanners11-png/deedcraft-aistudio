@@ -62,11 +62,13 @@ The DOCX package retains its Word styles, fonts, spacing, tables, and page-secti
 Configure these **server-side** variables (never use a `VITE_` prefix):
 
 - `TEMPLATE_ADMIN_PASSWORD`: a strong shared administrator password. An empty value disables management. Login expires after eight hours; server restarts require a fresh login.
-- `TEMPLATE_STORAGE_DIR`: an absolute directory on a persistent disk, outside `dist`. Development/preview default to `./template-storage`; `npm start` requires an explicitly configured directory. Do not run multiple app instances against this filesystem store.
+- `TEMPLATE_STORAGE_BACKEND`: `disk` (default for local development) or `supabase` (Render Free).
+- `TEMPLATE_STORAGE_DIR`: disk backend only; an absolute directory on a persistent disk, outside `dist`. Development/preview default to `./template-storage`; production disk storage requires an explicitly configured directory. Do not run multiple app instances against this filesystem store.
+- Supabase backend: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`), and `SUPABASE_TEMPLATE_BUCKET=deed-templates`. Keep keys on the server. See [Supabase setup](supabase/README.md).
 
 The library automatically seeds Sale v6 once. Original bundled historical templates remain available for existing compatibility paths. Template bytes and metadata are immutable after publication; rollback changes only the active pointer and records a history entry. Publication uses an expected-active-version check to reject stale admin views. Unavailable or damaged storage produces a retryable error rather than choosing a different template.
 
-`render.yaml` now describes a Starter web service with a 1 GB persistent disk mounted at `/var/data/deedcraft`, with templates under `/var/data/deedcraft/templates`. This configuration requires paid Render resources; applying it is a separate deployment action. Set the admin password in Render's secret configuration. Existing free services must be upgraded and have the disk attached before enabling this feature. This repository change alone does not change a running service.
+`render.yaml` describes a Free web service using Supabase for persistence, without a Render disk. Configure the existing service's environment variables manually, or apply the Blueprint with the required secrets. Pushing this file alone does not reconfigure an existing service. Provider quotas and idle startup delays still apply. No Supabase or Render resources are provisioned by this code change.
 
 For backups, stop the service or otherwise prevent all library writes, then copy the **entire** `TEMPLATE_STORAGE_DIR`, including `library.json`, immutable version files, and sample files. Restore the complete directory while the service is stopped, preserve read/write permissions, point `TEMPLATE_STORAGE_DIR` at it, and restart. Keep the password configuration separate from backups. A deployment rebuild does not reset a library on the persistent disk.
 
