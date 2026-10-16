@@ -106,6 +106,31 @@ try {
   assert.equal(await customer.evaluate(async () => (await (await import('/saved-deeds.ts')).listSavedDeeds())[0].libraryTemplate.versionId), oldPin);
   await customer.getByRole('button', { name: 'New template available → Update this draft', exact: true }).click();
   await customer.locator('.template-context strong').filter({ hasText: 'revised-library.docx' }).waitFor();
+  // A customer has not opened Templates: placement styles must already be loaded.
+  await customer.getByRole('button', { name: /^01\s*Deed setup/ }).click();
+  for (const width of [1280, 900, 390]) {
+    await customer.setViewportSize({ width, height: 900 });
+    const layout = await customer.evaluate(() => {
+      const fields = [...document.querySelectorAll('.setup-fields > .setup-field')].map(field => field.getBoundingClientRect());
+      const property = document.querySelector('.setup-step .field');
+      const label = property.querySelector('span').getBoundingClientRect();
+      const select = property.querySelector('select').getBoundingClientRect();
+      return {
+        slots: [...document.querySelectorAll('.template-placement-slot')].map(slot => getComputedStyle(slot).display),
+        sameRow: Math.abs(fields[0].top - fields[1].top) < 1,
+        stacked: fields[1].top > fields[0].bottom,
+        labelAligned: Math.abs(label.left - select.left) < 1,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    assert(layout.slots.length > 0);
+    assert(layout.slots.every(display => display === 'contents'), `Placement hosts consume cells at ${width}px`);
+    assert(width > 620 ? layout.sameRow : layout.stacked, `Setup fields misaligned at ${width}px`);
+    assert(layout.labelAligned, `Property label misaligned at ${width}px`);
+    assert.equal(layout.overflow, false, `Page overflows at ${width}px`);
+    assert.equal(await customer.locator('.template-placement-fallback').isVisible(), false);
+  }
+  await customer.setViewportSize({ width: 1280, height: 900 });
   await customer.getByRole('button', { name: /^04\s*Property Schedules/ }).click();
   await customer.locator('[aria-label="Schedule 1 property type"] select').selectOption({ label: 'Vacant Plot' });
   await customer.getByLabel('Whole deed — Maintenance Amount', { exact: true }).waitFor();

@@ -62,7 +62,7 @@ export default defineConfig(({ mode }) => {
       'process.env.VISION_MODEL': JSON.stringify(geminiExtraction ? geminiVisionModel : (env.VISION_MODEL ?? '')),
       'process.env.VERIFY_MODEL': JSON.stringify(geminiExtraction ? geminiVerifyModel : (env.VERIFY_MODEL ?? '')),
     },
-    server: { port: 5173, open: true, fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/template-storage/**', resolve(env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR || 'template-storage').replace(/\\/g, '/') + '/**'] } },
+    server: { port: 5173, open: false, watch: { ignored: ['**/tmp/**', '**/output/**', '**/template-storage/**'] }, fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/template-storage/**', resolve(env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR || 'template-storage').replace(/\\/g, '/') + '/**'] } },
     build: { outDir: 'dist', sourcemap: true, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), exactReferencePlan: resolve(__dirname, 'exact-reference-plan/index.html') } } },
   };
 });

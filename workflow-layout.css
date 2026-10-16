@@ -14,7 +14,7 @@
 .wizard-app .setup-field select,.wizard-app .setup-step .field select{min-height:48px;width:100%;max-width:100%;min-width:0;border:1px solid var(--dc-control-border);border-radius:8px;background:var(--dc-paper);padding:10px 36px 10px 12px;font:400 15px/1.5 'IBM Plex Sans',sans-serif;color:var(--dc-ink)}
 .wizard-app .setup-field small{font-size:12px;line-height:1.5;color:var(--dc-muted)}
 .wizard-app .setup-step .add-document-row{border:0;background:transparent;margin:0;padding:0;display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0}
-.wizard-app .setup-step .field{display:flex;flex-direction:column;gap:8px;width:100%;max-width:480px;min-width:0}
+.wizard-app .setup-step .field{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;max-width:480px;min-width:0}
 .wizard-app .setup-step .add-document-row>span:first-child{font:400 16px/1.6 'IBM Plex Sans',sans-serif;text-transform:none;letter-spacing:0}
 .wizard-app .setup-step .add-document-row>span:first-child b{font-weight:600}
 .wizard-app .setup-step .add-document-row>.quiet{border:1px solid var(--dc-rule);flex-shrink:0}

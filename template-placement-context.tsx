@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useId, useLayoutEffect, useRef } from 'react';
 import { placementSection, type PlacementHost } from './template-placement';
+import './template-placement.css';
 export interface MountedPlacementHost extends PlacementHost { key: string; element: HTMLElement }
 export const PlacementRegistry = createContext<((key: string, host?: MountedPlacementHost) => void) | null>(null);
 export const PlacementRecordContext = createContext({ scope: 'property', id: 'primary' });
