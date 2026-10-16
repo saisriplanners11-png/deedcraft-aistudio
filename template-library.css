@@ -15,6 +15,9 @@
 .template-review { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; }
 .template-library button { cursor: pointer; }
 .template-library button:disabled { cursor: wait; opacity: .55; }
+.template-delete { margin: 16px 0; }
+.template-delete [role=alertdialog] { margin-top: 12px; padding: 16px; border: 1px solid var(--border, #a99a7b); border-radius: 8px; }
+.template-delete [role=alertdialog] .template-actions { margin-bottom: 0; }
 .field-configurator fieldset { border: 1px solid #aa997a; margin: 18px 0; padding: 20px; border-radius: 8px; }
 .field-configurator label { display: block; margin: 12px 0; }
 .field-configurator input:not([type=checkbox]), .field-configurator select, .field-configurator textarea { display: block; width: 100%; padding: 8px; margin-top: 5px; color: inherit; background: transparent; border: 1px solid #aa997a; }

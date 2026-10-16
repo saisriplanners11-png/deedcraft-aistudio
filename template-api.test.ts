@@ -147,6 +147,32 @@ describe('shared template library API', { timeout: 30000 }, () => {
       expect((await (await fetch(base + '/session', { headers: { Cookie: cookie } })).json()).authenticated).toBe(false);
     } finally { clock.mockRestore(); }
   });
+  it('moves only unpublished revisions to recoverable Trash with authentication, CSRF and stale-edit protection', async () => {
+    await login();
+    const revision = await (await upload(starter, 'delete-test.docx')).json();
+    const path = `/versions/${revision.id}`;
+    const body = JSON.stringify({ expectedSchemaRevision: revision.schemaRevision || 0, expectedHash: revision.hash });
+    expect((await fetch(base + path, { method: 'DELETE', body })).status).toBe(401);
+    expect((await fetch(base + path, { method: 'DELETE', headers: { Cookie: cookie }, body })).status).toBe(403);
+    expect((await fetch(base + path, { method: 'DELETE', headers: { ...headers(), Origin: 'https://evil.example' }, body })).status).toBe(403);
+    expect((await fetch(base + path, { method: 'DELETE', headers: headers(), body: JSON.stringify({ expectedSchemaRevision: 999, expectedHash: revision.hash }) })).status).toBe(409);
+    expect((await fetch(base + '/versions/sale-deed-v6', { method: 'DELETE', headers: headers(), body })).status).toBe(409);
+    const published = (await (await fetch(base)).json()).versions.find((item: any) => item.id !== 'sale-deed-v6');
+    expect((await fetch(base + `/versions/${published.id}`, { method: 'DELETE', headers: headers(), body })).status).toBe(409);
+    expect((await fetch(base + path, { method: 'DELETE', headers: headers(), body })).status).toBe(200);
+    const admin = await (await fetch(base, { headers: headers() })).json();
+    expect(admin.versions.some((item: any) => item.id === revision.id)).toBe(false);
+    expect(admin.deletedVersions.find((item: any) => item.id === revision.id).deletedAt).toBeTruthy();
+    expect(admin.active.sale).toBe('sale-deed-v6');
+    expect((await (await fetch(base)).json()).deletedVersions).toBeUndefined();
+    expect((await fetch(base + path + '/download', { headers: headers() })).status).toBe(404);
+    expect((await post(path + '/validate', {})).status).toBe(404);
+    expect((await post(path + '/publish', { expectedActive: 'sale-deed-v6', reviewed: true })).status).toBe(404);
+    expect((await fetch(base + path + '/restore', { method: 'POST', body: '{}' })).status).toBe(401);
+    expect((await post(path + '/restore', {})).status).toBe(200);
+    expect((await fetch(base + path + '/download', { headers: headers() })).status).toBe(200);
+    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v6');
+  });
   it('disables management without a password and limits failed logins', async () => {
     await close(); await start('');
     expect((await (await fetch(base + '/session')).json()).configured).toBe(false);

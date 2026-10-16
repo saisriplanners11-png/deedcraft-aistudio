@@ -29,7 +29,8 @@ try {
   const errors = []; page.on('pageerror', error => errors.push(error.message)); customer.on('pageerror', error => errors.push(error.message));
   await customer.goto(origin);
   await customer.getByRole('button', { name: /New deed/ }).first().click();
-  await customer.getByText('Template: sale-deed-template-v6.docx', { exact: false }).waitFor();
+  await customer.locator('.template-context summary').click();
+  await customer.locator('.template-context strong').filter({ hasText: 'sale-deed-template-v6.docx' }).waitFor();
   const oldPin = await customer.evaluate(async () => {
     const { listSavedDeeds } = await import('/saved-deeds.ts');
     for (let i = 0; i < 50; i++) {
@@ -51,7 +52,17 @@ try {
   document.data = new TextEncoder().encode(new TextDecoder().decode(document.data).replace('<w:body>', '<w:body><w:p><w:r><w:rPr><w:sz w:val="30"/></w:rPr><w:t>Maintenance charges of &lt;Maintenance Amount&gt; start on &lt;Maintenance Start Date&gt;.</w:t></w:r></w:p><w:p><w:r><w:t>Warranty note: &lt;Warranty Note&gt;.</w:t></w:r></w:p>'));
   const bytes = await runtime.writeZip(entries);
   await page.locator('.template-library input[type=file]').setInputFiles({ name: 'revised-library.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from(bytes) });
-  const card = page.locator('.template-panel').filter({ has: page.getByRole('heading', { name: 'revised-library.docx', exact: true }) });
+  const card = page.locator('.template-panel').filter({ has: page.getByRole('heading', { level: 2, name: 'revised-library.docx', exact: true }) });
+  await card.getByRole('button', { name: 'Configure fields', exact: true }).click();
+  await card.getByRole('button', { name: 'Delete revision', exact: true }).click();
+  await card.getByRole('button', { name: 'Cancel deletion', exact: true }).click();
+  assert.equal(await card.count(), 1);
+  await card.getByRole('button', { name: 'Delete revision', exact: true }).click();
+  await card.getByRole('button', { name: 'Move to Trash', exact: true }).click();
+  await page.getByText('Revision moved to Trash. The active template is unchanged.', { exact: true }).waitFor();
+  assert.equal(await card.count(), 0);
+  await page.getByText('Trash (1)', { exact: true }).click();
+  await page.getByRole('button', { name: 'Restore revision', exact: true }).click();
   await card.getByRole('button', { name: 'Configure fields', exact: true }).click();
   const warranty = card.locator('fieldset').filter({ has: page.locator('legend').filter({ hasText: 'Warranty Note' }) });
   await warranty.getByRole('checkbox', { name: /Required when/ }).uncheck();
@@ -71,17 +82,19 @@ try {
   await card.getByRole('checkbox', { name: /I reviewed every sample/ }).check();
   await card.getByRole('button', { name: 'Publish version', exact: true }).click();
   await page.getByText('Published. New deeds will use this version.', { exact: true }).waitFor();
+  assert.equal(await card.getByRole('button', { name: 'Delete revision', exact: true }).count(), 0);
   const active = (await (await fetch(origin + '/api/templates')).json()).active.sale;
   assert.notEqual(active, oldPin);
   await customer.reload();
   await customer.getByRole('button', { name: 'Continue / Edit', exact: true }).click();
+  await customer.locator('.template-context summary').click();
   await customer.getByRole('button', { name: 'New template available → Update this draft', exact: true }).waitFor();
   assert.equal(await customer.evaluate(async () => (await (await import('/saved-deeds.ts')).listSavedDeeds())[0].libraryTemplate.versionId), oldPin);
   await customer.getByRole('button', { name: 'New template available → Update this draft', exact: true }).click();
-  await customer.getByText('Template: revised-library.docx', { exact: false }).waitFor();
+  await customer.locator('.template-context strong').filter({ hasText: 'revised-library.docx' }).waitFor();
   await customer.getByRole('button', { name: /^04\s*Property Schedules/ }).click();
   await customer.locator('[aria-label="Schedule 1 property type"] select').selectOption({ label: 'Vacant Plot' });
-  await customer.getByRole('button', { name: 'Overview', exact: true }).click();
+  await customer.getByRole('navigation', { name: 'Deed steps' }).getByRole('button', { name: 'Overview', exact: true }).click();
   await customer.getByRole('heading', { name: 'Additional template fields', exact: true }).waitFor();
   const contract = (await (await fetch(origin + '/api/templates')).json()).versions.find(item => item.id === active).fieldContract;
   await customer.route('**/api/anthropic/v1/messages', async route => {
@@ -110,14 +123,15 @@ try {
   assert(!generatedText.includes('\uE100'));
   await customer.getByRole('button', { name: 'Saved deeds', exact: true }).click(); await customer.reload();
   await customer.getByRole('button', { name: 'Continue / Edit', exact: true }).first().click();
-  await customer.getByRole('button', { name: 'Overview', exact: true }).click();
+  await customer.getByRole('navigation', { name: 'Deed steps' }).getByRole('button', { name: 'Overview', exact: true }).click();
   assert.equal(await customer.getByLabel('Whole deed — Maintenance Amount', { exact: true }).inputValue(), '2500');
   await customer.getByRole('button', { name: 'Remove evidence source', exact: true }).first().click();
   assert.equal(await customer.getByLabel('Whole deed — Maintenance Amount', { exact: true }).inputValue(), '');
   await customer.getByRole('button', { name: /^10\s*Generate Deed/ }).click();
   assert.equal(await customer.getByRole('button', { name: 'Download Word 2007 deed (.docx)', exact: true }).isDisabled(), true);
   await customer.getByRole('button', { name: 'New deed', exact: false }).first().click();
-  await customer.getByText('Template: revised-library.docx', { exact: false }).waitFor();
+  await customer.locator('.template-context summary').click();
+  await customer.locator('.template-context strong').filter({ hasText: 'revised-library.docx' }).waitFor();
   await card.getByRole('link', { name: 'Download Word', exact: true }).waitFor();
   const seeded = page.locator('.template-panel').filter({ has: page.getByRole('heading', { name: 'sale-deed-template-v6.docx', exact: true }) });
   await seeded.getByRole('button', { name: 'Restore this published version', exact: true }).click();

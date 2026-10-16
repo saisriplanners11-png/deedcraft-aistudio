@@ -81,6 +81,16 @@ describe('Supabase template persistence', () => {
       expect(revision.validation.valid).toBe(true); expect(revision.samples).toHaveLength(8);
       expect((await fetch(base + `/versions/${revision.id}/samples/plot`, { headers })).status).toBe(200);
       expect((await fetch(base + `/versions/${revision.id}/download`)).status).toBe(401);
+      const remove = () => fetch(base + `/versions/${revision.id}`, { method: 'DELETE', headers, body: JSON.stringify({ expectedHash: revision.hash, expectedSchemaRevision: revision.schemaRevision || 0 }) });
+      expect((await remove()).status).toBe(200);
+      api = createTemplateApi({ ...options, production: true, password: 'test-password' });
+      const renewed = await fetch(base + '/login', { method: 'POST', body: JSON.stringify({ password: 'test-password' }) });
+      headers.Cookie = renewed.headers.get('set-cookie')!.split(';')[0]; headers['X-CSRF-Token'] = (await renewed.json()).csrf;
+      const trash = await (await fetch(base, { headers })).json();
+      expect(trash.deletedVersions[0].id).toBe(revision.id);
+      expect(trash.versions.some((item: any) => item.id === revision.id)).toBe(false);
+      expect((await fetch(base + `/versions/${revision.id}/download`, { headers })).status).toBe(404);
+      expect((await fetch(base + `/versions/${revision.id}/restore`, { method: 'POST', headers, body: '{}' })).status).toBe(200);
       const publish = await fetch(base + `/versions/${revision.id}/publish`, { method: 'POST', headers, body: JSON.stringify({ expectedActive: 'sale-deed-v6', reviewed: true }) });
       expect(publish.status).toBe(200);
       api = createTemplateApi({ ...options, production: true, password: 'test-password' });

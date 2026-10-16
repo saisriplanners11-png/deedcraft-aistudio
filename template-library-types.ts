@@ -19,6 +19,7 @@ export interface LibraryRevision {
   expectedSampleCount?: number;
   validation?: TemplateValidationResult;
   publishedAt?: string;
+  deletedAt?: string;
   publishedBy?: string;
   reviewedAt?: string;
   samples?: { id: string; label: string; error?: string }[];
@@ -26,5 +27,6 @@ export interface LibraryRevision {
 export interface LibraryListing {
   active: Record<string, string>;
   versions: LibraryRevision[];
+  deletedVersions?: LibraryRevision[];
   history?: { versionId: string; previousVersionId?: string; at: string; action: 'publish' | 'rollback' | 'seed' }[];
 }

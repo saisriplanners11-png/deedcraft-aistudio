@@ -1,3 +1,4 @@
+import { validatePlacement, type FieldPlacement } from './template-placement';
 export type TemplateFieldScope = 'transaction' | 'property' | 'party';
 export type TemplateFieldType = 'text' | 'multiline' | 'number' | 'currency' | 'date' | 'dropdown' | 'boolean';
 export interface TemplateField {
@@ -6,6 +7,7 @@ export interface TemplateField {
   required: boolean; options: string[]; sampleValue: string;
   extractionEnabled: boolean; extractionDescription: string; evidenceContext: 'current' | 'historical';
   existingPlaceholder?: string;
+  placement?: FieldPlacement;
   /** Computed from Word section occurrences, never supplied by the administrator. */
   variants?: string[];
 }
@@ -44,7 +46,7 @@ export function formatFieldValue(field: TemplateField, value: string): string {
   return value;
 }
 
-export function validateFieldContract(input: unknown, catalog: BindingCatalogItem[], occurrences: PlaceholderOccurrence[], previous: TemplateFieldContract = EMPTY_FIELD_CONTRACT): TemplateFieldContract {
+export function validateFieldContract(input: unknown, catalog: BindingCatalogItem[], occurrences: PlaceholderOccurrence[], previous: TemplateFieldContract = EMPTY_FIELD_CONTRACT, requirePlacement = false): TemplateFieldContract {
   const fields = (input as any)?.fields;
   if ((input as any)?.version !== 1 || !Array.isArray(fields) || fields.length > 100) throw new Error('Choose a valid field contract with at most 100 fields.');
   const names = new Set<string>(), ids = new Set<string>();
@@ -70,6 +72,8 @@ export function validateFieldContract(input: unknown, catalog: BindingCatalogIte
     if (old && (old.type !== item.type || old.scope !== item.scope || old.roleId !== (item.scope === 'party' ? item.roleId : undefined) || old.existingPlaceholder !== target?.placeholder || fieldName(old.placeholder) !== fieldName(placeholder))) throw new Error('Changing a field meaning, type or scope requires a new field ID.');
     const variants = locations.some(location => !location.variants.length) ? [] : [...new Set(locations.flatMap(location => location.variants))];
     const field: TemplateField = { id: item.id, placeholder, label: item.label.trim(), help: item.help, type: target?.type || item.type, scope: target?.scope || item.scope, roleId: target?.roleId || (item.scope === 'party' ? item.roleId : undefined), required: item.required, options, sampleValue: item.sampleValue, extractionEnabled: !target && item.extractionEnabled, extractionDescription: item.extractionDescription, evidenceContext: item.evidenceContext, existingPlaceholder: target?.placeholder, variants };
+    if (requirePlacement && !item.placement) throw new Error(`Choose a dashboard step, section and position for ${field.label}.`);
+    if (item.placement) field.placement = validatePlacement(item.placement);
     if (!target && (validateFieldValue({ ...field, required: true }, field.sampleValue))) throw new Error(`Enter a valid sample value for ${field.label}.`);
     return field;
   });

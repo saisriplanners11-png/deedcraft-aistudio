@@ -5,6 +5,8 @@ import { flatStage, flatLabel } from './flat-options';
 // anything computed from a blank field reads as blank too, never as zero.
 
 import { STEPS, DEEDS, DRAFTS, CATEGORIES, RULES } from './reference';
+import { placementStepIndex } from './template-placement';
+import type { TemplateFieldInstance } from './template-field-values';
 import { ALL_FIELDS, EMPTY_FORM, FLAT_BOUNDARY_FIELDS, FLAT_SCHEDULE_FIELDS, SCHEDULE_VARIANT, groupsForStep, type PartyPeople, type PartyType, type StructureDetails } from './fields';
 import type { DocKind } from './extract';
 import { newPayment, totalOf, netTotalOf, tdsTotalOf, recitalFor, type Payment } from './payments';
@@ -644,7 +646,7 @@ export function dismissConflicts(state: AppState, ids?: string[]): Partial<AppSt
 
 export type ViewModel = ReturnType<typeof buildViewModel>;
 
-export function buildViewModel(state: AppState, setState: (patch: Partial<AppState>) => void) {
+export function buildViewModel(state: AppState, setState: (patch: Partial<AppState>) => void, templateFields: TemplateFieldInstance[] = []) {
   const f = state.form;
   const set = (patch: Partial<AppState>) => setState(patch);
   const setField = (id: string, value: string) => {
@@ -738,10 +740,14 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     }
     return true;
   });
-  const filled = applicable.filter(x => has(f[x.id])).length;
-  const pct = applicable.length ? Math.round((filled / applicable.length) * 100) : 0;
+  const placed = templateFields.filter(instance => instance.field.placement);
+  const additional = placed.filter(instance => !instance.field.existingPlaceholder);
+  const applicableCount = applicable.length + additional.length;
+  const filled = applicable.filter(x => has(f[x.id])).length + additional.filter(instance => instance.value.trim() && !instance.error).length;
+  const pct = applicableCount ? Math.round((filled / applicableCount) * 100) : 0;
 
   const stepIsDone = (id: number) => {
+    if (placed.some(instance => placementStepIndex(instance.field.placement) === id && instance.error)) return false;
     if (id === 0) return !!(state.deedType && state.category && state.draft);
     if (id === 5) return payMatched;
     if (id === 3) return !!state.scheduleText;
@@ -769,10 +775,11 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     { label: 'Executant details complete', ok: stepIsDone(6), note: 'Identity and capacity of the vendor' },
     { label: 'Claimant details complete', ok: stepIsDone(7), note: 'Identity of the purchaser' },
     { label: 'Schedule of property composed', ok: !!state.scheduleText, note: 'Reads into the deed verbatim' },
+    ...[...new Set(placed.map(instance => placementStepIndex(instance.field.placement)))].map(id => ({ label: `Template fields — ${STEPS[id!]?.label}`, ok: !placed.some(instance => placementStepIndex(instance.field.placement) === id && instance.error), note: 'Complete required fields in their configured step' })),
   ].map(c => ({ ...c, mark: c.ok ? '✓' : '!' }));
 
   const openCount = checks.filter(c => !c.ok).length;
-  const blockers = generationBlockers(state);
+  const blockers = [...generationBlockers(state), ...placed.filter(instance => instance.error).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement)! }))];
 
   const cur = STEPS[state.step];
   const partyName = (side: 'executant' | 'claimant') => partyDisplayName(f, side);
@@ -886,7 +893,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     pct,
     pctLabel: pct + '%',
     filled,
-    applicableCount: applicable.length,
+    applicableCount,
     doneIds,
     checks,
     openCount,

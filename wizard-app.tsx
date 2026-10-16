@@ -22,6 +22,9 @@ import { compileDeed, renderArtifact, type GenerationManifest } from './deed-com
 import { EMPTY_FIELD_CONTRACT, canonicalContract, fieldName, recordScope } from './template-fields';
 import { bindTemplateFields, resolveTemplateFieldData, type TemplateRecord } from './template-field-values';
 import { TemplateAdditionalFields } from './template-additional-fields';
+import { TemplatePlacementSurface, TemplatePlacementFallback } from './template-placement-surface';
+import { PlacementRecord, PlacementSlot, PlacementAnchor } from './template-placement-context';
+import { PLACEMENT_CATALOG, placementStepIndex } from './template-placement';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity, vendeeShareCents, type VendeeSharesBySchedule } from './logic';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
@@ -250,7 +253,7 @@ function RecordFieldGroup({
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
       : resolved.values[fieldKey(role, record, f.id)] || fallbackValues?.[f.id] || defaults[f.id] || '';
-  return <>
+  return <PlacementRecord scope={role} id={record}>
     {groups.map(g => (
       <FieldGroup
         key={g.title}
@@ -260,7 +263,7 @@ function RecordFieldGroup({
       />
     ))}
     {onDelete && <button className="quiet" onClick={onDelete} style={{ marginTop: 8 }}>{deleteLabel || 'Delete this record'}</button>}
-  </>;
+  </PlacementRecord>;
 }
 
 /**
@@ -298,7 +301,7 @@ function LinkRecordCard({
       <button type="button" className="gold" disabled={busy} onClick={() => input.current?.click()}>Choose file(s) or photo</button>
     </label>
     <SourceFeedback sources={sources} visibleFields={option.id === 'linkDoc' ? ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro'] : undefined} />
-    <FieldGroup group={{ step: 1, title: option.label, note: option.note, fields: option.fields }} form={form} setField={(id, v) => edit('link', record, id, v)} />
+    <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: option.label, note: option.note, fields: option.fields }} form={form} setField={(id, v) => edit('link', record, id, v)} />
     {onDelete && <button className="quiet" onClick={onDelete} style={{ marginTop: 8 }}>Delete this document</button>}
   </section>;
 }
@@ -318,8 +321,8 @@ function TitlePointCard({ option, record, form, onField, onUpload, sources, busy
       ['Approved Layout', 'layoutFileNo'],
       ['LRS 2020 Application', 'lrsApplicationNo', 'lrsApplicationDate'],
       ['LRS Proceeding', 'lrsProceedingNo', 'lrsProceedingDate'],
-    ].map(([title, ...ids]) => <FieldGroup key={title} group={{ step: 1, title, note: '', fields: visibleFields.filter(field => ids.includes(field.id)) }} form={form} setField={onField} />)
-      : <FieldGroup group={{ step: 1, title: option.label, note: option.note, fields: visibleFields }} form={form} setField={onField} />}
+    ].map(([title, ...ids]) => <FieldGroup key={title} group={{ placementSection: 'link-' + option.id, step: 1, title, note: '', fields: visibleFields.filter(field => ids.includes(field.id)) }} form={form} setField={onField} />)
+      : <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: option.label, note: option.note, fields: visibleFields }} form={form} setField={onField} />}
     {onDelete && <button type="button" className="quiet" onClick={onDelete}>Remove these details</button>}
   </section>;
 }
@@ -403,7 +406,7 @@ function PartyRecordCard({
       <button type="button" className="quiet" onClick={() => { const id = crypto.randomUUID(); dispatch({ type: 'add-person', side: role, record, id, kind }); edit('party-person', id, 'personRelation', 'S/O'); }}>+ Add {members ? 'member' : 'representative'}</button>
     </Section>;
   };
-  return <section className="panel party-record-card">
+  return <PlacementRecord scope={role} id={record}><section className="panel party-record-card">
     <div className="party-card-heading"><span className="record-heading-icon">{entity ? <Building2 size={21} aria-hidden="true" /> : <UserRound size={21} aria-hidden="true" />}</span><div><h2>{label || (role === 'executant' ? 'Executant' : 'Claimant')}</h2><p>{(entity ? entityForm[role + 'EntityName'] : resolved.values[fieldKey(role, record, role + 'Name')]) || (role === 'executant' ? 'Party transferring the property rights' : 'Party receiving the property rights')}</p></div><span className="record-kind">{partyType}</span></div>
     <div className="party-type-selector"><FieldGroup group={{ step, title: 'Party type', fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType') }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => edit(role, record, id, value)} /></div>
     {entity ? <>
@@ -424,7 +427,7 @@ function PartyRecordCard({
       <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType />
     </>}
     {onDelete && <button type="button" className="quiet" onClick={onDelete}>Delete this {role}</button>}
-  </section>;
+  </section></PlacementRecord>;
 }
 
 /** Below the executant/claimant list: upload another ID to add a second (or third) party, or add one blank to type in by hand. */
@@ -598,9 +601,8 @@ export default function WizardApp() {
   const resolved = useMemo(() => resolveDraft(draft), [draft]);
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
   // Every real edit goes through `dispatch`/`edit`, never this setter.
-  const vm = useMemo(() => buildViewModel(state, () => {}), [state]);
-  const notices = [...generationBlockers(state), ...(draft.sources.some(s=>s.status==='reading'||s.status==='queued') ? [{id:'pending-uploads',label:'Document verification',reason:'Wait for all uploads to finish verification.',source:'Uploaded documents',step:1}] : [])];
-  const shareBlockers = notices.filter(item => item.id.startsWith('vendee-share-') || item.id.startsWith('vendor-share-'));
+  const baseNotices = [...generationBlockers(state), ...(draft.sources.some(s=>s.status==='reading'||s.status==='queued') ? [{id:'pending-uploads',label:'Document verification',reason:'Wait for all uploads to finish verification.',source:'Uploaded documents',step:1}] : [])];
+  const shareBlockers = baseNotices.filter(item => item.id.startsWith('vendee-share-') || item.id.startsWith('vendor-share-'));
   const recordOptions = (role: Role) => [...new Set(Object.keys(resolved.values).filter(k => k.startsWith(role + '|')).map(k => k.split('|')[1]))];
   const step = draft.step;
   const deedDefinition = definitionFor(draft.instrumentId);
@@ -613,6 +615,8 @@ export default function WizardApp() {
     additionalClaimants: [...state.additionalClaimants, ...extraPartyRecords.claimant.filter(id => !state.additionalClaimants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
   }), [state, extraPartyRecords]);
   const templateFieldResolution = useMemo(() => resolveTemplateFieldData(draft, templateFieldState, fieldContract), [draft, templateFieldState, fieldContract]);
+  const vm = useMemo(() => buildViewModel(state, () => {}, templateFieldResolution.instances), [state, templateFieldResolution]);
+  const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
   const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v6'}:annexure-floor-stage-v2`;
@@ -1154,7 +1158,7 @@ export default function WizardApp() {
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
-  return <div className="wizard-app" data-theme={theme}>
+  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className="wizard-app" data-theme={theme}>
     <ExtractDialog
       open={!!activeUpload}
       label={activeUpload?.label || 'Document'}
@@ -1208,7 +1212,8 @@ export default function WizardApp() {
           </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${step + 1} of ${STEPS.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
         </header>
-        {[-1, 3, 6, 7, 8, 9].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
+        {[-1, 3, 6, 7, 8, 9].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
+        {fieldContract.fields.some(field => field.placement) && (extractingTemplateFields || templateFieldMessage) && <div className="notice"><p role="status">{templateFieldMessage}</p>{extractingTemplateFields && <button type="button" onClick={cancelTemplateExtraction}>Cancel additional-field read</button>}</div>}
 
         {step === -1 && <div className="dashboard">
           <section className="dashboard-hero" aria-labelledby="dashboard-title">
@@ -1273,12 +1278,15 @@ export default function WizardApp() {
           <section className="setup-card" aria-labelledby="setup-deed-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">02</span><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
             <div className="setup-card-content setup-fields">
+              <PlacementSlot sectionId="setup-deed" anchorFieldId="instrumentId" position="before" />
               <label className="setup-field"><span>Deed type <span lang="te">దస్తావేజు రకం</span></span>
                 <select value={draft.instrumentId} onChange={event => dispatch({ type: 'instrument', instrumentId: event.target.value as Draft['instrumentId'] })}>
                   {INSTRUMENT_IDS.map(id => <option key={id} value={id}>{DEED_DEFINITIONS[id].label}</option>)}
                 </select>
                 <small>The instrument determines the available draft forms.</small>
               </label>
+              <PlacementSlot sectionId="setup-deed" anchorFieldId="instrumentId" position="after" />
+              <PlacementSlot sectionId="setup-deed" anchorFieldId="variantId" position="before" />
               <label className="setup-field"><span>Draft form <span lang="te">ముసాయిదా రూపం</span></span>
                 <select value={draft.variantId} onChange={event => dispatch({ type: 'instrument', instrumentId: draft.instrumentId, variantId: event.target.value })}>
                   {deedDefinition.variants.map(variant => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
@@ -1288,6 +1296,8 @@ export default function WizardApp() {
               <div className={`setup-reference ${deedRelease.ready ? 'is-ready' : 'needs-reference'}`} role="status">
                 <FileText size={20} aria-hidden="true" /><div><strong>{deedRelease.ready ? 'Approved reference available' : 'Legal reference required'}</strong><p>{deedRelease.ready ? 'This form can be drafted using the registered reference template.' : deedRelease.reasons.join(' ')}</p></div>
               </div>
+              <PlacementSlot sectionId="setup-deed" anchorFieldId="variantId" position="after" />
+              <PlacementSlot sectionId="setup-deed" />
             </div>
           </section>
           <p className="workflow-footnote">Your choices carry forward to the document and property sections.</p>
@@ -1442,6 +1452,7 @@ export default function WizardApp() {
         })()}
 
         {step === 8 && <section className="panel reverify">
+          <section className="template-field-summary" aria-label="Configured template fields"><h2>Template fields</h2>{templateFieldResolution.instances.filter(instance => instance.field.placement).map(instance => <div key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}><strong>{instance.record.label} — {instance.field.label}</strong><span>{instance.value || '____'}</span>{instance.error && <p role="alert">{instance.error}</p>}<button type="button" onClick={() => goto(placementStepIndex(instance.field.placement) ?? 0)}>Edit in {PLACEMENT_CATALOG.find(step => step.id === instance.field.placement?.stepId)?.label}</button></div>)}</section>
           <div className="finish-banner"><span className="finish-banner-icon"><ListChecks size={26} aria-hidden="true" /></span><div><span className="finish-kicker">FINAL REVIEW</span><h2>Give your deed a final check</h2><p>Review outstanding details and read the property schedule before downloading.</p></div><div className="finish-banner-metric"><strong>{vm.checks.filter(c => c.ok).length}<span> / {vm.checks.length}</span></strong><span>readiness checks complete</span></div></div>
           <ReviewIssues issues={notices} onNavigate={goto} /><details className="completed-checks"><summary>View all readiness checks · {vm.checks.filter(c => c.ok).length} of {vm.checks.length} complete</summary>
           <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
@@ -1491,7 +1502,7 @@ export default function WizardApp() {
             </article>
           </div>
           {message && <p className="export-feedback" role="status">{message}</p>}
-          {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldErrors.map((error, index) => <li key={index}>{error}</li>)}</ul></div>}
+          {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldResolution.instances.filter(instance => instance.error).map(instance => <li key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}>{instance.record.label}: {instance.error}{instance.field.placement && <button type="button" onClick={() => goto(placementStepIndex(instance.field.placement) ?? 0)}>Go to field</button>}</li>)}</ul></div>}
           {shareBlockers.length > 0 && <p className="notice" role="alert">Vendor and vendee shares must total 100% for each property before downloading the Word deed. <button type="button" onClick={() => goto(-1)}>Enter shares on the dashboard</button></p>}
           <details className="download-outstanding"><summary><AlertCircle size={17} aria-hidden="true" />{notices.length ? `${notices.length} details to review before using this draft` : 'Review the current readiness status'}</summary><ReviewIssues issues={notices} onNavigate={goto} compact /></details>
 
@@ -1514,6 +1525,7 @@ export default function WizardApp() {
         </section>}
 
         </div>}
+        {step >= 0 && step <= 7 && <TemplatePlacementFallback />}
         {step >= 0 && <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(Math.max(-1, step - 1))}>{step <= 0 ? 'Overview' : STEPS[step - 1].label}</button>
           <span>Your entries are saved automatically in this browser.</span>
@@ -1521,5 +1533,5 @@ export default function WizardApp() {
         </footer>}
       </main>
     </div>}
-  </div>;
+  </div></TemplatePlacementSurface>;
 }

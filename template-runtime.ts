@@ -1,4 +1,5 @@
 // Bundled for Node with a filesystem implementation of template.ts.
+export { PLACEMENT_CATALOG } from './template-placement';
 export { validateSaleDeedTemplate, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields } from './docx';
 export { validateFieldContract, canonicalContract, EMPTY_FIELD_CONTRACT } from './template-fields';
 import { fillSaleDeed, type DeedTemplateSource } from './docx';

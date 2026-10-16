@@ -1,4 +1,6 @@
 import React from 'react';
+import { PlacementSlot } from './template-placement-context';
+import { sectionForGroup } from './template-placement';
 import { flatStage } from './flat-options';
 import { css } from './css';
 import type { Field, Group } from './fields';
@@ -119,9 +121,11 @@ export function Input({
         {sourceDocument ? <span style={css(`font-size:9px;color:${C.mutedSoft};max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`)} title={sourceDocument}>{sourceDocument}</span> : null}
       </span>
       {field.type === 'select' && field.allowCustom ? (
-        <><input list={suggestionsId} value={shown} onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{field.options?.map(o => <option key={o} value={o} />)}</datalist></>
+        <><input aria-label={field.ariaLabel} readOnly={readOnly} list={suggestionsId} value={shown} onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{field.options?.map(o => <option key={o} value={o} />)}</datalist></>
       ) : field.type === 'select' ? (
         <select
+          aria-label={field.ariaLabel}
+          disabled={readOnly}
           value={shown}
           onChange={e => onChange(e.target.value)}
           style={css(`padding:7px 2px;border:0;border-bottom:1px solid ${C.goldLight};background:transparent;font-size:13.5px;color:${C.ink};outline:none`)}
@@ -129,11 +133,13 @@ export function Input({
           <option value=""></option>
             {field.id === 'flatStage' && shown && !field.options?.includes(shown) && <option value={shown}>Unverified: {shown}</option>}
             {(field.options || []).map(o => (
-            <option key={o} value={o}>{o}</option>
+            <option key={o} value={o}>{field.optionLabels?.[o] || o}</option>
           ))}
         </select>
       ) : field.type === 'textarea' ? (
         <textarea
+          aria-label={field.ariaLabel}
+          readOnly={readOnly}
           value={shown}
           rows={3}
           onChange={e => onChange(e.target.value)}
@@ -142,6 +148,7 @@ export function Input({
       ) : field.type === 'money' ? (
         <input
           type="text"
+          aria-label={field.ariaLabel}
           inputMode="decimal"
           value={formatMoneyInput(shown)}
           readOnly={readOnly}
@@ -156,6 +163,7 @@ export function Input({
       ) : (
         <input
           type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
+          aria-label={field.ariaLabel}
           list={field.options?.length ? suggestionsId : undefined}
           value={shown}
           readOnly={readOnly}
@@ -234,7 +242,8 @@ export function FieldGroup({
         <p style={css(`margin:0 0 16px;font-size:12px;color:${C.body};line-height:1.6;max-width:80ch`)}>{group.note}</p>
       ) : null}
       <div className="deed-field-grid" style={css(`display:grid;grid-template-columns:repeat(${group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
-        {group.fields.map(f => (
+        {group.fields.map(f => (<React.Fragment key={f.id}>
+          <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="before" />
           <Input
             key={f.id}
             field={f}
@@ -247,7 +256,9 @@ export function FieldGroup({
             onDismiss={() => onDismiss?.(f.id)}
             onChange={v => setField(f.id, v)}
           />
-        ))}
+          <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="after" />
+        </React.Fragment>))}
+        <PlacementSlot sectionId={sectionForGroup(group)} />
       </div>
     </Section>
   );

@@ -158,6 +158,11 @@ export function createTemplateApi(options = {}) {
         return send(200, { authenticated: false });
       }
       await ensureInitialized();
+      if (route === '/placement-catalog' && req.method === 'GET') {
+        requireAdmin(req);
+        if ((url.searchParams.get('instrument') || 'sale') !== 'sale') throw fail(400, 'Only Sale is onboarded.');
+        return send(200, (await loadTemplateRuntime()).PLACEMENT_CATALOG);
+      }
       if (route === '/binding-catalog' && req.method === 'GET') {
         requireAdmin(req);
         if ((url.searchParams.get('instrument') || 'sale') !== 'sale') throw fail(400, 'Only Sale is onboarded.');
@@ -170,6 +175,8 @@ export function createTemplateApi(options = {}) {
       }
       if ((route === '' || route === '/') && req.method === 'GET') {
         const data = await read();
+        if (session(req)) data.deletedVersions = data.versions.filter(version => version.deletedAt);
+        data.versions = data.versions.filter(version => !version.deletedAt);
         if (!session(req)) {
           data.versions = data.versions.filter(version => version.publishedAt).map(({ validation, samples, inspection, ...version }) => version);
           delete data.history;
@@ -197,12 +204,32 @@ export function createTemplateApi(options = {}) {
         });
         return send(201, version);
       }
-      const match = /^\/versions\/([a-z0-9-]+)(?:\/(download|validate|publish|rollback|samples|fields)(?:\/([a-z0-9-]+))?)?$/.exec(route);
+      const match = /^\/versions\/([a-z0-9-]+)(?:\/(download|validate|publish|rollback|samples|fields|restore)(?:\/([a-z0-9-]+))?)?$/.exec(route);
       if (!match) throw fail(404, 'Template endpoint not found.');
       const [, id, action, sampleId] = match;
       const data = await read();
       const version = data.versions.find(version => version.id === id);
       if (!version) throw fail(404, 'Template version not found.');
+      if ((!action && req.method === 'DELETE') || (action === 'restore' && req.method === 'POST')) {
+        requireAdmin(req, true);
+        const input = await jsonBody(req);
+        await serial(async () => {
+          const current = await read(); const item = current.versions.find(item => item.id === id);
+          if (!item) throw fail(404, 'Template version not found.');
+          if (item.publishedAt || Object.values(current.active).includes(id) || current.history.some(event => event.versionId === id || event.previousVersionId === id)) throw fail(409, 'Published templates cannot be deleted. Saved deeds may still use them.');
+          if (action === 'restore') {
+            if (!item.deletedAt) throw fail(409, 'This revision is not in Trash. Refresh the library.');
+            delete item.deletedAt;
+          } else {
+            if (item.deletedAt) return;
+            if (input.expectedSchemaRevision !== (item.schemaRevision || 0) || input.expectedHash !== item.hash) throw fail(409, 'This revision changed. Refresh the library before deleting it.');
+            item.deletedAt = new Date().toISOString();
+          }
+          await save(current);
+        });
+        return send(200, { deleted: action !== 'restore', restored: action === 'restore' });
+      }
+      if (version.deletedAt) throw fail(404, 'This revision is in Trash. Restore it before using it.');
       if (action === 'download' && req.method === 'GET') {
         if (!version.publishedAt) requireAdmin(req);
         const bytes = await checkedBytes(version);
@@ -216,11 +243,12 @@ export function createTemplateApi(options = {}) {
         const input = await jsonBody(req, 2 * 1024 * 1024);
         const updated = await serial(async () => {
           const current = await read(); const item = current.versions.find(item => item.id === id);
+          if (!item || item.deletedAt) throw fail(404, 'Template revision is no longer available. Refresh the library.');
           if (item.publishedAt) throw fail(409, 'Published revisions are immutable. Upload a new revision.');
           if (input.expectedSchemaRevision !== (item.schemaRevision || 0)) throw fail(409, 'Field configuration changed. Refresh before saving.');
           const runtime = await loadTemplateRuntime(); const bytes = await checkedBytes(item);
           const inspection = await runtime.inspectTemplateFields(bytes, item.fieldContract);
-          try { item.fieldContract = runtime.validateFieldContract(input.contract, await runtime.templateBindingCatalog(), inspection.occurrences, item.fieldContract); } catch (error) { throw fail(400, error.message); }
+          try { item.fieldContract = runtime.validateFieldContract(input.contract, await runtime.templateBindingCatalog(), inspection.occurrences, item.fieldContract, true); } catch (error) { throw fail(400, error.message); }
           item.schemaRevision = (item.schemaRevision || 0) + 1;
           await validateAndSample(item, bytes, false); await save(current); return item;
         });
@@ -238,6 +266,7 @@ export function createTemplateApi(options = {}) {
       if (action === 'validate' && req.method === 'POST') {
         const updated = await serial(async () => {
           const current = await read(); const item = current.versions.find(item => item.id === id);
+          if (!item || item.deletedAt) throw fail(404, 'Template revision is no longer available. Refresh the library.');
           if (item.publishedAt) throw fail(409, 'Published revisions are immutable. Upload a new revision.');
           await validateAndSample(item, await checkedBytes(item)); await save(current); return item;
         });
@@ -247,6 +276,7 @@ export function createTemplateApi(options = {}) {
         const input = await jsonBody(req);
         const result = await serial(async () => {
           const current = await read(); const item = current.versions.find(item => item.id === id);
+          if (!item || item.deletedAt) throw fail(404, 'Template revision is no longer available. Refresh the library.');
           const previousVersionId = current.active[item.instrumentId];
           if (input.expectedActive !== previousVersionId) throw fail(409, 'The active template changed. Refresh the library before publishing.');
           if (action === 'rollback' && !item.publishedAt) throw fail(400, 'Rollback requires a previously published version.');

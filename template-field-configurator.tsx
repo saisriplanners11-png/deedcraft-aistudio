@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import type { LibraryRevision } from './template-library-types';
 import { templateRequest } from './template-library-client';
 import { EMPTY_FIELD_CONTRACT, fieldName, type BindingCatalogItem, type TemplateField } from './template-fields';
+import type { PlacementStep } from './template-placement';
 
 export function TemplateFieldConfigurator({ version, csrf, onSaved }: { version: LibraryRevision; csrf: string; onSaved: () => Promise<void> }) {
   const [catalog, setCatalog] = useState<BindingCatalogItem[]>([]);
+  const [placements, setPlacements] = useState<PlacementStep[]>([]);
   const [fields, setFields] = useState<TemplateField[]>(() => {
     const inherited = version.fieldContract?.fields || [];
     return [...inherited, ...(version.inspection?.unresolved || []).filter(name => !inherited.some(field => fieldName(field.placeholder) === fieldName(name))).map(name => {
@@ -14,6 +16,7 @@ export function TemplateFieldConfigurator({ version, csrf, onSaved }: { version:
   });
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   useEffect(() => { templateRequest<BindingCatalogItem[]>('/binding-catalog?instrument=sale').then(setCatalog).catch(error => setError(error.message)); }, []);
+  useEffect(() => { templateRequest<PlacementStep[]>('/placement-catalog?instrument=sale').then(setPlacements).catch(error => setError(error.message)); }, []);
   function update(index: number, patch: Partial<TemplateField>) {
     setFields(old => old.map((field, i) => i !== index ? field : { ...field, ...patch, id: ['type', 'scope', 'roleId', 'existingPlaceholder'].some(key => Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== field[key]) ? crypto.randomUUID() : field.id }));
   }
@@ -26,7 +29,7 @@ export function TemplateFieldConfigurator({ version, csrf, onSaved }: { version:
   }
   return <div className="field-configurator"><h3>Configure template fields</h3><p>Map placeholders to existing information or define new inputs. New AI values always require review. Sample values are used only in review documents.</p>
     {error && <p role="alert" className="notice">{error}</p>}
-    {fields.map((field, index) => <fieldset key={field.placeholder}><legend>&lt;{field.placeholder}&gt;</legend>
+    {fields.map((field, index) => { const step = placements.find(step => step.id === field.placement?.stepId); const section = step?.sections.find(section => section.id === field.placement?.sectionId); return <fieldset key={field.placeholder}><legend>&lt;{field.placeholder}&gt;</legend>
       {(version.inspection?.occurrences || []).filter(item => fieldName(item.placeholder) === fieldName(field.placeholder)).slice(0, 3).map((item, i) => <p className="field-context" key={i}>{item.text} <small>({item.part}{item.supported ? '' : ' — unsupported location'})</small></p>)}
       <label>Data source<select aria-label={`${field.placeholder} data source`} value={field.existingPlaceholder || ''} onChange={event => { const target = catalog.find(item => item.placeholder === event.target.value); update(index, target ? { existingPlaceholder: target.placeholder, type: target.type, scope: target.scope, roleId: target.roleId, extractionEnabled: false } : { existingPlaceholder: undefined, extractionEnabled: true }); }}><option value="">Create a new field</option>{catalog.map(item => <option key={item.placeholder} value={item.placeholder}>{item.label} — &lt;{item.placeholder}&gt;</option>)}</select></label>
       <div className="field-config-grid">
@@ -35,14 +38,21 @@ export function TemplateFieldConfigurator({ version, csrf, onSaved }: { version:
         <label>Scope<select aria-label={`${field.placeholder} scope`} disabled={!!field.existingPlaceholder} value={field.scope === 'party' ? field.roleId : field.scope} onChange={event => update(index, event.target.value === 'vendor' || event.target.value === 'purchaser' ? { scope: 'party', roleId: event.target.value } : { scope: event.target.value as any, roleId: undefined })}><option value="transaction">Whole deed</option><option value="property">Each property</option><option value="vendor">Each vendor</option><option value="purchaser">Each purchaser</option></select></label>
         <label>Sample value<input aria-label={`${field.placeholder} sample value`} value={field.sampleValue} onChange={event => update(index, { sampleValue: event.target.value })} /></label>
       </div>
+      <div className="field-config-grid">
+        <label>Dashboard step<select aria-label={`${field.placeholder} dashboard step`} value={field.placement?.stepId || ''} onChange={event => update(index, { placement: { stepId: event.target.value, sectionId: '', position: 'end', order: index } })}><option value="">Choose a step</option>{placements.map(step => <option key={step.id} value={step.id}>{step.label}</option>)}</select></label>
+        <label>Section<select aria-label={`${field.placeholder} section`} disabled={!step} value={field.placement?.sectionId || ''} onChange={event => update(index, { placement: { ...field.placement!, sectionId: event.target.value, position: 'end', anchorFieldId: undefined } })}><option value="">Choose a section</option>{step?.sections.map(section => <option key={section.id} value={section.id}>{section.label}</option>)}</select></label>
+        <label>Position<select aria-label={`${field.placeholder} position`} disabled={!section} value={field.placement?.position === 'end' ? 'end' : `${field.placement?.position}:${field.placement?.anchorFieldId}`} onChange={event => { const [position, anchorFieldId] = event.target.value.split(':'); update(index, { placement: { ...field.placement!, position: position as any, anchorFieldId: position === 'end' ? undefined : anchorFieldId } }); }}><option value="end">End of section</option>{section?.anchors.flatMap(anchor => ['before', 'after'].map(position => <option key={position + anchor.id} value={`${position}:${anchor.id}`}>{position === 'before' ? 'Before' : 'After'} {anchor.label}</option>))}</select></label>
+        <label>Display order<input aria-label={`${field.placeholder} display order`} type="number" min="0" max="10000" disabled={!field.placement} value={field.placement?.order ?? index} onChange={event => update(index, { placement: { ...field.placement!, order: Number(event.target.value) } })} /></label>
+      </div>
+      <p>Fields at the same position use display order, lowest first. If the section or anchor is hidden, this field appears at the end of the selected step. Scope still determines whose value is collected.</p>
       {field.type === 'dropdown' && <label>Choices (one per line)<textarea value={field.options.join('\n')} onChange={event => update(index, { options: event.target.value.split('\n') })} /></label>}
       <label>Help text<input value={field.help} onChange={event => update(index, { help: event.target.value })} /></label>
       <label className="template-review"><input type="checkbox" checked={field.required} onChange={event => update(index, { required: event.target.checked })} />Required when this placeholder's document section is used</label>
       {!field.existingPlaceholder && <><label className="template-review"><input type="checkbox" checked={field.extractionEnabled} onChange={event => update(index, { extractionEnabled: event.target.checked })} />Extract from uploaded evidence, with user review</label>
         {field.extractionEnabled && <><label>Describe the fact to extract<input value={field.extractionDescription} onChange={event => update(index, { extractionDescription: event.target.value })} /></label><label>Evidence meaning<select value={field.evidenceContext} onChange={event => update(index, { evidenceContext: event.target.value as any })}><option value="current">Current transaction / current fact</option><option value="historical">Historical fact is allowed</option></select></label></>}
       </>}
-    </fieldset>)}
+    </fieldset>; })}
     {!fields.length && <p>No unfamiliar placeholders were found.</p>}
-    <button disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save field configuration'}</button>
+    <button disabled={busy || !placements.length} onClick={() => void save()}>{busy ? 'Saving…' : 'Save field configuration'}</button>
   </div>;
 }

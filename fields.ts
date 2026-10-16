@@ -14,6 +14,8 @@ export const localAuthorityName = (value: string): string => ({
 } as Record<string, string>)[value.trim().toLowerCase()] || value;
 
 export type Field = {
+  ariaLabel?: string;
+  optionLabels?: Record<string, string>;
   id: string;
   label: string;
   ph?: string | string[];
@@ -33,6 +35,7 @@ export type Field = {
 };
 
 export type Group = {
+  placementSection?: string;
   step: number;
   title: string;
   telugu?: string;

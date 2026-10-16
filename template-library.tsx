@@ -15,6 +15,7 @@ export function TemplateLibrary({ onClose, onPublished }: { onClose: () => void;
   const [reviewed, setReviewed] = useState<Record<string, boolean>>({});
   const [placeholders, setPlaceholders] = useState<string[]>([]);
   const [configuring, setConfiguring] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   async function refresh() {
     const [sessionState, data, guide] = await Promise.all([
@@ -63,6 +64,10 @@ export function TemplateLibrary({ onClose, onPublished }: { onClose: () => void;
     {listing?.versions.map(version => <section className="template-panel" key={version.id}>
       <div className="template-heading"><div><h2>{version.filename}</h2><p>{version.id === listing.active.sale ? 'Active' : version.publishedAt ? 'Previously published' : 'Unpublished revision'} · {new Date(version.createdAt).toLocaleString()}</p><small>{version.id} · SHA-256 {version.hash}</small></div><a href={`/api/templates/versions/${version.id}/download`}>Download Word</a></div>
       {session.authenticated && version.validation && <>
+        {!version.publishedAt && <div className="template-delete"><button disabled={busy} onClick={() => setDeleting(version.id)}>Delete revision</button>{deleting === version.id && <div role="alertdialog" aria-label={`Delete ${version.filename}`}><p>Move <strong>{version.filename}</strong> to Trash? It will be removed from this list. You can restore it from Trash. The active template will stay unchanged.</p><div className="template-actions"><button autoFocus disabled={busy} onClick={() => setDeleting(null)}>Cancel deletion</button><button disabled={busy} onClick={() => void run(async () => {
+          await templateRequest(`/versions/${version.id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf || '' }, body: JSON.stringify({ expectedSchemaRevision: version.schemaRevision || 0, expectedHash: version.hash }) });
+          setDeleting(null); if (configuring === version.id) setConfiguring(null); setReviewed(old => ({ ...old, [version.id]: false })); await refresh(); setNotice('Revision moved to Trash. The active template is unchanged.');
+        })}>Move to Trash</button></div></div>}</div>}
         {!version.publishedAt && <><p>{version.inspection?.unresolved?.length ? `Needs field configuration: ${version.inspection.unresolved.join(', ')}` : `${version.fieldContract?.fields.length || 0} configured additional fields`}</p><button disabled={busy} onClick={() => setConfiguring(old => old === version.id ? null : version.id)}>Configure fields</button>{configuring === version.id && <TemplateFieldConfigurator key={`${version.id}:${version.schemaRevision || 0}`} version={version} csrf={session.csrf || ''} onSaved={async () => { await refresh(); setReviewed(old => ({ ...old, [version.id]: false })); setNotice('Field configuration saved. Revalidate and rebuild samples, then review them before publishing.'); }} />}</>}
         <p><strong>{version.validation.valid ? 'Structural validation passed' : 'Validation failed'}</strong> · {version.validation.detectedPlaceholders.length} supported placeholders</p>
         {!!version.validation.errors.length && <ul>{version.validation.errors.map(error => <li key={error}>{error}</li>)}</ul>}
@@ -72,6 +77,7 @@ export function TemplateLibrary({ onClose, onPublished }: { onClose: () => void;
         {version.publishedAt && version.id !== listing.active.sale && <button disabled={busy} onClick={() => void run(async () => { await mutation(`/versions/${version.id}/rollback`, { expectedActive: listing.active.sale }); await refresh(); onPublished(); setNotice('Previous version activated for new deeds.'); })}>Restore this published version</button>}
       </>}
     </section>)}
+    {session.authenticated && <section className="template-panel"><details><summary>Trash ({listing?.deletedVersions?.length || 0})</summary><p>Deleted unpublished revisions can be restored. Their Word files and samples are retained. Published versions cannot be deleted because saved deeds may use them.</p>{listing?.deletedVersions?.map(version => <div key={version.id}><h3>{version.filename}</h3><p>{version.id} · Deleted {new Date(version.deletedAt!).toLocaleString()}</p><button disabled={busy} onClick={() => void run(async () => { await mutation(`/versions/${version.id}/restore`, {}); await refresh(); setNotice('Revision restored. Review validation and samples before publishing.'); })}>Restore revision</button></div>)}</details></section>}
     {session.authenticated && !!listing?.history?.length && <section className="template-panel"><h2>Publication history</h2><ul>{listing.history.map((item, index) => <li key={`${item.at}-${index}`}>{new Date(item.at).toLocaleString()} · {item.action} · {item.versionId}</li>)}</ul></section>}
     <p>Gift, Mortgage, and other instruments will use this library after their approved templates and rendering contracts are onboarded.</p>
   </main>;
