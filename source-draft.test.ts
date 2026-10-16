@@ -9,6 +9,17 @@ const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${
 const draftWith = (...sources: Source[]): Draft => ({ ...newDraft(), sources });
 
 describe('source-backed drafts', () => {
+  it('opens saved legacy plan steps in the retained editor without changing deed facts', () => {
+    for (const step of [10, 11, 12]) {
+      const saved = { ...newDraft(), step, manual: { 'property|primary|surveyNo': '123/A' } };
+      const restored = draftReducer(newDraft(), { type: 'load', draft: saved });
+      expect(restored.step).toBe(10);
+      expect(restored.manual).toEqual(saved.manual);
+      expect(restored.revision).toBe(saved.revision);
+    }
+    const saved = { ...newDraft(), step: 3 };
+    expect(draftReducer(newDraft(), { type: 'load', draft: saved }).step).toBe(3);
+  });
   it('restores instrument field markers as arrays so extracted payments remain editable', () => {
     const draft={...newDraft(),manual:{'payment|one|mode':'cheque','payment|one|filled':'payer,payee','payment|one|payer':'Original'}};
     expect(appStateFor(draft).payments[0].filled).toEqual(['payer','payee']);

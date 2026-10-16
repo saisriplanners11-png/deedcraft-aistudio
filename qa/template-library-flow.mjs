@@ -11,7 +11,7 @@ const directory = await mkdtemp(join(tmpdir(), 'deedcraft-library-browser-'));
 const port = 5197;
 const origin = `http://127.0.0.1:${port}`;
 const child = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-  cwd: new URL('../', import.meta.url), env: { ...process.env, TEMPLATE_STORAGE_DIR: directory, TEMPLATE_ADMIN_PASSWORD: 'browser-test-password' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+  cwd: new URL('../', import.meta.url), env: { ...process.env, TEMPLATE_STORAGE_BACKEND: 'disk', TEMPLATE_STORAGE_DIR: directory, TEMPLATE_ADMIN_PASSWORD: 'browser-test-password' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
 });
 let logs = ''; child.stdout.on('data', chunk => { logs += chunk; }); child.stderr.on('data', chunk => { logs += chunk; });
 let browser;

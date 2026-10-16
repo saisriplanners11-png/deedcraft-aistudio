@@ -1,0 +1,190 @@
+/* Modern workspace presentation. Document previews keep their serif typography. */
+:root {
+  --dc-ink: #1b3028;
+  --dc-paper: #ffffff;
+  --dc-ground: #f3f6f4;
+  --dc-rule: #dce5df;
+  --dc-rule-soft: #eaf0ec;
+  --dc-body: #495e53;
+  --dc-muted: #5b6d63;
+  --dc-muted-soft: #5d6e64;
+  --dc-control-border: #819087;
+  --dc-action: #174f3b;
+  --dc-action-hover: #24684f;
+  --dc-on-action: #ffffff;
+  --dc-green: #246448;
+  --dc-green-bg: #e7f3ec;
+  --dc-green-line: #a0c9b1;
+  --dc-accent-soft: #e9f3ed;
+  --dc-hero: #173e30;
+  --dc-hero-text: #ffffff;
+  --dc-hero-muted: #c4d8cb;
+  --dc-hero-rule: #557864;
+  --dc-hero-progress: #d8c48b;
+  --dc-shadow: 0 3px 14px rgb(21 53 37 / 3%);
+}
+:root[data-theme=dark] {
+  --dc-ink: #eef5ef;
+  --dc-paper: #202c26;
+  --dc-ground: #151e19;
+  --dc-rule: #3d4e43;
+  --dc-rule-soft: #2e3d33;
+  --dc-body: #c8d7cc;
+  --dc-muted: #aebeaf;
+  --dc-muted-soft: #aebeaf;
+  --dc-control-border: #82968a;
+  --dc-action: #b7dfc7;
+  --dc-action-hover: #d1ebdc;
+  --dc-on-action: #173727;
+  --dc-green: #aedebf;
+  --dc-green-bg: #253e2d;
+  --dc-green-line: #63846d;
+  --dc-accent-soft: #2a3f31;
+  --dc-hero: #1c3b2b;
+  --dc-hero-rule: #597d65;
+  --dc-shadow: none;
+}
+.wizard-app { font: 400 15px/1.6 'IBM Plex Sans', sans-serif; }
+.wizard-app .app-top { min-height: 76px; padding-inline: clamp(20px, 3vw, 48px); }
+.wizard-app .brand { font-size: 21px; letter-spacing: -.045em; }
+.wizard-app .brand-mark { border-radius: 12px; width: 40px; height: 40px; }
+.wizard-app .header-actions button { border-color: var(--dc-rule); border-radius: 9px; }
+.wizard-app .header-actions .new-deed { border-color: var(--dc-action); }
+.wizard-app .header-actions .theme-toggle { background: var(--dc-ground); }
+.wizard-app :is(.stage-head h1,.saved-deeds-heading h1) {
+  font: 600 clamp(28px, 3vw, 36px)/1.2 'IBM Plex Sans', sans-serif;
+  letter-spacing: -.045em;
+}
+.wizard-app .shell { max-width: 1600px; grid-template-columns: 264px minmax(0,1fr); }
+.wizard-app .rail { padding: 28px 14px; }
+.wizard-app .rail-heading { font-size: 10px; letter-spacing: .12em; padding-bottom: 16px; }
+.wizard-app .rail-draft-meta { display: flex; align-items: center; gap: 10px; padding: 16px 10px 22px; margin-bottom: 16px; border-bottom: 1px solid var(--dc-rule); }
+.wizard-app .rail-draft-meta>svg { flex-shrink: 0; color: var(--dc-green); }
+.wizard-app .rail-draft-meta strong { display: block; font-size: 14px; }
+.wizard-app .rail-draft-meta span { display: block; font-size: 11px; color: var(--dc-muted); margin-top: 3px; }
+.wizard-app .rail-overview { font-size: 13px; }
+.wizard-app :is(.rail-overview.active,.rail-step.active) { background: var(--dc-accent-soft); color: var(--dc-green); box-shadow: none; }
+.wizard-app .rail-step.active em { color: var(--dc-green); }
+.wizard-app .rail-step.active b { background: var(--dc-action); color: var(--dc-on-action); }
+.wizard-app :is(.rail-step,.rail-overview):hover { background: var(--dc-accent-soft); }
+.wizard-app .rail-step { gap: 12px; }
+.wizard-app .rail-step small { font-size: 11px; line-height: 1.45; margin-top: 4px; }
+.wizard-app .rail-phase-label { font: 600 10px 'IBM Plex Sans',sans-serif; letter-spacing: .08em; padding-top: 8px; }
+.wizard-app .stage { padding: 28px clamp(24px, 3.5vw, 56px) 64px; }
+.wizard-app .workspace-breadcrumb { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dc-muted); margin: 12px 0 20px; }
+.wizard-app .workspace-breadcrumb button { font-size: 12px; padding: 8px 0; color: var(--dc-muted); }
+.wizard-app .stage-head { margin-bottom: 28px; }
+.wizard-app .stage-head .eyebrow { color: var(--dc-green); font: 600 10px 'IBM Plex Sans', sans-serif; letter-spacing: .12em; margin-bottom: 8px; }
+.wizard-app .stage-head p:last-child { font-size: 15px; margin-top: 10px; }
+.wizard-app .save-indicator { font: 400 11px/1.5 'IBM Plex Sans',sans-serif; margin-bottom: 4px; }
+.wizard-app :is(.panel,.setup-card,.property-context,.review-group,.saved-deed-card) { box-shadow: var(--dc-shadow); border-color: var(--dc-rule); }
+.wizard-app :is(.panel,.setup-card) { border-radius: 16px; }
+.wizard-app :is(.panel>h2,.deed-section h2,.dashboard-section>h2) { font-family: 'IBM Plex Sans',sans-serif!important; font-weight: 600!important; letter-spacing: -.02em; }
+.wizard-app .deed-field>span:first-child>span:first-child { font-size: 12px!important; text-transform: none!important; letter-spacing: 0!important; color: var(--dc-body)!important; }
+.wizard-app .deed-field :is(input,select,textarea) { border-radius: 8px; }
+.wizard-app .document-upload { background: var(--dc-paper); border-radius: 14px; }
+.wizard-app .upload-symbol { background: var(--dc-accent-soft); color: var(--dc-green); }
+.wizard-app .document-upload .gold { border-color: var(--dc-action); color: var(--dc-action); background: var(--dc-paper); }
+.wizard-app .document-upload .gold:hover { background: var(--dc-accent-soft); }
+.wizard-app .dashboard { max-width: 1160px; }
+.wizard-app .dashboard-hero { position: relative; overflow: hidden; grid-template-columns: minmax(0,1fr) 210px; border: 1px solid var(--dc-hero-rule); border-radius: 20px; padding: 32px 40px; gap: 32px; background: var(--dc-hero); box-shadow: none; color: var(--dc-hero-text); }
+.wizard-app .dashboard-hero::before { content: ''; pointer-events: none; position: absolute; width: 360px; height: 360px; right: -150px; top: -180px; border: 1px solid var(--dc-hero-rule); border-radius: 50%; }
+.wizard-app .dashboard-hero-copy { position: relative; }
+.wizard-app .dashboard-kicker { font: 500 11px 'IBM Plex Sans', sans-serif; letter-spacing: .09em; color: var(--dc-hero-muted); }
+.wizard-app .dashboard-hero h2 { font: 600 clamp(26px, 3vw, 36px)/1.2 'IBM Plex Sans', sans-serif; letter-spacing: -.045em; margin-block: 14px 12px; max-width: 20ch; text-wrap: balance; }
+.wizard-app .dashboard-hero p { color: var(--dc-hero-muted); max-width: 42ch; }
+.wizard-app button.dashboard-cta { background: var(--dc-hero-text); color: var(--dc-hero); border-color: var(--dc-hero-text); padding: 12px 18px; font-size: 13px; border-radius: 9px; }
+.wizard-app button.dashboard-cta:hover { background: var(--dc-hero-progress); color: var(--dc-hero); border-color: var(--dc-hero-progress); }
+.wizard-app .dashboard-progress { position: relative; border: 0; padding: 0; min-height: 0; align-items: center; background: transparent; }
+.wizard-app .progress-orbit { display: grid; place-items: center; width: 144px; height: 144px; border-radius: 50%; padding: 7px; background: conic-gradient(var(--dc-hero-progress) var(--progress), var(--dc-hero-rule) 0); }
+.wizard-app .dashboard-progress-number { display: flex; align-items: baseline; justify-content: center; width: 130px; height: 130px; padding-top: 42px; border-radius: 50%; background: var(--dc-hero); color: var(--dc-hero-text); font-size: 46px; letter-spacing: -.065em; }
+.wizard-app .dashboard-progress-number span { color: var(--dc-hero-muted); font-size: 20px; margin-left: 3px; }
+.wizard-app .dashboard-progress>span { color: var(--dc-hero-muted); margin: 12px 0 0; font-size: 12px; }
+.wizard-app .dashboard-progress .progress-bar { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.wizard-app .review-shortcut { margin-top: 18px; background: var(--dc-paper); border-color: var(--dc-rule); }
+.wizard-app .review-shortcut:hover { background: var(--dc-accent-soft); }
+.wizard-app .review-shortcut-icon { border: 0; border-radius: 10px; background: var(--dc-gold-bg); }
+.wizard-app .dashboard-stats { gap: 16px; margin: 18px 0 28px; }
+.wizard-app .dashboard-stats>div { position: relative; padding: 24px; border-radius: 14px; gap: 8px; box-shadow: var(--dc-shadow); }
+.wizard-app .dashboard-stats strong { font-size: 30px; font-weight: 600; }
+.wizard-app .dashboard-stats .metric-icon { position: absolute; right: 20px; top: 24px; padding: 9px; border-radius: 10px; background: var(--dc-accent-soft); color: var(--dc-green); display: grid; place-items: center; }
+.wizard-app .dashboard-stats>div>span:last-child { font-size: 12px; max-width: 22ch; }
+.wizard-app .dashboard-details { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.7fr); gap: 18px; align-items: start; }
+.wizard-app .dashboard-details>.dashboard-section { margin: 0; padding: 22px; background: var(--dc-paper); border: 1px solid var(--dc-rule); border-radius: 14px; }
+.wizard-app .document-options>summary>span { display: block; margin: 6px 0 0 16px; }
+.wizard-app .party-summary { gap: 8px 12px; font-size: 13px; }
+.wizard-app .party-summary>b { width: 100%; font-weight: 600; }
+.wizard-app .party-summary:last-child { border-bottom: 0; padding-bottom: 0; }
+.wizard-app .party-summary>span { font-size: 12px; }
+.wizard-app .party-summary button { font-size: 12px; color: var(--dc-green); }
+.wizard-app .dashboard-section { margin-top: 30px; }
+.wizard-app .dashboard-section-head { margin-bottom: 20px; }
+.wizard-app .dashboard-section-head .eyebrow { color: var(--dc-green); font-family: 'IBM Plex Sans',sans-serif; }
+.wizard-app .dashboard-phase h3 { font: 500 12px 'IBM Plex Sans',sans-serif; letter-spacing: 0; text-transform: none; color: var(--dc-body); }
+.wizard-app .phase-icon { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--dc-rule); border-radius: 8px; background: var(--dc-paper); color: var(--dc-green); }
+.wizard-app .overview-card { padding: 20px 20px 42px; border-radius: 13px; box-shadow: none; min-height: 156px; }
+.wizard-app .overview-card:hover { box-shadow: var(--dc-shadow); border-color: var(--dc-control-border); transform: none; background: var(--dc-paper); }
+.wizard-app .overview-card-title { font-weight: 600; }
+.wizard-app .overview-card small { margin-top: 7px; line-height: 1.5; }
+.wizard-app .overview-card-top { margin-bottom: 16px; }
+.wizard-app .overview-card-top b { border-radius: 7px; font-weight: 500; }
+.wizard-app .overview-card.done { border-color: var(--dc-green-line); }
+.wizard-app .overview-card.done .overview-card-top em { color: var(--dc-green); }
+.wizard-app .dashboard-readiness { border-radius: 16px; padding: 26px; }
+.wizard-app .dashboard-readiness .checks li { padding-block: 16px; }
+.wizard-app .saved-deeds-dashboard { max-width: 1220px; }
+.wizard-app .saved-deed-card h2 { font-size: 20px; letter-spacing: -.025em; }
+.wizard-app .saved-deed-symbol { background: var(--dc-accent-soft); color: var(--dc-green); border-color: var(--dc-rule); }
+.wizard-app .library-empty { box-shadow: var(--dc-shadow); border-radius: 20px; }
+.wizard-app .library-empty h2 { font-family: 'IBM Plex Sans',sans-serif; font-weight: 600; letter-spacing: -.04em; }
+.wizard-app .empty-document { color: var(--dc-green); background: var(--dc-accent-soft); border-color: var(--dc-rule); }
+.wizard-app .review-icon { color: var(--dc-green); background: var(--dc-accent-soft); }
+.wizard-app .navigation { padding: 20px; background: var(--dc-paper); border: 1px solid var(--dc-rule); border-radius: 12px; }
+.wizard-app .navigation>span { font: 400 12px 'IBM Plex Sans',sans-serif; }
+@media(max-width:1100px) {
+  .wizard-app .dashboard-hero { padding: 30px; grid-template-columns: minmax(0,1fr) 160px; gap: 24px; }
+  .wizard-app .dashboard-details { grid-template-columns: minmax(0,1fr); }
+  .wizard-app .dashboard-stats>div { padding: 20px; }
+  .wizard-app .dashboard-stats .metric-icon { right: 12px; top: 18px; padding: 6px; }
+}
+@media(max-width:900px) {
+  .wizard-app .shell { grid-template-columns: minmax(0,1fr); }
+  .wizard-app .stage { padding: 22px 24px 48px; }
+  .wizard-app .mobile-step-picker { border-radius: 0; }
+  .wizard-app .workspace-breadcrumb { margin-top: 16px; }
+}
+@media(max-width:620px) {
+  .wizard-app .app-top { padding: 16px 18px; gap: 14px; }
+  .wizard-app .stage { padding: 20px 18px 40px; }
+  .wizard-app .stage-head h1 { font-size: 29px; }
+  .wizard-app .dashboard-hero { grid-template-columns: minmax(0,1fr); padding: 26px; gap: 26px; }
+  .wizard-app .dashboard-hero h2 { font-size: 29px; }
+  .wizard-app .dashboard-progress { flex-direction: row; justify-content: flex-start; gap: 16px; }
+  .wizard-app .progress-orbit { width: 82px; height: 82px; padding: 5px; flex-shrink: 0; }
+  .wizard-app .dashboard-progress-number { width: 72px; height: 72px; padding-top: 22px; font-size: 28px; }
+  .wizard-app .dashboard-progress-number span { font-size: 15px; }
+  .wizard-app .dashboard-progress>span { margin: 0; }
+  .wizard-app .dashboard-stats { grid-template-columns: minmax(0,1fr); gap: 10px; }
+  .wizard-app .dashboard-stats>div { padding: 18px 20px; }
+  .wizard-app .dashboard-stats strong { font-size: 28px; }
+  .wizard-app .dashboard-stats .metric-icon { right: 20px; top: 20px; }
+  .wizard-app .dashboard-details>.dashboard-section { padding: 20px; }
+  .wizard-app .navigation { padding: 16px; }
+  .wizard-app .overview-card { min-height: 144px; }
+  .wizard-app .dashboard-readiness { padding: 20px; }
+  .wizard-app .saved-deeds-dashboard { padding-top: 32px; }
+}
+/* Keep long forms aligned and the phone workflow compact. */
+.wizard-app .deed-field-grid { grid-template-columns: repeat(2,minmax(0,1fr))!important; gap: 24px!important; }
+.wizard-app .deed-field { grid-column: span 1!important; }
+.wizard-app .deed-field:has(textarea) { grid-column: 1/-1!important; }
+@media(max-width:620px) {
+  .wizard-app .deed-field-grid { grid-template-columns: minmax(0,1fr)!important; }
+  .wizard-app .overview-card { display: grid; grid-template-columns: 30px minmax(0,1fr) 18px; gap: 5px 12px; min-height: 112px; padding: 16px; align-items: start; }
+  .wizard-app .overview-card-top { display: contents; }
+  .wizard-app .overview-card-top b { grid-column: 1; grid-row: 1/4; margin-top: 2px; }
+  .wizard-app .overview-card-top em { grid-column: 2; grid-row: 3; justify-self: start; margin-top: 4px; }
+  .wizard-app .overview-card-title { grid-column: 2; grid-row: 1; }
+  .wizard-app .overview-card small { grid-column: 2; grid-row: 2; margin: 0; }
+  .wizard-app .overview-card-arrow { position: static; grid-column: 3; grid-row: 1/4; align-self: center; }
+}

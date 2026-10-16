@@ -89,7 +89,8 @@ export type Action =
 
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
-  if (action.type === 'load') return migratePartyPeople(action.draft);
+  // All three former plan steps now open the retained exact-reference editor.
+  if (action.type === 'load') return migratePartyPeople(action.draft.step > 10 ? { ...action.draft, step: 10 } : action.draft);
   if (action.type === 'step') return { ...draft, step: action.step };
   let next = draft;
   if (action.type === 'template-field-clear') {

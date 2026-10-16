@@ -41,13 +41,13 @@ export function ExactReferenceStep({ draftId, scheduleId, seed, doc, selected, o
     return () => window.removeEventListener('message', receive);
   }, [draftId, scheduleId, sessionId]);
   return <>
-    <div style={{ display: 'flex', gap: 12, margin: '12px 0', alignItems: 'center', flexWrap: 'wrap' }}>
-      <button onClick={() => { setReview(!review); setChecked([]); }}>Review and refresh from deed</button>
+    <div className="plan-workspace-actions">
+      <button aria-expanded={review} onClick={() => { setReview(!review); setChecked([]); }}>Review and refresh from deed</button>
       <button className="primary" onClick={() => frame.current?.contentWindow?.postMessage({ type: 'deedcraft:exact-plan-request-use', draftId, scheduleId, sessionId }, window.location.origin)}>Use this plan in deed</button>
-      {selected && <span>This exact reference plan is selected for this schedule.</span>}
+      {selected && <span role="status">This exact reference plan is selected for this schedule.</span>}
     </div>
     {error && <p role="alert">{error}</p>}
-    {review && <div style={{ padding: 16, border: '1px solid #d6c8aa', marginBottom: 12 }}>
+    {review && <div className="plan-refresh-review">
       <p>Select changed deed facts to copy into this plan. Drawing settings and unselected edits stay here.</p>
       {!changes.length && <p>Plan facts match the current deed.</p>}
       {changes.map(field => { const id = field.path.join('.'); return <label key={id} style={{ display: 'block', margin: '8px 0' }}>
@@ -59,7 +59,7 @@ export function ExactReferenceStep({ draftId, scheduleId, seed, doc, selected, o
         onChange(next); sendSeed(next); setReview(false);
       }}>Apply selected deed facts to plan</button>
     </div>}
-    <iframe ref={frame} title="Property Plan — Exact Reference"
+    <iframe className="plan-workspace-frame" ref={frame} title="Property Plan — Exact Reference"
       src={`/exact-reference-plan/index.html?draftId=${encodeURIComponent(draftId)}&scheduleId=${encodeURIComponent(scheduleId)}&sessionId=${sessionId}`}
       onLoad={() => sendSeed()} style={{ display: 'block', width: '100%', minHeight: 900, height: 'calc(100vh - 170px)', border: 0, background: '#f1f5f9' }} />
   </>;

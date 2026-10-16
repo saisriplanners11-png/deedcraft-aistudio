@@ -45,7 +45,7 @@ export function TemplateLibrary({ onClose, onPublished }: { onClose: () => void;
     });
     if (input.current) input.current.value = '';
   }
-  return <main className="template-library saved-deeds-dashboard">
+  return <main id="workspace-main" tabIndex={-1} className="template-library saved-deeds-dashboard">
     <div className="template-heading"><div><p className="eyebrow">SHARED LIBRARY</p><h1>Deed templates</h1><p>Download → Edit in Word → Upload → Configure fields → Validate → Review → Publish</p></div><button onClick={onClose}>Back to deeds</button></div>
     {error && <p className="notice" role="alert">{error} <button disabled={busy} onClick={() => void run(refresh)}>Refresh library</button></p>}
     {notice && <p className="notice" role="status">{notice}</p>}

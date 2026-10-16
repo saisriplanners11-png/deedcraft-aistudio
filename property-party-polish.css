@@ -1,0 +1,71 @@
+/* Compact titles and modern property/party records. */
+.wizard-app .compact-step-header{margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid var(--dc-rule);min-width:0}
+.wizard-app .step-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;margin-bottom:5px;min-height:24px;flex-wrap:wrap}
+.wizard-app .step-toolbar .workspace-breadcrumb{margin:0;min-height:24px;font-size:11px;gap:8px}
+.wizard-app .step-toolbar .workspace-breadcrumb button{min-height:24px;padding:2px 0;font-size:11px}
+.wizard-app .step-toolbar-status{display:flex;align-items:center;gap:12px;min-width:0;font-size:10px;color:var(--dc-muted)}
+.wizard-app .step-toolbar-status .save-indicator{margin:0;font-size:10px;white-space:nowrap}
+.wizard-app .template-context{position:relative}
+.wizard-app .template-context>summary{display:flex;align-items:center;gap:5px;min-height:26px;font-size:11px;font-weight:400;cursor:pointer;list-style:none;border:1px solid var(--dc-rule);border-radius:5px;padding:3px 7px;background:var(--dc-paper);color:var(--dc-body)}
+.wizard-app .template-context>summary::-webkit-details-marker{display:none}
+.wizard-app .template-context>summary::after{content:'⌄';margin-left:3px}
+.wizard-app .template-context[open]>summary{margin:0}
+.wizard-app .template-context>div{position:absolute;right:0;top:calc(100% + 6px);z-index:5;min-width:220px;max-width:270px;padding:14px;background:var(--dc-paper);border:1px solid var(--dc-control-border);border-radius:8px;box-shadow:var(--dc-shadow);overflow-wrap:anywhere}
+.wizard-app .template-context strong{display:block;font-size:12px;color:var(--dc-ink)}
+.wizard-app .template-context small{font-size:11px;margin-top:4px}
+.wizard-app .template-context button{margin-top:10px;font-size:11px;min-height:36px}
+.wizard-app .compact-step-header .stage-head{margin:0;padding:0;border:0}
+.wizard-app .step-title-line{display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap}
+.wizard-app .compact-step-header .stage-head h1{font:600 23px/1.25 'IBM Plex Sans',sans-serif;letter-spacing:-.025em;margin:0}
+.wizard-app .step-position{font:500 10px/1.4 'IBM Plex Sans',sans-serif;white-space:nowrap;color:var(--dc-green);background:var(--dc-accent-soft);padding:4px 7px;border-radius:5px}
+.wizard-app .compact-step-header .stage-head>p{font-size:12px;line-height:1.4;margin:4px 0 0;max-width:80ch}
+.wizard-app .property-card-heading,.wizard-app .party-card-heading{display:flex;align-items:center;gap:10px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--dc-rule-soft)}
+.wizard-app .record-heading-icon{display:grid;place-items:center;width:38px;height:40px;flex-shrink:0;border-radius:9px;background:var(--dc-accent-soft);color:var(--dc-green)}
+.wizard-app :is(.property-card-heading,.party-card-heading)>div{flex:1;min-width:0}
+.wizard-app :is(.property-card-heading,.party-card-heading) h2{margin:0;font:600 16px/1.4 'IBM Plex Sans',sans-serif;letter-spacing:-.02em}
+.wizard-app :is(.property-card-heading,.party-card-heading) p{margin:3px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.wizard-app .record-kind{display:inline-block;max-width:180px;font-size:11px;font-weight:500;line-height:1.5;padding:4px 8px;border-radius:6px;border:1px solid var(--dc-rule);background:var(--dc-ground);color:var(--dc-body);overflow-wrap:anywhere}
+.wizard-app :is(.property-schedule-card,.party-record-card){border-radius:12px;padding:16px;background:var(--dc-paper);box-shadow:var(--dc-shadow)}
+.wizard-app .workflow-step-3 .property-schedule-card>.deed-section,.wizard-app :is(.workflow-step-6,.workflow-step-7) .party-record-card>.deed-section{margin:14px 0 0}
+.wizard-app .workflow-step-3 .property-schedule-card>.deed-section>div:first-child,.wizard-app :is(.workflow-step-6,.workflow-step-7) .party-record-card>.deed-section>div:first-child{padding:10px 0!important;border-bottom:1px solid var(--dc-rule-soft)!important}
+.wizard-app .workflow-step-3 .property-schedule-card>.deed-section>div:last-child,.wizard-app :is(.workflow-step-6,.workflow-step-7) .party-record-card>.deed-section>div:last-child{padding:12px 0 0!important}
+.wizard-app .workflow-step-3 .property-type-control{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--dc-ground);border:1px solid var(--dc-rule);border-radius:8px;padding:10px 12px;margin:0}
+.wizard-app .workflow-step-3 .property-type-control>.field{gap:12px}
+.wizard-app .workflow-step-3 .property-type-control>span{font:500 12px 'IBM Plex Sans',sans-serif;letter-spacing:0;text-transform:none}
+.wizard-app .property-wording{margin-top:18px;border:1px solid var(--dc-rule);border-radius:9px;background:var(--dc-ground)}
+.wizard-app .property-wording>summary{display:flex;align-items:center;gap:10px;padding:12px 14px;min-height:44px;font-size:13px;color:var(--dc-green)}
+.wizard-app .property-wording>summary>span{flex:1}
+.wizard-app .property-wording>summary::after{content:'+';margin-left:auto;font-size:18px}
+.wizard-app .property-wording[open]>summary::after{content:'−'}
+.wizard-app .property-wording small{font-size:11px;font-weight:400;color:var(--dc-muted);margin-top:2px}
+.wizard-app .property-wording[open]>summary{margin:0;border-bottom:1px solid var(--dc-rule)}
+.wizard-app .property-wording>.deed-section{margin:0;border:0!important;border-radius:0 0 9px 9px}
+.wizard-app .party-identity-upload{margin:14px 0}
+.wizard-app .party-record-card .document-upload{padding:12px!important;border-radius:9px;background:var(--dc-ground)}
+.wizard-app .party-record-card .upload-copy p{font-size:12px;margin:2px 0}
+.wizard-app .party-record-card .upload-copy small{font-size:10px}
+.wizard-app .party-record-card .representative-card{background:var(--dc-ground);border-radius:10px;padding:14px}
+.wizard-app .party-record-card .representative-heading>b{font:600 13px 'IBM Plex Sans',sans-serif}
+.wizard-app .party-record-card .entity-same-address{padding:10px 12px;background:var(--dc-accent-soft);border:1px solid var(--dc-rule);border-radius:7px;font-size:12px;margin:12px 0}
+.wizard-app .entity-same-address input{accent-color:var(--dc-action);width:16px;height:16px;flex-shrink:0}
+.wizard-app .party-add-card,.wizard-app .property-add-card{background:var(--dc-paper)!important;border:1px dashed var(--dc-control-border)!important;border-radius:10px;display:flex;align-items:center;gap:10px;padding:14px!important}
+.wizard-app :is(.party-add-card,.property-add-card)>span{display:flex;align-items:center;gap:8px;flex:1;font:500 12px 'IBM Plex Sans',sans-serif!important;color:var(--dc-body)!important;letter-spacing:0!important;text-transform:none!important}
+.wizard-app :is(.party-add-card,.property-add-card)>.quiet{border:1px solid var(--dc-rule)}
+.wizard-app .structure-table-scroll table th{background:var(--dc-accent-soft);color:var(--dc-body);font:500 11px/1.5 'IBM Plex Sans',sans-serif}
+@media(max-width:900px){.wizard-app .mobile-step-picker{padding:8px 12px}.wizard-app .mobile-step-picker label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.wizard-app .mobile-step-picker select{min-height:36px}.wizard-app .step-toolbar{gap:5px 10px}.wizard-app .step-toolbar-status{gap:7px}}
+@media(max-width:620px){.wizard-app .stage{padding-top:8px}.wizard-app .compact-step-header{padding-bottom:10px;margin-bottom:10px}.wizard-app .step-toolbar{margin-bottom:6px}.wizard-app .step-toolbar .workspace-breadcrumb{font-size:10px;gap:6px}.wizard-app .step-toolbar .workspace-breadcrumb button{font-size:10px}.wizard-app .step-toolbar-status .save-indicator{font-size:10px}.wizard-app .step-toolbar-status{margin-left:auto}.wizard-app .compact-step-header .stage-head h1{font-size:21px}.wizard-app .step-title-line{gap:6px 10px}.wizard-app .compact-step-header .stage-head>p{font-size:11px}.wizard-app .step-position{font-size:9px}.wizard-app .template-context>summary{font-size:10px;padding:3px 5px}.wizard-app .template-context>div{right:0;min-width:200px;max-width:240px}.wizard-app :is(.property-schedule-card,.party-record-card){padding:12px}.wizard-app .property-card-heading,.wizard-app .party-card-heading{gap:9px;padding-bottom:12px;margin-bottom:12px;flex-wrap:wrap}.wizard-app .record-heading-icon{width:32px;height:36px}.wizard-app .record-kind{max-width:100%;font-size:10px}.wizard-app :is(.property-card-heading,.party-card-heading)>div{flex-basis:calc(100% - 46px)}.wizard-app :is(.property-card-heading,.party-card-heading) h2{font-size:15px}.wizard-app :is(.property-card-heading,.party-card-heading) p{font-size:11px}.wizard-app .property-type-control{flex-wrap:wrap}.wizard-app :is(.party-add-card,.property-add-card){align-items:stretch;flex-direction:column}.wizard-app :is(.party-add-card,.property-add-card)>span{width:100%}.wizard-app :is(.party-add-card,.property-add-card)>button{width:100%}.wizard-app .property-wording>summary{font-size:12px;padding:10px 12px}.wizard-app .property-wording .section-telugu{display:block}}
+@media(max-width:620px){.wizard-app .step-toolbar .workspace-breadcrumb>span{display:none}.wizard-app .step-toolbar .workspace-breadcrumb{min-width:46px}.wizard-app .compact-step-header .step-toolbar{flex-wrap:nowrap}}
+/* Put the party identity and legal-capacity control on the same desktop row. */
+.wizard-app .party-record-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,340px);gap:0 18px;align-items:start}
+.wizard-app .party-record-card>*{grid-column:1/-1;min-width:0}
+.wizard-app .party-record-card>.party-card-heading{grid-column:1;grid-row:1;border:0;margin:0;padding:4px 0}
+.wizard-app .party-card-heading>.record-kind{display:none}
+.wizard-app .party-record-card>.party-type-selector{grid-column:2;grid-row:1}
+.wizard-app .party-type-selector>.deed-section{border:0!important;margin:0!important;border-radius:0}
+.wizard-app .party-type-selector>.deed-section>div:first-child{display:none!important}
+.wizard-app .party-type-selector>.deed-section>div:last-child{padding:0!important}
+.wizard-app .party-type-selector .deed-field-grid{grid-template-columns:minmax(0,1fr)!important}
+@media(max-width:620px){.wizard-app .party-record-card{grid-template-columns:minmax(0,1fr);gap:0}.wizard-app .party-record-card>.party-card-heading{grid-column:1;grid-row:auto;margin:0 0 12px}.wizard-app .party-record-card>.party-type-selector{grid-column:1;grid-row:auto}}
+.wizard-app .party-record-card .party-type-selector .deed-field-grid{grid-template-columns:minmax(0,1fr)!important}
+.wizard-app .property-schedule-card>.add-document-row:not(.property-type-control){padding:0!important;border:0;background:transparent;margin:8px 0 0}
+.wizard-app .property-schedule-card>.add-document-row:not(.property-type-control)>button{min-height:30px;font-size:11px;padding:4px 0;color:var(--dc-green)}

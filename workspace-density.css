@@ -1,0 +1,133 @@
+/* Keep navigation, status, and forms close together across the entire workspace. */
+.wizard-app .shell{max-width:none;grid-template-columns:236px minmax(0,1fr)}
+.wizard-app .stage{max-width:none;padding:12px 20px 28px}
+.wizard-app .app-top{min-height:60px;padding-block:10px}
+.wizard-app .save-indicator{font-size:10px;line-height:1.4;margin:0 0 2px}
+.wizard-app .workspace-breadcrumb{gap:8px;font-size:11px;line-height:1.4;margin:4px 0 8px;min-height:22px}
+.wizard-app .workspace-breadcrumb button{min-height:22px;padding:2px 0;font-size:11px}
+.wizard-app .stage-head{padding:0;margin:0 0 14px;border:0}
+.wizard-app .stage-head h1{font:600 24px/1.25 'IBM Plex Sans',sans-serif;margin:0 0 4px;letter-spacing:-.025em}
+.wizard-app .stage-head .eyebrow{font-size:9px;margin:0 0 4px}
+.wizard-app .stage-head p:last-child{font-size:12px;line-height:1.5;margin:0}
+.wizard-app :is(.setup-step,.documents-step,.workflow-step){gap:12px}
+.wizard-app .panel{padding:14px;border-radius:8px}
+.wizard-app .deed-field-grid,.wizard-app .workflow-step .payment-fields{gap:12px 16px!important}
+.wizard-app .workflow-step .deed-section{margin-top:14px}
+.wizard-app .workflow-step .deed-section>div:first-child{padding:12px 0 8px!important}
+.wizard-app .workflow-step .deed-section>div:last-child>p{margin-bottom:12px!important}
+.wizard-app .workflow-step>.deed-section{padding:14px;margin:0}
+.wizard-app .workflow-section-heading,.wizard-app .setup-card-content{padding:14px 16px}
+.wizard-app .workflow-section-heading p{margin-top:3px}
+.wizard-app :is(.property-context,.document-picker,.document-add,.documents-step>.link-record){padding:14px 16px}
+.wizard-app .property-context{gap:12px}
+.wizard-app .document-card-icon{width:36px;height:36px;border-radius:8px}
+.wizard-app .document-card-heading{gap:12px;margin-bottom:14px}
+.wizard-app .workflow-step .document-upload{padding:12px 14px}
+.wizard-app .navigation{padding:12px 14px;margin-top:16px;gap:10px;border-radius:8px}
+.wizard-app .navigation>span{font-size:10px}
+.wizard-app .workflow-step .review-group{padding:12px}
+.wizard-app .workflow-step .review-groups{gap:10px}
+.wizard-app .workflow-step .review-intro{gap:12px;padding-bottom:12px}
+.wizard-app .workflow-step .review-draft-note{padding:10px 12px;margin-bottom:14px}
+.wizard-app .workflow-step .review-group details{margin-top:8px;padding-top:8px}
+.wizard-app .workflow-step .review-issues{margin-bottom:18px}
+.wizard-app .rail{padding:16px 10px}
+.wizard-app .rail-heading{padding-bottom:8px}
+.wizard-app .rail-draft-meta{padding:8px 10px 12px;margin-bottom:8px}
+.wizard-app .rail-step{min-height:44px;padding:7px 10px}
+.wizard-app .rail-step small{font-size:10px;line-height:1.35;margin-top:2px}
+.wizard-app .rail-phase{margin-top:10px}
+.wizard-app .dashboard{max-width:none}
+.wizard-app .dashboard-hero{padding:18px 22px;gap:20px;grid-template-columns:minmax(0,1fr) 130px;border-radius:10px}
+.wizard-app .dashboard-hero h2{font-size:23px;line-height:1.25;margin:8px 0;max-width:none}
+.wizard-app .dashboard-hero p{font-size:12px;margin:0 0 12px;max-width:none}
+.wizard-app .dashboard-kicker{font-size:10px}
+.wizard-app button.dashboard-cta{padding:8px 12px;font-size:12px}
+.wizard-app .progress-orbit{width:96px;height:96px;padding:5px}
+.wizard-app .dashboard-progress-number{width:86px;height:86px;padding-top:24px;font-size:32px}
+.wizard-app .dashboard-progress-number span{font-size:15px}
+.wizard-app .dashboard-progress>span{font-size:11px;margin-top:6px}
+.wizard-app .review-shortcut{margin-top:12px;padding:12px 16px;gap:12px}
+.wizard-app .review-shortcut strong{font-size:13px}
+.wizard-app .review-shortcut small{font-size:11px;margin-top:3px}
+.wizard-app .dashboard-stats{gap:12px;margin:12px 0 16px}
+.wizard-app .dashboard-stats>div{padding:14px 16px;gap:4px;border-radius:8px}
+.wizard-app .dashboard-stats strong{font-size:23px;line-height:1.3}
+.wizard-app .dashboard-stats>div>span:last-child{font-size:11px}
+.wizard-app .dashboard-stats .metric-icon{padding:6px;top:14px;right:14px}
+.wizard-app .dashboard-details{gap:12px;margin-bottom:16px}
+.wizard-app .dashboard-details>.dashboard-section{padding:14px 16px;border-radius:8px}
+.wizard-app .dashboard-section h2{font:600 16px/1.4 'IBM Plex Sans',sans-serif}
+.wizard-app .dashboard-section-head{margin-bottom:12px;gap:12px}
+.wizard-app .dashboard-section-head>span{font-size:11px}
+.wizard-app .dashboard-phase{margin-top:14px}
+.wizard-app .dashboard-phase h3{margin-bottom:8px}
+.wizard-app .overview-grid{gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.wizard-app .overview-card{min-height:92px;padding:12px;gap:5px;border-radius:8px}
+.wizard-app .overview-card-title{font-size:13px;line-height:1.4}
+.wizard-app .overview-card small{font-size:11px;line-height:1.45}
+.wizard-app .overview-card-top em{font-size:10px}
+.wizard-app .dashboard-readiness{margin-top:18px;padding:16px}
+.wizard-app .dashboard-readiness .checks li{padding:10px 0}
+.wizard-app .saved-deeds-dashboard{max-width:1440px;padding:24px 24px 36px}
+.wizard-app .saved-deeds-heading{margin-bottom:16px;gap:16px}
+.wizard-app .saved-deeds-heading h1{font-size:26px}
+.wizard-app .saved-deeds-heading p{font-size:13px;margin-top:6px}
+.wizard-app .library-context{padding:12px 0;margin-bottom:12px}
+.wizard-app .library-toolbar{gap:12px;margin-bottom:12px}
+.wizard-app .saved-deed-card{padding:16px;gap:16px}
+.wizard-app .saved-deed-card h2{font-size:17px}
+.wizard-app .saved-deed-meta{margin-top:8px}
+.wizard-app .library-empty{padding:24px 24px 0}
+.wizard-app .empty-document{width:52px;height:56px;margin-bottom:16px}
+.wizard-app .library-empty h2{font-size:25px}
+.wizard-app .library-empty>p:not(.eyebrow){margin:10px auto 16px;font-size:13px}
+.wizard-app .getting-started{margin-top:24px;padding:18px 0;gap:16px}
+.wizard-app .finish-section-heading{gap:10px;margin-bottom:12px}
+.wizard-app .finish-section-heading h2{font-size:16px}
+.wizard-app .payment-summary-grid{gap:10px;margin-bottom:12px}
+.wizard-app .payment-summary-grid>div{padding:12px;gap:4px;border-radius:8px}
+.wizard-app .payment-summary-grid strong{font-size:19px}
+.wizard-app .payment-record{margin-bottom:12px;border-radius:8px}
+.wizard-app .payment-record-heading{padding:12px 14px!important}
+.wizard-app .payment-method-row{padding:10px 14px 0;gap:10px}
+.wizard-app .payment-mode-tabs button{min-height:34px;padding:6px 9px!important;font-size:11px!important}
+.wizard-app .payment-upload{margin:12px 14px!important;padding:12px!important}
+.wizard-app .finish-banner{padding:16px;gap:12px;margin-bottom:14px;border-radius:10px}
+.wizard-app .finish-banner h2{font-size:18px;margin:4px 0}
+.wizard-app .finish-banner-metric strong{font-size:24px}
+.wizard-app .workflow-step-8 :is(.completed-checks,.schedule-review){padding:12px 14px;margin-bottom:12px;border-radius:8px}
+.wizard-app .workflow-step-9 .template-picker{padding:14px;margin-bottom:14px;border-radius:8px}
+.wizard-app .workflow-step-9 .template-choices>label{min-height:0;padding:12px}
+.wizard-app .export-options{gap:12px}
+.wizard-app .export-card{padding:14px;gap:10px;border-radius:8px}
+.wizard-app .export-card h3{font-size:16px}
+.wizard-app .export-card>small{min-height:0}
+.wizard-app .export-card>button{min-height:36px}
+.wizard-app .download-outstanding{padding:12px 14px;border-radius:8px}
+.wizard-app .dashboard-details{grid-template-columns:minmax(0,1fr)}
+.wizard-app .dashboard-details>.document-options{padding:10px 14px}
+.wizard-app .document-options>summary>span{display:inline;margin-left:12px;font-size:11px}
+.wizard-app .dashboard-details>[aria-label='Party summaries']{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px}
+.wizard-app .dashboard-details>[aria-label='Party summaries']>h2{grid-column:1/-1;margin:0}
+.wizard-app .dashboard-details .party-summary{padding:0;margin:0;border:0;min-width:0;gap:5px 10px}
+.wizard-app .dashboard-phase .overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.wizard-app .overview-card{display:grid;grid-template-columns:28px minmax(0,1fr) 16px;gap:4px 10px;align-items:start;min-height:82px}
+.wizard-app .overview-card-top{display:contents}
+.wizard-app .overview-card-top b{grid-column:1;grid-row:1/4;margin-top:2px}
+.wizard-app .overview-card-top em{grid-column:2;grid-row:3;justify-self:start;margin-top:2px}
+.wizard-app .overview-card-title{grid-column:2;grid-row:1}
+.wizard-app .overview-card small{grid-column:2;grid-row:2;margin:0}
+.wizard-app .overview-card-arrow{position:static;grid-column:3;grid-row:1/4;align-self:center}
+@media(min-width:1200px){.wizard-app .dashboard-phase .overview-grid:has(>.overview-card:nth-child(4)){grid-template-columns:repeat(4,minmax(0,1fr))}.wizard-app .dashboard-phase .overview-grid:has(>.overview-card:nth-child(3)):not(:has(>.overview-card:nth-child(4))){grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.wizard-app .dashboard-phase .overview-grid,.wizard-app .dashboard-details>[aria-label='Party summaries']{grid-template-columns:minmax(0,1fr)}}
+.wizard-app .workflow-step .review-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.wizard-app .workflow-step .compact .review-group-heading{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px}
+.wizard-app .workflow-step .compact .review-group-heading button{width:auto;margin:0;min-height:32px;padding:6px 8px;font-size:11px}
+.wizard-app .workflow-step .compact .review-group-heading button svg{display:none}
+.wizard-app .workflow-step .compact .review-preview{margin-top:8px;padding-top:8px;font-size:11px;line-height:1.6}
+.wizard-app .workflow-step .compact .review-step-number{width:28px;height:28px;font-size:10px}
+@media(max-width:1100px){.wizard-app .workflow-step .review-groups{grid-template-columns:minmax(0,1fr)}}
+@media(min-width:1200px){.wizard-app .workflow-step .deed-field-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wizard-app .workflow-step .payment-fields{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:900px){.wizard-app .shell{grid-template-columns:minmax(0,1fr)}.wizard-app .stage{padding:10px 16px 24px}.wizard-app .mobile-step-picker{padding-block:10px}.wizard-app .mobile-step-picker select{min-height:36px;font-size:13px}.wizard-app .dashboard-details{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:620px){.wizard-app .stage-head h1{font-size:22px}.wizard-app .stage{padding-inline:12px}.wizard-app .panel{padding:12px}.wizard-app :is(.setup-step,.documents-step,.workflow-step){gap:12px}.wizard-app .workflow-step>.deed-section{padding:12px}.wizard-app .workflow-section-heading,.wizard-app .setup-card-content{padding:12px 14px}.wizard-app .document-card-heading{grid-template-columns:36px minmax(0,1fr)}.wizard-app .documents-step .document-card-heading{grid-template-columns:36px minmax(0,1fr)}.wizard-app :is(.property-context,.document-picker,.document-add,.documents-step>.link-record){padding:12px 14px}.wizard-app .navigation{padding:10px;margin-top:14px}.wizard-app .dashboard-hero{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px}.wizard-app .dashboard-hero h2{font-size:21px}.wizard-app .dashboard-progress{display:flex;flex-direction:row;gap:12px;justify-content:flex-start;padding-top:12px;border-top:1px solid var(--dc-hero-rule)}.wizard-app .progress-orbit{width:64px;height:64px;padding:4px}.wizard-app .dashboard-progress-number{width:56px;height:56px;padding-top:13px;font-size:23px}.wizard-app .dashboard-progress-number span{font-size:12px}.wizard-app .dashboard-progress>span{margin:0}.wizard-app .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.wizard-app .dashboard-stats>div{padding:10px;min-width:0}.wizard-app .dashboard-stats strong{font-size:19px}.wizard-app .dashboard-stats strong>span{font-size:10px}.wizard-app .dashboard-stats .metric-icon{display:none}.wizard-app .dashboard-stats>div>span:last-child{font-size:10px;line-height:1.4}.wizard-app .dashboard-section-head{align-items:flex-start;flex-direction:column;gap:6px}.wizard-app .overview-grid{grid-template-columns:minmax(0,1fr)}.wizard-app .overview-card{min-height:80px;padding:12px}.wizard-app .dashboard-readiness{padding:12px}.wizard-app .saved-deeds-dashboard{padding:20px 12px 28px}.wizard-app .saved-deeds-heading h1{font-size:23px}.wizard-app .library-empty{padding:20px 16px 0}}

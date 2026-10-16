@@ -1,0 +1,48 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+
+const browser = await chromium.launch({ headless: true, channel: 'msedge' });
+const errors = [];
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on('pageerror', error => errors.push(error.message));
+  const bytes = await readFile(new URL('../sale-deed-template-v6.docx', import.meta.url));
+  const version = { id: 'workflow-v6', filename: 'Sale deed v6', instrumentId: 'sale', hash: createHash('sha256').update(bytes).digest('hex') };
+  await page.route('**/api/templates', route => route.fulfill({ json: { active: { sale: version.id }, versions: [version] } }));
+  await page.route('**/api/templates/versions/*/download', route => route.fulfill({ body: bytes, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+  await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
+  await page.getByRole('button', { name: 'Create your first deed' }).click();
+  await page.locator('.rail-step').first().waitFor();
+  assert.equal(await page.locator('.rail-step').count(), 11);
+  const go = async index => page.locator('.rail-step').nth(index).click();
+  await go(0);
+  await page.getByLabel('What is this property?').selectOption('Residential');
+  await go(1);
+  assert.equal(await page.getByLabel('What is this property?').count(), 0);
+  assert.match(await page.getByRole('region', { name: 'Selected property type' }).innerText(), /Residential/i);
+  await page.getByRole('button', { name: 'Change property type in Step 1', exact: true }).click();
+  assert.equal(await page.locator('#workspace-title').innerText(), 'Deed setup');
+  await page.getByRole('button', { name: 'Change type', exact: true }).click();
+  await page.getByLabel('What is this property?').selectOption('Vacant Plot');
+  await go(1);
+  assert.match(await page.getByRole('region', { name: 'Selected property type' }).innerText(), /Vacant Plot/i);
+  await go(9);
+  await page.getByRole('button', { name: /Continue.*Property Plan/ }).click();
+  assert.equal(await page.locator('#workspace-title').innerText(), 'Property Plan — Exact Reference');
+  await page.locator('iframe[title="Property Plan — Exact Reference"]').waitFor();
+  assert.equal(await page.locator('iframe[title="Property Plan Generator"]').count(), 0);
+  await page.frameLocator('iframe[title="Property Plan — Exact Reference"]').locator('#input-survey-no').waitFor();
+  assert.equal(await page.locator('.navigation .primary').count(), 0);
+  await page.setViewportSize({ width: 375, height: 812 });
+  assert.equal(await page.locator('#mobile-step option').count(), 12);
+  await page.locator('#mobile-step').selectOption('1');
+  assert.equal(await page.getByLabel('What is this property?').count(), 0);
+  await mkdir(new URL('../tmp/workflow-cleanup/', import.meta.url), { recursive: true });
+  await page.screenshot({ path: new URL('../tmp/workflow-cleanup/documents-mobile.png', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log('PASS: property type reused, change link, 11-step desktop/mobile navigation, retained exact-reference iframe.');
+} finally {
+  await browser.close();
+}

@@ -68,9 +68,10 @@ export function Note({ tag, children, tone = 'gold' }: { tag: string; children: 
 
 export function Section({ title, telugu, aside, children }: { title: string; telugu?: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section style={css(`background:${C.paper};border:1px solid ${C.rule};border-top:2px solid ${C.ink}`)}>
+    <section className="deed-section" style={css(`background:${C.paper};border:1px solid ${C.rule};border-top:2px solid ${C.ink}`)}>
       <div style={css(`padding:13px 18px;border-bottom:1px solid ${C.rule};display:flex;align-items:baseline;gap:12px;flex-wrap:wrap`)}>
         <h2 style={css(`margin:0;font-family:${C.serif};font-size:17px;font-weight:600`)}>{title}</h2>
+        {telugu && <span className="section-telugu" lang="te">{telugu}</span>}
         {aside ? <span style={css('margin-left:auto')}>{aside}</span> : null}
       </div>
       <div style={css('padding:18px')}>{children}</div>
@@ -105,7 +106,7 @@ export function Input({
   const shown = field.id === 'flatStage' ? flatStage(rawShown) || rawShown : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(rawShown) ? rawShown.slice(0, 7) : rawShown;
 
   return (
-    <label style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
+    <label className="deed-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
       <span style={css('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
         <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.mutedSoft}`)}>
           {field.label}
@@ -232,7 +233,7 @@ export function FieldGroup({
       {group.note ? (
         <p style={css(`margin:0 0 16px;font-size:12px;color:${C.body};line-height:1.6;max-width:80ch`)}>{group.note}</p>
       ) : null}
-      <div style={css(`display:grid;grid-template-columns:repeat(${group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
+      <div className="deed-field-grid" style={css(`display:grid;grid-template-columns:repeat(${group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
         {group.fields.map(f => (
           <Input
             key={f.id}

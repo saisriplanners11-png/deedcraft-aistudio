@@ -17,7 +17,7 @@
 5. Deploy the updated code. Keep Render on Free, one instance. The first Templates request seeds the bundled Sale v6 only if no shared metadata row exists. Sign in under Dashboard → Templates, download the template, then upload/configure/validate/review/publish as before.
 6. Verify from another browser that new drafts use the published version. Restart the Render service and verify the same active version remains. Existing saved deeds stay in their original browser storage.
 
-Only Render communicates with Supabase. Published downloads still pass through the app; unpublished versions, reports and samples still require administrator login. No public object URLs are returned. Template files are immutable; samples use content-addressed filenames. Metadata is saved with a database compare-and-swap revision check. Conflicts return 409 and require a refresh; failures never fall back to disk or another template. Administrator sessions remain in memory and expire when Render restarts/sleeps; sign in again.
+Only the app server communicates with Supabase. Published downloads still pass through the app; unpublished versions, reports and samples still require administrator login. No public object URLs are returned. Template files are immutable; samples use content-addressed filenames. Metadata is saved with a database compare-and-swap revision check. Conflicts return 409 and require a refresh; failures never fall back to disk or another template. Administrator sessions remain in memory and expire when the server restarts; sign in again.
 
 ## Sharing the library with local development
 

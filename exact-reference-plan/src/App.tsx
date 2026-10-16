@@ -452,7 +452,7 @@ export default function App() {
   if (!bridgeSeeded) return <p role="status" className="p-6">Loading schedule details…</p>;
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
+    <div className="plan-workspace min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
       {/* Top Application Bar */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -613,7 +613,7 @@ export default function App() {
             {/* Layout: Form Panels (Left) + Live Sketch & Quick Legal Text (Right) */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
               {/* Left Column: Input Forms */}
-              <div className="xl:col-span-7 space-y-6">
+              <div className="plan-editor-fields xl:col-span-7 space-y-6">
                 {(activeTab === 'all' || activeTab === 'property') && (
                   <PropertyDetailsForm
                     property={doc.property}

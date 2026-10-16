@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* Compact editing chrome; print and captured registration pages retain their layout. */
+@media screen {
+  .plan-workspace{background:#f5f3ee;font-size:13px}
+  .plan-workspace>header{background:#fffefa;box-shadow:none}
+  .plan-workspace>header>div{height:auto;min-height:60px;gap:12px;padding:12px 16px;flex-wrap:wrap}
+  .plan-workspace>header h1{font-size:14px;line-height:1.4}
+  .plan-workspace>main{padding:16px;min-width:0}
+  .plan-workspace :is(input,select,textarea){font-size:13px;min-height:34px;padding:7px 10px;border-radius:6px;min-width:0;max-width:100%}
+  .plan-workspace input:is([type=checkbox],[type=radio],[type=range]){min-height:initial;padding:0}
+  .plan-workspace button{min-height:34px;font-size:12px}
+  .plan-editor-fields :is(h2,h3){font-size:16px;line-height:1.4}
+  .plan-editor-fields .p-6{padding:16px}
+  .plan-editor-fields .mb-6{margin-bottom:16px}
+  .plan-editor-fields .gap-6{gap:16px}
+  @media(max-width:620px){
+    .plan-workspace>main{padding:12px}
+    .plan-workspace>header>div{padding:12px;align-items:flex-start}
+    .plan-workspace>header>div>div:last-child{flex-wrap:wrap}
+    .plan-workspace :is(input,select,textarea){min-height:38px}
+    .plan-workspace input:is([type=checkbox],[type=radio],[type=range]){min-height:initial}
+  }
+}
+
 @media print {
   body {
     background-color: #ffffff !important;

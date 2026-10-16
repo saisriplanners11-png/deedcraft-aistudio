@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
+import { FileUp, Trash2 } from 'lucide-react';
 import { css } from './css';
 import { C, Button, ExtractDialog, formatMoneyInput, type ProgressStep } from './ui';
 import { words } from './logic';
@@ -10,7 +11,7 @@ const money = (v: number) => '₹' + Math.round(v).toLocaleString('en-IN');
 
 /** A bare labelled input in the register style, for records that are not form fields. */
 function PInput({
-  label, value, onChange, type = 'text', hint, mono, span = 1, filled,
+  label, value, onChange, type = 'text', hint, mono, span = 1, filled, error,
 }: {
   label: string;
   value: string;
@@ -21,9 +22,12 @@ function PInput({
   span?: number;
   /** True when the value came off the uploaded instrument. */
   filled?: boolean;
+  error?: string;
 }) {
+  const hintId = useId();
+  const errorId = useId();
   return (
-    <label style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
+    <label className="deed-field payment-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
       <span style={css('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
         <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.mutedSoft}`)}>
           {label}
@@ -44,12 +48,15 @@ function PInput({
           if (raw === '' || /^\d*\.?\d*$/.test(raw)) onChange(raw);
         }}
         aria-label={label}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={[hint ? hintId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined}
         style={css(
           `padding:7px 2px;border:0;border-bottom:1px solid ${C.goldLight};background:transparent;font-size:13.5px;color:${C.ink};outline:none` +
             (mono || type === 'number' || type === 'money' ? `;font-family:${C.mono}` : '')
         )}
       />
-      {hint ? <span style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{hint}</span> : null}
+      {error && <span id={errorId} className="payment-field-error" role="alert">{error}</span>}
+      {hint ? <span id={hintId} style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{hint}</span> : null}
     </label>
   );
 }
@@ -64,7 +71,7 @@ function Check({
   tone?: 'ink' | 'gold';
 }) {
   return (
-    <label
+    <label className="payment-option"
       style={css(
         `display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px 9px;` +
         (tone === 'gold'
@@ -84,7 +91,7 @@ function Check({
 /** The mode strip. Switching mode keeps whatever has already been typed. */
 function ModeTabs({ mode, onPick }: { mode: PayMode; onPick: (m: PayMode) => void }) {
   return (
-    <div style={css('display:flex;flex-wrap:wrap;gap:0;border:1px solid ' + C.goldLight)}>
+    <div className="payment-mode-tabs" role="group" aria-label="Payment method" style={css('display:flex;flex-wrap:wrap;gap:0;border:1px solid ' + C.goldLight)}>
       {MODES.map(m => {
         const on = m.key === mode;
         return (
@@ -92,6 +99,7 @@ function ModeTabs({ mode, onPick }: { mode: PayMode; onPick: (m: PayMode) => voi
             key={m.key}
             type="button"
             onClick={() => onPick(m.key)}
+            aria-pressed={on}
             className={on ? undefined : 'hv3'}
             style={css(
               `padding:7px 13px;border:0;border-right:1px solid ${C.goldLight};cursor:pointer;` +
@@ -129,6 +137,8 @@ export function PaymentCard({
   const [error, setError] = useState('');
   const [audit, setAudit] = useState<{ found: string[]; notFound: string[]; unreadable: string } | null>(null);
   const [over, setOver] = useState(false);
+  const [amountError, setAmountError] = useState('');
+  const proofInput = useRef<HTMLInputElement>(null);
 
   const amount = Number(payment.amount) || 0;
 
@@ -171,7 +181,7 @@ export function PaymentCard({
 
   const take = (list: FileList | null) => {
     const files = Array.from(list || []);
-    if (files.length) onFiles(files);
+    if (files.length && !busy) void onFiles(files);
   };
 
   const set = (k: keyof Payment) => (v: string) => {
@@ -183,11 +193,12 @@ export function PaymentCard({
     // @ts-ignore
     patch[k] = v;
     patch.filled = remaining;
-    if (onPatch(patch) === false) setError('Payment total cannot exceed the final sale consideration.');
+    if (onPatch(patch) === false) setAmountError('This amount would make the payment total exceed the sale consideration. The previous value has been kept.');
+    else if (k === 'amount') setAmountError('');
   };
 
   return (
-    <div style={css(`background:${C.paper};border:1px solid ${C.rule};border-left:3px solid ${C.gold}`)}>
+    <div className="payment-record" style={css(`background:${C.paper};border:1px solid ${C.rule};border-left:3px solid ${C.gold}`)}>
       <ExtractDialog
         open={open}
         label={`${spec.label} — payment ${index + 1}`}
@@ -199,11 +210,10 @@ export function PaymentCard({
       />
 
       {/* header: which payment, how it was made, and whether it is an advance */}
-      <div style={css(`display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid ${C.rule};background:${C.ground}`)}>
-        <span style={css(`flex:none;width:22px;height:22px;background:${C.ink};color:${C.ground};font-family:${C.mono};font-size:11px;display:flex;align-items:center;justify-content:center`)}>
+      <div className="payment-record-heading" style={css(`display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid ${C.rule};background:${C.ground}`)}>
+        <div className="payment-record-title"><span className="payment-number" style={css(`flex:none;width:22px;height:22px;background:${C.ink};color:${C.ground};font-family:${C.mono};font-size:11px;display:flex;align-items:center;justify-content:center`)}>
           {index + 1}
-        </span>
-        <ModeTabs mode={payment.mode} onPick={m => onPatch({ mode: m, filled: [] })} />
+        </span><div><h3>Payment {index + 1}</h3><small>{spec.label}{payment.advance ? ' · Advance / token' : ''}</small></div></div>
         <span style={css('margin-left:auto;display:flex;align-items:center;gap:8px')}>
           <Check
             on={payment.advance}
@@ -215,19 +225,22 @@ export function PaymentCard({
             onClick={onRemove}
             disabled={!canRemove}
             title="Remove this payment"
+            aria-label={`Remove payment ${index + 1}`}
             style={css(
               `padding:5px 9px;border:1px solid ${C.goldLight};background:transparent;font-size:12px;` +
               `color:${C.muted};cursor:${canRemove ? 'pointer' : 'not-allowed'};opacity:${canRemove ? '1' : '.4'}`
             )}
           >
-            ✕
+            <Trash2 size={16} aria-hidden="true" />
           </button>
         </span>
       </div>
 
+      <div className="payment-method-row"><span>Payment method</span><ModeTabs mode={payment.mode} onPick={m => onPatch({ mode: m, filled: [] })} /></div>
       {/* the instrument itself */}
-      <label
-        onDragOver={e => { e.preventDefault(); setOver(true); }}
+      <div
+        className={`payment-upload${over ? ' is-dragging' : ''}`} aria-busy={busy}
+        onDragOver={e => { e.preventDefault(); if (!busy) setOver(true); }}
         onDragLeave={() => setOver(false)}
         onDrop={e => { e.preventDefault(); setOver(false); take(e.dataTransfer.files); }}
         style={css(
@@ -236,20 +249,21 @@ export function PaymentCard({
           `cursor:${busy ? 'progress' : 'pointer'}`
         )}
       >
-        <span style={css(`font-size:16px;color:${C.gold}`)}>⇪</span>
+        <span className="payment-upload-icon"><FileUp size={22} aria-hidden="true" /></span>
         <span style={css('display:flex;flex-direction:column;gap:2px;min-width:0')}>
           <span style={css(`font-family:${C.serif};font-size:13.5px;font-weight:600;color:${busy ? C.gold : C.ink}`)}>
             {busy ? 'Reading…' : payment.docName ? payment.docName : `Upload the ${spec.label.toLowerCase()} — its details are read and filled in below`}
           </span>
           <span style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{spec.docLabel}</span>
         </span>
-        <input type="file" multiple accept={spec.accept} disabled={busy}
+        <input ref={proofInput} type="file" multiple accept={spec.accept} disabled={busy}
                onChange={e => { take(e.target.files); e.currentTarget.value = ''; }}
                style={css('display:none')} />
-      </label>
+        <button type="button" className="payment-proof-button" disabled={busy} onClick={() => proofInput.current?.click()}>{busy ? 'Reading proof…' : 'Choose payment proof'}</button>
+      </div>
 
       {audit && !busy ? (
-        <div style={css(`margin:0 14px 14px;padding:10px 12px;border:1px solid ${C.rule};background:${C.ground};font-size:10.5px;line-height:1.55`)}>
+        <div className="payment-audit" style={css(`margin:0 14px 14px;padding:10px 12px;border:1px solid ${C.rule};background:${C.ground};font-size:10.5px;line-height:1.55`)}>
           <b style={css(`font-size:9px;letter-spacing:.08em;text-transform:uppercase`)}>Payment extraction audit</b>
           <div style={css(`margin-top:4px;color:${C.green}`)}><b>Verified:</b> {audit.found.length ? audit.found.join(', ') : 'None'}</div>
           {audit.notFound.length ? <div style={css(`margin-top:4px;color:${C.mutedSoft}`)}><b>Not verified:</b> {audit.notFound.join(', ')}. The fields were left blank instead of guessed.</div> : null}
@@ -258,8 +272,8 @@ export function PaymentCard({
       ) : null}
 
       {/* particulars */}
-      <div style={css('padding:0 14px 14px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px')}>
-        <PInput label="Amount (₹)" type="money" value={payment.amount} onChange={set('amount')} filled={(payment.filled ?? []).includes('amount')} />
+      <div className="payment-fields" style={css('padding:0 14px 14px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px')}>
+        <PInput label="Amount (₹)" error={amountError} type="money" value={payment.amount} onChange={set('amount')} filled={(payment.filled ?? []).includes('amount')} />
         {spec.shows.ref ? (
           <PInput label={spec.refLabel} value={payment.refNo} onChange={set('refNo')} hint={spec.refHint} mono filled={(payment.filled ?? []).includes('refNo')} />
         ) : null}
@@ -279,7 +293,7 @@ export function PaymentCard({
       </div>
 
       {/* what this payment comes to */}
-      <div style={css(`display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid ${C.ruleSoft};background:${C.paper}`)}>
+      <div className="payment-record-footer" style={css(`display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid ${C.ruleSoft};background:${C.paper}`)}>
         <Check
           on={payment.tds}
           onToggle={v => onPatch({ tds: v })}
@@ -290,7 +304,7 @@ export function PaymentCard({
         <span style={css(`font-size:11px;color:${C.body};min-width:0;flex:1`)}>
           {amount ? words(amount) : 'Enter the amount to see it in words.'}
         </span>
-        <span style={css(`font-family:${C.mono};font-size:11.5px;color:${C.ink};white-space:nowrap`)}>
+        <span className="payment-net" style={css(`font-family:${C.mono};font-size:11.5px;color:${C.ink};white-space:nowrap`)}>
           {payment.tds ? `TDS ${money(tdsOn(payment))} · ` : ''}
           Net paid {amount ? money(netOf(payment)) : '—'}
         </span>
@@ -302,7 +316,7 @@ export function PaymentCard({
 /** The add-a-payment strip: one button per mode, so the next row starts right. */
 export function AddPayment({ onAdd, remaining }: { onAdd: (m: PayMode) => void; remaining: string }) {
   return (
-    <div style={css(`display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border:1px dashed ${C.goldLight};background:${C.ground}`)}>
+    <div className="add-payment" style={css(`display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border:1px dashed ${C.goldLight};background:${C.ground}`)}>
       <span style={css(`font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${C.mutedSoft}`)}>
         Add a payment
       </span>

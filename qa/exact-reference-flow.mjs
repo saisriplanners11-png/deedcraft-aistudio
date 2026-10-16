@@ -11,7 +11,7 @@ const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', msg => { if (msg.type() === 'error') console.log('Browser error:', msg.text()); });
 page.setDefaultTimeout(15000);
-const step = page.getByRole('button', { name: /^13 Property Plan — Exact Reference/ });
+const step = page.getByRole('button', { name: /^11 Property Plan — Exact Reference/ });
 const properties = page.getByRole('button', { name: /^04 Property Schedules/ });
 const frame = page.frameLocator('iframe[title="Property Plan — Exact Reference"]');
 try {

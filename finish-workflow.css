@@ -1,0 +1,111 @@
+/* Payment, review and export use the dashboard's surfaces and semantic colors. */
+.wizard-app :is(.workflow-step-5>.payments,.workflow-step-8>.reverify,.workflow-step-9>.download){padding:0;border:0;background:transparent;box-shadow:none}
+.wizard-app .finish-section-heading{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.wizard-app .finish-heading-icon{display:grid;place-items:center;width:42px;height:42px;flex-shrink:0;border-radius:11px;background:var(--dc-accent-soft);color:var(--dc-green)}
+.wizard-app .finish-section-heading>div{flex:1;min-width:0}
+.wizard-app .finish-section-heading h2{margin:0 0 4px;font-size:18px}
+.wizard-app .finish-section-heading p{margin:0;font-size:12px;color:var(--dc-muted)}
+.wizard-app .payment-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:22px}
+.wizard-app .payment-summary-grid>div{display:flex;flex-direction:column;gap:6px;min-width:0;padding:18px;border:1px solid var(--dc-rule);border-radius:12px;background:var(--dc-paper);box-shadow:var(--dc-shadow)}
+.wizard-app .payment-summary-grid>div>span{font-size:12px;color:var(--dc-muted)}
+.wizard-app .payment-summary-grid strong{font:600 clamp(19px,2vw,25px)/1.3 'IBM Plex Sans',sans-serif;letter-spacing:-.035em;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.wizard-app .payment-summary-grid small{font-size:11px;margin:0}
+.wizard-app .payment-summary-grid .quiet{display:inline-flex;align-items:center;gap:8px;color:var(--dc-green);font-size:11px;padding:3px 0;min-height:28px;align-self:flex-start}
+.wizard-app .payment-summary-grid .is-reconciled{background:var(--dc-accent-soft);border-color:var(--dc-green-line)}
+.wizard-app .payment-summary-grid .is-reconciled strong{color:var(--dc-green)}
+.wizard-app .payment-list-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+.wizard-app .payment-list-heading h3{margin:0;font-size:15px}
+.wizard-app .payment-list-heading>span{font-size:12px;color:var(--dc-muted)}
+.wizard-app .payment-record{border:1px solid var(--dc-rule)!important;border-radius:14px;background:var(--dc-paper);overflow:hidden;margin-bottom:16px;box-shadow:var(--dc-shadow)}
+.wizard-app .payment-record-heading{padding:16px 18px!important;background:var(--dc-paper)!important;gap:12px!important}
+.wizard-app .payment-record-title{display:flex;align-items:center;gap:10px;flex:1}
+.wizard-app .payment-record-title h3{margin:0;font:600 15px/1.4 'IBM Plex Sans',sans-serif}
+.wizard-app .payment-record-title small{font-size:11px;margin:2px 0 0}
+.wizard-app .payment-number{width:34px!important;height:38px!important;background:var(--dc-accent-soft)!important;color:var(--dc-green)!important;border-radius:8px}
+.wizard-app .payment-record-heading>span:last-child{margin-left:auto!important;flex-basis:auto}
+.wizard-app .payment-record-heading>span:last-child>button{display:grid;place-items:center;min-width:38px;min-height:38px;border-color:var(--dc-rule)!important;border-radius:8px;color:var(--dc-muted)!important}
+.wizard-app .payment-record-heading>span:last-child>button:enabled:hover{background:var(--dc-danger-bg)!important;color:var(--dc-danger)!important;border-color:var(--dc-danger-line)!important}
+.wizard-app .payment-option{align-items:center!important;min-height:38px;padding:8px 10px!important;border-radius:8px}
+.wizard-app .payment-option>span>span:first-child{font:500 12px 'IBM Plex Sans',sans-serif!important;letter-spacing:0!important}
+.wizard-app .payment-option>span>span:last-child:not(:first-child){font-size:11px!important;line-height:1.5}
+.wizard-app .payment-option input{accent-color:var(--dc-action);width:16px;height:16px;flex-shrink:0;margin:0!important}
+.wizard-app .payment-method-row{padding:14px 18px 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.wizard-app .payment-method-row>span{font-size:12px;font-weight:500;color:var(--dc-body)}
+.wizard-app .payment-mode-tabs{display:flex!important;flex-wrap:wrap!important;gap:4px!important;border:1px solid var(--dc-rule)!important;border-radius:9px;padding:4px;background:var(--dc-ground)}
+.wizard-app .payment-mode-tabs button{border:0!important;border-radius:6px;font:500 12px/1.4 'IBM Plex Sans',sans-serif!important;letter-spacing:0!important;min-height:36px;padding:7px 12px!important;color:var(--dc-body)!important}
+.wizard-app .payment-mode-tabs button[aria-pressed=true]{background:var(--dc-action)!important;color:var(--dc-on-action)!important}
+.wizard-app .payment-mode-tabs button[aria-pressed=false]:hover{background:var(--dc-accent-soft)!important}
+.wizard-app .payment-upload{margin:16px 18px!important;padding:14px!important;border:1px dashed var(--dc-control-border)!important;border-radius:10px;background:var(--dc-ground)!important;cursor:default!important;flex-wrap:wrap}
+.wizard-app .payment-upload.is-dragging{border-color:var(--dc-green)!important;background:var(--dc-accent-soft)!important}
+.wizard-app .payment-upload-icon{display:grid;place-items:center;width:34px;height:38px;color:var(--dc-green);flex-shrink:0}
+.wizard-app .payment-upload>span:nth-child(2){flex:1}
+.wizard-app .payment-upload>span:nth-child(2)>span:first-child{font:500 12px/1.5 'IBM Plex Sans',sans-serif!important;overflow-wrap:anywhere}
+.wizard-app .payment-upload>span:nth-child(2)>span:last-child{font-size:11px!important}
+.wizard-app .payment-proof-button{border-color:var(--dc-rule);background:var(--dc-paper);font-size:12px;min-height:38px}
+.wizard-app .payment-audit{border-radius:9px}
+.wizard-app .workflow-step-5 .payment-fields{padding:2px 18px 20px!important;gap:16px!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.wizard-app .payment-fields .payment-field>span:last-child{font-size:11px!important}
+.wizard-app .payment-field-error{color:var(--dc-danger);font-size:12px!important;font-weight:500}
+.wizard-app .payment-field input[aria-invalid=true]{border-color:var(--dc-danger)!important;background:var(--dc-danger-bg)!important}
+.wizard-app .payment-record-footer{padding:14px 18px!important;background:var(--dc-paper)!important;align-items:center!important;gap:12px!important}
+.wizard-app .payment-net{font:600 12px 'IBM Plex Sans',sans-serif!important;white-space:normal!important;margin-left:auto;padding:8px 10px;background:var(--dc-accent-soft);border-radius:7px}
+.wizard-app .payment-record-footer>span:not(.payment-net){font-size:12px!important;line-height:1.5}
+.wizard-app .add-payment{border:1px dashed var(--dc-control-border)!important;border-radius:12px;background:var(--dc-paper)!important;padding:16px!important;gap:8px!important}
+.wizard-app .add-payment>span:first-child{font:600 12px 'IBM Plex Sans',sans-serif!important;letter-spacing:0!important;text-transform:none!important;flex-basis:100%;margin-bottom:4px}
+.wizard-app .add-payment>button{border-color:var(--dc-rule)!important;color:var(--dc-green)!important;font:500 12px 'IBM Plex Sans',sans-serif!important;letter-spacing:0!important;background:var(--dc-paper)!important;border-radius:8px;min-height:38px}
+.wizard-app .add-payment>button:hover{background:var(--dc-accent-soft)!important}
+.wizard-app .payment-total{display:flex;flex-wrap:wrap;gap:12px 20px;border:1px solid var(--dc-rule);border-radius:10px;padding:14px 16px;margin-top:16px;background:var(--dc-paper);font-size:12px}
+.wizard-app .finish-banner{display:flex;align-items:center;gap:16px;margin-bottom:22px;padding:24px;border-radius:16px;border:1px solid var(--dc-hero-rule);background:var(--dc-hero);color:var(--dc-hero-text)}
+.wizard-app .finish-banner-icon{display:grid;place-items:center;width:48px;height:48px;flex-shrink:0;border-radius:12px;border:1px solid var(--dc-hero-rule);color:var(--dc-hero-progress)}
+.wizard-app .finish-banner>div:first-of-type{flex:1;min-width:0}
+.wizard-app .finish-kicker{font:500 10px 'IBM Plex Sans',sans-serif;letter-spacing:.12em;color:var(--dc-hero-muted)}
+.wizard-app .finish-banner h2{font:600 23px/1.3 'IBM Plex Sans',sans-serif;margin:6px 0 8px;letter-spacing:-.03em}
+.wizard-app .finish-banner p{color:var(--dc-hero-muted);margin:0;font-size:12px;max-width:54ch}
+.wizard-app .finish-banner-metric{display:flex;flex-direction:column;gap:6px;flex-shrink:0;padding-left:20px;border-left:1px solid var(--dc-hero-rule)}
+.wizard-app .finish-banner-metric strong{font:600 34px/1 'IBM Plex Sans',sans-serif;letter-spacing:-.045em}
+.wizard-app .finish-banner-metric strong>span{font-size:18px;color:var(--dc-hero-muted)}
+.wizard-app .finish-banner-metric>span{font-size:11px;color:var(--dc-hero-muted)}
+.wizard-app .workflow-step-8 .review-intro{align-items:center;padding:0 0 14px}
+.wizard-app .workflow-step-8 .review-intro h2{font-size:18px;margin-bottom:4px}
+.wizard-app .workflow-step-8 .review-group{padding:16px;border-radius:12px;box-shadow:var(--dc-shadow)}
+.wizard-app .review-group-heading button{color:var(--dc-green);border-color:var(--dc-rule)}
+.wizard-app .review-step-number{background:var(--dc-accent-soft);color:var(--dc-green)}
+.wizard-app .workflow-step-8 :is(.completed-checks,.schedule-review){padding:16px 18px;margin-bottom:16px;border:1px solid var(--dc-rule);border-radius:12px;background:var(--dc-paper)}
+.wizard-app .workflow-step-8 .completed-checks>summary{font-size:13px}
+.wizard-app .download-review-link{display:inline-flex;align-items:center;gap:8px;color:var(--dc-green);font-size:12px;border:1px solid var(--dc-rule);background:var(--dc-paper);flex-shrink:0}
+.wizard-app .workflow-step-9 .template-picker{padding:18px;margin:0 0 22px;border-radius:14px;background:var(--dc-paper);border:1px solid var(--dc-rule)}
+.wizard-app .template-picker-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.wizard-app .template-picker-heading h3{margin:0;font-size:15px}
+.wizard-app .template-picker-heading>span{font-size:11px;color:var(--dc-muted)}
+.wizard-app .workflow-step-9 .template-choices{gap:12px}
+.wizard-app .workflow-step-9 .template-choices>label{padding:16px;border:1px solid var(--dc-rule);border-radius:10px;background:var(--dc-paper);gap:10px}
+.wizard-app .workflow-step-9 .template-choices>label.selected{border-color:var(--dc-green);background:var(--dc-accent-soft);box-shadow:inset 0 0 0 1px var(--dc-green)}
+.wizard-app .workflow-step-9 .template-choices b{font-size:13px;font-family:'IBM Plex Sans',sans-serif}
+.wizard-app .workflow-step-9 .template-choices small{font-size:11px}
+.wizard-app .workflow-step-9 .template-choices input{accent-color:var(--dc-action);width:16px;height:16px;flex-shrink:0}
+.wizard-app .workflow-step-9 .custom-template{margin-top:16px;padding-top:16px;border-top:1px solid var(--dc-rule)}
+.wizard-app .export-section-title{margin:0 0 12px;font-size:15px}
+.wizard-app .export-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px;align-items:stretch}
+.wizard-app .export-card{display:flex;flex-direction:column;gap:14px;padding:22px;border:1px solid var(--dc-rule);border-radius:14px;background:var(--dc-paper);box-shadow:var(--dc-shadow);min-width:0}
+.wizard-app .export-word{border-color:var(--dc-green-line)}
+.wizard-app .export-file-icon{display:grid;place-items:center;width:46px;height:50px;border:1px solid var(--dc-rule);border-radius:10px;background:var(--dc-ground);color:var(--dc-green)}
+.wizard-app .export-word .export-file-icon{background:var(--dc-accent-soft)}
+.wizard-app .export-format{font:500 10px 'IBM Plex Sans',sans-serif;letter-spacing:.08em;color:var(--dc-muted)}
+.wizard-app .export-card h3{font:600 18px/1.4 'IBM Plex Sans',sans-serif;margin:6px 0 8px;letter-spacing:-.02em}
+.wizard-app .export-card p{font-size:12px;margin:0;max-width:45ch}
+.wizard-app .export-card>button{margin-top:auto;min-height:42px;white-space:normal;line-height:1.5;width:100%}
+.wizard-app .export-card>small{font-size:11px;margin:0;min-height:34px}
+.wizard-app .export-feedback{padding:14px 16px;border:1px solid var(--dc-green-line);border-radius:9px;background:var(--dc-accent-soft);color:var(--dc-body);margin:0 0 16px}
+.wizard-app .download-outstanding{padding:16px;border:1px solid var(--dc-rule);background:var(--dc-paper);border-radius:12px}
+.wizard-app .download-outstanding>summary{display:flex;align-items:center;gap:10px;font-size:13px;min-height:38px;color:var(--dc-body)}
+.wizard-app .download-outstanding>summary::after{content:'+';margin-left:auto;font-size:20px;color:var(--dc-green)}
+.wizard-app .download-outstanding[open]>summary::after{content:'−'}
+.wizard-app .download-outstanding .review-issues{margin:18px 0 0}
+.wizard-app .download-outstanding .review-intro{display:none}
+@media(max-width:1100px){.wizard-app .workflow-step-5 .payment-fields{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wizard-app .payment-upload>button{margin-left:46px}.wizard-app .finish-banner{flex-wrap:wrap}.wizard-app .finish-banner-metric{border-left:0;padding:12px 0 0;border-top:1px solid var(--dc-hero-rule);flex-basis:100%;flex-direction:row;align-items:center;gap:12px}.wizard-app .finish-banner-metric strong{font-size:27px}}
+@media(max-width:620px){.wizard-app .finish-section-heading{align-items:flex-start;flex-wrap:wrap}.wizard-app .finish-heading-icon{width:36px;height:36px}.wizard-app .download-review-link{margin-left:48px}.wizard-app .payment-summary-grid{grid-template-columns:minmax(0,1fr);gap:8px}.wizard-app .payment-summary-grid>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;padding:14px}.wizard-app .payment-summary-grid strong{grid-column:2;grid-row:1/3;font-size:20px;align-self:center;max-width:160px;text-align:right}.wizard-app .payment-summary-grid>div>small,.wizard-app .payment-summary-grid>div>button{grid-column:1;font-size:11px}.wizard-app .payment-list-heading{align-items:flex-start;flex-direction:column;gap:4px}.wizard-app .payment-record-heading{padding:14px!important}.wizard-app .payment-record-heading>span:last-child{width:100%;justify-content:space-between}.wizard-app .payment-method-row{padding:12px 14px 0;gap:8px}.wizard-app .payment-mode-tabs button{min-height:40px}.wizard-app .payment-upload{margin:14px!important;gap:10px!important}.wizard-app .payment-upload>button{width:100%;margin:0}.wizard-app .workflow-step-5 .payment-fields{grid-template-columns:minmax(0,1fr)!important;padding:0 14px 16px!important}.wizard-app .payment-record-footer{padding:14px!important;align-items:stretch!important}.wizard-app .payment-net{margin-left:0;text-align:left}.wizard-app .payment-option{min-height:44px}.wizard-app .add-payment>button{min-height:42px;flex:1 0 auto}.wizard-app .payment-total{flex-direction:column;gap:8px}.wizard-app .finish-banner{padding:18px;gap:12px}.wizard-app .finish-banner-icon{display:none}.wizard-app .finish-banner h2{font-size:21px}.wizard-app .workflow-step-8 .review-group{padding:14px}.wizard-app .review-group-heading button{min-height:42px}.wizard-app .template-picker-heading{align-items:flex-start;flex-direction:column;gap:4px}.wizard-app .workflow-step-9 .template-picker{padding:16px}.wizard-app .workflow-step-9 .template-choices>label{padding:14px;min-height:72px}.wizard-app .export-options{grid-template-columns:minmax(0,1fr)}.wizard-app .export-card{padding:18px}.wizard-app .export-card>button{min-height:44px}.wizard-app .export-card>small{min-height:0}.wizard-app .download-outstanding{padding:14px}}
+.wizard-app .payment-empty{display:flex;align-items:center;gap:14px;padding:20px;margin-bottom:14px;border:1px solid var(--dc-rule);border-radius:12px;background:var(--dc-paper);color:var(--dc-green)}
+.wizard-app .payment-empty strong{font-size:13px;color:var(--dc-ink)}
+.wizard-app .payment-empty p{font-size:12px;margin:4px 0 0;color:var(--dc-muted)}
+.wizard-app .finish-section-heading .download-review-link{white-space:normal}
+@media(max-width:620px){.wizard-app .finish-section-heading>.download-review-link{flex-basis:100%;margin:0;justify-content:center;min-height:42px}.wizard-app .finish-section-heading>div{flex-basis:calc(100% - 48px)}}
