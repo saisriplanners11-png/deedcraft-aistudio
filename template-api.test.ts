@@ -112,9 +112,15 @@ describe('shared template library API', { timeout: 30000 }, () => {
     const bytes = await changed(xml => xml.replace('<w:body>', '<w:body><w:p><w:r><w:t>Maintenance is &lt;Maintenance Amount&gt;.</w:t></w:r></w:p>'));
     const revision = await (await upload(bytes)).json();
     expect(revision.inspection.unresolved).toContain('Maintenance Amount');
+    expect((await fetch(base + '/placement-catalog?instrument=sale')).status).toBe(401);
+    const placementCatalog = await (await fetch(base + '/placement-catalog?instrument=sale', { headers: headers() })).json();
+    expect(placementCatalog).toHaveLength(8);
+    expect((await fetch(base + '/placement-catalog?instrument=gift', { headers: headers() })).status).toBe(400);
     expect(revision.validation.valid).toBe(false);
-    const contract = { version: 1, fields: [{ id: 'custom-maintenance', placeholder: 'Maintenance Amount', label: 'Maintenance amount', help: '', type: 'currency', scope: 'transaction', required: true, options: [], sampleValue: '1000', extractionEnabled: true, extractionDescription: 'Current maintenance charge', evidenceContext: 'current' }] };
+    const contract = { version: 1, fields: [{ placement: { stepId: 'payment-details', sectionId: 'payment-records', position: 'end', order: 0 }, id: 'custom-maintenance', placeholder: 'Maintenance Amount', label: 'Maintenance amount', help: '', type: 'currency', scope: 'transaction', required: true, options: [], sampleValue: '1000', extractionEnabled: true, extractionDescription: 'Current maintenance charge', evidenceContext: 'current' }] };
     const patch = (expectedSchemaRevision: number) => fetch(base + `/versions/${revision.id}/fields`, { method: 'PATCH', headers: headers(), body: JSON.stringify({ expectedSchemaRevision, contract }) });
+    const missingPlacement = { ...contract, fields: contract.fields.map(({ placement, ...field }) => field) };
+    expect((await fetch(base + `/versions/${revision.id}/fields`, { method: 'PATCH', headers: headers(), body: JSON.stringify({ expectedSchemaRevision: 0, contract: missingPlacement }) })).status).toBe(400);
     expect((await fetch(base + `/versions/${revision.id}/fields`)).status).toBe(401);
     const configured = await (await patch(0)).json();
     expect(configured.schemaRevision).toBe(1);

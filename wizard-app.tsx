@@ -20,7 +20,7 @@ import { currentSaleTemplate, listTemplates, pinFor, sha256 } from './template-l
 import type { TemplatePin } from './template-library-types';
 import { compileDeed, renderArtifact, type GenerationManifest } from './deed-compiler';
 import { EMPTY_FIELD_CONTRACT, canonicalContract, fieldName, recordScope } from './template-fields';
-import { bindTemplateFields, resolveTemplateFieldData, type TemplateRecord } from './template-field-values';
+import { bindTemplateFields, resolveTemplateFieldData, templateRecords, type TemplateRecord, type TemplateFieldInstance } from './template-field-values';
 import { TemplateAdditionalFields } from './template-additional-fields';
 import { TemplatePlacementSurface, TemplatePlacementFallback } from './template-placement-surface';
 import { PlacementRecord, PlacementSlot, PlacementAnchor } from './template-placement-context';
@@ -689,6 +689,14 @@ export default function WizardApp() {
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
   };
+  const gotoTemplateField = (instance: TemplateFieldInstance) => {
+    if (instance.record.scope === 'property') dispatch({ type: 'active-property', id: instance.record.id });
+    goto(placementStepIndex(instance.field.placement) ?? 0);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const field = document.querySelector<HTMLElement>(`[data-template-field="${CSS.escape(instance.field.id)}"][data-template-record="${CSS.escape(instance.record.scope + ':' + instance.record.id)}"] input, [data-template-field="${CSS.escape(instance.field.id)}"][data-template-record="${CSS.escape(instance.record.scope + ':' + instance.record.id)}"] select, [data-template-field="${CSS.escape(instance.field.id)}"][data-template-record="${CSS.escape(instance.record.scope + ':' + instance.record.id)}"] textarea`);
+      field?.focus(); field?.scrollIntoView({ block: 'center' });
+    }));
+  };
   const visibleSavedDeeds = savedDeeds.filter(deed => [deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const nextStep = STEPS.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
@@ -719,6 +727,7 @@ export default function WizardApp() {
   /** Reads one ordered source bundle, binding it to one record so it never spills into another. */
   async function runUpload(files: File[], assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
     if (!files.length) return;
+    const templateKeyAtUpload = activeTemplateKeyRef.current;
     const sourceId = crypto.randomUUID();
     setSourceFiles(old => ({ ...old, [sourceId]: files }));
     const draftId = current.current.id;
@@ -772,8 +781,12 @@ export default function WizardApp() {
           }))]);
           const scope = assignment?.role === 'link' ? 'property' : assignment?.role;
           const recordId = assignment?.role === 'link' ? assignment.propertyRecord || 'primary' : assignment?.record;
-          const customRecord = templateFieldResolution.data.records.find(record => record.scope === scope && record.id === recordId);
-          if (customRecord && templateFieldResolution.instances.some(instance => instance.record.scope === customRecord.scope && instance.record.id === customRecord.id && instance.field.extractionEnabled)) void runTemplateExtraction(files, customRecord, { id: sourceId, revision: 0 } as Source);
+          requestAnimationFrame(() => {
+            if (!valid() || activeTemplateKeyRef.current !== templateKeyAtUpload || !current.current.sources.some(source => source.id === sourceId && source.status === 'done')) return;
+            const latest = resolveTemplateFieldData(current.current, appStateFor(current.current), fieldContract);
+            const customRecord = latest.data.records.find(record => record.scope === scope && (record.id === recordId || record.sourceRecordId === recordId));
+            if (customRecord && latest.instances.some(instance => instance.record.scope === customRecord.scope && instance.record.id === customRecord.id && instance.field.extractionEnabled)) void runTemplateExtraction(files, customRecord, { id: sourceId, revision: 0 } as Source);
+          });
         }
       });
     } catch (error: any) {
@@ -801,11 +814,11 @@ export default function WizardApp() {
     }
   };
   async function runTemplateExtraction(files: File[], record: TemplateRecord, existingSource?: Source) {
-    const fields = templateFieldResolution.instances.filter(instance => instance.record.scope === record.scope && instance.record.id === record.id && instance.field.extractionEnabled).map(instance => instance.field);
+    const fields = resolveTemplateFieldData(current.current, appStateFor(current.current), fieldContract).instances.filter(instance => instance.record.scope === record.scope && instance.record.id === record.id && instance.field.extractionEnabled).map(instance => instance.field);
     if (!files.length || !fields.length) return;
     const sourceId = crypto.randomUUID(); const draftId = current.current.id; const key = activeTemplateKeyRef.current; const generation = templateExtractionGeneration.current;
     const controller = new AbortController(); controllers.current.set(sourceId, controller);
-    const valid = () => !controller.signal.aborted && current.current.id === draftId && activeTemplateKeyRef.current === key && generation === templateExtractionGeneration.current && current.current.sources.some(source => source.id === sourceId) && (!existingSource || current.current.sources.some(source => source.id === existingSource.id && source.revision === existingSource.revision)) && (record.scope === 'transaction' || record.scope === 'property' ? record.scope === 'transaction' || ['primary', ...current.current.propertyIds].includes(record.id) || Object.keys(resolveDraft(current.current).values).some(value => value.startsWith('property|' + record.id + '|')) : record.id === 'primary' || Object.keys(resolveDraft(current.current).values).some(value => value.startsWith(record.scope + '|' + record.id + '|')) || extraPartyRecords[record.scope]?.includes(record.id));
+    const valid = () => !controller.signal.aborted && current.current.id === draftId && activeTemplateKeyRef.current === key && generation === templateExtractionGeneration.current && current.current.sources.some(source => source.id === sourceId) && (!existingSource || current.current.sources.some(source => source.id === existingSource.id && source.revision === existingSource.revision)) && (record.scope === 'transaction' || record.scope === 'property' ? record.scope === 'transaction' || ['primary', ...current.current.propertyIds].includes(record.id) || Object.keys(resolveDraft(current.current).values).some(value => value.startsWith('property|' + record.id + '|')) : templateRecords(appStateFor(current.current)).some(item => item.scope === record.scope && item.id === record.id && (item.sourceRecordId || item.id) === (record.sourceRecordId || record.id)));
     setSourceFiles(old => ({ ...old, [sourceId]: files }));
     dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'reading', profile: 'template-fields', templateCandidates: [], templateParent: existingSource ? { id: existingSource.id, revision: existingSource.revision } : undefined } });
     setExtractingTemplateFields(true); setTemplateFieldMessage('Reading additional template fields…');
@@ -827,7 +840,7 @@ export default function WizardApp() {
     if (!sources.length) { setTemplateFieldMessage('No original documents are saved with this draft. Upload evidence using the additional-fields section.'); return; }
     for (const source of sources) for (const record of templateFieldResolution.data.records) {
       if (generation !== templateExtractionGeneration.current) return;
-      const permitted = record.scope === 'transaction' ? true : record.scope === 'property' ? source.assignment?.record === record.id && source.assignment.role === 'property' || source.assignment?.propertyRecord === record.id : source.assignment?.role === record.scope && source.assignment.record === record.id;
+      const permitted = record.scope === 'transaction' ? true : record.scope === 'property' ? source.assignment?.record === record.id && source.assignment.role === 'property' || source.assignment?.propertyRecord === record.id : source.assignment?.role === record.scope && source.assignment.record === (record.sourceRecordId || record.id);
       if (permitted) await runTemplateExtraction(sourceFiles[source.id], record, source);
     }
   }
@@ -1273,7 +1286,7 @@ export default function WizardApp() {
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="setup-card" aria-labelledby="setup-property-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">01</span><div><h2 id="setup-property-title">Property type <span lang="te">ఆస్తి రకం</span></h2><p>Choose the property covered by this schedule.</p></div></div>
-            <div className="setup-card-content"><ScheduleTypeControl key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values.flatStage || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, 'flatStage', stage); }} /></div>
+            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><ScheduleTypeControl key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values.flatStage || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, 'flatStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
           </section>
           <section className="setup-card" aria-labelledby="setup-deed-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">02</span><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
@@ -1452,9 +1465,9 @@ export default function WizardApp() {
         })()}
 
         {step === 8 && <section className="panel reverify">
-          <section className="template-field-summary" aria-label="Configured template fields"><h2>Template fields</h2>{templateFieldResolution.instances.filter(instance => instance.field.placement).map(instance => <div key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}><strong>{instance.record.label} — {instance.field.label}</strong><span>{instance.value || '____'}</span>{instance.error && <p role="alert">{instance.error}</p>}<button type="button" onClick={() => goto(placementStepIndex(instance.field.placement) ?? 0)}>Edit in {PLACEMENT_CATALOG.find(step => step.id === instance.field.placement?.stepId)?.label}</button></div>)}</section>
+          <section className="template-field-summary" aria-label="Configured template fields"><h2>Template fields</h2>{templateFieldResolution.instances.filter(instance => instance.field.placement).map(instance => <div key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}><strong>{instance.record.label} — {instance.field.label}</strong><span>{instance.value || '____'}</span>{instance.error && <p role="alert">{instance.error}</p>}<button type="button" onClick={() => gotoTemplateField(instance)}>Edit in {PLACEMENT_CATALOG.find(step => step.id === instance.field.placement?.stepId)?.label}</button></div>)}</section>
           <div className="finish-banner"><span className="finish-banner-icon"><ListChecks size={26} aria-hidden="true" /></span><div><span className="finish-kicker">FINAL REVIEW</span><h2>Give your deed a final check</h2><p>Review outstanding details and read the property schedule before downloading.</p></div><div className="finish-banner-metric"><strong>{vm.checks.filter(c => c.ok).length}<span> / {vm.checks.length}</span></strong><span>readiness checks complete</span></div></div>
-          <ReviewIssues issues={notices} onNavigate={goto} /><details className="completed-checks"><summary>View all readiness checks · {vm.checks.filter(c => c.ok).length} of {vm.checks.length} complete</summary>
+          <ReviewIssues issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} /><details className="completed-checks"><summary>View all readiness checks · {vm.checks.filter(c => c.ok).length} of {vm.checks.length} complete</summary>
           <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
           </details>
           <details className="schedule-review"><summary>Read {scheduleMerges.length > 1 ? 'property schedules' : 'the property schedule'} <span>Preview the wording before download</span></summary>
@@ -1502,9 +1515,9 @@ export default function WizardApp() {
             </article>
           </div>
           {message && <p className="export-feedback" role="status">{message}</p>}
-          {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldResolution.instances.filter(instance => instance.error).map(instance => <li key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}>{instance.record.label}: {instance.error}{instance.field.placement && <button type="button" onClick={() => goto(placementStepIndex(instance.field.placement) ?? 0)}>Go to field</button>}</li>)}</ul></div>}
+          {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldResolution.instances.filter(instance => instance.error).map(instance => <li key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}>{instance.record.label}: {instance.error}{instance.field.placement && <button type="button" onClick={() => gotoTemplateField(instance)}>Go to field</button>}</li>)}</ul></div>}
           {shareBlockers.length > 0 && <p className="notice" role="alert">Vendor and vendee shares must total 100% for each property before downloading the Word deed. <button type="button" onClick={() => goto(-1)}>Enter shares on the dashboard</button></p>}
-          <details className="download-outstanding"><summary><AlertCircle size={17} aria-hidden="true" />{notices.length ? `${notices.length} details to review before using this draft` : 'Review the current readiness status'}</summary><ReviewIssues issues={notices} onNavigate={goto} compact /></details>
+          <details className="download-outstanding"><summary><AlertCircle size={17} aria-hidden="true" />{notices.length ? `${notices.length} details to review before using this draft` : 'Review the current readiness status'}</summary><ReviewIssues issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} compact /></details>
 
         </section>}
 

@@ -7,7 +7,7 @@ import { createTemplateStorage } from './template-storage.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const LIMIT = 20 * 1024 * 1024;
-const CONTRACT = 'sale-v6-fields-2';
+const CONTRACT = 'sale-v6-fields-3';
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (status, message) => Object.assign(new Error(message), { status });

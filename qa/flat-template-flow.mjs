@@ -43,7 +43,7 @@ try {
   await page.locator('.template-status.valid').waitFor(); await download('Custom-Semi-Finished.docx');
   await page.getByRole('radio', { name: /Published \/ pinned template/ }).check();
   await step('04'); await page.getByRole('button', { name: '+ Add another property', exact: true }).click();
-  await type().selectOption({ label: 'Finished Flat' });
+  await step('01'); await type().selectOption({ label: 'Finished Flat' });
   await step('04'); await page.getByLabel('Flat number', { exact: true }).fill('204');
   assert.equal(await page.getByLabel('Flat stage').inputValue(), 'Finished');
   await page.getByRole('button', { name: 'Saved deeds', exact: true }).click(); await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).click(); await step('04');

@@ -54,7 +54,7 @@ export function validatePlacement(input: any): FieldPlacement {
 }
 export const placementOrder = (a: { id: string; placement?: FieldPlacement }, b: { id: string; placement?: FieldPlacement }) => (a.placement?.order || 0) - (b.placement?.order || 0) || a.id.localeCompare(b.id);
 export interface PlacementHost { sectionId: string; anchorFieldId?: string; position: 'before' | 'after' | 'end'; scope: string; recordId: string }
-export function matchingHosts<T extends PlacementHost>(hosts: T[], placement: FieldPlacement, record: { scope: string; id: string }): T[] {
+export function matchingHosts<T extends PlacementHost>(hosts: T[], placement: FieldPlacement, record: { scope: string; id: string; sourceRecordId?: string }): T[] {
   const matches = hosts.filter(host => host.sectionId === placement.sectionId && host.position === placement.position && host.anchorFieldId === placement.anchorFieldId);
-  return placementSection(placement.sectionId)?.scope === record.scope ? matches.filter(host => host.scope === record.scope && host.recordId === record.id) : matches;
+  return placementSection(placement.sectionId)?.scope === record.scope ? matches.filter(host => host.scope === record.scope && (host.recordId === record.id || host.recordId === record.sourceRecordId)) : matches;
 }

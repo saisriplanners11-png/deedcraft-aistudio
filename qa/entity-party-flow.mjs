@@ -37,11 +37,11 @@ try {
   const close = async () => { const button = page.getByRole('button', { name: 'Close', exact: true }); if (await button.isVisible()) await button.click(); };
   const step = async n => { await close(); await page.locator('.rail-step').filter({ hasText: n }).click(); };
   const payload = (marker, values) => ({ name: marker + '.txt', mimeType: 'text/plain', buffer: Buffer.from(marker + '\n' + Object.entries(values).map(([k,v]) => `${k}: ${v}`).join('\n')) });
-  const idle = async () => { await page.waitForFunction(() => ![...document.querySelectorAll('.link-upload')].some(x => x.textContent.includes('Reading…'))); await close(); };
+  const idle = async () => { await page.waitForFunction(() => !document.querySelector('.document-upload[aria-busy="true"]')); await close(); };
   for (const [side, nav] of [['executant', '07'], ['claimant', '08']]) {
     await step(nav);
     assert.equal(await page.getByLabel('Full name', { exact: true }).count(), 0);
-    const entityFile = page.locator('label.link-upload').filter({ hasText: 'entity particulars' }).locator('input[type=file]');
+    const entityFile = page.locator('.document-upload').filter({ hasText: 'entity particulars' }).locator('input[type=file]');
     await entityFile.setInputFiles(payload('ENTITY FILE', { [side + 'EntityName']: side === 'executant' ? 'Test Firm LLP' : 'Test Society', [side + 'EntityAddress']: 'Registered Office, Test City', [side + 'EntityHNo']: '99-1' }));
     await idle(); assert.equal(await page.getByLabel('Entity name (English)', { exact: true }).inputValue(), side === 'executant' ? 'TEST FIRM LLP' : 'TEST SOCIETY');
     for (const [marker, name, village] of [['PERSON ALPHA', 'ALPHA SIGNER', 'Alpha Town'], ['PERSON BETA', 'BETA SIGNER', 'Beta Town']]) {

@@ -48,16 +48,17 @@ try {
     }
     return p.getByRole('button',{name:label,exact:false}).click();
   };
-  const idle=async()=>{ await p.waitForFunction(()=>!Array.from(document.querySelectorAll('.link-upload')).some(x=>x.textContent.includes('Reading…'))); const close=p.getByRole('button',{name:'Close',exact:true}); if(await close.isVisible()) await close.click(); };
+  const idle=async()=>{ await p.waitForFunction(()=>!document.querySelector('.document-upload[aria-busy="true"]')); const close=p.getByRole('button',{name:'Close',exact:true}); if(await close.isVisible()) await close.click(); };
   const value=label=>p.getByLabel(label,{exact:false}).inputValue();
   await p.goto(process.env.BASE_URL||'http://127.0.0.1:5173');
   await p.getByRole('button',{name:/New deed/}).first().click();
-  await step('02 Link Deed & Enclosures');
+  await step('01 Deed setup');
   await p.locator('[aria-label="Schedule 1 property type"] select').selectOption({ label: 'Part Open Place' });
+  await step('02 Link Deed & Enclosures');
   await step('+ Add / upload document');
   const types=[['DEED','Link Document No. రిజిస్టర్డ్ లింక్ దస్తావేజు'],['PASSBOOK','Title Deed No. పట్టాదారు పాస్ పుస్తకం'],['NALA','Nala Order No. నాలా ఉత్తర్వు'],['PERMISSION','Permissions / Approved details అనుమతులు']];
   for(const [,title] of types) await step(title); await step('Continue with 4 documents');
-  for(const [key,title] of types) await p.locator('.link-record').filter({has:p.getByRole('heading',{name:english(title),exact:false})}).locator('input[type=file]').setInputFiles(payload(key));
+  for(const [key,title] of types) await p.locator('.link-record').filter({has:p.getByRole('heading',{name:key==='DEED'?'Registered Deed':key==='PERMISSION'?'House Permission':english(title),exact:false})}).locator('input[type=file]').setInputFiles(payload(key));
   await idle(); assert.equal(await p.locator('.source').count(),4);
   assert.equal(await value('Document number'),'1263/2016'); assert.equal(await value('Document type'),'Sale Deed');
   assert.equal(await value('Title deed number'),'PPB42'); assert.equal(await value('NALA order number'),'NALA42');

@@ -19,7 +19,8 @@ export function TemplatePlacementSurface({ step, activePropertyId, children, ...
     if (!placement || placementStepIndex(placement) !== step) continue;
     // Property cards on Steps 1–4 show only the currently selected schedule.
     if (instance.record.scope === 'property' && placementSection(placement.sectionId)?.scope === 'property' && step <= 3 && instance.record.id !== activePropertyId) continue;
-    const candidates = matchingHosts(orderedHosts, placement, instance.record);
+    let candidates = matchingHosts(orderedHosts, placement, instance.record);
+    if (placementSection(placement.sectionId)?.scope !== instance.record.scope && candidates.length) candidates = candidates.filter(host => host.scope === candidates[0].scope && host.recordId === candidates[0].recordId);
     const target = (placement.position === 'end' ? candidates.at(-1) : candidates[0]) || fallback;
     if (!target) continue;
     if (!assignments.has(target.key)) assignments.set(target.key, { host: target, instances: [] });

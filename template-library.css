@@ -16,6 +16,16 @@
 .template-library button { cursor: pointer; }
 .template-library button:disabled { cursor: wait; opacity: .55; }
 .template-delete { margin: 16px 0; }
+.template-placement-slot { display: contents; }
+.placed-template-field { min-width: 0; padding: 0; margin: 0; border: 0; background: transparent; overflow-wrap: anywhere; }
+.placed-record-label { display: block; margin-bottom: 5px; color: var(--dc-muted); }
+.placed-template-field .template-field-evidence { margin-top: 8px; font-size: 12px; }
+.placed-template-field button { min-height: 44px; margin: 4px 8px 4px 0; }
+.placed-template-field input[type=file] { max-width: 100%; }
+.placed-template-field .template-evidence { padding: 8px; margin: 8px 0; }
+.template-placement-fallback:not(:has(.placed-template-field)) { display: none; }
+.template-placement-fallback .deed-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 18px; }
+.template-field-summary > div { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--dc-rule); overflow-wrap: anywhere; }
 .template-delete [role=alertdialog] { margin-top: 12px; padding: 16px; border: 1px solid var(--border, #a99a7b); border-radius: 8px; }
 .template-delete [role=alertdialog] .template-actions { margin-bottom: 0; }
 .field-configurator fieldset { border: 1px solid #aa997a; margin: 18px 0; padding: 20px; border-radius: 8px; }

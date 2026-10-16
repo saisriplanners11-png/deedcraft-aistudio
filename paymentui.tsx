@@ -1,4 +1,5 @@
 import React, { useId, useRef, useState } from 'react';
+import { PlacementAnchor, PlacementSlot } from './template-placement-context';
 import { FileUp, Trash2 } from 'lucide-react';
 import { css } from './css';
 import { C, Button, ExtractDialog, formatMoneyInput, type ProgressStep } from './ui';
@@ -11,9 +12,10 @@ const money = (v: number) => '₹' + Math.round(v).toLocaleString('en-IN');
 
 /** A bare labelled input in the register style, for records that are not form fields. */
 function PInput({
-  label, value, onChange, type = 'text', hint, mono, span = 1, filled, error,
+  label, value, onChange, type = 'text', hint, mono, span = 1, filled, error, fieldId,
 }: {
   label: string;
+  fieldId?: string;
   value: string;
   onChange: (v: string) => void;
   type?: 'text' | 'number' | 'money' | 'date';
@@ -27,7 +29,7 @@ function PInput({
   const hintId = useId();
   const errorId = useId();
   return (
-    <label className="deed-field payment-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
+    <PlacementAnchor sectionId="payment-records" fieldId={fieldId || label}><label className="deed-field payment-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
       <span style={css('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
         <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.mutedSoft}`)}>
           {label}
@@ -57,7 +59,7 @@ function PInput({
       />
       {error && <span id={errorId} className="payment-field-error" role="alert">{error}</span>}
       {hint ? <span id={hintId} style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{hint}</span> : null}
-    </label>
+    </label></PlacementAnchor>
   );
 }
 
@@ -273,23 +275,24 @@ export function PaymentCard({
 
       {/* particulars */}
       <div className="payment-fields" style={css('padding:0 14px 14px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px')}>
-        <PInput label="Amount (₹)" error={amountError} type="money" value={payment.amount} onChange={set('amount')} filled={(payment.filled ?? []).includes('amount')} />
+        <PInput fieldId="amount" label="Amount (₹)" error={amountError} type="money" value={payment.amount} onChange={set('amount')} filled={(payment.filled ?? []).includes('amount')} />
         {spec.shows.ref ? (
-          <PInput label={spec.refLabel} value={payment.refNo} onChange={set('refNo')} hint={spec.refHint} mono filled={(payment.filled ?? []).includes('refNo')} />
+          <PInput fieldId="refNo" label={spec.refLabel} value={payment.refNo} onChange={set('refNo')} hint={spec.refHint} mono filled={(payment.filled ?? []).includes('refNo')} />
         ) : null}
         {spec.shows.bank ? (
-          <PInput label={spec.bankLabel || 'Bank'} value={payment.bank} onChange={set('bank')} filled={(payment.filled ?? []).includes('bank')} />
+          <PInput fieldId="bank" label={spec.bankLabel || 'Bank'} value={payment.bank} onChange={set('bank')} filled={(payment.filled ?? []).includes('bank')} />
         ) : null}
         {spec.shows.branch ? (
-          <PInput label={spec.branchLabel || 'Branch'} value={payment.branch} onChange={set('branch')} filled={(payment.filled ?? []).includes('branch')} />
+          <PInput fieldId="branch" label={spec.branchLabel || 'Branch'} value={payment.branch} onChange={set('branch')} filled={(payment.filled ?? []).includes('branch')} />
         ) : null}
-        <PInput label="Date" type="date" value={payment.date} onChange={set('date')} filled={(payment.filled ?? []).includes('date')} />
+        <PInput fieldId="date" label="Date" type="date" value={payment.date} onChange={set('date')} filled={(payment.filled ?? []).includes('date')} />
         {spec.shows.parties ? (
           <>
-            <PInput label="Vendee (purchaser)" span={2} value={payment.payer} onChange={set('payer')} filled={(payment.filled ?? []).includes('payer')} />
-            <PInput label="Vendor (seller)" span={2} value={payment.payee} onChange={set('payee')} filled={(payment.filled ?? []).includes('payee')} />
+            <PInput fieldId="payer" label="Vendee (purchaser)" span={2} value={payment.payer} onChange={set('payer')} filled={(payment.filled ?? []).includes('payer')} />
+            <PInput fieldId="payee" label="Vendor (seller)" span={2} value={payment.payee} onChange={set('payee')} filled={(payment.filled ?? []).includes('payee')} />
           </>
         ) : null}
+        <PlacementSlot sectionId="payment-records" />
       </div>
 
       {/* what this payment comes to */}

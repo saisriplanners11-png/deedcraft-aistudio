@@ -24,6 +24,9 @@ const FLAT_VARIANTS = ['IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
 const ALL_VARIANTS = [...VARIANTS, ...FLAT_VARIANTS];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
 const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'FOR ALL THE DOCUMENTS', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE'].map(value => value.toLowerCase()));
+const CONDITION_ALIASES: Record<string, string> = { 'IF FINISHED FLAT': 'IF FLAT FINISHED', 'IF SEMI FINISHED FLAT': 'IF FLAT SEMI FINISHED', 'IF DEMOLISHED HOUSE': 'IF DIMOLISHED HOUSE', 'IF VACANT PLOT': 'IF OPEN PLOT' };
+const conditionName = (value: string) => value.replace(/^<|>$/g, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+const conditionTag = (value: string) => /^(?:IF|FOR|END)\b/i.test(value.trim());
 const LEGACY_TEMPLATE_TAGS = new Set([
   'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
@@ -346,6 +349,11 @@ export async function validateSaleDeedTemplate(
     if (!document) return empty;
 
     const xml = new TextDecoder().decode(document.data);
+    const heading = plainText(xml).slice(0, 500).replace(/\s+/g, ' ');
+    if (/^(?:\s*)(?:DEED OF )?GIFT(?: SETTLEMENT)?(?: DEED)?\b/i.test(heading)) {
+      errors.push('This is a Gift template uploaded to the Sale library. Only Sale templates are currently supported. Gift needs its own approved validation contract and renderer; changing IF markers will not make this a Sale template.');
+      return empty;
+    }
     const bodyOpen = xml.indexOf('<w:body>');
     const bodyEnd = xml.lastIndexOf('</w:body>');
     if (bodyOpen < 0 || bodyEnd < 0 || bodyEnd <= bodyOpen) {
@@ -379,6 +387,8 @@ export async function validateSaleDeedTemplate(
     }
 
     const customTags = angleTags(xml);
+    const unsupportedConditions = customTags.filter(tag => conditionTag(tag) && !STRUCTURAL_TAGS.has(norm(CONDITION_ALIASES[conditionName(tag)] || conditionName(tag))));
+    for (const tag of unsupportedConditions) errors.push(`Unsupported conditional marker <${tag}>. Conditional markers are document structure, not input fields. Use a supported Sale section marker or retain the active template's original markers.`);
     const reference = referenceBytes ?? await loadSaleDeedTemplate();
     const referenceEntries = await readZip(reference);
     const referenceDocument = referenceEntries.find(entry => entry.name === 'word/document.xml');
@@ -394,7 +404,7 @@ export async function validateSaleDeedTemplate(
     for (const field of ALL_FIELDS) for (const tag of field.ph ? Array.isArray(field.ph) ? field.ph : [field.ph] : []) if (!supportedByName.has(norm(tag))) supportedByName.set(norm(tag), tag);
     for (const field of fieldContract.fields) supportedByName.set(norm(field.placeholder), field.placeholder);
     const detectedPlaceholders = customTags.filter(tag => supportedByName.has(norm(tag)));
-    const unknown = customTags.filter(tag => !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)) && !LEGACY_TEMPLATE_TAGS.has(norm(tag)));
+    const unknown = customTags.filter(tag => !conditionTag(tag) && !STRUCTURAL_TAGS.has(norm(tag)) && !supportedByName.has(norm(tag)) && !LEGACY_TEMPLATE_TAGS.has(norm(tag)));
     if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
     const detectedNames = new Set(detectedPlaceholders.map(norm));
     const omittedPlaceholders = supported.filter(tag => !detectedNames.has(norm(tag))).sort();
@@ -446,7 +456,7 @@ export async function inspectTemplateFields(bytes: Uint8Array, contract: Templat
       const content = new TextDecoder().decode(entry.data);
       const textboxes = (content.match(/<w:txbxContent\b[\s\S]*?<\/w:txbxContent>/g) || []).map(plainText).join('\n');
       for (const paragraph of content.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || []) {
-        for (const placeholder of angleTags(paragraph).filter(tag => !known.has(norm(tag)) || configured.has(norm(tag)))) {
+        for (const placeholder of angleTags(paragraph).filter(tag => !conditionTag(tag) && (!known.has(norm(tag)) || configured.has(norm(tag))))) {
           const uses = variantUses.get(norm(placeholder));
           occurrences.push({ placeholder, text: plainText(paragraph).slice(0, 500), part: entry.name, variants: uses?.has('') ? [] : [...(uses || [])], supported: entry.name === 'word/document.xml' && !angleTags(textboxes).some(tag => norm(tag) === norm(placeholder)) && !!uses });
         }
@@ -768,6 +778,15 @@ function restartClauseNumbering(block: string, entries: Entry[]): string {
 /** The supplied final draft has complete flat deeds and unmarked land schedules.
  * Keep its actual XML paragraphs/tables, arranging them into the merge contract. */
 function prepareTemplate(body: string): PreparedTemplate {
+  // Recognise supported section-label spellings consistently in validation and merge.
+  body = body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph).trim();
+    if (!/^<[^<>]+>$/.test(text)) return paragraph;
+    const name = conditionName(text);
+    const canonical = CONDITION_ALIASES[name] || name;
+    if (text !== `<${canonical}>` && STRUCTURAL_TAGS.has(norm(canonical)) && conditionTag(canonical) && !/<w:(?:tbl|drawing|txbxContent)\b/.test(paragraph)) return replaceRunText(paragraph, /[\s\S]+/, () => `<${canonical}>`);
+    return paragraph;
+  });
   // Numeric examples are editable slots, including legacy single-digit tags.
   body = body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     if (/Stilt|Upper Floors/.test(plainText(paragraph))) {

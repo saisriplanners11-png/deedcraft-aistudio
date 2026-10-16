@@ -37,8 +37,8 @@ export function DocumentUpload({ label, busy = false, multiple = true, onUpload 
 }
 
 /** Readiness guidance uses the existing legal checks without changing download policy. */
-export function ReviewIssues({ issues, onNavigate, compact = false }: {
-  issues: MissingDetail[]; onNavigate: (step: number) => void; compact?: boolean;
+export function ReviewIssues({ issues, onNavigate, compact = false, onNavigateIssue }: {
+  issues: MissingDetail[]; onNavigate: (step: number) => void; compact?: boolean; onNavigateIssue?: (issue: MissingDetail) => void;
 }) {
   const headingId = useId();
   const groups = STEPS.map(step => ({ step, items: issues.filter(item => item.step === step.id) })).filter(group => group.items.length);
@@ -47,7 +47,7 @@ export function ReviewIssues({ issues, onNavigate, compact = false }: {
     {issues.length > 0 && <p className="review-draft-note">An incomplete draft can be downloaded where generation checks allow. Unresolved details still need your review.</p>}
     <div className="review-groups">{groups.map(({ step, items }) => <article className="review-group" key={step.id}>
       <div className="review-group-heading"><span className="review-step-number">{String(step.id + 1).padStart(2, '0')}</span><div><h3>{step.label}</h3><span>{items.length} {items.length === 1 ? 'detail' : 'details'} to review</span></div><button type="button" className="quiet" onClick={() => onNavigate(step.id)}>Review section <ArrowRight size={15} aria-hidden="true" /></button></div>
-      {compact ? <p className="review-preview">{items.slice(0, 2).map(item => item.label).join(' · ')}{items.length > 2 ? ` · +${items.length - 2} more` : ''}</p> : <details><summary>Show {items.length === 1 ? 'detail' : 'details'} for this section</summary><ul>{items.map(item => <li key={item.id}><strong>{item.label}</strong><p>{item.reason}</p>{item.source && <small>Where to find it: {item.source}</small>}</li>)}</ul></details>}
+      {compact ? <p className="review-preview">{items.slice(0, 2).map(item => item.label).join(' · ')}{items.length > 2 ? ` · +${items.length - 2} more` : ''}</p> : <details><summary>Show {items.length === 1 ? 'detail' : 'details'} for this section</summary><ul>{items.map(item => <li key={item.id}><strong>{item.label}</strong><p>{item.reason}</p>{onNavigateIssue && item.id.startsWith('template:') && <button type="button" onClick={() => onNavigateIssue(item)}>Go to field</button>}{item.source && <small>Where to find it: {item.source}</small>}</li>)}</ul></details>}
     </article>)}</div>
   </section>;
 }

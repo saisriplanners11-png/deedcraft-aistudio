@@ -5,7 +5,7 @@ import { EMPTY_FIELD_CONTRACT, fieldFingerprint, formatFieldValue, recordScope, 
 import type { Rewrite, ScheduleMerge } from './docx';
 import { ALL_FIELDS } from './fields';
 
-export interface TemplateRecord { scope: string; id: string; label: string; variant?: string; values: Record<string, string> }
+export interface TemplateRecord { scope: string; id: string; sourceRecordId?: string; label: string; variant?: string; values: Record<string, string> }
 export interface TemplateFieldInstance { field: TemplateField; record: TemplateRecord; value: string; error?: string; conflict: boolean }
 export interface TemplateFieldData { records: TemplateRecord[]; values: Record<string, Record<string, string>> }
 export const appliesTo = (field: TemplateField, variant: string) => !field.variants?.length || field.variants.includes(variant) || (variant.startsWith('IF FLAT') && field.variants.includes('IF FLAT'));
@@ -16,7 +16,7 @@ export function templateRecords(state: AppState): TemplateRecord[] {
   return [
     { scope: 'transaction', id: 'deed', label: 'Whole deed', values: mergeValues(state) },
     ...scheduleRecords(state).map((record, index) => ({ scope: 'property', id: record.id, label: `Property ${index + 1}`, variant: schedules[index]?.variant, values: schedules[index]?.values || {} })),
-    ...(['executant', 'claimant'] as const).flatMap(scope => partyRecords(state, scope).map((record, index) => ({ scope, id: record.id, label: record.values[scope + 'EntityName'] || record.values[scope + 'Name'] || `${scope === 'executant' ? 'Vendor' : 'Purchaser'} ${index + 1}`, values: mergeValues({ ...state, form: { ...state.form, ...Object.fromEntries(ALL_FIELDS.filter(field => field.id.startsWith(scope)).map(field => [field.id, record.values[field.id] || ''])) } }) }))),
+    ...(['executant', 'claimant'] as const).flatMap(scope => partyRecords(state, scope).map((record, index) => ({ scope, id: record.id, sourceRecordId: index === 0 ? (scope === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id, label: record.values[scope + 'EntityName'] || record.values[scope + 'Name'] || `${scope === 'executant' ? 'Vendor' : 'Purchaser'} ${index + 1}`, values: mergeValues({ ...state, form: { ...state.form, ...Object.fromEntries(ALL_FIELDS.filter(field => field.id.startsWith(scope)).map(field => [field.id, record.values[field.id] || ''])) } }) }))),
   ];
 }
 
