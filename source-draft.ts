@@ -1,4 +1,5 @@
 import { localAuthorityName } from './fields';
+import { isEntity } from './party-entities';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
@@ -36,7 +37,10 @@ export type Source = {
   templateCandidates?: TemplateFieldCandidate[];
   templateParent?: { id: string; revision: number };
 };
+import { saleDocumentForVariant, type SaleAuthority } from './sale-options';
+
 export type Draft = {
+  saleAuthority?: SaleAuthority;
   id: string; revision: number; sources: Source[];
   manual: Record<string, string>; choices: Record<string, string>;
   step: number; manualEdits: number;
@@ -62,6 +66,7 @@ export type Draft = {
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
+  | { type: 'sale-authority'; value: SaleAuthority }
   | { type: 'template-field-clear'; fieldId: string; recordId: string }
   | { type: 'template-field'; fieldId: string; recordId: string; value: string }
   | { type: 'template-review'; candidateKey: string; decision: 'accepted' | 'rejected' }
@@ -93,6 +98,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'load') return migratePartyPeople(action.draft.step > 10 ? { ...action.draft, step: 10 } : action.draft);
   if (action.type === 'step') return { ...draft, step: action.step };
   let next = draft;
+  if (action.type === 'sale-authority') next = { ...draft, saleAuthority: action.value };
   if (action.type === 'template-field-clear') {
     const values = { ...draft.templateFieldValues?.[action.fieldId] };
     delete values[action.recordId];
@@ -369,6 +375,7 @@ export function appStateFor(draft: Draft): AppState {
   });
   return {
     ...initialState, step: draft.step,
+    saleDocument: saleDocumentForVariant(draft.variantId), saleAuthority: draft.saleAuthority,
     deedType: definitionFor(draft.instrumentId || instrumentIdForLegacyType('Sale')).legacyType,
     draft: definitionFor(draft.instrumentId || 'sale').variants.find(v => v.id === draft.variantId)?.label || definitionFor(draft.instrumentId || 'sale').variants[0].label,
     category: properties[0]?.values.category || '', unit: properties[0]?.values.unit || '',
@@ -445,7 +452,7 @@ export function migratePartyPeople(draft: Draft): Draft {
   for (const key of keys) {
     if (partyPeople[key]) continue;
     const [side, record] = key.split('|'); const v = (suffix: string) => resolved.values[key + '|' + side + suffix] || '';
-    if (!v('PartyType') || v('PartyType') === 'Individual') continue;
+    if (!isEntity({ [side + 'PartyType']: v('PartyType') }, side as 'executant' | 'claimant')) continue;
     let reps: any[] = [];
     try { const parsed = JSON.parse(v('Representatives') || '[]'); if (Array.isArray(parsed)) reps = parsed.filter(p => p && typeof p === 'object'); } catch { /* retain malformed legacy value */ }
     if (!reps.length && v('Name')) reps = [{ ...newPartyRepresentative(), name: v('Name'), relation: v('Relation'), relationName: v('RelativeName'), designation: v('SignatoryDesignation'), dob: v('Dob'), age: v('Age'), aadhaar: v('Aadhaar'), pan: v('Pan'), mobile: v('Mobile'), hNo: v('HNo'), locality: v('Locality'), village: v('Village'), mandal: v('Mandal'), district: v('District'), state: v('State'), pinCode: v('PinCode') }];

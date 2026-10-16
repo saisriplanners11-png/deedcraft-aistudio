@@ -3,7 +3,9 @@ import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
 import { ALL_FIELDS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
-import { FLAT_OPTIONS, propertyChoice, flatLabel } from './flat-options';
+import { SaleAuthorityEditor } from './sale-authority-ui';
+import { SALE_DOCUMENT_OPTIONS, saleVariant, saleDocumentLabel, saleAuthorityErrors, salePropertyErrors } from './sale-options';
+import { HOUSE_OPTIONS, FLAT_OPTIONS, propertyChoice, flatLabel } from './flat-options';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
   peopleFor, plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
@@ -16,7 +18,7 @@ import {
 } from './docx';
 import { templateBytes } from './docx';
 import { TemplateLibrary } from './template-library';
-import { currentSaleTemplate, listTemplates, pinFor, sha256 } from './template-library-client';
+import { bundledTemplatePin, currentSaleTemplate, listTemplates, pinFor, sha256 } from './template-library-client';
 import type { TemplatePin } from './template-library-types';
 import { compileDeed, renderArtifact, type GenerationManifest } from './deed-compiler';
 import { EMPTY_FIELD_CONTRACT, canonicalContract, fieldName, recordScope } from './template-fields';
@@ -376,7 +378,7 @@ function PartyRecordCard({
   choose: (key: string, candidateId: string) => void;
 }) {
   const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || 'Individual') as PartyType;
-  const entity = partyType !== 'Individual';
+  const entity = isEntity({ [role + 'PartyType']: partyType }, role);
   const people = peopleFor(draft, partyKey(role, record), resolved);
   const society = partyType === 'Society / Association' || partyType === 'Society / Trust';
   const entityFields = partyEntityFields(role, partyType).filter(f => !f.hidden).sort((a, b) => Number(b.id === role + 'EntityName') - Number(a.id === role + 'EntityName'));
@@ -497,7 +499,7 @@ function SchedulePreview({ merge, templateSource }: { merge: ScheduleMerge; temp
  * known; afterwards the user sees context, not the same question again. */
 function ScheduleTypeControl({ scheduleNumber, category, stage, onChange }: { scheduleNumber: number; category: string; stage: string; onChange: (category: string, stage?: string) => void }) {
   const [changing, setChanging] = useState(false);
-  const options = [...CATEGORIES.filter(item => item.key !== 'Flat'), ...FLAT_OPTIONS];
+  const options = [...CATEGORIES.filter(item => item.key !== 'Flat' && item.key !== 'Residential'), ...HOUSE_OPTIONS, ...FLAT_OPTIONS];
   const choice = propertyChoice(category, stage);
   const selected = options.find(item => item.key === choice);
   if (selected && !changing) return <div className="add-document-row property-type-control" aria-label={`Schedule ${scheduleNumber} property type`}>
@@ -506,7 +508,7 @@ function ScheduleTypeControl({ scheduleNumber, category, stage, onChange }: { sc
   </div>;
   return <div className="add-document-row property-type-control" aria-label={`Schedule ${scheduleNumber} property type`}>
     <label className="field"><span>What is this property?</span>
-      <select value={choice} onChange={event => { const option = FLAT_OPTIONS.find(item => item.key === event.target.value); onChange(option ? 'Flat' : event.target.value, option?.stage); setChanging(false); }}>
+      <select value={choice} onChange={event => { const option = [...HOUSE_OPTIONS, ...FLAT_OPTIONS].find(item => item.key === event.target.value); onChange(option ? (option.key.startsWith('Flat:') ? 'Flat' : 'Residential') : event.target.value, option?.stage); setChanging(false); }}>
         <option value="">Choose property type</option>
         {options.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
       </select>
@@ -607,6 +609,8 @@ export default function WizardApp() {
   const step = draft.step;
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
+  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || libraryTemplate.versionId === 'sale-deed-v7' || !!libraryTemplate.saleOpenings;
+  const authorityErrors = [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
   const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : libraryTemplate ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
@@ -619,7 +623,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v6'}:annexure-floor-stage-v2`;
+  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v7'}:annexure-floor-stage-v2`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -679,7 +683,7 @@ export default function WizardApp() {
       const pin = await currentSaleTemplate();
       if (current.current.id !== id) return;
       setLibraryTemplate(pin); setLatestTemplate(pin); setDownload(null); setGenerationManifest(null); setTemplateLibraryError('');
-      setMessage('Draft updated to the published template. Review the refreshed wording before downloading.');
+      setMessage('Draft updated to the published template. Confirm the property completion stage and any GPA/AGPA authority details. Existing values are retained.');
     } catch (error: any) { setTemplateLibraryError(error.message); }
   }
   const goto = (s: number) => {
@@ -997,7 +1001,7 @@ export default function WizardApp() {
     setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
     setTemplateMode(deed.templateMode || 'built-in');
     setCustomTemplate(deed.customTemplate || null);
-    setLibraryTemplate(deed.libraryTemplate || null);
+    setLibraryTemplate(deed.libraryTemplate || bundledTemplatePin(deed.generationManifest?.templateVersionId));
     setGenerationManifest(deed.generationManifest || null);
     setTemplatesView(false);
     setLibraryView(false);
@@ -1066,6 +1070,7 @@ export default function WizardApp() {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
+      if (kind === 'word' && authorityErrors.length) throw new Error(authorityErrors.join(' '));
       if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
       if (kind === 'word' && shareBlockers.length) throw new Error('Enter valid vendor and vendee shares totaling 100% for every property before downloading the Word deed');
       if (kind === 'word' && templateFieldErrors.length) throw new Error(templateFieldErrors.join(' '));
@@ -1074,7 +1079,7 @@ export default function WizardApp() {
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
         const deedValues = { ...mergeValues(state), 'Include Prepared By': snapshot.manual.includePreparedBy === 'true' ? '1' : '' };
-        const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
+        const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, saleAuthority: snapshot.saleAuthority, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
         const compiled = compileDeed({ instrumentId: snapshot.instrumentId, variantId: snapshot.variantId, snapshotHash: inputSnapshotHash, values: deedValues, schedules: scheduleMerges, rewrites: rewritesFor(state), unresolvedWarnings: [...notices.map(item => item.reason), ...templateFieldResolution.instances.filter(instance => !instance.value).map(instance => `${instance.field.label}: write-in blank`)], templateFieldData: templateFieldResolution.data }, templateSource);
         const { result: merged, manifest } = await renderArtifact(compiled, 'docx', templateSource);
         const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
@@ -1220,7 +1225,7 @@ export default function WizardApp() {
           <div className="step-toolbar">
             <div className="workspace-breadcrumb">{step >= 0 ? <><button type="button" className="quiet" onClick={() => goto(-1)}>Overview</button><span aria-hidden="true">/</span><span>{['', 'Setup & sources', 'Property & payment', 'Parties', 'Review & finish'][STEPS[step].phase]}</span></> : <span>Workspace / Overview</span>}</div>
             <div className="step-toolbar-status">{!storageError && hasStarted && <span className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</span>}
-              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{libraryTemplate?.name || 'Built-in Sale v6'}</strong><small>{libraryTemplate?.versionId || 'sale-deed-v6'}</small>{latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v6') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
+              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{libraryTemplate?.name || 'Built-in Sale v7'}</strong><small>{libraryTemplate?.versionId || 'sale-deed-v7'}</small>{latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v7') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
             </div>
           </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${step + 1} of ${STEPS.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
@@ -1286,7 +1291,7 @@ export default function WizardApp() {
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="setup-card" aria-labelledby="setup-property-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">01</span><div><h2 id="setup-property-title">Property type <span lang="te">ఆస్తి రకం</span></h2><p>Choose the property covered by this schedule.</p></div></div>
-            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><ScheduleTypeControl key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values.flatStage || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, 'flatStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
+            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><ScheduleTypeControl key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values[propertyRecords.find(record => record.id === activePropertyId)?.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
           </section>
           <section className="setup-card" aria-labelledby="setup-deed-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">02</span><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
@@ -1300,14 +1305,14 @@ export default function WizardApp() {
               </label>
               <PlacementSlot sectionId="setup-deed" anchorFieldId="instrumentId" position="after" />
               <PlacementSlot sectionId="setup-deed" anchorFieldId="variantId" position="before" />
-              <label className="setup-field"><span>Draft form <span lang="te">ముసాయిదా రూపం</span></span>
+              <label className="setup-field"><span>{draft.instrumentId === 'sale' ? 'Sale document' : 'Draft form'} <span lang="te">ముసాయిదా రూపం</span></span>
                 <select value={draft.variantId} onChange={event => dispatch({ type: 'instrument', instrumentId: draft.instrumentId, variantId: event.target.value })}>
-                  {deedDefinition.variants.map(variant => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
+                  {draft.instrumentId === 'sale' ? <>{!SALE_DOCUMENT_OPTIONS.some(option => saleVariant(option.id) === draft.variantId) && <option value={draft.variantId}>{deedDefinition.variants.find(option => option.id === draft.variantId)?.label || draft.variantId}</option>}{SALE_DOCUMENT_OPTIONS.map(option => <option key={option.id} value={saleVariant(option.id)}>{option.label}</option>)}</> : deedDefinition.variants.map(variant => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
                 </select>
                 <small>Use the form that matches this transaction.</small>
               </label>
               <div className={`setup-reference ${deedRelease.ready ? 'is-ready' : 'needs-reference'}`} role="status">
-                <FileText size={20} aria-hidden="true" /><div><strong>{deedRelease.ready ? 'Approved reference available' : 'Legal reference required'}</strong><p>{deedRelease.ready ? 'This form can be drafted using the registered reference template.' : deedRelease.reasons.join(' ')}</p></div>
+                <FileText size={20} aria-hidden="true" /><div><strong>{deedRelease.ready ? 'Supplied reference available' : 'Reference required'}</strong><p>{deedRelease.ready ? 'This form uses the supplied Word reference template.' : deedRelease.reasons.join(' ')}</p></div>
               </div>
               <PlacementSlot sectionId="setup-deed" anchorFieldId="variantId" position="after" />
               <PlacementSlot sectionId="setup-deed" />
@@ -1316,6 +1321,8 @@ export default function WizardApp() {
           <p className="workflow-footnote">Your choices carry forward to the document and property sections.</p>
         </div>}
 
+        {step === 6 && <SaleAuthorityEditor state={state} onChange={value => dispatch({ type: 'sale-authority', value })} />}
+        {authorityErrors.length > 0 && [6, 8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
           const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);
           const activeProperty = propertyRecords.find(record => record.id === activePropertyId);
@@ -1389,7 +1396,7 @@ export default function WizardApp() {
             const multipleProperties = propertyRecords.length > 1;
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span></div>
-              <ScheduleTypeControl scheduleNumber={i + 1} category={record.category} stage={record.values.flatStage || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, 'flatStage', stage); }} />
+              <ScheduleTypeControl scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
               {multipleProperties && <div className="add-document-row"><button type="button" className="quiet" onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }}>Edit documents for Property {i + 1}</button></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
@@ -1477,6 +1484,7 @@ export default function WizardApp() {
 
         {step === 9 && <section className="panel download">
           <div className="finish-section-heading"><span className="finish-heading-icon"><Download size={22} aria-hidden="true" /></span><div><h2>Prepare your downloads</h2><p>Choose your template, then download the deed or property plan.</p></div><button type="button" className="quiet download-review-link" onClick={() => goto(8)}>Back to final review <ArrowRight size={14} aria-hidden="true" /></button></div>
+          <p role="status"><strong>{saleDocumentLabel(state.saleDocument)}</strong> · {propertyRecords.map(record => `${record.category} ${record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''}`.trim()).join(' / ')}</p>
           <div className="template-picker" aria-label="Word template">
             <div className="template-picker-heading"><h3>1. Choose the Word template</h3><span>Applies to this draft</span></div>
             <div className="template-choices">
@@ -1506,8 +1514,8 @@ export default function WizardApp() {
           <h3 className="export-section-title">2. Download your files</h3>
           <div className="export-options" aria-busy={exporting}>
             <article className="export-card export-word"><div className="export-file-icon"><FileDown size={25} aria-hidden="true" /></div><div><span className="export-format">WORD DOCUMENT · .DOCX</span><h3>Editable deed</h3><p>Open in Microsoft Word to review the wording and finish any write-in details.</p></div>
-              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || shareBlockers.length > 0 || templateFieldErrors.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
-              <small id="word-download-state">{exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? deedRelease.reasons.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Complete vendor and vendee shares for every property first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.'}</small>
+              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || authorityErrors.length > 0 || shareBlockers.length > 0 || templateFieldErrors.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
+              <small id="word-download-state">{exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Complete vendor and vendee shares for every property first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.'}</small>
             </article>
             <article className="export-card"><div className="export-file-icon"><MapIcon size={25} aria-hidden="true" /></div><div><span className="export-format">PROPERTY PLAN · PDF</span><h3>Plan for printing</h3><p>Download the property-plan PDF. This is a separate file from the Word deed.</p></div>
               <button aria-describedby="plan-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button>

@@ -21,21 +21,22 @@ import { EMPTY_FIELD_CONTRACT, fieldName, type TemplateFieldContract, type Bindi
 
 const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF FLAT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'];
 const FLAT_VARIANTS = ['IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
-const ALL_VARIANTS = [...VARIANTS, ...FLAT_VARIANTS];
+const ALL_VARIANTS = [...VARIANTS, 'IF HOUSE SEMI FINISHED', ...FLAT_VARIANTS];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
-const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'FOR ALL THE DOCUMENTS', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE'].map(value => value.toLowerCase()));
-const CONDITION_ALIASES: Record<string, string> = { 'IF FINISHED FLAT': 'IF FLAT FINISHED', 'IF SEMI FINISHED FLAT': 'IF FLAT SEMI FINISHED', 'IF DEMOLISHED HOUSE': 'IF DIMOLISHED HOUSE', 'IF VACANT PLOT': 'IF OPEN PLOT' };
+const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'IF HOUSE FINISHED', 'IF SALE DEED', 'IF SALE DEED WITH G.P.A', 'IF SALE DEED WITH A.G.P.A', 'FOR ALL THE DOCUMENTS', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE'].map(value => value.toLowerCase()));
+const CONDITION_ALIASES: Record<string, string> = { 'IF HOUSE FINISHED': 'IF HOUSE', 'IF FINISHED FLAT': 'IF FLAT FINISHED', 'IF SEMI FINISHED FLAT': 'IF FLAT SEMI FINISHED', 'IF DEMOLISHED HOUSE': 'IF DIMOLISHED HOUSE', 'IF VACANT PLOT': 'IF OPEN PLOT' };
 const conditionName = (value: string) => value.replace(/^<|>$/g, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
 const conditionTag = (value: string) => /^(?:IF|FOR|END)\b/i.test(value.trim());
 const LEGACY_TEMPLATE_TAGS = new Set([
   'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
-  'Utr/Reference No.', 'V.L.T. No.',
+  'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals',
 ].map(value => value.toLowerCase()));
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
 export type TemplateValidationResult = {
   valid: boolean;
+  saleOpenings?: boolean;
   errors: string[];
   detectedPlaceholders: string[];
   omittedPlaceholders: string[];
@@ -67,6 +68,7 @@ export type Rewrite = {
   when?: (paragraph: string) => boolean;
   /** Clear direct bold formatting from the generated paragraph. */
   regularWeight?: boolean;
+  finalSuffix?: RegExp;
 };
 
 // ---------------------------------------------------------------- zip reading
@@ -408,7 +410,7 @@ export async function validateSaleDeedTemplate(
     if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
     const detectedNames = new Set(detectedPlaceholders.map(norm));
     const omittedPlaceholders = supported.filter(tag => !detectedNames.has(norm(tag))).sort();
-    return { valid: errors.length === 0, errors, detectedPlaceholders: detectedPlaceholders.sort(), omittedPlaceholders };
+    return { valid: errors.length === 0, saleOpenings: customTags.includes('IF SALE DEED WITH G.P.A') && customTags.includes('IF SALE DEED WITH A.G.P.A'), errors, detectedPlaceholders: detectedPlaceholders.sort(), omittedPlaceholders };
   } catch (error: any) {
     errors.push(error?.message || 'Template is not a readable Word document.');
     return empty;
@@ -621,7 +623,8 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
       return fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([k, v]) => [norm(k), v] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
     }
     let paragraph = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
-    if (repeat.partyRole && record['UNDIVIDED SHARE RECITAL']) {
+    if (repeat.finalSuffix && index < repeat.records!.length - 1) paragraph = replaceRunText(paragraph, repeat.finalSuffix, () => '.');
+    if (repeat.partyRole && record['UNDIVIDED SHARE RECITAL'] && !/<(?:Executant|Claimant) Share>/i.test(plainText(paragraph))) {
       const panField = repeat.partyRole === 'executant' ? /<Executant PAN>/i : /<Claimant PAN>/i;
       if (panField.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, panField, match => `${match[0]}, ${record['UNDIVIDED SHARE RECITAL']}`);
       else paragraph = replaceRunText(paragraph, /\s*\(Hereinafter called the/i, match => `, ${record['UNDIVIDED SHARE RECITAL']} ${match[0].trimStart()}`);
@@ -804,6 +807,7 @@ function prepareTemplate(body: string): PreparedTemplate {
   const land = text.indexOf('<IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE>');
   if (land < 0 || text.includes('<IF OPEN PLACE>')) return { body, titles, clauses };
   const house = text.indexOf('<IF HOUSE>');
+  const houseSemi = text.indexOf('<IF HOUSE SEMI FINISHED>');
   const semi = text.indexOf('<IF FLAT SEMI FINISHED>');
   const finished = text.indexOf('<IF FLAT FINISHED>');
   const tail = text.findIndex((value, index) => index > finished && value === 'DECLARATION');
@@ -824,7 +828,13 @@ function prepareTemplate(body: string): PreparedTemplate {
     schedules[name] = trimBlock(landSchedules[index], landSchedules[index + 1] ?? house);
     clauses[name] = trimBlock(land + 1, landSchedules[0]);
   });
-  schedules['IF HOUSE'] = trimBlock(houseSchedule, semi);
+  schedules['IF HOUSE'] = trimBlock(houseSchedule, houseSemi >= 0 ? houseSemi : semi);
+  if (houseSemi >= 0) {
+    const semiSchedule = text.findIndex((value, index) => index > houseSemi && index < semi && value === 'SCHEDULE OF PROPERTY');
+    if (semiSchedule < 0) throw new Error('Semi-finished house schedule is missing.');
+    clauses['IF HOUSE SEMI FINISHED'] = trimBlock(houseSemi + 1, semiSchedule);
+    schedules['IF HOUSE SEMI FINISHED'] = trimBlock(semiSchedule, semi);
+  }
   clauses['IF HOUSE'] = trimBlock(house + 1, houseSchedule);
   for (const [name, start, stop] of [['IF FLAT SEMI FINISHED', semi, finished], ['IF FLAT FINISHED', finished, tail]] as const) {
     const pay = text.findIndex((value, index) => index > start && index < stop && /^2\.\s*CONSIDERATION & PAYMENT TERMS:/.test(value));
@@ -844,8 +854,41 @@ function prepareTemplate(body: string): PreparedTemplate {
   return { body: join(0, land) + Object.entries(schedules).map(([name, block]) => marker(name) + block).join('') + join(tail, chunks.length), titles, clauses };
 }
 
+function selectSaleOpening(body: string, values: Record<string, string>): string {
+  const mode = values['Sale Document Mode'] || 'ordinary';
+  const children = topLevelChildren(body);
+  const chunks = children.map(child => body.slice(child.start, child.end));
+  const text = chunks.map(chunk => plainText(chunk).trim());
+  const markers = ['<IF SALE DEED>', '<IF SALE DEED WITH G.P.A>', '<IF SALE DEED WITH A.G.P.A>'];
+  const starts = markers.map(marker => text.indexOf(marker));
+  if (starts.every(index => index < 0)) {
+    if (mode !== 'ordinary') throw new Error('This template does not support sale through GPA/AGPA. Select the v7 template.');
+    return body;
+  }
+  const flow = text.findIndex(value => /^1\.\s*FLOW OF TITLE & LINK DEED DETAILS:/.test(value));
+  if (starts.some(index => index < 0) || flow <= starts[2]) throw new Error('Sale opening markers are incomplete or out of order.');
+  const selected = mode === 'gpa' ? 1 : mode === 'agpa' ? 2 : 0;
+  let opening = chunks.slice(starts[selected] + 1, selected === 2 ? flow : starts[selected + 1]).join('');
+  if (selected) opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (!/<ATTORNEY NAME>/i.test(plainText(paragraph))) return paragraph;
+    paragraph = replaceRunText(paragraph, /<Sub Registrar>/gi, () => '<Authority SRO>');
+    paragraph = replaceRunText(paragraph, /<Sub Registrar Code>/gi, () => '<Authority SRO Code>');
+    // Explicit links remain visible when several principals appoint different attorneys.
+    return /<Represented Principals>/i.test(plainText(paragraph)) ? paragraph : replaceRunText(paragraph, /<ATTORNEY NAME>/i, () => '<ATTORNEY NAME> (representing <Represented Principals>)');
+  });
+  let resultBody = chunks.slice(0, starts[0]).join('') + opening + chunks.slice(flow).join('');
+  // The ordinary opening owns the source's footer relationship. The other
+  // openings inherit that footer in Word and must retain it after selection.
+  for (const type of ['headerReference', 'footerReference']) {
+    const refs = body.match(new RegExp(`<w:${type}\\b[^>]*/>`, 'g')) || [];
+    if (refs.length && !new RegExp(`<w:${type}\\b`).test(resultBody)) resultBody = resultBody.replace(/<w:sectPr\b[^>]*>/, tag => tag + [...new Set(refs)].join(''));
+  }
+  return resultBody;
+}
+
 function selectedTemplateVariant(variant: string, markers: Map<string, number>, values: Record<string, string>): string {
   if (markers.has(variant)) return variant;
+  if (variant === 'IF HOUSE SEMI FINISHED' && markers.has('IF HOUSE')) throw new Error('This template has no semi-finished house section. Upgrade the draft to v7.');
   if (FLAT_VARIANTS.includes(variant) && markers.has('IF FLAT')) return 'IF FLAT';
   if (variant === 'IF FLAT') {
     const selected = flatVariant(values.Stage || '');
@@ -922,7 +965,7 @@ export async function scheduleText(
   const missing = new Set<string>();
 
   const selected = markConsiderationRows(children.slice(start, stop).map(c => body.slice(c.start, c.end)).join(''));
-  const withEvidence = addOwnershipShareParagraphs(variant === 'IF HOUSE'
+  const withEvidence = addOwnershipShareParagraphs(['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant)
     ? prepareHouseBlock(selected, values, structureDetails)
     : prepareNonHouseIdentifiers(selected, variant, values), vendorShares, vendeeShares);
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
@@ -979,7 +1022,8 @@ function addOwnershipShareParagraphs(block: string, vendorShares?: VendeeShare[]
 /** Add compact name-free writing lines under the source signature headings. */
 function addPartySignatureLines(body: string, values: Map<string, string>, rewrites: Rewrite[]): string {
   const partyRewrite = (role: 'executant' | 'claimant') => rewrites.find(rewrite => rewrite.partyRole === role);
-  const vendors = partyRewrite('executant')?.records?.map(record => record['EXECUTANT NAME'] || '')
+  const attorneyCount = Number(values.get(norm('Authority Attorney Count')) || 0);
+  const vendors = values.get(norm('Sale Document Mode')) !== 'ordinary' && attorneyCount > 0 ? Array.from({ length: attorneyCount }, () => '') : partyRewrite('executant')?.records?.map(record => record['EXECUTANT NAME'] || '')
     || [values.get(norm('EXECUTANT NAME')) || ''];
   const vendees = partyRewrite('claimant')?.records?.map(record => record['CLAIMANT NAME'] || '')
     || [values.get(norm('CLAIMANT NAME')) || ''];
@@ -1035,7 +1079,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
         return `${floorName(row.floorNo)}${parts.length ? ` (${parts.join(', ')})` : ''}`;
       }).join(', ');
       paragraph = replaceRunText(paragraph,
-        /,?\s*having a plinth area of <Plinth Area> square feets consisting of <Floors> Floor\/s/i,
+        /,?\s*having a plinth area of <\s*Plinth Area\s*> square feets consisting of (?:<Floors> Floor\/s|Ground Floor: <Ground Floor Area> square feets First Floor: <First Floor Area> square feets)/i,
         () => floorSummary ? `, consisting of ${floorSummary}` : '');
     }
     if (/^\s*:\s*<Nature Of House>\s*$/i.test(text)) {
@@ -1187,9 +1231,11 @@ export async function fillSaleDeed(
   if (!doc) throw new Error('Template is missing word/document.xml.');
 
   let xml = new TextDecoder().decode(doc.data);
+  const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  const prepared = prepareTemplate(markConsiderationRows(xml.slice(bodyStart, bodyEnd)));
+  const selectedBody = selectSaleOpening(xml.slice(bodyStart, bodyEnd), values);
+  const prepared = prepareTemplate(markConsiderationRows(selectedBody));
   if (Object.keys(prepared.clauses).length) rewrites = rewrites
     .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))
     .map(rewrite => rewrite.find.source.startsWith('Housing Loan:') ? { ...rewrite, when: undefined } : rewrite);
@@ -1277,7 +1323,7 @@ export async function fillSaleDeed(
       for (const [key, value] of Object.entries(schedule.values)) scheduleValues.set(norm(key), value ?? '');
       const landmarkRelation = scheduleValues.get(norm('Near / Adjacent'))?.toLowerCase();
       let block = children.slice(start, stop).map(c => body.slice(c.start, c.end)).join('');
-      block = schedule.variant === 'IF HOUSE'
+      block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(schedule.variant)
         ? prepareHouseBlock(block, schedule.values, schedule.structureDetails)
         : prepareNonHouseIdentifiers(block, schedule.variant, schedule.values);
       block = addOwnershipShareParagraphs(block, schedule.vendorShares, schedule.vendeeShares);
@@ -1351,6 +1397,30 @@ export async function fillSaleDeed(
     body = sectionAt >= 0 ? body.slice(0, sectionAt) + preparedBy + body.slice(sectionAt) : body + preparedBy;
   }
 
+  // The source is a catalogue with manual blank separator paragraphs. Once its
+  // alternatives are removed, trailing separators must not create empty pages.
+  // Retain the source's stamp-paper first-page section and witness writing space.
+  if (hasSaleOpenings) {
+    const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+    let empty = 0;
+    body = chunks.map(chunk => !plainText(chunk).trim() && !/<w:sectPr\b/.test(chunk)
+      ? chunk.replace(/<w:br\b[^>]*w:type="page"[^>]*\/>/g, '').replace(/<w:pageBreakBefore\b[^>]*\/>/g, '') : chunk).filter(chunk => {
+      if (plainText(chunk).trim() || /<w:(?:sectPr|drawing|tbl)\b/.test(chunk)) { empty = 0; return true; }
+      return ++empty <= 1;
+    }).join('');
+    let closing = false;
+    body = body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+      const text = plainText(paragraph).trim();
+      if (text === 'DECLARATION') closing = true;
+      if (closing && /^2\.\s*$/.test(text)) { closing = false; return paragraph; }
+      return closing ? keepWithNext(paragraph) : paragraph;
+    });
+    const kept = topLevelChildren(body);
+    let lastContent = kept.length - 1;
+    while (lastContent >= 0 && (!plainText(body.slice(kept[lastContent].start, kept[lastContent].end)).trim()) && !/<w:(?:drawing|tbl)\b/.test(body.slice(kept[lastContent].start, kept[lastContent].end))) lastContent--;
+    if (lastContent >= 0) body = body.slice(0, kept[lastContent].end) + kept.slice(lastContent + 1).map(child => body.slice(child.start, child.end)).filter(chunk => /^<w:sectPr\b/.test(chunk)).join('');
+  }
+
   // Anything still in <Angle Brackets> is a placeholder no field maps to.
   const unmapped = [
     ...new Set(
@@ -1360,6 +1430,10 @@ export async function fillSaleDeed(
 
   xml = xml.slice(0, bodyStart) + body + xml.slice(bodyEnd);
   doc.data = new TextEncoder().encode(xml);
+  for (const part of entries.filter(entry => /^word\/(?:header|footer)\d+\.xml$/.test(entry.name))) {
+    const filled = new TextDecoder().decode(part.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, values_, missing, []));
+    part.data = new TextEncoder().encode(filled);
+  }
 
   const zipped = await writeZip(entries);
   return {

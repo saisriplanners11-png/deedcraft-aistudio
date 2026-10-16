@@ -11,7 +11,13 @@ export function flatStage(value = ''): '' | 'Finished' | 'Semi-Finished' {
   return '';
 }
 
+export const HOUSE_OPTIONS = [
+  { key: 'Residential:Finished', label: 'Finished House', stage: 'Finished' },
+  { key: 'Residential:Semi-Finished', label: 'Semi-finished House', stage: 'Semi-Finished' },
+] as const;
+
 export function propertyChoice(category: string, stage = ''): string {
+  if (category === 'Residential') return flatStage(stage) ? `Residential:${flatStage(stage)}` : 'Residential';
   return category === 'Flat' ? (flatStage(stage) ? `Flat:${flatStage(stage)}` : '') : category;
 }
 

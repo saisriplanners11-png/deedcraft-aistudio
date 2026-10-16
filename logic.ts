@@ -67,7 +67,11 @@ export function vendeeShareCents(value: string): number | null {
   return cents > 0 && cents <= 10000 ? cents : null;
 }
 
+import type { SaleDocument, SaleAuthority } from './sale-options';
+
 export type AppState = {
+  saleDocument?: SaleDocument;
+  saleAuthority?: SaleAuthority;
   /** Explicitly unresolved fields must never be silently reconstructed by a fallback. */
   unresolvedFields?: string[];
   step: number;
@@ -233,7 +237,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
 const PROPERTY_IDS = ['localAuthorityType', 'plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
-const STRUCTURE_IDS = ['bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
+const STRUCTURE_IDS = ['houseStage', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
 
 const SQ_YARD: Record<string, number> = {

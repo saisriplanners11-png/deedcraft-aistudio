@@ -10,6 +10,8 @@
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:sale-v7": "node qa/sale-v7.mjs",
+    "test:sale-v7-browser": "node qa/sale-v7-browser.mjs",
     "test:e2e": "node qa/section-upload-flow.mjs",
     "test:plan-e2e": "node qa/property-plan-flow.mjs",
     "test:exact-plan-e2e": "node qa/exact-reference-flow.mjs",

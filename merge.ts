@@ -1,3 +1,4 @@
+import { authorityPartyValues, saleDocumentLabel } from './sale-options';
 import { localAuthorityName } from './fields';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
 import { flatStage, flatVariant } from './flat-options';
@@ -7,6 +8,18 @@ import type { Rewrite, ScheduleMerge } from './docx';
 import { ALL_FIELDS, GROUPS, LINK_OPTIONS, ROOF_NATURE_OPTIONS, STRUCTURE_TYPE_OPTIONS, SCHEDULE_VARIANT } from './fields';
 import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
+
+function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId: string): string {
+  const parties = partyRecords(state, side);
+  if (!parties.length) return '';
+  const schedules = scheduleRecords(state);
+  const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
+  return schedules.map((schedule, index) => {
+    const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || (parties.length === 1 ? '100' : ''));
+    const value = cents === null ? '____%' : `${cents / 100}%`;
+    return schedules.length > 1 ? `Schedule ${index + 1}: ${value}` : value;
+  }).join('; ');
+}
 
 /** Values for every placeholder the template names. */
 export function mergeValues(state: AppState): Record<string, string> {
@@ -115,6 +128,23 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Utr/Reference No.'] = primary?.refNo ?? '';
   out['Remitting Bank'] = primary ? [primary.bank, primary.branch].filter(Boolean).join(', ') : '';
 
+  out['Sale Document Mode'] = state.saleDocument || 'ordinary';
+  out['Execution Date'] = executionMonthDate(f.executionDate || '');
+  const authority = state.saleAuthority;
+  for (const prefix of ['G.P.A.', 'A.G.P.A.']) {
+    out[prefix + 'Doct.No.'] = authority?.documentNo || '';
+    out[prefix + 'Doct.Date'] = deedDate(authority?.documentDate || '');
+  }
+  out['Authority SRO'] = authority?.sro || '';
+  out['Authority SRO Code'] = authority?.sroCode || '';
+  out['Authority Attorney Count'] = String(authority?.attorneys.length || 0);
+  out['Executant Share'] = ownershipShare(state, 'executant', state.primaryExecutantId || 'primary');
+  out['Claimant Share'] = ownershipShare(state, 'claimant', state.primaryClaimantId || 'primary');
+  out['Adjusted Amount'] = authority?.adjustedAmount ? Number(authority.adjustedAmount).toLocaleString('en-IN') : '';
+  for (const [label, pattern] of [['Ground Floor Area', /^(ground|g|0)$/i], ['First Floor Area', /^(first|1|1st)$/i]] as const) {
+    const rows = houseRows.filter(row => pattern.test(row.floorNo.trim()));
+    out[label] = rows.length ? rows.reduce((sum, row) => sum + Number(row.builtUpAreaSqFt || 0), 0).toLocaleString('en-IN') : '';
+  }
   return out;
 }
 
@@ -201,7 +231,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
   }
   for (const side of ['executant', 'claimant'] as const) {
     const records = partyRecords(state, side);
-    if (records.length < 2 && !records.some(record => isEntity(record.values, side))) continue;
+    if (records.length < 2 && !records.some(record => isEntity(record.values, side)) && !(side === 'executant' && state.saleDocument && state.saleDocument !== 'ordinary')) continue;
     const schedules = scheduleRecords(state);
     const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
     rewrites.push({
@@ -216,9 +246,21 @@ export function rewritesFor(state: AppState): Rewrite[] {
           return schedules.length === 1 ? `${cents === null ? '____' : cents / 100}%` : `Schedule ${scheduleIndex + 1}: ${cents === null ? '____' : cents / 100}%`;
         });
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
-        return { ...mergeValues({ ...state, form }), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': records.length > 1 ? 'Holding Undivided Share of ' + allocations.join('; ') : '' };
+        return { ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': records.length > 1 ? 'Holding Undivided Share of ' + allocations.join('; ') : '' };
       }),
     });
+  }
+  if (state.saleDocument && state.saleDocument !== 'ordinary') {
+    const principals = partyRecords(state, 'executant');
+    const principalRecords = principals.map(record => {
+      const values = Object.fromEntries(Object.entries(record.values).filter(([key]) => key.startsWith('executant')).map(([key, value]) => [key.slice(9), value]));
+      return authorityPartyValues(values, 'Principal');
+    });
+    rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
+    rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
+      ...authorityPartyValues(attorney.values, 'Attorney'),
+      'Represented Principals': attorney.principalIds.map(id => principals.find((record, index) => (index ? record.id : state.primaryExecutantId || 'primary') === id)?.values.executantName || '').filter(Boolean).join(', '),
+    })) });
   }
   return rewrites;
 }
@@ -360,19 +402,19 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }) : undefined;
-    return { variant: variantFor(record.category, record.values.flatStage), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
+    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
   });
 }
 
 /** Which SCHEDULE OF PROPERTY block of the template this deed uses. */
-export const variantFor = (category: string, stage = '') => category === 'Flat' ? flatVariant(stage) : SCHEDULE_VARIANT[category] || 'IF OPEN PLOT';
+export const variantFor = (category: string, stage = '') => category === 'Flat' ? flatVariant(stage) : ['Residential', 'Commercial'].includes(category) && flatStage(stage) === 'Semi-Finished' ? 'IF HOUSE SEMI FINISHED' : SCHEDULE_VARIANT[category] || 'IF OPEN PLOT';
 
 /** Filename for the generated deed, identified by instrument and claimant. */
 export function deedFilename(state: AppState): string {
   const claimant = partyDisplayName(state.form, 'claimant') || state.additionalClaimants
     .map(record => partyDisplayName(record.values, 'claimant')).find(Boolean) || 'Unnamed deed';
   const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
-  return `${safe(state.deedType || 'Deed')}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
+  return `${safe(state.saleDocument ? saleDocumentLabel(state.saleDocument) : state.deedType || 'Deed')}${state.saleDocument ? '-' + safe([state.category, state.category === 'Flat' ? state.form.flatStage : state.form.houseStage].filter(Boolean).join(' ')) : ''}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
 }
 
 export { money, words };

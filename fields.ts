@@ -122,7 +122,7 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
   const C = side === 'executant' ? 'EXECUTANT' : 'CLAIMANT';
   const k = (n: string) => `${side}${n}`;
   return [
-    { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Firm / LLP', 'Society / Association', 'Company', 'Others / HUF'], span: 2,
+    { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Firm / LLP', 'Society / Association', 'Company', 'Others / HUF', ...PARTY_CAPACITY_OPTIONS], span: 2,
       hint: 'Choose the legal capacity of this executant or claimant.' },
     { id: k('Name'), label: 'Full name', ph: `${C} NAME`, span: 2 },
     { id: k('Relation'), label: 'Relation', type: 'select', options: ['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'] },
@@ -144,7 +144,16 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
 };
 
 /** `Society / Trust` is retained only so previously saved drafts remain readable. */
-export type PartyType = 'Individual' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF';
+export const PARTY_CAPACITY_OPTIONS = [
+  'Guardian (సంరక్షకుడు)',
+  'Confirming Party (నిర్ధారణ పక్షం)',
+  'Consenting Party (సమ్మతిని ఇచ్చే పక్షం)',
+  'Legal Heir (చట్టబద్ధమైన వారసుడు)',
+  'Principal (పవర్ ఆఫ్ అటార్నీ ఇచ్చేవారు)',
+  'Attorney / Agent (ఏజెంట్)',
+] as const;
+
+export type PartyType = 'Individual' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF' | typeof PARTY_CAPACITY_OPTIONS[number];
 
 /** An authorised signatory for a non-individual party, with each postal
  * component retained separately for registration use. */
@@ -163,7 +172,7 @@ export const newPartyRepresentative = (): PartyRepresentative => ({
 
 /** Entity particulars feed the organisation recital; people are stored separately. */
 export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyType): Field[] => {
-  if (type === 'Individual') return [];
+  if (type === 'Individual' || (PARTY_CAPACITY_OPTIONS as readonly string[]).includes(type)) return [];
   const k = (name: string) => `${side}${name}`;
   const common = [
     { id: k('EntityName'), label: 'Entity name (English)', span: 2 as const },
@@ -253,7 +262,7 @@ export const GROUPS: Group[] = [
     telugu: 'పరిధి వివరాలు',
     note: 'Where the property lies and where the deed will be presented for registration.',
     fields: [
-      { id: 'propState', label: 'State', type: 'select', options: ['Telangana', 'Andhra Pradesh'] },
+      { id: 'propState', label: 'State', ph: 'Property State', type: 'select', options: ['Telangana', 'Andhra Pradesh'] },
       { id: 'districtRegistrar', label: 'District Registrar', ph: 'District Registrar', span: 2 },
       { id: 'sro', label: 'Sub-Registrar Office', span: 2 },
       { id: 'district', label: 'District', ph: 'District' },
@@ -317,6 +326,7 @@ export const GROUPS: Group[] = [
     telugu: 'నిర్మాణ వివరాలు',
     note: 'Collected only for a built structure — these fill Annexure I-A of the deed.',
     fields: [
+      { id: 'houseStage', label: 'House completion stage', type: 'select', options: ['Finished', 'Semi-Finished'], only: ['Residential', 'Commercial'] },
       { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', only: HOUSE_CATEGORIES },
       { id: 'roofMaterial', label: 'Nature of roof', only: HOUSE_CATEGORIES,
         options: ROOF_NATURE_OPTIONS,
@@ -338,6 +348,7 @@ export const GROUPS: Group[] = [
     note: 'The selected completion option controls the matching flat deed. Enter the parking area and building/title particulars from the supporting records.',
     fields: [
       { id: 'flatStage', label: 'Flat stage', ph: 'Stage', type: 'select', options: ['Finished', 'Semi-Finished'], only: ['Flat'] },
+      { id: 'flatAgeYears', label: 'Age of flat (years)', ph: 'Age of Flat', type: 'number', only: ['Flat'] },
       { id: 'flatNo', label: 'Flat number', ph: 'Flat No.', only: ['Flat'] },
       { id: 'flatFloorNo', label: 'Floor number', ph: 'Floor No.', only: ['Flat'] },
       { id: 'apartmentName', label: 'Apartment complex name', ph: 'Apartment Complex Name', span: 2, only: ['Flat'] },
@@ -349,6 +360,10 @@ export const GROUPS: Group[] = [
       { id: 'parkingAreaSqFt', label: 'Car parking area (Sq. Ft.)', ph: ['Car Parking Area', '100'], type: 'number', only: ['Flat'] },
       { id: 'stiltFloors', label: 'Number of stilt floors', ph: ['Stilt Floors', '1'], type: 'number', only: ['Flat'] },
       { id: 'upperFloors', label: 'Number of upper floors', ph: ['Upper Floors', '5'], type: 'number', only: ['Flat'] },
+      { id: 'developmentSro', label: 'Development agreement SRO', ph: 'Development SRO', only: ['Flat'] },
+      { id: 'developmentSroCode', label: 'Development agreement SRO code', ph: 'Development SRO Code', only: ['Flat'] },
+      { id: 'supplementalSro', label: 'Supplemental agreement SRO', ph: 'Supplemental SRO', only: ['Flat'] },
+      { id: 'supplementalSroCode', label: 'Supplemental agreement SRO code', ph: 'Supplemental SRO Code', only: ['Flat'] },
       { id: 'developmentDocNo', label: 'Development agreement-cum-GPA document number', ph: 'Document No.', only: ['Flat'] },
       { id: 'developmentDocDate', label: 'Development agreement-cum-GPA date', ph: 'Document Date', type: 'date', only: ['Flat'] },
       { id: 'supplementalDocNo', label: 'Supplemental agreement document number', ph: 'Supplemental Agreement No.', only: ['Flat'] },

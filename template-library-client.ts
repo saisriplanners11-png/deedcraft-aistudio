@@ -1,3 +1,5 @@
+import { loadTemplate } from './template';
+import { TEMPLATE_VERSIONS } from './legal-registry';
 import type { LibraryListing, LibraryRevision, TemplatePin } from './template-library-types';
 import { canonicalContract } from './template-fields';
 
@@ -8,7 +10,11 @@ export async function templateRequest<T>(path = '', init?: RequestInit): Promise
   return data;
 }
 export const listTemplates = () => templateRequest<LibraryListing>();
-export const pinFor = (version: LibraryRevision): TemplatePin => ({ versionId: version.id, hash: version.hash, name: version.filename, fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
+export function bundledTemplatePin(versionId = 'sale-deed-v6'): TemplatePin {
+  const version = TEMPLATE_VERSIONS.find(item => item.id === versionId) || TEMPLATE_VERSIONS.find(item => item.id === 'sale-deed-v6')!;
+  return { versionId: version.id, hash: version.sha256!, name: `Built-in Sale v${version.version.split('.')[0]}`, saleOpenings: version.id === 'sale-deed-v7' };
+}
+export const pinFor = (version: LibraryRevision): TemplatePin => ({ saleOpenings: version.saleOpenings ?? version.validation?.saleOpenings, versionId: version.id, hash: version.hash, name: version.filename, fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
 
 const cache = new Map<string, Promise<Uint8Array>>();
 export async function sha256(bytes: Uint8Array): Promise<string> {
@@ -24,6 +30,7 @@ export async function loadLibraryBytes(pin: TemplatePin): Promise<Uint8Array> {
   if (pin.schemaHash) await verifyTemplateBytes(new TextEncoder().encode(canonicalContract(pin.fieldContract)), pin.schemaHash);
   if (pin.packageHash && pin.schemaHash && pin.contractVersion) await verifyTemplateBytes(new TextEncoder().encode(pin.hash + ':' + pin.schemaHash + ':' + pin.contractVersion), pin.packageHash);
   if (pin.bytes) return verifyTemplateBytes(pin.bytes, pin.hash);
+  if (TEMPLATE_VERSIONS.some(version => version.id === pin.versionId && version.sha256 === pin.hash)) return verifyTemplateBytes(await loadTemplate(pin.versionId), pin.hash);
   const key = pin.versionId + ':' + pin.hash + ':' + (pin.packageHash || 'legacy');
   let pending = cache.get(key);
   if (!pending) {

@@ -11,6 +11,7 @@ export interface LegalReference {
   status: LegalReferenceStatus;
   templateVersionId?: string;
   approvedBy?: string;
+  sourceDocument?: string;
   approvedAt?: string;
   supersedes?: string;
   propertyCategories: string[];
@@ -32,14 +33,17 @@ export interface TemplateVersion {
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
-  variantIds: [saleDefinition.variants[0].id], jurisdiction: 'Telangana',
+  variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana',
   effectiveFrom: '2026-09-01', version: '1.0.0', status: 'approved',
-  templateVersionId: 'sale-deed-v6', approvedBy: 'Updated supplied reference',
+  templateVersionId: 'sale-deed-v7', sourceDocument: 'SALE DEED-1610.docx',
   propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Agricultural land','Part open place'],
   requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'sale-deed-v7', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
+  version: '7.0.0', asset: 'sale-deed-template-v7.docx', sha256: 'acde154b7639b1c11048d50d4afe08ca08a2ef341d994e17f933eeab64eaf5a4', immutable: true,
+}, {
   id: 'sale-deed-v6', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   version: '6.0.0', asset: 'sale-deed-template-v6.docx', sha256: '450ae86e1c327a1cdf6d9525e4b5044bef15c58099f5b8e021b54c5beee85a23', immutable: true,
 }, {

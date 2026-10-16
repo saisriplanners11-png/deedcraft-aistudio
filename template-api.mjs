@@ -7,7 +7,7 @@ import { createTemplateStorage } from './template-storage.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const LIMIT = 20 * 1024 * 1024;
-const CONTRACT = 'sale-v6-fields-3';
+const CONTRACT = 'sale-v7-fields-1';
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -32,15 +32,16 @@ export function createTemplateApi(options = {}) {
   };
   async function seedLibrary() {
     await storage.init();
-    if (await storage.read()) return;
-    const bytes = await readFile(join(ROOT, 'sale-deed-template-v6.docx'));
+    const previous = await storage.read();
+    if (previous && previous.active.sale !== 'sale-deed-v6') return;
+    const bytes = await readFile(join(ROOT, 'sale-deed-template-v7.docx'));
     const runtime = await loadTemplateRuntime();
-    const validation = await runtime.validateSaleDeedTemplate(bytes, 'sale-deed-template-v6.docx');
+    const validation = await runtime.validateSaleDeedTemplate(bytes, 'sale-deed-template-v7.docx');
     if (!validation.valid) throw fail(503, 'Bundled Sale template failed validation.');
     const at = new Date().toISOString();
-    const version = { id: 'sale-deed-v6', instrumentId: 'sale', filename: 'sale-deed-template-v6.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [] };
+    const version = { id: 'sale-deed-v7', instrumentId: 'sale', filename: 'sale-deed-template-v7.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [] };
     await atomic(version.id + '.docx', bytes);
-    try { await save({ active: { sale: version.id }, versions: [version], history: [{ versionId: version.id, at, action: 'seed' }] }); }
+    try { await save({ ...(previous || {}), active: { ...(previous?.active || {}), sale: version.id }, versions: [...(previous?.versions || []).filter(item => item.id !== version.id), version], history: [...(previous?.history || []), { versionId: version.id, at, action: 'seed' }] }); }
     catch (error) { if (error.status !== 409 || !await storage.read()) throw error; }
   }
   let initialization;
@@ -96,16 +97,16 @@ export function createTemplateApi(options = {}) {
     version.schemaHash = hash(runtime.canonicalContract(version.fieldContract));
     version.packageHash = hash(version.hash + ':' + version.schemaHash + ':' + CONTRACT);
     version.schemaRevision ||= 0;
-    version.expectedSampleCount = runtime.sampleCasesFor(version.fieldContract).length;
     version.contractVersion = CONTRACT;
     // Use the same vocabulary and structural checks as browser validation.
     version.validation = await runtime.validateSaleDeedTemplate(bytes, version.filename, undefined, version.fieldContract);
+    version.expectedSampleCount = runtime.sampleCasesFor(version.fieldContract, version.validation).length;
     for (const field of version.fieldContract.fields) if (version.inspection.occurrences.some(item => item.placeholder.trim().toLowerCase() === field.placeholder.trim().toLowerCase() && !item.supported)) { version.validation.valid = false; version.validation.errors.push(`<${field.placeholder}> is in an unsupported Word location.`); }
     version.samples = [];
     delete version.samplesSchemaHash;
     if (!version.validation.valid || !generateSamples) return;
     const source = { kind: 'custom', name: version.filename, hash: version.hash, bytes, validation: version.validation, fieldContract: version.fieldContract };
-    for (const [id, label] of runtime.sampleCasesFor(version.fieldContract)) {
+    for (const [id, label] of runtime.sampleCasesFor(version.fieldContract, version.validation)) {
       try {
         const output = await runtime.renderSample(id, source);
         const file = version.id + '-' + id + '-' + hash(output) + '.docx';
@@ -170,7 +171,7 @@ export function createTemplateApi(options = {}) {
       }
       if (route === '/guide' && req.method === 'GET') {
         const runtime = await loadTemplateRuntime();
-        const result = await runtime.validateSaleDeedTemplate(await readFile(join(ROOT, 'sale-deed-template-v6.docx')));
+        const result = await runtime.validateSaleDeedTemplate(await readFile(join(ROOT, 'sale-deed-template-v7.docx')));
         return send(200, { placeholders: [...new Set([...result.detectedPlaceholders, ...result.omittedPlaceholders])].sort() });
       }
       if ((route === '' || route === '/') && req.method === 'GET') {
@@ -178,7 +179,7 @@ export function createTemplateApi(options = {}) {
         if (session(req)) data.deletedVersions = data.versions.filter(version => version.deletedAt);
         data.versions = data.versions.filter(version => !version.deletedAt);
         if (!session(req)) {
-          data.versions = data.versions.filter(version => version.publishedAt).map(({ validation, samples, inspection, ...version }) => version);
+          data.versions = data.versions.filter(version => version.publishedAt).map(({ validation, samples, inspection, ...version }) => ({ ...version, saleOpenings: validation?.saleOpenings }));
           delete data.history;
         }
         return send(200, data);
@@ -283,7 +284,7 @@ export function createTemplateApi(options = {}) {
           if (action === 'publish') {
             const runtime = await loadTemplateRuntime();
             if (item.fieldContract?.fields.length && (input.expectedSchemaRevision !== item.schemaRevision || input.expectedSchemaHash !== item.schemaHash)) throw fail(409, 'Field configuration changed. Refresh and review the current samples before publishing.');
-            if (!item.validation.valid || item.contractVersion !== CONTRACT || item.samples.length !== runtime.sampleCasesFor(item.fieldContract).length || item.samples.some(sample => sample.error) || item.samplesSchemaHash !== item.schemaHash) throw fail(400, 'Validation and every sample must succeed for the current field configuration before publishing.');
+            if (!item.validation.valid || item.contractVersion !== CONTRACT || item.samples.length !== runtime.sampleCasesFor(item.fieldContract, item.validation).length || item.samples.some(sample => sample.error) || item.samplesSchemaHash !== item.schemaHash) throw fail(400, 'Validation and every sample must succeed for the current field configuration before publishing.');
             if (input.reviewed !== true) throw fail(400, 'Confirm that sample wording and layout have been reviewed.');
             for (const sample of item.samples) await storage.get(sample.file || item.id + '-' + sample.id + '.docx');
           }
