@@ -1,4 +1,5 @@
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
+import { giftRelationshipValues } from './gift-options';
 import { localAuthorityName } from './fields';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
 import { flatStage, flatVariant } from './flat-options';
@@ -25,6 +26,7 @@ function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId
 export function mergeValues(state: AppState): Record<string, string> {
   const f = state.form;
   const out: Record<string, string> = {};
+  Object.assign(out, giftRelationshipValues(state));
 
   // Straight field -> placeholder mappings declared in fields.ts.
   for (const field of ALL_FIELDS) {
@@ -139,6 +141,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Authority SRO'] = authority?.sro || '';
   out['Authority SRO Code'] = authority?.sroCode || '';
   out['Authority Attorney Count'] = String(authority?.attorneys.length || 0);
+  out['Authority Holder Label'] = state.saleDocument === 'gpa' ? 'G.P.A. HOLDER OF' : state.saleDocument === 'agpa' ? 'A.G.P.A. HOLDER OF' : '';
+  out['Authority Principal Names'] = partyRecords(state, 'executant').map(record => partyDisplayName(record.values, 'executant').toLocaleUpperCase('en-IN')).filter(Boolean).join(', ');
   out['Executant Share'] = ownershipShare(state, 'executant', state.primaryExecutantId || 'primary');
   out['Claimant Share'] = ownershipShare(state, 'claimant', state.primaryClaimantId || 'primary');
   out['Adjusted Amount'] = authority?.adjustedAmount ? Number(authority.adjustedAmount).toLocaleString('en-IN') : '';

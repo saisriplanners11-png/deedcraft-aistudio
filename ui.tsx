@@ -446,7 +446,7 @@ export function UploadZone({
 
   const take = (list: FileList | null) => {
     const files = Array.from(list || []);
-    if (files.length) onFiles(files);
+    if (files.length && !busy) onFiles(files);
   };
 
   return (

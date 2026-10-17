@@ -1,3 +1,4 @@
+import { FileDropZone } from '../../../file-drop-zone';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StructuredGeometryPlan,
@@ -425,9 +426,9 @@ export const SketchVerificationWorkspace: React.FC<SketchVerificationWorkspacePr
   return (
     <div className="space-y-5">
       {/* Hidden File Inputs */}
-      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,.pdf" className="hidden" />
-      <input type="file" ref={cameraInputRef} onChange={handleFileUpload} accept="image/*" capture="environment" className="hidden" />
-      <input type="file" ref={jsonInputRef} onChange={handleLoadJson} accept=".json,application/json" className="hidden" />
+      <input type="file" disabled={isScanning} ref={fileInputRef} onChange={handleFileUpload} accept="image/*,.pdf" className="hidden" />
+      <input type="file" disabled={isScanning} ref={cameraInputRef} onChange={handleFileUpload} accept="image/*" capture="environment" className="hidden" />
+      <input type="file" disabled={isScanning} ref={jsonInputRef} onChange={handleLoadJson} accept=".json,application/json" className="hidden" />
 
       {/* Top Header & Mode Status Bar */}
       <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg border border-slate-800 flex flex-wrap items-center justify-between gap-4">
@@ -452,37 +453,46 @@ export const SketchVerificationWorkspace: React.FC<SketchVerificationWorkspacePr
 
         {/* Upload & Quick Demo Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer transition-all"
-          >
-            <Upload className="w-4 h-4" />
-            Upload Sketch Photo
-          </button>
-          <button
-            type="button"
-            onClick={() => cameraInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer transition-all"
-          >
-            <Camera className="w-4 h-4" />
-            Camera
-          </button>
-          <button
-            type="button"
-            onClick={() => jsonInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg cursor-pointer transition-all"
-          >
-            <FileJson className="w-4 h-4 text-amber-400" />
-            Load JSON
-          </button>
+          <FileDropZone as="span" inputRef={fileInputRef} disabled={isScanning}>
+            <button
+              disabled={isScanning}
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer transition-all"
+            >
+              <Upload className="w-4 h-4" />
+              Upload Sketch Photo
+            </button>
+          </FileDropZone>
+          <FileDropZone as="span" inputRef={cameraInputRef} disabled={isScanning}>
+            <button
+              disabled={isScanning}
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer transition-all"
+            >
+              <Camera className="w-4 h-4" />
+              Camera
+            </button>
+          </FileDropZone>
+          <FileDropZone as="span" inputRef={jsonInputRef} disabled={isScanning}>
+            <button
+              disabled={isScanning}
+              type="button"
+              onClick={() => jsonInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg cursor-pointer transition-all"
+            >
+              <FileJson className="w-4 h-4 text-amber-400" />
+              Load JSON
+            </button>
+          </FileDropZone>
         </div>
       </div>
 
       {/* Main Verification & Redrawing Grid (Left: Uploaded Sketch, Right: Clean Digital Plan) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* ================= LEFT PANEL: UPLOADED SKETCH (SOURCE OF TRUTH) ================= */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-300 shadow-sm p-4 space-y-3">
+        <FileDropZone inputRef={fileInputRef} disabled={isScanning} className="lg:col-span-5 bg-white rounded-2xl border border-slate-300 shadow-sm p-4 space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-200">
             <div className="flex items-center gap-2">
               <FileImage className="w-4 h-4 text-slate-700" />
@@ -548,13 +558,16 @@ export const SketchVerificationWorkspace: React.FC<SketchVerificationWorkspacePr
                     Upload your handwritten sketch photograph to digitize and verify corners.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer transition-all"
-                >
-                  Select File
-                </button>
+                <FileDropZone as="span" inputRef={fileInputRef} disabled={isScanning}>
+                  <button
+                    disabled={isScanning}
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer transition-all"
+                  >
+                    Select File
+                  </button>
+                </FileDropZone>
               </div>
             )}
 
@@ -595,7 +608,7 @@ export const SketchVerificationWorkspace: React.FC<SketchVerificationWorkspacePr
               </button>
             </div>
           )}
-        </div>
+        </FileDropZone>
 
         {/* ================= RIGHT PANEL: CLEAN DIGITAL PLAN (VECTOR SVG) ================= */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-300 shadow-sm p-4 space-y-3">

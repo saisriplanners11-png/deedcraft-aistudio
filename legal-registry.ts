@@ -35,12 +35,15 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana',
   effectiveFrom: '2026-09-01', version: '1.0.0', status: 'approved',
-  templateVersionId: 'sale-deed-v9', sourceDocument: 'SALE DEED-1610.docx',
+  templateVersionId: 'sale-deed-v10', sourceDocument: 'SALE DEED-1610.docx',
   propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Agricultural land','Part open place'],
   requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'sale-deed-v10', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
+  version: '10.0.0', asset: 'sale-deed-template-v10.docx', sha256: '24642e1d3c1b4fb94729a9f7eef9cf62bcead225519fb06bd8b7e24eaf10201a', immutable: true,
+}, {
   id: 'sale-deed-v9', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   version: '9.0.0', asset: 'sale-deed-template-v9.docx', sha256: 'ea509739595087cc5632189516c527a852c93b1d5207cf614f32276e76d42bd5', immutable: true,
 }, {

@@ -22,9 +22,9 @@ async function close() { server.closeAllConnections(); await new Promise(resolve
 let base = await start();
 try {
   let listing = await (await fetch(base)).json();
-  assert.equal(listing.active.sale, 'sale-deed-v9');
+  assert.equal(listing.active.sale, 'sale-deed-v10');
   assert(listing.versions.some(version => version.id === old.id && version.hash === old.hash));
-  assert.equal(listing.versions.find(version => version.id === 'sale-deed-v9').saleOpenings, true);
+  assert.equal(listing.versions.find(version => version.id === 'sale-deed-v10').saleOpenings, true);
   assert.deepEqual(Buffer.from(await (await fetch(base + '/versions/sale-deed-v6/download')).arrayBuffer()), oldBytes);
   const login = await fetch(base + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'isolated-v7-test' }) });
   const cookie = login.headers.get('set-cookie').split(';')[0];

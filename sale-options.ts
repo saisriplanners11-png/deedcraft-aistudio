@@ -7,8 +7,9 @@ export const SALE_DOCUMENT_OPTIONS = [
   { id: 'agpa', label: 'Sale through AGPA' },
 ] as const;
 export type SaleDocument = typeof SALE_DOCUMENT_OPTIONS[number]['id'];
-export type SaleAttorney = { id: string; principalIds: string[]; values: Record<string, string> };
-export type SaleAuthority = { documentNo: string; bookNumber?: string; documentDate: string; sro: string; sroCode: string; adjustedAmount: string; attorneys: SaleAttorney[] };
+export type AuthorityDocument = { id: string; name: string; dataUrl: string; size: number };
+export type SaleAttorney = { id: string; principalIds: string[]; values: Record<string, string>; documents?: AuthorityDocument[] };
+export type SaleAuthority = { documentNo: string; bookNumber?: string; documentDate: string; sro: string; sroCode: string; adjustedAmount: string; attorneys: SaleAttorney[]; documents?: AuthorityDocument[] };
 export const emptySaleAuthority = (): SaleAuthority => ({ documentNo: '', documentDate: '', sro: '', sroCode: '', adjustedAmount: '', attorneys: [] });
 export const saleDocumentLabel = (mode: SaleDocument = 'ordinary') => SALE_DOCUMENT_OPTIONS.find(option => option.id === mode)?.label || 'Ordinary Sale';
 export const saleDocumentForVariant = (variant = ''): SaleDocument => variant === 'sale-deed-by-gpa-holder' ? 'gpa' : variant === 'sale-through-existing-agpa' ? 'agpa' : 'ordinary';

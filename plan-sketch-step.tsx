@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { FileDropZone } from './file-drop-zone';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { Section, Note, Button, C } from './ui';
 import { css } from './css';
@@ -188,12 +189,12 @@ export function PlanSketchStep({ state, scheduleId, doc, selected, sourcePlans =
       <Button kind="gold" disabled={!checked.length} onClick={() => { onApplyChanges(deedChanges.filter(c => checked.includes(keyFor(c)))); setShowApply(false); setChecked([]); }}>Apply selected fields to deed</Button>
     </Section>}
     <Section title="Upload and compare sketch" telugu="ప్లాన్ అప్‌లోడ్">
-      <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const file=e.dataTransfer.files[0]; if(file) void runUpload(file); }}
+      <FileDropZone disabled={busy}
         style={css(`padding:14px;border:1px dashed ${C.goldLight};margin-bottom:12px`)}>
         Drop a sketch photo, PDF, or document here, or
         <label className="link-upload" aria-disabled={busy}><input type="file" accept={ACCEPT} disabled={busy} hidden onChange={e => { const file=e.target.files?.[0]; if(file) void runUpload(file); e.currentTarget.value=''; }} /><button type="button" className="gold" disabled={busy}>{busy ? 'Reading…' : 'Choose file or camera'}</button></label>
         <label className="link-upload" aria-disabled={busy}><input type="file" accept="image/*" capture="environment" disabled={busy} hidden onChange={e => { const file=e.target.files?.[0]; if(file) void runUpload(file); e.currentTarget.value=''; }} /><button type="button" className="quiet" disabled={busy}>Open camera</button></label>
-      </div>
+      </FileDropZone>
       {uploadError && <p role="alert">{uploadError}</p>}
       {extracted && <div style={css(`padding:12px;border:1px solid ${C.rule}`)}>
         <p>Review and edit the extracted details before applying. Blank fields stay blank.</p>

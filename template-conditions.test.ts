@@ -19,12 +19,12 @@ describe('template conditional markers', () => {
     expect(await runtime.docxToText(sample)).not.toContain('<IF SEMI-FINISHED FLAT>');
   }, 30000);
   it('reports unsupported conditions as structure, never as configurable input fields', async () => {
-    const { runtime, bytes } = await changed(xml => xml.replace('<w:body>', '<w:body><w:p><w:r><w:t>&lt;IF HOUSE FINISHED&gt;</w:t></w:r></w:p>'));
+    const { runtime, bytes } = await changed(xml => xml.replace('<w:body>', '<w:body><w:p><w:r><w:t>&lt;IF UNKNOWN HOUSE STATUS&gt;</w:t></w:r></w:p>'));
     const validation = await runtime.validateSaleDeedTemplate(bytes);
     expect(validation.valid).toBe(false);
     expect(validation.errors.some((error: string) => error.includes('Unsupported conditional marker'))).toBe(true);
     const inspection = await runtime.inspectTemplateFields(bytes);
-    expect(inspection.unresolved).not.toContain('IF HOUSE FINISHED');
+    expect(inspection.unresolved).not.toContain('IF UNKNOWN HOUSE STATUS');
     expect(inspection.structureErrors.some((error: string) => error.includes('Unsupported conditional marker'))).toBe(true);
   });
   it('explains Gift uploads without pretending that adding Sale markers enables Gift generation', async () => {

@@ -23,14 +23,16 @@ const VARIANTS = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF HOUSE', 'IF FLAT', 'IF DI
 const FLAT_VARIANTS = ['IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
 const ALL_VARIANTS = [...VARIANTS, 'IF HOUSE SEMI FINISHED', ...FLAT_VARIANTS];
 const OPERATIVE_CLAUSE_MARKERS = ['IF VACANT PLOT/OPEN PLACE/PART OPEN PLACE/DEMOLISHED HOUSE', 'IF HOUSE'] as const;
-const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'IF HOUSE FINISHED', 'IF SALE DEED', 'IF SALE DEED WITH G.P.A', 'IF SALE DEED WITH A.G.P.A', 'FOR ALL THE DOCUMENTS', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE'].map(value => value.toLowerCase()));
+const AUTHORITY_DECLARATION_START = 'IF GPA AGPA DECLARATION';
+const AUTHORITY_DECLARATION_END = 'END GPA AGPA DECLARATION';
+const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'IF HOUSE FINISHED', 'IF SALE DEED', 'IF SALE DEED WITH G.P.A', 'IF SALE DEED WITH A.G.P.A', AUTHORITY_DECLARATION_START, AUTHORITY_DECLARATION_END, 'FOR ALL THE DOCUMENTS', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE'].map(value => value.toLowerCase()));
 const CONDITION_ALIASES: Record<string, string> = { 'IF HOUSE FINISHED': 'IF HOUSE', 'IF FINISHED FLAT': 'IF FLAT FINISHED', 'IF SEMI FINISHED FLAT': 'IF FLAT SEMI FINISHED', 'IF DEMOLISHED HOUSE': 'IF DIMOLISHED HOUSE', 'IF VACANT PLOT': 'IF OPEN PLOT' };
 const conditionName = (value: string) => value.replace(/^<|>$/g, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
 const conditionTag = (value: string) => /^(?:IF|FOR|END)\b/i.test(value.trim());
 const LEGACY_TEMPLATE_TAGS = new Set([
   'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
-  'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals', 'Attorney Share', 'Authority Book Number',
+  'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals', 'Attorney Share', 'Authority Book Number', 'Authority Holder Label', 'Authority Principal Names',
 ].map(value => value.toLowerCase()));
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
@@ -389,6 +391,9 @@ export async function validateSaleDeedTemplate(
     }
 
     const customTags = angleTags(xml);
+    const declarationStart = paragraphs.indexOf(`<${AUTHORITY_DECLARATION_START}>`);
+    const declarationEnd = paragraphs.indexOf(`<${AUTHORITY_DECLARATION_END}>`);
+    if ((declarationStart >= 0) !== (declarationEnd >= 0) || (declarationStart >= 0 && (declarationEnd <= declarationStart || declarationStart <= sharedTail))) errors.push('The GPA/AGPA declaration condition must have a matching end marker after the declaration heading.');
     const unsupportedConditions = customTags.filter(tag => conditionTag(tag) && !STRUCTURAL_TAGS.has(norm(CONDITION_ALIASES[conditionName(tag)] || conditionName(tag))));
     for (const tag of unsupportedConditions) errors.push(`Unsupported conditional marker <${tag}>. Conditional markers are document structure, not input fields. Use a supported Sale section marker or retain the active template's original markers.`);
     const reference = referenceBytes ?? await loadSaleDeedTemplate();
@@ -521,6 +526,8 @@ function insertSupportingRecords(block: string, records: string[]): string {
  */
 /** Replace a text span across runs, retaining all untouched XML and formatting. */
 export function replaceRunText(p: string, find: RegExp, replacement: (match: RegExpExecArray) => string): string {
+  // Empty Word text nodes must not be mistaken for the opening of the next run.
+  p = p.replace(/<w:t(?:\s[^>]*)?\/>/g, tag => tag.replace(/\/>$/, '></w:t>'));
   const tags = [...p.matchAll(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g)];
   const texts = tags.map(t => unescapeXml(t[0].replace(/^<w:t(?:\s[^>]*)?>/, '').replace(/<\/w:t>$/, '')));
   const lengths = texts.map(t => t.length);
@@ -852,6 +859,17 @@ function prepareTemplate(body: string): PreparedTemplate {
     schedules[name] = trimBlock(schedule, stop);
   }
   return { body: join(0, land) + Object.entries(schedules).map(([name, block]) => marker(name) + block).join('') + join(tail, chunks.length), titles, clauses };
+}
+
+function selectAuthorityDeclaration(body: string, values: Record<string, string>): string {
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  const texts = chunks.map(chunk => plainText(chunk).trim());
+  const start = texts.indexOf(`<${AUTHORITY_DECLARATION_START}>`);
+  const end = texts.indexOf(`<${AUTHORITY_DECLARATION_END}>`);
+  if (start < 0 && end < 0) return body;
+  if (start < 0 || end <= start) throw new Error('The GPA/AGPA declaration condition is incomplete.');
+  const include = ['gpa', 'agpa'].includes(values['Sale Document Mode']);
+  return chunks.filter((_, index) => index < start || index > end || (include && index > start && index < end)).join('');
 }
 
 function selectSaleOpening(body: string, values: Record<string, string>): string {
@@ -1234,7 +1252,7 @@ export async function fillSaleDeed(
   const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  const selectedBody = selectSaleOpening(xml.slice(bodyStart, bodyEnd), values);
+  const selectedBody = selectAuthorityDeclaration(selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values);
   const prepared = prepareTemplate(markConsiderationRows(selectedBody));
   if (Object.keys(prepared.clauses).length) rewrites = rewrites
     .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))

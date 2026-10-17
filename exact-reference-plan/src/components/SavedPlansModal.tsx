@@ -1,3 +1,4 @@
+import { FileDropZone } from '../../../file-drop-zone';
 import React, { useState, useEffect } from 'react';
 import { PlanDocument } from '../types';
 import { planStorageService } from '../services/planStorageService';
@@ -767,7 +768,7 @@ export const SavedPlansModal: React.FC<SavedPlansModalProps> = ({
 
               {/* Import/Export Backup Section */}
               <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer shadow-2xs">
+                <FileDropZone as="label" className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer shadow-2xs">
                   <Upload className="w-3.5 h-3.5 text-slate-500" />
                   <span>Import Plans JSON</span>
                   <input
@@ -776,7 +777,7 @@ export const SavedPlansModal: React.FC<SavedPlansModalProps> = ({
                     className="hidden"
                     onChange={handleImportBackup}
                   />
-                </label>
+                </FileDropZone>
 
                 {savedList.length > 0 && (
                   <button

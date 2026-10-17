@@ -9,6 +9,14 @@ import { initialState } from './logic';
 import { mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { newPayment } from './payments';
 
+describe('empty Word text runs', () => {
+  it('keeps self-closing text nodes well formed when replacing later text', () => {
+    const paragraph = '<w:p><w:r><w:t xml:space="preserve" /></w:r><w:r><w:t>share of &lt;Share&gt;</w:t></w:r></w:p>';
+    const result = replaceRunText(paragraph, /<Share>/, () => '100%');
+    expect(result).toBe('<w:p><w:r><w:t xml:space="preserve" ></w:t></w:r><w:r><w:t xml:space="preserve">share of 100%</w:t></w:r></w:p>');
+  });
+});
+
 describe('sale deed template merge', () => {
   const originalFetch = globalThis.fetch;
 

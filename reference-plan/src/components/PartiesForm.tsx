@@ -1,3 +1,4 @@
+import { FileDropZone } from '../../../file-drop-zone';
 import React, { useState } from 'react';
 import { PartyDetails, Witnesses } from '../types';
 import { UserCheck, Users, Briefcase, Calendar, MapPin, Plus, Trash2, Sparkles, Upload, Loader2, CheckCircle2 } from 'lucide-react';
@@ -329,7 +330,7 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-dashed border-amber-300 rounded-lg cursor-pointer hover:bg-amber-50/50 transition-all text-xs font-semibold text-slate-700 shadow-2xs ${isUploadingDoc ? 'opacity-70 pointer-events-none' : ''}`}>
+          <FileDropZone as="label" className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-dashed border-amber-300 rounded-lg cursor-pointer hover:bg-amber-50/50 transition-all text-xs font-semibold text-slate-700 shadow-2xs ${isUploadingDoc ? 'opacity-70 pointer-events-none' : ''}`}>
             {isUploadingDoc ? (
               <>
                 <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
@@ -348,7 +349,7 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
               className="hidden"
               disabled={isUploadingDoc}
             />
-          </label>
+          </FileDropZone>
         </div>
 
         {extractedFeedback && (

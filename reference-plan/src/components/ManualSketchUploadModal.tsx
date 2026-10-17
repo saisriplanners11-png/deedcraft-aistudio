@@ -1,3 +1,4 @@
+import { FileDropZone } from '../../../file-drop-zone';
 import React, { useState, useRef } from 'react';
 import { PlanDocument } from '../types';
 import {
@@ -67,26 +68,6 @@ export const ManualSketchUploadModal: React.FC<ManualSketchUploadModalProps> = (
       setAnalysisError(null);
       setSelectedSampleId(null);
       // Automatically trigger analysis
-      triggerScan(result, file.type || 'image/jpeg');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Handle Drag & Drop
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
-      setSelectedImage(result);
-      setMimeType(file.type || 'image/jpeg');
-      setExtractedData(null);
-      setEditableData(null);
-      setAnalysisError(null);
-      setSelectedSampleId(null);
       triggerScan(result, file.type || 'image/jpeg');
     };
     reader.readAsDataURL(file);
@@ -164,9 +145,7 @@ export const ManualSketchUploadModal: React.FC<ManualSketchUploadModalProps> = (
         {/* Modal Body */}
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
           {/* Quick Upload / Dropzone */}
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
+          <FileDropZone disabled={isAnalyzing}
             className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all ${
               selectedImage
                 ? 'border-emerald-400 bg-emerald-50/20'
@@ -175,6 +154,7 @@ export const ManualSketchUploadModal: React.FC<ManualSketchUploadModalProps> = (
           >
             <input
               type="file"
+              disabled={isAnalyzing}
               ref={fileInputRef}
               onChange={handleFileChange}
               accept="image/*,.pdf"
@@ -182,6 +162,7 @@ export const ManualSketchUploadModal: React.FC<ManualSketchUploadModalProps> = (
             />
             <input
               type="file"
+              disabled={isAnalyzing}
               ref={cameraInputRef}
               onChange={handleFileChange}
               accept="image/*"
@@ -310,7 +291,7 @@ export const ManualSketchUploadModal: React.FC<ManualSketchUploadModalProps> = (
                 </div>
               </div>
             )}
-          </div>
+          </FileDropZone>
 
           {/* Quick Demo Test Section: Try Hand-Drawn Samples */}
           <div className="space-y-2 pt-1 border-t border-slate-100">

@@ -1,3 +1,4 @@
+import { FileDropZone } from '../../../file-drop-zone';
 import React, { useState } from 'react';
 import { PropertyDetails, PropertyType, HouseDetails, BoundaryDimensions } from '../types';
 import { calculateSqMtrs, parseDimensionToNumber } from '../utils/dimensionUtils';
@@ -827,7 +828,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-dashed border-rose-300 rounded-lg cursor-pointer hover:bg-rose-50/50 transition-all text-xs font-semibold text-slate-700 shadow-2xs ${isUploadingDoc ? 'opacity-70 pointer-events-none' : ''}`}>
+            <FileDropZone as="label" className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-dashed border-rose-300 rounded-lg cursor-pointer hover:bg-rose-50/50 transition-all text-xs font-semibold text-slate-700 shadow-2xs ${isUploadingDoc ? 'opacity-70 pointer-events-none' : ''}`}>
               {isUploadingDoc ? (
                 <>
                   <Loader2 className="w-4 h-4 text-rose-600 animate-spin" />
@@ -846,7 +847,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
                 className="hidden"
                 disabled={isUploadingDoc}
               />
-            </label>
+            </FileDropZone>
           </div>
 
           {extractedInfo && (

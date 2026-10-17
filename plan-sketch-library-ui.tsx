@@ -1,3 +1,4 @@
+import { FileDropZone } from './file-drop-zone';
 import React, { useEffect, useState } from 'react';
 import { Section, Button, C } from './ui';
 import { css } from './css';
@@ -61,7 +62,7 @@ export function PlanSketchLibrary({ current, onLoad }: { current: PlanDocument; 
         {!shown.length && <p style={css(`font-size:12px;color:${C.mutedSoft}`)}>No plans match this search.</p>}
       </div>
       <div style={css(`display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid ${C.rule}`)}>
-        <label className="quiet">Import plans JSON<input type="file" accept=".json,application/json" hidden onChange={event => { void importJson(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+        <FileDropZone as="label" className="quiet">Import plans JSON<input type="file" accept=".json,application/json" hidden onChange={event => { void importJson(event.target.files?.[0]); event.currentTarget.value = ''; }} /></FileDropZone>
         <Button onClick={() => downloadJson(plans, 'deedcraft-plan-library-backup.json')} disabled={!plans.length}>Export all backup</Button>
       </div>
     </>}
