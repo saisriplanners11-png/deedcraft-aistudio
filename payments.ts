@@ -9,6 +9,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { getClient, EXTRACT_MODEL, readableError } from './claude';
 import { fileToVisualParts } from './extract';
+import { aiRequestQueue } from './work-queue';
 
 export type PayMode = 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan' | 'through-bank';
 
@@ -371,16 +372,17 @@ const PAYMENT_KEYS = ['amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'pay
 async function readPaymentPass(
   mode: PayMode,
   parts: Anthropic.ContentBlockParam[],
-  instruction: string
+  instruction: string,
+  signal?: AbortSignal
 ): Promise<PaymentPass> {
   const ai = getClient();
-  const message = await ai.messages.parse({
+  const message = await aiRequestQueue.run(() => ai.messages.parse({
     model: EXTRACT_MODEL,
     max_tokens: 2000,
     system: SYSTEM,
     messages: [{ role: 'user', content: [...parts, { type: 'text', text: `${PROMPT[mode]}\n\n${instruction}` }] }],
     output_config: { format: jsonSchemaOutputFormat(paymentSchemaFor(mode)) },
-  });
+  }, { signal, timeout: 90000, maxRetries: 1 }));
 
   if (message.stop_reason === 'refusal') {
     throw new Error('The model declined to read this instrument.');
@@ -507,26 +509,28 @@ export function applyChequePartyVerification(
  * The schema is small enough to be sent whole — unlike the deed extraction in
  * extract.ts, this needs no staging.
  */
-export async function extractPayment(mode: PayMode, files: File[]): Promise<PaymentExtraction> {
+export async function extractPayment(mode: PayMode, files: File[], signal?: AbortSignal): Promise<PaymentExtraction> {
   // Preparing photos/PDFs is independent work.  Do it together so a front and
   // back image (or multiple payment proofs) reaches the already-parallel read
   // passes without an avoidable serial wait.
   const parts = (await Promise.all(files.map(fileToVisualParts))).flat() as Anthropic.ContentBlockParam[];
 
+  if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+  const read = (instruction: string) => readPaymentPass(mode, parts, instruction, signal);
   try {
     const [first, second, verification, dateFirst, dateSecond, branchFirst, branchSecond, partyFirst, partySecond] = await Promise.all([
-      readPaymentPass(mode, parts, 'The same image may be included at more than one rotation: use the upright copy. Transcribe only text that is clearly visible. If any field is blurred, cropped, or ambiguous, omit it.'),
-      readPaymentPass(mode, parts, 'The same image may be included at more than one rotation: use the upright copy. Perform an independent read. Do not infer from the requested instrument type or common bank names. Omit every field that is not clearly legible.'),
-      readPaymentPass(mode, parts, 'The same image may be included at more than one rotation: use the upright copy. Verification pass: inspect the printed bank and branch, labelled instrument number, amount, handwritten transaction date, printed drawer/account-holder name, and the name actually written after PAY. For a cheque, use the labelled Cheque No. box and DATE boxes only; do not use pre-printed CTS, issue, MICR, account, IFSC, validity or serial values. PAY, RUPEES and FOR BEARER are labels, never party names. If the payee line is blank, omit payee. Omit a value unless you can visibly read it.'),
-      readPaymentPass(mode, parts, 'Date-only check. For a cheque, return a date only when it is visibly handwritten or written in the DATE boxes. Ignore every printed CTS, issue, validity, MICR, account and IFSC date or number. Do not reject the handwritten date because it looks unusual or conflicts with printed validity dates.'),
-      readPaymentPass(mode, parts, 'Independent date-only check. Read the upright image. For a cheque, return only the handwritten DATE-box value in YYYY-MM-DD if every digit is visible. Ignore all printed CTS, issue and validity dates; do not infer a date.'),
-      readPaymentPass(mode, parts, 'Branch-only check. Read the upright image and return only the exact branch name printed below the bank name. Do not invent a city or use any account, IFSC, CTS, issue, validity or MICR text.'),
-      readPaymentPass(mode, parts, 'Independent branch-only check. Read the upright image and return the exact printed bank branch name only when legible. Omit it if uncertain.'),
+      read('The same image may be included at more than one rotation: use the upright copy. Transcribe only text that is clearly visible. If any field is blurred, cropped, or ambiguous, omit it.'),
+      read('The same image may be included at more than one rotation: use the upright copy. Perform an independent read. Do not infer from the requested instrument type or common bank names. Omit every field that is not clearly legible.'),
+      read('The same image may be included at more than one rotation: use the upright copy. Verification pass: inspect the printed bank and branch, labelled instrument number, amount, handwritten transaction date, printed drawer/account-holder name, and the name actually written after PAY. For a cheque, use the labelled Cheque No. box and DATE boxes only; do not use pre-printed CTS, issue, MICR, account, IFSC, validity or serial values. PAY, RUPEES and FOR BEARER are labels, never party names. If the payee line is blank, omit payee. Omit a value unless you can visibly read it.'),
+      read('Date-only check. For a cheque, return a date only when it is visibly handwritten or written in the DATE boxes. Ignore every printed CTS, issue, validity, MICR, account and IFSC date or number. Do not reject the handwritten date because it looks unusual or conflicts with printed validity dates.'),
+      read('Independent date-only check. Read the upright image. For a cheque, return only the handwritten DATE-box value in YYYY-MM-DD if every digit is visible. Ignore all printed CTS, issue and validity dates; do not infer a date.'),
+      read('Branch-only check. Read the upright image and return only the exact branch name printed below the bank name. Do not invent a city or use any account, IFSC, CTS, issue, validity or MICR text.'),
+      read('Independent branch-only check. Read the upright image and return the exact printed bank branch name only when legible. Omit it if uncertain.'),
       mode === 'cheque' || mode === 'housing-loan'
-        ? readPaymentPass(mode, parts, 'Cheque party check: return payer only as the printed drawer/account-holder name and payee only as the handwritten name after PAY. Never reverse them. PAY, RUPEES, FOR BEARER and account numbers are labels, not party names. Omit either party unless it is clearly visible.')
+        ? read('Cheque party check: return payer only as the printed drawer/account-holder name and payee only as the handwritten name after PAY. Never reverse them. PAY, RUPEES, FOR BEARER and account numbers are labels, not party names. Omit either party unless it is clearly visible.')
         : Promise.resolve({ values: {}, detectedMode: null, unreadable: '' }),
       mode === 'cheque' || mode === 'housing-loan'
-        ? readPaymentPass(mode, parts, 'Independent cheque party check: inspect only the drawer/account-holder and PAY line. Payer means drawer/account holder; payee means the name after PAY. Do not infer either name from the transaction or sale parties.')
+        ? read('Independent cheque party check: inspect only the drawer/account-holder and PAY line. Payer means drawer/account holder; payee means the name after PAY. Do not infer either name from the transaction or sale parties.')
         : Promise.resolve({ values: {}, detectedMode: null, unreadable: '' }),
     ]);
 

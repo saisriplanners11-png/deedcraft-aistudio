@@ -417,17 +417,7 @@ export function plansFor(draft: Draft, record: string): SourcePlan[] {
 export const labelFor = (field: string) => field === 'payer' ? 'Vendee (purchaser)' : field === 'payee' ? 'Vendor (seller)' : ALL_FIELDS.find(f => f.id === field)?.label || field.replace(/([A-Z])/g, ' $1');
 
 /** Shared limiter bounds actual API requests, including nested verification calls. */
-export class WorkQueue {
-  private active = 0;
-  private waiting: (() => void)[] = [];
-  constructor(private limit = 3) {}
-  async run<T>(work: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) await new Promise<void>(resolve => this.waiting.push(resolve));
-    else this.active++;
-    try { return await work(); }
-    finally { const next = this.waiting.shift(); if (next) next(); else this.active--; }
-  }
-}
+export { WorkQueue } from './work-queue';
 
 /** People remain subordinate to their organisation, never ownership parties. */
 export function peopleFor(draft: Draft, key: string, resolved: { values: Record<string, string>; conflicts?: Record<string, unknown> } = resolveDraft(draft)): PartyPeople {

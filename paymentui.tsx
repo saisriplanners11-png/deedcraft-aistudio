@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { PlacementAnchor, PlacementSlot } from './template-placement-context';
 import { FileUp, Trash2 } from 'lucide-react';
 import { css } from './css';
@@ -141,10 +141,15 @@ export function PaymentCard({
   const [over, setOver] = useState(false);
   const [amountError, setAmountError] = useState('');
   const proofInput = useRef<HTMLInputElement>(null);
+  const readController = useRef<AbortController | null>(null);
+  useEffect(() => () => readController.current?.abort(), []);
 
   const amount = Number(payment.amount) || 0;
 
   async function onFiles(files: File[]) {
+    readController.current?.abort();
+    const controller = new AbortController();
+    readController.current = controller;
     setBusy(true);
     setError('');
     setResult('');
@@ -153,7 +158,8 @@ export function PaymentCard({
     setSteps([{ title: `Reading the ${spec.label.toLowerCase()}`, state: 'running' }]);
     setOpen(true);
     try {
-      const { values, detectedMode, unreadable } = await extractPayment(payment.mode, files);
+      const { values, detectedMode, unreadable } = await extractPayment(payment.mode, files, controller.signal);
+      if (controller.signal.aborted || readController.current !== controller) return;
       const keys = Object.keys(values);
       const expected = ['amount', ...(spec.shows.ref ? ['refNo'] : []), ...(spec.shows.bank ? ['bank'] : []), ...(spec.shows.branch ? ['branch'] : []), 'date', ...(spec.shows.parties ? ['payer', 'payee'] : [])];
       const label = (key: string) => ({ amount: 'Amount', refNo: spec.refLabel, bank: spec.bankLabel || 'Bank', branch: spec.branchLabel || 'Branch', date: 'Date', payer: 'Vendee', payee: 'Vendor' } as Record<string, string>)[key] || key;
@@ -174,10 +180,11 @@ export function PaymentCard({
       setResult(bits.join(' · '));
       if (!keys.length && unreadable) setError(unreadable);
     } catch (e: any) {
-      setError(e?.message || String(e));
+      if (readController.current !== controller) return;
+      setError(controller.signal.aborted ? 'Reading cancelled. Upload again or enter the payment details.' : e?.message || String(e));
       setSteps([{ title: `Reading the ${spec.label.toLowerCase()}`, state: 'pending' }]);
     } finally {
-      setBusy(false);
+      if (readController.current === controller) { readController.current = null; setBusy(false); }
     }
   }
 
@@ -209,6 +216,7 @@ export function PaymentCard({
         error={error}
         result={busy ? '' : result}
         onClose={() => setOpen(false)}
+        onCancel={() => { readController.current?.abort(); setBusy(false); setError('Reading cancelled. Upload again or enter the payment details.'); }}
       />
 
       {/* header: which payment, how it was made, and whether it is an advance */}
