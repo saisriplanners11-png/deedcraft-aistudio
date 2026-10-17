@@ -4,7 +4,8 @@ import { flatStage } from './flat-options';
 import { getClient, EXTRACT_MODEL, VISION_MODEL, VERIFY_MODEL, readableError } from './claude';
 import { ALL_FIELDS, PERSON_FIELDS, PARTY_ENTITY_FIELDS, partyEntityFields, type PartyType, GROUPS, LINK_OPTIONS } from './fields';
 import { docxToText, readZip } from './docx';
-import { WorkQueue, type Candidate, type Role, type SourceResult, type SourcePlan } from './source-draft';
+import { type Candidate, type Role, type SourceResult, type SourcePlan } from './source-draft';
+import { WorkQueue, aiRequestQueue } from './work-queue';
 import { directionRegion } from './plan-regions';
 import type { PlanDrawing } from './registration-plan';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
@@ -113,7 +114,7 @@ export function sameTranscription(a: Candidate, b: Candidate) {
 // Anthropic responds more quickly and consistently below its burst threshold;
 // a small queue avoids 429 backoff that made a nominally parallel upload take
 // over a minute.
-const apiQueue = new WorkQueue(4);
+const apiQueue = aiRequestQueue;
 const pageQueue = new WorkQueue(4);
 const roles: Role[] = ['party-person', 'property', 'executant', 'claimant', 'payment', 'link', 'unassigned'];
 const linkFields = LINK_OPTIONS.flatMap(o => o.fields.map(f => f.id));
