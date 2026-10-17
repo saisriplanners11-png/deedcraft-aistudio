@@ -7,3 +7,5 @@ output/
 .env.local
 *.local
 .claude/settings.local.json
+
+.runtime/

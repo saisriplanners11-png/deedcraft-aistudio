@@ -4,7 +4,7 @@ import type { LibraryListing, LibraryRevision, TemplatePin } from './template-li
 import { canonicalContract } from './template-fields';
 
 export async function templateRequest<T>(path = '', init?: RequestInit): Promise<T> {
-  const response = await fetch('/api/templates' + path, { ...init, credentials: 'same-origin', cache: 'no-store' });
+  const response = await fetch('/api/templates' + path, { ...init, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20000) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Template request failed.');
   return data;
@@ -12,7 +12,7 @@ export async function templateRequest<T>(path = '', init?: RequestInit): Promise
 export const listTemplates = () => templateRequest<LibraryListing>();
 export function bundledTemplatePin(versionId = 'sale-deed-v6'): TemplatePin {
   const version = TEMPLATE_VERSIONS.find(item => item.id === versionId) || TEMPLATE_VERSIONS.find(item => item.id === 'sale-deed-v6')!;
-  return { versionId: version.id, hash: version.sha256!, name: `Built-in Sale v${version.version.split('.')[0]}`, saleOpenings: version.id === 'sale-deed-v7' };
+  return { versionId: version.id, hash: version.sha256!, name: `Built-in Sale v${version.version.split('.')[0]}`, saleOpenings: ['sale-deed-v7', 'sale-deed-v9'].includes(version.id) };
 }
 export const pinFor = (version: LibraryRevision): TemplatePin => ({ saleOpenings: version.saleOpenings ?? version.validation?.saleOpenings, versionId: version.id, hash: version.hash, name: version.filename, fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
 
@@ -35,7 +35,7 @@ export async function loadLibraryBytes(pin: TemplatePin): Promise<Uint8Array> {
   let pending = cache.get(key);
   if (!pending) {
     pending = (async () => {
-      const response = await fetch(`/api/templates/versions/${encodeURIComponent(pin.versionId)}/download`, { cache: 'no-store' });
+      const response = await fetch(`/api/templates/versions/${encodeURIComponent(pin.versionId)}/download`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
       if (!response.ok) throw new Error('The selected template version could not be downloaded. Retry when the library is available.');
       return verifyTemplateBytes(new Uint8Array(await response.arrayBuffer()), pin.hash);
     })().catch(error => { cache.delete(key); throw error; });

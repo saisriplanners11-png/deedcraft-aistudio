@@ -135,6 +135,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     out[prefix + 'Doct.No.'] = authority?.documentNo || '';
     out[prefix + 'Doct.Date'] = deedDate(authority?.documentDate || '');
   }
+  out['Authority Book Number'] = authority?.bookNumber || '';
   out['Authority SRO'] = authority?.sro || '';
   out['Authority SRO Code'] = authority?.sroCode || '';
   out['Authority Attorney Count'] = String(authority?.attorneys.length || 0);
@@ -259,6 +260,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
       ...authorityPartyValues(attorney.values, 'Attorney'),
+      'Attorney Share': attorney.principalIds.map(id => ownershipShare(state, 'executant', id)).join(' + '),
       'Represented Principals': attorney.principalIds.map(id => principals.find((record, index) => (index ? record.id : state.primaryExecutantId || 'primary') === id)?.values.executantName || '').filter(Boolean).join(', '),
     })) });
   }

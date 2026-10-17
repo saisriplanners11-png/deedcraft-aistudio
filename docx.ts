@@ -30,7 +30,7 @@ const conditionTag = (value: string) => /^(?:IF|FOR|END)\b/i.test(value.trim());
 const LEGACY_TEMPLATE_TAGS = new Set([
   'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
-  'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals',
+  'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals', 'Attorney Share', 'Authority Book Number',
 ].map(value => value.toLowerCase()));
 export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 

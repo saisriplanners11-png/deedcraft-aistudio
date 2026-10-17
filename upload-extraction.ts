@@ -113,8 +113,8 @@ export function sameTranscription(a: Candidate, b: Candidate) {
 // Anthropic responds more quickly and consistently below its burst threshold;
 // a small queue avoids 429 backoff that made a nominally parallel upload take
 // over a minute.
-const apiQueue = new WorkQueue(8);
-const pageQueue = new WorkQueue(16);
+const apiQueue = new WorkQueue(4);
+const pageQueue = new WorkQueue(4);
 const roles: Role[] = ['party-person', 'property', 'executant', 'claimant', 'payment', 'link', 'unassigned'];
 const linkFields = LINK_OPTIONS.flatMap(o => o.fields.map(f => f.id));
 const paymentFields = ['mode', 'amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee'];

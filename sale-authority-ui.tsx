@@ -17,10 +17,10 @@ export function SaleAuthorityEditor({ state, onChange }: { state: AppState; onCh
     <h2>{saleDocumentLabel(state.saleDocument)} — authority details</h2>
     <p>Enter the principals in Executants. Link each attorney below to the principals they represent.</p>
     <div className="sale-authority-grid">{([
-      ['documentNo', 'Authority document number'], ['documentDate', 'Authority document date'],
+      ['documentNo', 'Authority document number'], ['bookNumber', 'Authority book number'], ['documentDate', 'Authority document date'],
       ['sro', 'Authority Sub-Registrar Office'], ['sroCode', 'Authority SRO code'],
       ...(state.saleDocument === 'agpa' ? [['adjustedAmount', 'AGPA adjusted stamp-duty amount (₹)']] : []),
-    ] as [keyof SaleAuthority, string][]).map(([key, label]) => <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : key === 'adjustedAmount' ? 'number' : 'text'} min={key === 'adjustedAmount' ? 0 : undefined} value={authority[key] as string} onChange={event => onChange({ ...authority, [key]: event.target.value })} /></label>)}</div>
+    ] as [keyof SaleAuthority, string][]).map(([key, label]) => <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : key === 'adjustedAmount' ? 'number' : 'text'} min={key === 'adjustedAmount' ? 0 : undefined} value={(authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: event.target.value })} /></label>)}</div>
     {authority.attorneys.map((attorney, index) => <fieldset key={attorney.id}><legend>Attorney {index + 1}</legend>
       <div className="sale-authority-grid">{fields.map(([key, label]) => <label className="field" key={key}><span>{label}</span>{key === 'Relation' ? <select value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)}><option value="">Choose relation</option>{['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'].map(option => <option key={option}>{option}</option>)}</select> : <input type={key === 'Dob' ? 'date' : key === 'Age' ? 'number' : 'text'} value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)} />}</label>)}</div>
       <p>Represents these principals:</p>

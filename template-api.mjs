@@ -33,13 +33,13 @@ export function createTemplateApi(options = {}) {
   async function seedLibrary() {
     await storage.init();
     const previous = await storage.read();
-    if (previous && previous.active.sale !== 'sale-deed-v6') return;
-    const bytes = await readFile(join(ROOT, 'sale-deed-template-v7.docx'));
+    if (previous && !['sale-deed-v6', 'sale-deed-v7', 'sale-deed-v8'].includes(previous.active.sale)) return;
+    const bytes = await readFile(join(ROOT, 'sale-deed-template-v9.docx'));
     const runtime = await loadTemplateRuntime();
-    const validation = await runtime.validateSaleDeedTemplate(bytes, 'sale-deed-template-v7.docx');
+    const validation = await runtime.validateSaleDeedTemplate(bytes, 'sale-deed-template-v9.docx');
     if (!validation.valid) throw fail(503, 'Bundled Sale template failed validation.');
     const at = new Date().toISOString();
-    const version = { id: 'sale-deed-v7', instrumentId: 'sale', filename: 'sale-deed-template-v7.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [] };
+    const version = { id: 'sale-deed-v9', instrumentId: 'sale', filename: 'sale-deed-template-v9.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [] };
     await atomic(version.id + '.docx', bytes);
     try { await save({ ...(previous || {}), active: { ...(previous?.active || {}), sale: version.id }, versions: [...(previous?.versions || []).filter(item => item.id !== version.id), version], history: [...(previous?.history || []), { versionId: version.id, at, action: 'seed' }] }); }
     catch (error) { if (error.status !== 409 || !await storage.read()) throw error; }
@@ -171,7 +171,7 @@ export function createTemplateApi(options = {}) {
       }
       if (route === '/guide' && req.method === 'GET') {
         const runtime = await loadTemplateRuntime();
-        const result = await runtime.validateSaleDeedTemplate(await readFile(join(ROOT, 'sale-deed-template-v7.docx')));
+        const result = await runtime.validateSaleDeedTemplate(await readFile(join(ROOT, 'sale-deed-template-v9.docx')));
         return send(200, { placeholders: [...new Set([...result.detectedPlaceholders, ...result.omittedPlaceholders])].sort() });
       }
       if ((route === '' || route === '/') && req.method === 'GET') {

@@ -26,9 +26,11 @@ const json = (res, status, body) => {
  * @param {() => string | undefined} getKey  reads the key at request time, so a
  *   changed .env.local takes effect on the next request rather than at boot
  */
+const MAX_BODY = 16 * 1024 * 1024;
 const readBody = async req => {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  const chunks = []; let size = 0;
+  if (Number(req.headers['content-length']) > MAX_BODY) { req.resume(); throw Object.assign(new Error('Upload is too large. Upload fewer pages at a time.'), { status: 413 }); }
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) { size += chunk.length; if (size > MAX_BODY) { req.resume(); throw Object.assign(new Error('Upload is too large. Upload fewer pages at a time.'), { status: 413 }); } chunks.push(chunk); }
   return Buffer.concat(chunks);
 };
 
@@ -83,11 +85,21 @@ const anthropicResponse = (response, model) => {
   };
 };
 
-export function createProxyHandler(getConfig) {
+export function createProxyHandler(getConfig, options = {}) {
+  let active = 0;
+  const maxConcurrent = options.maxConcurrent ?? 4;
+  const timeoutMs = options.timeoutMs ?? 120000;
   return async function handle(req, res, next) {
     if (!req.url || !req.url.startsWith(PROXY_PREFIX)) return next?.();
 
     if (req.method !== 'POST') return json(res, 405, { error: { message: 'Only POST is proxied.' } });
+    if (active >= maxConcurrent) { req.resume(); res.setHeader('Retry-After', '2'); return json(res, 429, { error: { message: 'The server is busy reading documents. Please retry shortly.' } }); }
+    active++;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', disconnect);
+    try {
     const body = await readBody(req);
     let request;
     try { request = JSON.parse(body.toString('utf8')); }
@@ -108,7 +120,7 @@ export function createProxyHandler(getConfig) {
         // select the right Gemini model.
         const model = request.model || config.geminiModel;
         const upstream = await fetch(`${GEMINI_UPSTREAM}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(geminiRequest(request)),
+          method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(geminiRequest(request)),
         });
         const payload = await upstream.json();
         if (!upstream.ok) return json(res, upstream.status, { error: { type: 'gemini_error', message: payload.error?.message || 'Gemini request failed.' } });
@@ -126,7 +138,7 @@ export function createProxyHandler(getConfig) {
     const url = UPSTREAM + req.url.slice(PROXY_PREFIX.length);
 
     try {
-      const upstream = await fetch(url, { method: 'POST', headers, body });
+      const upstream = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
       res.statusCode = upstream.status;
       const ct = upstream.headers.get('content-type');
       if (ct) res.setHeader('content-type', ct);
@@ -147,5 +159,9 @@ export function createProxyHandler(getConfig) {
         error: { type: 'proxy_error', message: `Could not reach api.anthropic.com: ${err?.message || err}` },
       });
     }
+    } catch (error) {
+      if (!res.headersSent && !res.destroyed) json(res, error.status || 502, { error: { message: error.message || 'Document request failed. Please retry.' } });
+      else if (!res.destroyed) res.end();
+    } finally { clearTimeout(timer); res.off('close', disconnect); active--; }
   };
 }

@@ -609,7 +609,7 @@ export default function WizardApp() {
   const step = draft.step;
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
-  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || libraryTemplate.versionId === 'sale-deed-v7' || !!libraryTemplate.saleOpenings;
+  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || libraryTemplate.versionId === 'sale-deed-v9' || !!libraryTemplate.saleOpenings;
   const authorityErrors = [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
   const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : libraryTemplate ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate]);
@@ -623,7 +623,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v7'}:annexure-floor-stage-v2`;
+  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v9'}:annexure-floor-stage-v2`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -1225,7 +1225,7 @@ export default function WizardApp() {
           <div className="step-toolbar">
             <div className="workspace-breadcrumb">{step >= 0 ? <><button type="button" className="quiet" onClick={() => goto(-1)}>Overview</button><span aria-hidden="true">/</span><span>{['', 'Setup & sources', 'Property & payment', 'Parties', 'Review & finish'][STEPS[step].phase]}</span></> : <span>Workspace / Overview</span>}</div>
             <div className="step-toolbar-status">{!storageError && hasStarted && <span className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</span>}
-              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{libraryTemplate?.name || 'Built-in Sale v7'}</strong><small>{libraryTemplate?.versionId || 'sale-deed-v7'}</small>{latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v7') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
+              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{libraryTemplate?.name || 'Built-in Sale v9'}</strong><small>{libraryTemplate?.versionId || 'sale-deed-v9'}</small>{latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v9') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
             </div>
           </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${step + 1} of ${STEPS.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
