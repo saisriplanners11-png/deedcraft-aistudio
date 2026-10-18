@@ -1,3 +1,4 @@
+import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
 import { flatStage, flatLabel } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
@@ -764,7 +765,8 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     }
     return false;
   };
-  const doneIds = STEPS.filter((s: any) => stepIsDone(s.id)).map((s: any) => s.id);
+  const workflowSteps = stepsFor(state.deedType);
+  const doneIds = workflowSteps.filter((s: any) => stepIsDone(s.id)).map((s: any) => s.id);
 
   // ---- readiness checks ----------------------------------------------------
   const checks = [
@@ -919,12 +921,12 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     isOverview: state.step < 0,
     stepIndex: state.step,
     stepLabel: cur ? cur.label : '',
-    stepCounter: state.step < 0 ? 'Overview' : `Step ${state.step + 1} of ${STEPS.length} · ${cur ? cur.label : ''}`,
-    prevLabel: state.step <= 0 ? 'Overview' : STEPS[state.step - 1].label,
-    nextLabel: state.step >= STEPS.length - 1 ? 'Generate' : state.step < 0 ? 'Start at Step 01' : STEPS[state.step + 1].label,
-    goto: (i: number) => set({ step: i }),
-    prev: () => set({ step: Math.max(-1, state.step - 1) }),
-    next: () => set({ step: Math.min(STEPS.length - 1, state.step + 1) }),
+    stepCounter: state.step < 0 ? 'Overview' : `Step ${workflowSteps.findIndex(step => step.id === state.step) + 1} of ${workflowSteps.length} · ${cur ? cur.label : ''}`,
+    prevLabel: state.step <= 0 ? 'Overview' : STEPS[adjacentWorkflowStep(state.deedType, state.step, -1)]?.label || 'Overview',
+    nextLabel: state.step >= STEPS.length - 1 ? 'Generate' : state.step < 0 ? 'Start at Step 01' : STEPS[adjacentWorkflowStep(state.deedType, state.step, 1)].label,
+    goto: (i: number) => set({ step: normalizeWorkflowStep(state.deedType, i) }),
+    prev: () => set({ step: adjacentWorkflowStep(state.deedType, state.step, -1) }),
+    next: () => set({ step: adjacentWorkflowStep(state.deedType, state.step, 1) }),
 
     // title line — derived from the property, blank until there is one
     projectTitle:

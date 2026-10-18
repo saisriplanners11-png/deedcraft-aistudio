@@ -1,3 +1,4 @@
+import { normalizeWorkflowStep } from './workflow-steps';
 import { localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
@@ -95,8 +96,11 @@ export type Action =
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
   // All three former plan steps now open the retained exact-reference editor.
-  if (action.type === 'load') return migratePartyPeople(action.draft.step > 10 ? { ...action.draft, step: 10 } : action.draft);
-  if (action.type === 'step') return { ...draft, step: action.step };
+  if (action.type === 'load') {
+    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step > 10 ? 10 : action.draft.step);
+    return migratePartyPeople(step === action.draft.step ? action.draft : { ...action.draft, step });
+  }
+  if (action.type === 'step') return { ...draft, step: normalizeWorkflowStep(draft.instrumentId, action.step) };
   let next = draft;
   if (action.type === 'sale-authority') next = { ...draft, saleAuthority: action.value };
   if (action.type === 'template-field-clear') {
@@ -165,6 +169,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     if (action.draftId !== draft.id || !draft.sources.some(s => s.id === action.sourceId && s.revision === action.sourceRevision)) return draft;
     next = { ...draft, sources: draft.sources.map(s => s.id === action.sourceId ? { ...s, ...action.patch, id: s.id, revision: s.revision } : s) };
   }
+  if (next !== draft && next.step === 5 && next.instrumentId === 'gift') next = { ...next, step: 6 };
   return next === draft ? draft : { ...next, revision: draft.revision + 1 };
 }
 
