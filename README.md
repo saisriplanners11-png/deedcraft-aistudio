@@ -131,3 +131,9 @@ The first command tests the wizard steps, source removal/re-upload, blank-field 
 **99% extraction accuracy is not yet established.** See `benchmarks/README.md` for the held-out corpus format, independent manual annotation requirements, precision and coverage gates. The empty corpus intentionally returns `not-verified`; automated tests or repeated model agreement cannot substitute for this evaluation. The supplied template and one reference photograph do not provide a representative handwriting benchmark.
 
 The Saved deeds dashboard shows each draft’s template version and flags earlier versions. Opening an earlier draft shows an Update this draft action; it retains its existing template until explicitly updated. Older Word downloads are unchanged.
+
+### Ownership shares when replacing Sale templates
+
+Party ownership clauses are enforced by the application renderer before merging Word text. Single vendors/vendees omit the clause independently; multiple parties use the saved allocation for their side and schedule. Supported fixed percentages in uploaded party paragraphs are normalized to those saved values. Unsupported holding-share wording blocks generation and dashboard sample approval, which prevents publication. Property land UDS is independent.
+
+Run `node qa/share-clause-flow.mjs` after changing templates or the renderer. It covers ordinary/GPA/AGPA, replacement Word files containing fixed 50% wording, stale single-party values, 40/60 allocations, and rejection of unsupported wording. Keep this rule in application code when replacing a default template; do not hardcode business rules only in Word files.

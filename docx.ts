@@ -865,6 +865,36 @@ function prepareTemplate(body: string): PreparedTemplate {
   return { body: join(0, land) + Object.entries(schedules).map(([name, block]) => marker(name) + block).join('') + join(tail, chunks.length), titles, clauses };
 }
 
+/** Template revisions supply wording, but cannot override party-count/share rules. */
+function enforcePartySharePolicy(body: string, values: Record<string, string>): string {
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  const flow = chunks.findIndex(chunk => /^(?:1\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:/.test(plainText(chunk).trim()));
+  if (flow < 0) return body; // Structural validation reports an absent title boundary.
+  return chunks.map((chunk, index) => {
+    if (index >= flow) return chunk; // Flat land UDS and property schedules are independent.
+    return chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+      const text = plainText(paragraph);
+      const side = /<\s*CLAIMANT NAME\s*>/i.test(text) ? 'Vendee' : /<\s*(?:EXECUTANT|PRINCIPAL|ATTORNEY) NAME\s*>/i.test(text) ? 'Vendor' : '';
+      if (!side || !values[`Ownership ${side} Count`]) return paragraph;
+      const count = Number(values[`Ownership ${side} Count`]);
+      const tag = side === 'Vendee' ? 'Claimant Share' : /<\s*ATTORNEY NAME\s*>/i.test(text) ? 'Attorney Share' : 'Executant Share';
+      const expected = [...text.matchAll(/holding\s+(?:(?:an?\s+)?undivided\s+shares?\b|\d+(?:\.\d+)?\s*%\s+(?:ownership\s+)?shares?\b)/gi)].length;
+      let handled = 0;
+      // Accept source placeholders or fixed percentages; actual values always come from the draft.
+      const patterns = [
+        /,?\s*holding\s+(?:an?\s+)?undivided\s+shares?\s+of\s*(?:<[^<>]+>|\d+(?:\.\d+)?\s*%)(?:\s+in\s+(?:the\s+)?schedule(?:d)?\s+property)?\.?/gi,
+        /,?\s*holding\s+\d+(?:\.\d+)?\s*%\s+(?:ownership\s+)?shares?(?:\s+in\s+(?:the\s+)?schedule(?:d)?\s+property)?\.?/gi,
+      ];
+      for (const pattern of patterns) paragraph = replaceRunText(paragraph, pattern, () => {
+        handled++;
+        return count < 2 ? '.' : `, holding an undivided share of <${tag}> in the schedule property.`;
+      });
+      if (expected > handled) throw new Error(`The ${side.toLowerCase()} share clause in this template is not supported. Correct its share wording before generating or publishing; ownership percentages must come from the draft.`);
+      return paragraph;
+    });
+  }).join('');
+}
+
 function selectAuthorityDeclaration(body: string, values: Record<string, string>): string {
   const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
   const texts = chunks.map(chunk => plainText(chunk).trim());
@@ -1256,7 +1286,7 @@ export async function fillSaleDeed(
   const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  const selectedBody = selectAuthorityDeclaration(selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values);
+  const selectedBody = enforcePartySharePolicy(selectAuthorityDeclaration(selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values), values);
   const prepared = prepareTemplate(markConsiderationRows(selectedBody));
   if (Object.keys(prepared.clauses).length) rewrites = rewrites
     .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))

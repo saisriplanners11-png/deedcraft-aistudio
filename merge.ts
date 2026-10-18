@@ -259,9 +259,9 @@ export function rewritesFor(state: AppState): Rewrite[] {
   }
   if (state.saleDocument && state.saleDocument !== 'ordinary') {
     const principals = partyRecords(state, 'executant');
-    const principalRecords = principals.map(record => {
+    const principalRecords = principals.map((record, index) => {
       const values = Object.fromEntries(Object.entries(record.values).filter(([key]) => key.startsWith('executant')).map(([key, value]) => [key.slice(9), value]));
-      return authorityPartyValues(values, 'Principal');
+      return { ...authorityPartyValues(values, 'Principal'), 'Executant Share': ownershipShare(state, 'executant', index === 0 ? state.primaryExecutantId || 'primary' : record.id) };
     });
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({

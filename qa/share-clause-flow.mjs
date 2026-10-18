@@ -6,9 +6,9 @@ const bytes = new Uint8Array(await readFile(new URL('../sale-deed-template-v10.d
 const validation = await rt.validateSaleDeedTemplate(bytes);
 assert(validation.valid, validation.errors.join('\n'));
 const source = { kind: 'custom', name: 'Sale v10', bytes, hash: '', validation };
-async function render(state) {
+async function render(state, selectedSource = source) {
   const schedules = rt.scheduleMergesFor(state);
-  const result = await rt.fillSaleDeed(rt.mergeValues(state), schedules[0].variant, rt.rewritesFor(state), schedules, source);
+  const result = await rt.fillSaleDeed(rt.mergeValues(state), schedules[0].variant, rt.rewritesFor(state), schedules, selectedSource);
   assert.deepEqual(result.unmapped, []);
   return rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
 }
@@ -38,3 +38,36 @@ assert.match(multiSchedule, /Schedule 1: 50%; Schedule 2: 50%/);
 const entity = rt.sampleState('entity');
 assert.doesNotMatch(await render(entity), /holding\s+(?:an\s+)?undivided share of/i);
 console.log('PASS: independent vendor/vendee share clauses in 12 ordinary/GPA/AGPA combinations, saved single-party shares, multiple schedules, entities and flat land UDS.');
+
+for (const wording of ['50%', 'short', 'unsupported']) {
+  const entries = await rt.readZip(bytes);
+  const document = entries.find(entry => entry.name === 'word/document.xml');
+  let xml = new TextDecoder().decode(document.data);
+  xml = xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    paragraph = rt.replaceRunText(paragraph, /<(?:Executant|Claimant|Attorney) Share>/gi, () => wording === 'unsupported' ? 'half' : '50%');
+    if (wording === 'short') paragraph = rt.replaceRunText(paragraph, /holding an undivided share of 50%/gi, () => 'holding 50% shares');
+    return paragraph;
+  });
+  document.data = new TextEncoder().encode(xml);
+  const replacement = { ...source, bytes: await rt.writeZip(entries) };
+  for (const mode of ['ordinary', 'gpa', 'agpa']) {
+    const state = rt.sampleState(mode + '-plot');
+    state.vendorSharesBySchedule = { primary: { primary: '50' } };
+    state.vendeeSharesBySchedule = { primary: { primary: '50' } };
+    if (wording === 'unsupported') {
+      await assert.rejects(() => render(state, replacement), /share clause.*not supported/);
+      continue;
+    }
+    assert.doesNotMatch(await render(state, replacement), /holding.*(?:50%|undivided share)/i);
+    state.additionalExecutants = [{ id: 'vendor-2', values: { ...state.form, executantName: 'SECOND VENDOR' }, docNames: [] }];
+    state.additionalClaimants = [{ id: 'vendee-2', values: { ...state.form, claimantName: 'SECOND VENDEE' }, docNames: [] }];
+    state.vendorSharesBySchedule = { primary: { primary: '40', 'vendor-2': '60' } };
+    state.vendeeSharesBySchedule = { primary: { primary: '40', 'vendee-2': '60' } };
+    if (mode !== 'ordinary') state.saleAuthority.attorneys[0].principalIds.push('vendor-2');
+    const output = await render(state, replacement);
+    assert.match(output, /40%/); assert.match(output, /60%/);
+    assert.doesNotMatch(output, /50%/);
+    assert.equal(state.vendorSharesBySchedule.primary.primary, '40');
+  }
+}
+console.log('PASS: replacement templates with fixed 50%, alternate wording, 40/60 allocations, stale saved shares and unsupported-clause rejection.');

@@ -5,7 +5,7 @@ export { newDraft, appStateFor, draftReducer, resolveDraft } from './source-draf
 export { initialState, partyRecords } from './logic';
 export { newPayment, MODES } from './payments';
 export { PLACEMENT_CATALOG } from './template-placement';
-export { validateSaleDeedTemplate, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields } from './docx';
+export { validateSaleDeedTemplate, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
 export { validateFieldContract, canonicalContract, EMPTY_FIELD_CONTRACT } from './template-fields';
 import { fillSaleDeed, type DeedTemplateSource } from './docx';
 import { initialState, type AppState } from './logic';
