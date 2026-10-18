@@ -24,7 +24,7 @@ for (const [id, label, category, stage] of rt.saleMatrixCases) {
   assert.doesNotMatch(text, /<[^<>]+>|2026 at S\.R\.O\. .*2026 at S\.R\.O\./, id);
   assert.match(text, /15,00,000/, id);
   assert.doesNotMatch(text, /holding an undivided share of in/, id);
-  if (id.startsWith('ordinary-')) assert.match(text, /holding an undivided share of 100%/, id);
+  assert.doesNotMatch(text, /holding an undivided share of 100%/, id);
   assert.match(text, /-10-2026/, id);
   assert.equal(text.includes('SAMPLE ATTORNEY'), !id.startsWith('ordinary-'), id);
   assert.equal(text.includes('AUTHORITY SRO'), !id.startsWith('ordinary-'), id);
@@ -79,7 +79,7 @@ assert(rt.saleAuthorityErrors(agpa).some(error => /adjusted/.test(error)));
 const book = rt.sampleState('gpa-plot');
 book.saleAuthority.bookNumber = '4';
 assert.match(await render(book), /in Book 4/);
-assert.match(await render(rt.sampleState('gpa-plot')), /holding an undivided share of 100%/);
+assert.doesNotMatch(await render(rt.sampleState('gpa-plot')), /holding an undivided share of 100%/);
 
 const payments = rt.sampleState('ordinary-plot');
 payments.payments = rt.MODES.map((mode, index) => ({ ...rt.newPayment(mode.key), amount: String(10000 + index), date: '2026-10-10', bank: 'TEST BANK', branch: 'DISTINCT BRANCH', refNo: 'REF-' + mode.key }));

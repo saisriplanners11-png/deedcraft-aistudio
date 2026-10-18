@@ -24,7 +24,7 @@ for (const [id, label, category, stage] of rt.saleMatrixCases) {
   assert.doesNotMatch(text, /<[^<>]+>|2026 at S\.R\.O\. .*2026 at S\.R\.O\./, id);
   assert.match(text, /15,00,000/, id);
   assert.doesNotMatch(text, /holding an undivided share of in/, id);
-  if (id.startsWith('ordinary-')) assert.match(text, /holding an undivided share of 100%/, id);
+  assert.doesNotMatch(text, /holding an undivided share of 100%/, id);
   assert.match(text, /-10-2026/, id);
   assert.equal(text.includes('SAMPLE ATTORNEY'), !id.startsWith('ordinary-'), id);
   assert.equal(text.includes('AUTHORITY SRO'), !id.startsWith('ordinary-'), id);

@@ -12,11 +12,11 @@ import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
 function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId: string): string {
   const parties = partyRecords(state, side);
-  if (!parties.length) return '';
+  if (parties.length < 2) return '';
   const schedules = scheduleRecords(state);
   const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
   return schedules.map((schedule, index) => {
-    const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || (parties.length === 1 ? '100' : ''));
+    const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || '');
     const value = cents === null ? '____%' : `${cents / 100}%`;
     return schedules.length > 1 ? `Schedule ${index + 1}: ${value}` : value;
   }).join('; ');
@@ -141,6 +141,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Authority SRO'] = authority?.sro || '';
   out['Authority SRO Code'] = authority?.sroCode || '';
   out['Authority Attorney Count'] = String(authority?.attorneys.length || 0);
+  out['Ownership Vendor Count'] = String(partyRecords(state, 'executant').length);
+  out['Ownership Vendee Count'] = String(partyRecords(state, 'claimant').length);
   out['Authority Holder Label'] = state.saleDocument === 'gpa' ? 'G.P.A. HOLDER OF' : state.saleDocument === 'agpa' ? 'A.G.P.A. HOLDER OF' : '';
   out['Authority Principal Names'] = partyRecords(state, 'executant').map(record => partyDisplayName(record.values, 'executant').toLocaleUpperCase('en-IN')).filter(Boolean).join(', ');
   out['Executant Share'] = ownershipShare(state, 'executant', state.primaryExecutantId || 'primary');

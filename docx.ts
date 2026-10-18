@@ -617,6 +617,10 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
 }
 
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
+  // The source contains an unconditional share sentence; single parties do not need it.
+  for (const [count, tags] of [['Ownership Vendor Count', 'Executant|Attorney'], ['Ownership Vendee Count', 'Claimant']] as const) {
+    if (values.get(norm(count)) === '1') p = replaceRunText(p, new RegExp(`,?\\s*holding\\s+(?:an\\s+)?undivided\\s+share\\s+of\\s*<(?:${tags}) Share>(?:\\s+in the schedule property)?\\.?`, 'gi'), () => '.');
+  }
   const authority = values.get(norm('Local Authority Type'));
   if (authority) p = replaceRunText(p, /Competent Local Authority\s*,\s*(?=<Village>)/gi, () => `${authority}, `);
   // Apply structural recitals first, then merge placeholders into their own runs.
