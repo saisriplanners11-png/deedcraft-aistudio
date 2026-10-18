@@ -12,6 +12,7 @@ describe('deed download filename', () => {
     const state = { ...initialState, deedType: 'Gift', additionalClaimants: [{ id: 'second', values: { claimantName: 'Sita Devi' }, docNames: [] }] };
     expect(deedFilename(state)).toBe('Gift-Sita-Devi.docx');
     expect(deedFilename({ ...initialState, deedType: 'Sale' })).toBe('Sale-Unnamed-deed.docx');
+    expect(deedFilename({ ...initialState, deedType: 'Gift', saleDocument: 'ordinary' })).toBe('Gift-Unnamed-deed.docx');
   });
 
   it('removes characters that cannot be used in a filename', () => {

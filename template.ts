@@ -1,3 +1,4 @@
+import giftDeedTemplateUrl from './gift-deed-template-v1.docx?url';
 // The Word file is the source of truth for the generated deed. Keeping it as
 // a bundled asset prevents template revisions from drifting from a base64 copy.
 import saleDeedTemplateUrl from './sale-deed-template-v10.docx?url';
@@ -28,6 +29,7 @@ export function loadSaleDeedTemplate(): Promise<Uint8Array> {
 
 /** Instrument-neutral loader. Unknown or unapproved assets fail closed. */
 export async function loadTemplate(templateVersionId: string): Promise<Uint8Array> {
+  if (templateVersionId === 'gift-deed-v1') { const response = await fetch(giftDeedTemplateUrl); if (!response.ok) throw new Error('Could not load the Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
   const version = TEMPLATE_VERSIONS.find(item => item.id === templateVersionId);
   if (!version) throw new Error(`Template version ${templateVersionId} is not registered.`);
   if (version.instrumentId === 'sale' && version.asset === 'sale-deed-template-v10.docx') return loadSaleDeedTemplate();

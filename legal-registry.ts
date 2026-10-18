@@ -32,6 +32,8 @@ export interface TemplateVersion {
 
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
+  id: 'ts-gift-2026-10-v1', instrumentId: 'gift', variantIds: ['family-gift'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-18', version: '1.0.0', status: 'approved', templateVersionId: 'gift-deed-v1', sourceDocument: 'GIFT SETTLEMENT.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
+}, {
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana',
   effectiveFrom: '2026-09-01', version: '1.0.0', status: 'approved',
@@ -41,6 +43,8 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'gift-deed-v1', referenceId: 'ts-gift-2026-10-v1', instrumentId: 'gift', version: '1.0.0', asset: 'gift-deed-template-v1.docx', sha256: 'e1b7eb99701e65ac54716df596056e5437f7832e424982ee387453d8e4df941a', immutable: true,
+}, {
   id: 'sale-deed-v10', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   version: '10.0.0', asset: 'sale-deed-template-v10.docx', sha256: '24642e1d3c1b4fb94729a9f7eef9cf62bcead225519fb06bd8b7e24eaf10201a', immutable: true,
 }, {

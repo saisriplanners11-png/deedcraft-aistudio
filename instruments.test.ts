@@ -17,9 +17,10 @@ describe('multi-instrument registry', () => {
 
   it('fails closed for instruments without an approved supplied reference', () => {
     expect(releaseGate('sale', DEED_DEFINITIONS.sale.variants[0].id).ready).toBe(true);
-    expect(releaseGate('gift').ready).toBe(false);
+    expect(releaseGate('gift', 'family-gift').ready).toBe(true);
+    expect(releaseGate('gift', 'non-family-gift').ready).toBe(false);
     expect(releaseGate('will').reasons[0]).toMatch(/approved legal reference/i);
-    expect(LEGAL_REFERENCES).toHaveLength(1);
+    expect(LEGAL_REFERENCES).toHaveLength(2);
   });
 
   it('persists instrument and definition version through source-backed projections', () => {
@@ -37,6 +38,6 @@ describe('generation safeguards', () => {
   it('allows compilation without professional approval but blocks unonboarded deeds', () => {
     const common = { variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'hash', values: {}, schedules: [], unresolvedWarnings: [] };
     expect(() => compileDeed({ ...common, instrumentId: 'sale' })).not.toThrow();
-    expect(() => compileDeed({ ...common, instrumentId: 'gift', variantId: DEED_DEFINITIONS.gift.variants[0].id })).toThrow(/approved legal reference/i);
+    expect(() => compileDeed({ ...common, instrumentId: 'gift', variantId: DEED_DEFINITIONS.gift.variants[1].id })).toThrow(/approved legal reference/i);
   });
 });

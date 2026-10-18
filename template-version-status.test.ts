@@ -16,6 +16,10 @@ describe('Saved template version notices', () => {
     expect(savedTemplateStatus(saved({ libraryTemplate: latest }), latest).earlier).toBe(false);
     expect(savedTemplateStatus(saved({ templateMode: 'custom', customTemplate: { name: 'My template.docx' } }), latest)).toEqual({ label: 'Custom template: My template.docx', earlier: false });
   });
+  it('identifies the Gift default independently of the Sale default', () => {
+    const draft = { ...newDraft(), instrumentId: 'gift' as const, variantId: 'family-gift' };
+    expect(savedTemplateStatus(saved({ draft, libraryTemplate: bundledTemplatePin('gift-deed-v1') }), latest)).toEqual({ label: 'Gift Settlement v1 (gift-deed-v1)', earlier: false });
+  });
   it('does not mark drafts as older before the library is loaded', () => {
     expect(savedTemplateStatus(saved()).earlier).toBe(false);
   });

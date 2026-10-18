@@ -1,4 +1,4 @@
-import { BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, type DeedTemplateSource, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
+import { BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, fillGiftDeed, type DeedTemplateSource, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
 import type { InstrumentId } from './instruments';
 import { definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
@@ -39,7 +39,7 @@ export interface GenerationManifest {
 export function compileDeed(snapshot: DraftSnapshot, templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): CompiledDeed {
   const gate = releaseGate(snapshot.instrumentId, snapshot.variantId);
   if (!gate.ready || !gate.reference?.templateVersionId) throw new Error(gate.reasons.join(' '));
-  if (snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {
+  if (snapshot.instrumentId === 'sale' && snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {
     for (const tag of ['G.P.A.Doct.No.', 'G.P.A.Doct.Date', 'Authority SRO', 'Authority SRO Code']) if (!snapshot.values[tag]) throw new Error('Complete the sale authority details before generating the deed.');
   }
   return { snapshot, templateSource, templateVersionId: templateSource.kind === 'library' ? templateSource.versionId : templateSource.kind === 'custom' ? `custom:${templateSource.hash}` : gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
@@ -51,13 +51,15 @@ export async function renderArtifact(
   templateSource: DeedTemplateSource = compiled.templateSource || BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<{ result: MergeResult; manifest: GenerationManifest }> {
   if (format !== 'docx') throw new Error('Only DOCX rendering is approved at this time.');
-  if (compiled.snapshot.instrumentId !== 'sale') throw new Error('No approved renderer is registered for this instrument.');
+  if (!['sale', 'gift'].includes(compiled.snapshot.instrumentId)) throw new Error('No approved renderer is registered for this instrument.');
   const first = compiled.snapshot.schedules[0];
   if (!first) throw new Error('At least one property schedule is required by the Sale template.');
   const binding = bindTemplateFields(templateSource.kind === 'built-in' ? undefined : templateSource.fieldContract, compiled.snapshot.templateFieldData || { records: [], values: {} }, compiled.snapshot.values, compiled.snapshot.schedules, compiled.snapshot.rewrites || []);
   if (binding.errors.length) throw new Error(binding.errors.join(' '));
   if (templateSource.kind !== 'built-in' && templateSource.fieldContract?.fields.length && !compiled.snapshot.templateFieldData) throw new Error('Template field values are missing from this draft snapshot.');
-  const result = await fillSaleDeed(binding.values, first.variant, binding.rewrites, binding.schedules, templateSource);
+  const result = compiled.snapshot.instrumentId === 'gift'
+    ? await fillGiftDeed(binding.values, binding.rewrites, binding.schedules, templateSource)
+    : await fillSaleDeed(binding.values, first.variant, binding.rewrites, binding.schedules, templateSource);
   if (binding.markers.length) {
     const entries = await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     const document = entries.find(entry => entry.name === 'word/document.xml')!;

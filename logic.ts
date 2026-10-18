@@ -678,7 +678,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   // ---- valuation -----------------------------------------------------------
   const rate = num(f.govtRate);
   const struct = has(f.structValue) ? Number(f.structValue) : 0;
-  const consid = num(f.consid);
+  const consid = state.deedType === 'Gift' ? NaN : num(f.consid);
 
   const landN = hasExtent && !Number.isNaN(rate) ? Math.round(rate * sqYardsN) : NaN;
   const primaryPersayN = Number.isNaN(landN) ? NaN : landN + struct;
@@ -776,7 +776,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
         && (state.category !== 'Flat' || FLAT_BOUNDARY_FIELDS.every(id => !!f[id])),
       note: state.category === 'Flat' ? 'All four apartment and all four flat abutments are required' : 'All four abutments are required' },
     { label: 'Valuation entered', ok: hasBase, note: 'Duty is computed on the higher of the two' },
-    { label: 'Consideration fully received', ok: payMatched, note: 'Payments must total the consideration' },
+    { label: state.deedType === 'Gift' ? 'Gift without monetary consideration' : 'Consideration fully received', ok: state.deedType === 'Gift' || payMatched, note: state.deedType === 'Gift' ? 'Consideration is Nil' : 'Payments must total the consideration' },
     { label: 'Executant details complete', ok: stepIsDone(6), note: 'Identity and capacity of the vendor' },
     { label: 'Claimant details complete', ok: stepIsDone(7), note: 'Identity of the purchaser' },
     { label: 'Schedule of property composed', ok: !!state.scheduleText, note: 'Reads into the deed verbatim' },

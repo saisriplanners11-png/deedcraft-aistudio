@@ -95,7 +95,10 @@ export function mergeValues(state: AppState): Record<string, string> {
   const rate = Number(f.govtRate);
   const consid = Number(f.consid);
   const considText = f.consid && Number.isFinite(consid) ? consid.toLocaleString('en-IN') : '';
+  const giftMarkets = state.deedType === 'Gift' ? scheduleRecords(state).map(record => record.values.govtRate?.trim() && record.values.extentSqYards?.trim() ? Math.round(Number(record.values.govtRate) * Number(record.values.extentSqYards)) + (Number(record.values.structValue) || 0) : NaN) : [];
+  const giftMarket = giftMarkets.reduce((total, value) => total + value, 0);
   out['Market of Value Rs./-'] = considText;
+  if (state.deedType === 'Gift') out['Market of Value Rs./-'] = Number.isFinite(giftMarket) ? giftMarket.toLocaleString('en-IN') : '';
   out['Sale Consideration'] = considText;
   out['Statement of Market Value Consideration'] = considText;
   out['Sale Consideration Words'] = words(f.consid);
@@ -108,6 +111,12 @@ export function mergeValues(state: AppState): Record<string, string> {
   for (const side of ['executant', 'claimant'] as const) {
     const ph = side === 'executant' ? 'EXECUTANT RELATION NAME' : 'CLAIMANT RELATION NAME';
     out[ph] = [f[`${side}Relation`]?.toUpperCase(), uppercasePartyIdentity(`${side}RelativeName`, f[`${side}RelativeName`] || '')].filter(Boolean).join(' ');
+  }
+
+  if (state.deedType === 'Gift') {
+    out['Municipality/Gram Panchayat Name'] = f.permissionAuthorityName || '';
+    out.Date = deedDate(f.executionDate || '');
+    for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
   }
 
   // The non-judicial stamp paper value is supplied by the user. It is not the
@@ -419,7 +428,8 @@ export function deedFilename(state: AppState): string {
   const claimant = partyDisplayName(state.form, 'claimant') || state.additionalClaimants
     .map(record => partyDisplayName(record.values, 'claimant')).find(Boolean) || 'Unnamed deed';
   const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
-  return `${safe(state.saleDocument ? saleDocumentLabel(state.saleDocument) : state.deedType || 'Deed')}${state.saleDocument ? '-' + safe([state.category, state.category === 'Flat' ? state.form.flatStage : state.form.houseStage].filter(Boolean).join(' ')) : ''}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
+  const saleMode = state.deedType === 'Sale' ? state.saleDocument : undefined;
+  return `${safe(saleMode ? saleDocumentLabel(saleMode) : state.deedType || 'Deed')}${saleMode ? '-' + safe([state.category, state.category === 'Flat' ? state.form.flatStage : state.form.houseStage].filter(Boolean).join(' ')) : ''}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
 }
 
 export { money, words };

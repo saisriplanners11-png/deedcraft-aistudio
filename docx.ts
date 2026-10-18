@@ -1,3 +1,4 @@
+import { giftPartyWording } from './gift-wording';
 // Fills the Sale Deed template and re-zips it, so the generated file is a real
 // .docx carrying the template's own fonts, spacing, tables and annexures —
 // not a rebuilt approximation of them.
@@ -355,7 +356,7 @@ export async function validateSaleDeedTemplate(
     const xml = new TextDecoder().decode(document.data);
     const heading = plainText(xml).slice(0, 500).replace(/\s+/g, ' ');
     if (/^(?:\s*)(?:DEED OF )?GIFT(?: SETTLEMENT)?(?: DEED)?\b/i.test(heading)) {
-      errors.push('This is a Gift template uploaded to the Sale library. Only Sale templates are currently supported. Gift needs its own approved validation contract and renderer; changing IF markers will not make this a Sale template.');
+      errors.push('This is a Gift template uploaded to the Sale library. Only Sale templates are currently supported. Select a Gift draft to use the Gift renderer; changing IF markers will not make this a Sale template.');
       return empty;
     }
     const bodyOpen = xml.indexOf('<w:body>');
@@ -1572,4 +1573,135 @@ export function saveBlob(blob: Blob, filename: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+
+/** Gift uses its supplied reference package, with application-owned relationship and agreement. */
+export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<TemplateValidationResult> {
+  const errors: string[] = [];
+  let detectedPlaceholders: string[] = [];
+  try {
+    const entries = await readZip(bytes, { maxEntries: 2000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
+    const document = entries.find(entry => entry.name === 'word/document.xml');
+    if (!document) throw new Error('Missing word/document.xml.');
+    const text = plainText(new TextDecoder().decode(document.data));
+    detectedPlaceholders = angleTags(new TextDecoder().decode(document.data));
+    const approved = await readZip(await loadTemplate('gift-deed-v1'));
+    const approvedDocument = approved.find(entry => entry.name === 'word/document.xml')!;
+    const supported = new Set([...angleTags(new TextDecoder().decode(approvedDocument.data)), 'Gift Relationship Recital', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT'].map(norm));
+    for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Gift placeholder <${tag}>. Keep the starter bindings so details are not silently discarded.`);
+    if (!/GIFT SETTLEMENT/i.test(text) || !/without any monetary consideration/i.test(text)) errors.push('Choose the supplied Gift Settlement reference, not a Sale deed.');
+    for (const tag of ['EXECUTANT NAME', 'CLAIMANT NAME']) if (!new RegExp(`<\\s*${tag}\\s*>`, 'i').test(text)) errors.push(`The Gift template must retain <${tag}>.`);
+    if ((text.match(/SCHEDULE OF PROPERTY/g) || []).length !== 8 || !/DECLARATION/.test(text) || !/SIGN\/S OF THE DONOR\/S/i.test(text)) errors.push('Retain all eight Gift property schedules, declaration and donor signature sections.');
+  } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
+  return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
+}
+
+export async function fillGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
+  if (!values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
+  if (!schedules.length) throw new Error('Add a Gift property schedule.');
+  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId !== 'gift-deed-v1' ? await loadTemplate('gift-deed-v1') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v1');
+  const validation = await validateGiftDeedTemplate(bytes);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  const entries = await readZip(bytes);
+  const document = entries.find(entry => entry.name === 'word/document.xml')!;
+  let xml = new TextDecoder().decode(document.data);
+  const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
+  const body = xml.slice(start, end);
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  const texts = chunks.map(chunk => plainText(chunk).trim());
+  const headings = texts.map((text, index) => text === 'SCHEDULE OF PROPERTY' ? index : -1).filter(index => index >= 0);
+  const first = texts.findIndex(text => /^<IF /.test(text));
+  const tail = texts.findIndex((text, index) => index > headings[7] && (text === '<FOR ALL THE DOCUMENTS>' || text === 'The schedule property is not the assigned property.' || text === 'DECLARATION'));
+  if (first < 0 || tail < 0) throw new Error('The Gift schedule boundaries are missing.');
+  const names = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE', 'IF HOUSE', 'IF HOUSE SEMI FINISHED', 'IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
+  const blocks = new Map<string, string>();
+  headings.forEach((heading, index) => blocks.set(names[index], chunks.slice(heading, headings[index + 1] ?? tail).filter(chunk => !/^<IF |^<FOR ALL/.test(plainText(chunk).trim())).join('')));
+  const donors = Number(values['Ownership Vendor Count']) || 1, donees = Number(values['Ownership Vendee Count']) || 1;
+  const missing = new Set<string>();
+  const map = (record: Record<string, string>) => new Map(Object.entries(record).map(([key, value]) => [norm(key), value ?? '']));
+  const giftRewrites = rewrites.filter(rewrite => rewrite.partyRole).map(rewrite => ({ ...rewrite, finalSuffix: /\s*\(Hereinafter called the [\s\S]*$/i }));
+  const fill = (block: string, record: Record<string, string>, partyRewrites: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => fillParagraph(paragraph, map(record), missing, partyRewrites));
+  let opening = chunks.slice(0, first).join('');
+  let relationshipFound = false;
+  opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph);
+    if (/WHEREAS\s+the\s+Donee|<Gift Relationship Recital>/i.test(text)) {
+      relationshipFound = true;
+      return replaceRunText(paragraph, /[\s\S]+/, () => values['Gift Relationship Recital']);
+    }
+    paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
+    return replaceRunText(paragraph, /[\s\S]+/, () => giftPartyWording(plainText(paragraph), donors, donees));
+  });
+  if (!relationshipFound) {
+    const children = topLevelChildren(opening);
+    const claimant = children.find(child => /<\s*CLAIMANT NAME\s*>/i.test(plainText(opening.slice(child.start, child.end))));
+    if (!claimant) throw new Error('Cannot safely place the required Gift relationship clause.');
+    opening = opening.slice(0, claimant.end) + paragraphLike(opening.slice(claimant.start, claimant.end), values['Gift Relationship Recital']) + opening.slice(claimant.end);
+  }
+  // Title/link records are independent for each property.
+  const titleStart = topLevelChildren(opening).find(child => /^Registered Deed:/i.test(plainText(opening.slice(child.start, child.end)).trim()));
+  const titleEnd = topLevelChildren(opening).find(child => /^WHEREAS the Donor/i.test(plainText(opening.slice(child.start, child.end)).trim()) && child.start > (titleStart?.start ?? Infinity));
+  if (titleStart && titleEnd) {
+    const block = opening.slice(titleStart.start, titleEnd.start);
+    const titleBlocks = schedules.map(schedule => {
+      const title = map(schedule.titleValues || values);
+      const titleRewrites: Rewrite[] = schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1 ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [];
+      return fill(removeOptionalTitleRecitals(block, title, schedule.variant), schedule.titleValues || values, titleRewrites);
+    }).join('');
+    opening = opening.slice(0, titleStart.start) + titleBlocks + opening.slice(titleEnd.start);
+  }
+  opening = fill(opening, values, giftRewrites);
+  const selected = schedules.map((schedule, index) => {
+    const variant = schedule.variant === 'IF FLAT' ? schedule.values['Flat Stage'] === 'Semi Finished' ? 'IF FLAT SEMI FINISHED' : 'IF FLAT FINISHED' : schedule.variant;
+    let block = blocks.get(variant);
+    if (!block) throw new Error(`No Gift schedule is available for ${variant}.`);
+    block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant) ? prepareHouseBlock(block, schedule.values, schedule.structureDetails) : prepareNonHouseIdentifiers(block, variant, schedule.values);
+    if (variant === 'IF HOUSE SEMI FINISHED') block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /^\s*All that the\b/i.test(plainText(paragraph)) && !/semi.finished/i.test(plainText(paragraph)) ? replaceRunText(paragraph, /All that the\s+/i, () => 'All that the semi-finished ') : paragraph);
+    block = block.replace(/property hereby sold/gi, 'property hereby gifted');
+    // Gift is without monetary consideration, including every annexure variant.
+    block = block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+      if (!/Consideration/i.test(plainText(row))) return row;
+      const cells = [...row.matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)];
+      const lastCell = cells[cells.length - 1];
+      if (lastCell) row = row.slice(0, lastCell.index) + lastCell[0].replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /[\s\S]+/, () => ': Nil')) + row.slice(lastCell.index! + lastCell[0].length);
+      return row.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /Consideration(?:\s*:\s*Nil)?/gi, () => 'Consideration'));
+    });
+    if (schedules.length > 1) block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${index + 1}`);
+    block = addOwnershipShareParagraphs(block, schedule.vendorShares, schedule.vendeeShares).replace(/The vendors convey/gi, 'The Donors gift').replace(/The vendees acquire/gi, 'The Donees acquire');
+    const giftValues = { ...schedule.values };
+    if (variant.startsWith('IF FLAT') && giftValues.UDS) giftValues['Extent in Sq.Meters'] = (Number(giftValues.UDS.replace(/,/g, '')) * 0.836127).toFixed(2);
+    return fill(block, giftValues);
+  }).join('');
+  let closing = chunks.slice(tail).filter(chunk => !/^<FOR ALL/.test(plainText(chunk).trim())).join('');
+  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /[\s\S]+/, () => giftPartyWording(plainText(paragraph), donors, donees)));
+  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => !values['Include Prepared By'] && /Prepared By:/i.test(plainText(paragraph)) ? '' : paragraph);
+  closing = fill(closing, values);
+  // The source is a catalogue with a stamp-space section, manual spacers and
+  // blank table rows. Let the selected deed paginate naturally with its final
+  // source page settings instead of carrying empty catalogue pages forward.
+  let result = opening + selected + closing;
+  let empty = 0;
+  let signing = false;
+  result = topLevelChildren(result).map(child => result.slice(child.start, child.end)).map(chunk => {
+    chunk = chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+      paragraph = paragraph.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, '');
+      if (/SIGNATURES? OF THE|^\s*\(Accepted\)/i.test(plainText(paragraph))) {
+        paragraph = paragraph.replace(/<w:ind\b[^>]*\/>/g, '').replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="right"/>');
+        paragraph = paragraph.replace(/<w:spacing\b[^>]*\/>/g, '<w:spacing w:before="360" w:after="240"/>');
+      }
+      if (/^\s*(?:SCHEDULE OF PROPERTY|\(Description of the property|ANNEXURE|Boundaries of (?:Apartment|Flat))/i.test(plainText(paragraph))) paragraph = keepWithNext(paragraph);
+      if (/^\s*IN WITNESS/i.test(plainText(paragraph))) signing = true;
+      if (signing) paragraph = keepWithNext(paragraph);
+      if (signing && /^\s*2\.\s*$/.test(plainText(paragraph))) signing = false;
+      return paragraph;
+    });
+    return /Market Value per Sq\.\s*Yard/i.test(plainText(chunk)) ? removeTrailingEmptyTableRow(chunk) : chunk;
+  }).filter(chunk => {
+    if (plainText(chunk).trim() || /<w:(?:sectPr|drawing|tbl)\b/.test(chunk)) { empty = 0; return true; }
+    return ++empty <= 1;
+  }).join('');
+  const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
+  document.data = new TextEncoder().encode(xml.slice(0, start) + result + xml.slice(end));
+  return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }

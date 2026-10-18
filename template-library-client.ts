@@ -12,7 +12,7 @@ export async function templateRequest<T>(path = '', init?: RequestInit): Promise
 export const listTemplates = () => templateRequest<LibraryListing>();
 export function bundledTemplatePin(versionId = 'sale-deed-v6'): TemplatePin {
   const version = TEMPLATE_VERSIONS.find(item => item.id === versionId) || TEMPLATE_VERSIONS.find(item => item.id === 'sale-deed-v6')!;
-  return { versionId: version.id, hash: version.sha256!, name: `Built-in Sale v${version.version.split('.')[0]}`, saleOpenings: ['sale-deed-v7', 'sale-deed-v9', 'sale-deed-v10'].includes(version.id) };
+  return { versionId: version.id, hash: version.sha256!, name: `Built-in ${version.instrumentId === 'gift' ? 'Gift' : 'Sale'} v${version.version.split('.')[0]}`, saleOpenings: ['sale-deed-v7', 'sale-deed-v9', 'sale-deed-v10'].includes(version.id) };
 }
 export const pinFor = (version: LibraryRevision): TemplatePin => ({ saleOpenings: version.saleOpenings ?? version.validation?.saleOpenings, versionId: version.id, hash: version.hash, name: version.filename, fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
 
