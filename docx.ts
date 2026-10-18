@@ -392,6 +392,12 @@ export async function validateSaleDeedTemplate(
     }
 
     const customTags = angleTags(xml);
+    if (paragraphs.includes('<IF SALE DEED WITH G.P.A>') || paragraphs.includes('<IF SALE DEED WITH A.G.P.A>')) {
+      for (const mode of ['gpa', 'agpa']) {
+        try { await selectSaleOpening(body, { 'Sale Document Mode': mode }); }
+        catch (error: any) { errors.push(error.message); }
+      }
+    }
     const declarationStart = paragraphs.indexOf(`<${AUTHORITY_DECLARATION_START}>`);
     const declarationEnd = paragraphs.indexOf(`<${AUTHORITY_DECLARATION_END}>`);
     if ((declarationStart >= 0) !== (declarationEnd >= 0) || (declarationStart >= 0 && (declarationEnd <= declarationStart || declarationStart <= sharedTail))) errors.push('The GPA/AGPA declaration condition must have a matching end marker after the declaration heading.');
@@ -928,7 +934,7 @@ async function selectAuthorityDeclaration(body: string, values: Record<string, s
   return chunks.filter((_, index) => index < start || index > end || (include && index > start && index < end)).join('');
 }
 
-function selectSaleOpening(body: string, values: Record<string, string>): string {
+async function selectSaleOpening(body: string, values: Record<string, string>): Promise<string> {
   const mode = values['Sale Document Mode'] || 'ordinary';
   const children = topLevelChildren(body);
   const chunks = children.map(child => body.slice(child.start, child.end));
@@ -943,6 +949,19 @@ function selectSaleOpening(body: string, values: Record<string, string>): string
   if (starts.some(index => index < 0) || flow <= starts[2]) throw new Error('Sale opening markers are incomplete or out of order.');
   const selected = mode === 'gpa' ? 1 : mode === 'agpa' ? 2 : 0;
   let opening = chunks.slice(starts[selected] + 1, selected === 2 ? flow : starts[selected + 1]).join('');
+  if (selected) {
+    // A replacement draft must not turn confirmed authority identities into static text.
+    const approved = await readZip(await loadSaleDeedTemplate());
+    const reference = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
+    const referenceBody = reference.slice(reference.indexOf('<w:body>') + 8, reference.lastIndexOf('</w:body>'));
+    const sections = topLevelChildren(referenceBody).map(child => referenceBody.slice(child.start, child.end));
+    const first = sections.findIndex(chunk => plainText(chunk).trim() === markers[selected]);
+    const last = sections.findIndex((chunk, index) => index > first && (plainText(chunk).trim() === markers[selected + 1] || /^1\.\s*FLOW OF TITLE & LINK DEED DETAILS:/.test(plainText(chunk).trim())));
+    const required = angleTags(sections.slice(first + 1, last).join('')).filter(tag => !/share/i.test(tag));
+    const present = new Set(angleTags(opening).map(norm));
+    const missing = [...new Set(required)].filter(tag => !present.has(norm(tag)));
+    if (missing.length) throw new Error(`This replacement template would omit GPA/AGPA details: ${missing.join(', ')}. Restore these fields from the latest default before downloading.`);
+  }
   if (selected) opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     if (!/<ATTORNEY NAME>/i.test(plainText(paragraph))) return paragraph;
     paragraph = replaceRunText(paragraph, /<Sub Registrar>/gi, () => '<Authority SRO>');
@@ -1308,7 +1327,7 @@ export async function fillSaleDeed(
   const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  const selectedBody = enforcePartySharePolicy(await selectAuthorityDeclaration(selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values), values);
+  const selectedBody = enforcePartySharePolicy(await selectAuthorityDeclaration(await selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values), values);
   const prepared = prepareTemplate(markConsiderationRows(selectedBody));
   if (Object.keys(prepared.clauses).length) rewrites = rewrites
     .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))

@@ -2,6 +2,7 @@
 export { mergeValues, rewritesFor, scheduleMergesFor, deedFilename } from './merge';
 export { saleAuthorityErrors, salePropertyErrors, saleVariant } from './sale-options';
 export { newDraft, appStateFor, draftReducer, resolveDraft } from './source-draft';
+export { applyAuthorityPerson, cleanAuthorityRead } from './authority-import';
 export { initialState, partyRecords } from './logic';
 export { newPayment, MODES } from './payments';
 export { PLACEMENT_CATALOG } from './template-placement';
