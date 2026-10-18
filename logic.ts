@@ -422,6 +422,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   const key = vendor ? 'vendor' : 'vendee';
   const shares = vendor ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
   if (parties.length > 1) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
+    if (!parties.some((party, index) => shares?.[schedule.id]?.[index === 0 ? (vendor ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id]?.trim())) return;
     let totalCents = 0;
     let allValid = true;
     parties.forEach((party, index) => {

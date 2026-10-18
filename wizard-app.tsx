@@ -457,10 +457,11 @@ function PartySharesEditor({
   onChange: (scheduleId: string, partyId: string, value: string) => void;
 }) {
   return <Section title={`${side} undivided ownership shares`}>
-    <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Enter each {side.toLowerCase()}’s percentage separately for every property. The shares for each schedule must total 100%.</p>
+    <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Optional: leave all percentages blank to omit the share clause. If you enter a percentage for a property, complete every party’s share for that property, totalling 100%.</p>
     {schedules.map((schedule, scheduleIndex) => {
       const values = parties.map(party => shares[schedule.id]?.[party.id] || '');
       const cents = values.map(vendeeShareCents);
+      const entered = values.some(value => value.trim());
       const complete = cents.every(value => value !== null);
       const total = cents.reduce<number>((sum, value) => sum + (value || 0), 0);
       return <div key={schedule.id} style={{ marginTop: scheduleIndex ? 22 : 0 }}>
@@ -469,14 +470,14 @@ function PartySharesEditor({
           {parties.map((party, index) => <label key={party.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: C.body }}>
             <span>{side} {index + 1}{party.name ? ` — ${party.name}` : ''} (%)</span>
             <input type="text" inputMode="decimal" value={values[index]} aria-label={`Schedule ${scheduleIndex + 1} ${side} ${index + 1} undivided share percent`}
-              aria-invalid={cents[index] === null}
+              aria-invalid={entered && cents[index] === null}
               onChange={event => onChange(schedule.id, party.id, event.target.value)}
               style={{ padding: '8px 2px', border: 0, borderBottom: `1px solid ${C.goldLight}`, background: 'transparent', fontSize: 14, color: C.ink }} />
-            {cents[index] === null && <small style={{ color: C.gold }}>{values[index] ? 'Enter more than 0% and no more than 100%, with up to two decimal places.' : 'Share required.'}</small>}
+            {entered && cents[index] === null && <small style={{ color: C.gold }}>{values[index] ? 'Enter more than 0% and no more than 100%, with up to two decimal places.' : 'Share required.'}</small>}
           </label>)}
         </div>
         <p style={{ margin: '9px 0 0', fontSize: 12, color: complete && total === 10000 ? C.green : C.gold }}>
-          Total: {(total / 100).toFixed(2).replace(/\.00$/, '')}%{complete && total === 10000 ? ' ✓' : ' — enter shares totalling 100%'}
+          {!entered ? 'Share clause omitted. ' : ''}Total: {(total / 100).toFixed(2).replace(/\.00$/, '')}%{!entered ? '' : complete && total === 10000 ? ' ✓' : ' — enter shares totalling 100%'}
         </p>
       </div>;
     })}
@@ -626,7 +627,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v2:authority-declaration-policy-v1`;
+  const templateKey = `${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v3:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { initialState } from './logic';
-import { deedFilename } from './merge';
+import { initialState, generationBlockers } from './logic';
+import { deedFilename, mergeValues } from './merge';
 
 describe('deed download filename', () => {
   it('uses the deed type and primary claimant name', () => {
@@ -17,5 +17,18 @@ describe('deed download filename', () => {
   it('removes characters that cannot be used in a filename', () => {
     expect(deedFilename({ ...initialState, deedType: 'Sale', form: { ...initialState.form, claimantName: 'A/B: C' } }))
       .toBe('Sale-A-B-C.docx');
+  });
+});
+
+describe('Optional party percentages', () => {
+  it('omits unspecified percentages but validates a partially entered allocation', () => {
+    const state = { ...initialState, additionalExecutants: [{ id: 'second', values: { executantName: 'SECOND' }, docNames: [] }], vendorSharesBySchedule: {} as Record<string, Record<string, string>> };
+    expect(mergeValues(state)['Executant Share']).toBe('');
+    expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share'))).toEqual([]);
+    state.vendorSharesBySchedule = { primary: { primary: '40' } };
+    expect(generationBlockers(state).some(item => item.id === 'vendor-share-primary-second')).toBe(true);
+    state.vendorSharesBySchedule.primary.second = '60';
+    expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share'))).toEqual([]);
+    expect(mergeValues(state)['Executant Share']).toBe('40%');
   });
 });

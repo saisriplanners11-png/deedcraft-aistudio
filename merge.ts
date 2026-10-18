@@ -17,9 +17,10 @@ function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId
   const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
   return schedules.map((schedule, index) => {
     const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || '');
-    const value = cents === null ? '____%' : `${cents / 100}%`;
+    if (cents === null) return '';
+    const value = `${cents / 100}%`;
     return schedules.length > 1 ? `Schedule ${index + 1}: ${value}` : value;
-  }).join('; ');
+  }).filter(Boolean).join('; ');
 }
 
 /** Values for every placeholder the template names. */
@@ -141,6 +142,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Authority SRO'] = authority?.sro || '';
   out['Authority SRO Code'] = authority?.sroCode || '';
   out['Authority Attorney Count'] = String(authority?.attorneys.length || 0);
+  out['Ownership Vendor Enabled'] = String(Object.values(state.vendorSharesBySchedule || {}).some(shares => Object.values(shares).some(value => value.trim())));
+  out['Ownership Vendee Enabled'] = String(Object.values(state.vendeeSharesBySchedule || {}).some(shares => Object.values(shares).some(value => value.trim())));
   out['Ownership Vendor Count'] = String(partyRecords(state, 'executant').length);
   out['Ownership Vendee Count'] = String(partyRecords(state, 'claimant').length);
   out['Authority Holder Label'] = state.saleDocument === 'gpa' ? 'G.P.A. HOLDER OF' : state.saleDocument === 'agpa' ? 'A.G.P.A. HOLDER OF' : '';
@@ -239,8 +242,6 @@ export function rewritesFor(state: AppState): Rewrite[] {
   for (const side of ['executant', 'claimant'] as const) {
     const records = partyRecords(state, side);
     if (records.length < 2 && !records.some(record => isEntity(record.values, side)) && !(side === 'executant' && state.saleDocument && state.saleDocument !== 'ordinary')) continue;
-    const schedules = scheduleRecords(state);
-    const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
     rewrites.push({
       find: new RegExp(side === 'executant' ? '<EXECUTANT NAME>' : '<CLAIMANT NAME>'), replace: '',
       partyRole: side,
@@ -248,12 +249,8 @@ export function rewritesFor(state: AppState): Rewrite[] {
         const form = { ...state.form };
         for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = record.values[field.id] || '';
         const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
-        const allocations = schedules.map((schedule, scheduleIndex) => {
-          const cents = vendeeShareCents(shares?.[schedule.id]?.[partyId] || '');
-          return schedules.length === 1 ? `${cents === null ? '____' : cents / 100}%` : `Schedule ${scheduleIndex + 1}: ${cents === null ? '____' : cents / 100}%`;
-        });
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
-        return { ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': records.length > 1 ? 'Holding Undivided Share of ' + allocations.join('; ') : '' };
+        return { ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': records.length > 1 && ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
       }),
     });
   }
@@ -266,7 +263,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
       ...authorityPartyValues(attorney.values, 'Attorney'),
-      'Attorney Share': attorney.principalIds.map(id => ownershipShare(state, 'executant', id)).join(' + '),
+      'Attorney Share': attorney.principalIds.map(id => ownershipShare(state, 'executant', id)).filter(Boolean).join(' + '),
       'Represented Principals': attorney.principalIds.map(id => principals.find((record, index) => (index ? record.id : state.primaryExecutantId || 'primary') === id)?.values.executantName || '').filter(Boolean).join(', '),
     })) });
   }
@@ -392,7 +389,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);
-    const vendeeShares = vendees.length > 1 ? vendees.map((vendee, index) => {
+    const vendeeShares = vendees.length > 1 && vendees.some((party, index) => state.vendeeSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryClaimantId || 'primary' : party.id]?.trim()) ? vendees.map((vendee, index) => {
       const partyId = index === 0 ? state.primaryClaimantId || 'primary' : vendee.id;
       const cents = vendeeShareCents(state.vendeeSharesBySchedule?.[record.id]?.[partyId] || '');
       return {
@@ -401,7 +398,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }) : undefined;
-    const vendorShares = vendors.length > 1 ? vendors.map((vendor, index) => {
+    const vendorShares = vendors.length > 1 && vendors.some((party, index) => state.vendorSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryExecutantId || 'primary' : party.id]?.trim()) ? vendors.map((vendor, index) => {
       const partyId = index === 0 ? state.primaryExecutantId || 'primary' : vendor.id;
       const cents = vendeeShareCents(state.vendorSharesBySchedule?.[record.id]?.[partyId] || '');
       return {

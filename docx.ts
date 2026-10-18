@@ -622,6 +622,9 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   for (const [count, tags] of [['Ownership Vendor Count', 'Executant|Attorney'], ['Ownership Vendee Count', 'Claimant']] as const) {
     if (values.get(norm(count)) === '1') p = replaceRunText(p, new RegExp(`,?\\s*holding\\s+(?:an\\s+)?undivided\\s+share\\s+of\\s*<(?:${tags}) Share>(?:\\s+in the schedule property)?\\.?`, 'gi'), () => '.');
   }
+  for (const tag of ['Executant Share', 'Attorney Share', 'Claimant Share']) {
+    if (values.has(norm(tag)) && !values.get(norm(tag))) p = replaceRunText(p, new RegExp(`,?\\s*holding\\s+(?:an\\s+)?undivided\\s+share\\s+of\\s*<${tag}>(?:\\s+in the schedule property)?\\.?`, 'gi'), () => '.');
+  }
   const authority = values.get(norm('Local Authority Type'));
   if (authority) p = replaceRunText(p, /Competent Local Authority\s*,\s*(?=<Village>)/gi, () => `${authority}, `);
   // Apply structural recitals first, then merge placeholders into their own runs.
@@ -888,7 +891,7 @@ function enforcePartySharePolicy(body: string, values: Record<string, string>): 
       ];
       for (const pattern of patterns) paragraph = replaceRunText(paragraph, pattern, () => {
         handled++;
-        return count < 2 ? '.' : `, holding an undivided share of <${tag}> in the schedule property.`;
+        return count < 2 || values[`Ownership ${side} Enabled`] === 'false' ? '.' : `, holding an undivided share of <${tag}> in the schedule property.`;
       });
       if (expected > handled) throw new Error(`The ${side.toLowerCase()} share clause in this template is not supported. Correct its share wording before generating or publishing; ownership percentages must come from the draft.`);
       return paragraph;

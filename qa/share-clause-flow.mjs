@@ -71,3 +71,16 @@ for (const wording of ['50%', 'short', 'unsupported']) {
   }
 }
 console.log('PASS: replacement templates with fixed 50%, alternate wording, 40/60 allocations, stale saved shares and unsupported-clause rejection.');
+
+for (const mode of ['ordinary', 'gpa', 'agpa']) {
+  const state = rt.sampleState(mode + '-plot');
+  state.additionalExecutants = [{ id: 'vendor-2', values: { ...state.form, executantName: 'SECOND VENDOR' }, docNames: [] }];
+  state.additionalClaimants = [{ id: 'vendee-2', values: { ...state.form, claimantName: 'SECOND VENDEE' }, docNames: [] }];
+  if (mode !== 'ordinary') state.saleAuthority.attorneys[0].principalIds.push('vendor-2');
+  assert.doesNotMatch(await render(state), /holding.*undivided share|following undivided shares|____%/i);
+  state.vendeeSharesBySchedule = { primary: { primary: '40', 'vendee-2': '60' } };
+  const text = await render(state);
+  assert.doesNotMatch(text.split('IN FAVOUR OF')[0], /holding.*undivided share/i);
+  assert.match(text.split('IN FAVOUR OF')[1], /40%/);
+}
+console.log('PASS: blank percentages omit all share clauses for multiple ordinary/GPA/AGPA parties; vendor and vendee entry are independent.');
