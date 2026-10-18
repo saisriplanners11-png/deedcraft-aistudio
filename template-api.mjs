@@ -41,8 +41,14 @@ export function createTemplateApi(options = {}) {
     const at = new Date().toISOString();
     const version = { id: 'sale-deed-v10', instrumentId: 'sale', filename: 'sale-deed-template-v10.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [], sourceDocument: 'SALE DEED-1610.docx', sourceHash: 'f0c4c0938fe50e3f15645effae5102a584e518e065a6b1bf5acd9a5fe9359fdf' };
     await atomic(version.id + '.docx', bytes);
-    try { await save({ ...(previous || {}), active: { ...(previous?.active || {}), sale: version.id }, versions: [...(previous?.versions || []).filter(item => item.id !== version.id), version], history: [...(previous?.history || []), { versionId: version.id, at, action: 'seed' }] }); }
-    catch (error) { if (error.status !== 409 || !await storage.read()) throw error; }
+    // Supabase associates the concurrency revision with the object returned by read().
+    const next = previous || {};
+    Object.assign(next, { active: { ...(next.active || {}), sale: version.id }, versions: [...(next.versions || []).filter(item => item.id !== version.id), version], history: [...(next.history || []), { versionId: version.id, at, action: 'seed' }] });
+    try { await save(next); }
+    catch (error) {
+      const current = error.status === 409 ? await storage.read() : null;
+      if (!current || current.active?.sale !== version.id || !current.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
+    }
   }
   let initialization;
   const ensureInitialized = () => initialization ??= serial(seedLibrary).catch(error => { initialization = undefined; throw error; });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { createTemplateStorage } from './template-storage.mjs';
 import { createTemplateApi } from './template-api.mjs';
 
@@ -43,6 +44,27 @@ const options = { backend: 'supabase', supabaseUrl: 'https://templates.supabase.
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Supabase template persistence', () => {
+  it('upgrades an existing Supabase default without dropping its concurrency revision', async () => {
+    const fake = provider();
+    const storage = createTemplateStorage(options, '.');
+    await storage.init();
+    const bytes = await readFile(new URL('./sale-deed-template-v9.docx', import.meta.url));
+    const prior = { id: 'sale-deed-v9', instrumentId: 'sale', filename: 'sale-deed-template-v9.docx', hash: createHash('sha256').update(bytes).digest('hex'), publishedAt: '2026-10-17', validation: { valid: true }, samples: [] };
+    await storage.put(prior.id + '.docx', bytes);
+    await storage.save({ active: { sale: prior.id }, versions: [prior], history: [] });
+    const api = createTemplateApi({ ...options, password: 'test-password' });
+    const server = createServer((req, res) => { void api(req, res); });
+    await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+    try {
+      const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}/api/templates`);
+      expect(response.status).toBe(200);
+      const listing = await response.json();
+      expect(listing.active.sale).toBe('sale-deed-v10');
+      expect(listing.versions.some((version: any) => version.id === prior.id && version.hash === prior.hash)).toBe(true);
+      expect((await storage.read()).active.sale).toBe('sale-deed-v10');
+      expect(fake.fetcher.mock.calls.some(([, init]: any) => init?.method === 'PATCH')).toBe(true);
+    } finally { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
+  }, 30000);
   it('keeps private immutable bytes and rejects stale metadata across independent instances', async () => {
     const fake = provider();
     const first = createTemplateStorage(options, '.');
