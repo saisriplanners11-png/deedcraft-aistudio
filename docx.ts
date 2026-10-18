@@ -394,6 +394,7 @@ export async function validateSaleDeedTemplate(
     const declarationStart = paragraphs.indexOf(`<${AUTHORITY_DECLARATION_START}>`);
     const declarationEnd = paragraphs.indexOf(`<${AUTHORITY_DECLARATION_END}>`);
     if ((declarationStart >= 0) !== (declarationEnd >= 0) || (declarationStart >= 0 && (declarationEnd <= declarationStart || declarationStart <= sharedTail))) errors.push('The GPA/AGPA declaration condition must have a matching end marker after the declaration heading.');
+    if (declarationStart >= 0 && declarationEnd > declarationStart && !['<Authority Holder Label>', '<Authority Principal Names>'].every(tag => paragraphs.slice(declarationStart + 1, declarationEnd).join(' ').includes(tag))) errors.push('The GPA/AGPA declaration must retain Authority Holder Label and Authority Principal Names.');
     const unsupportedConditions = customTags.filter(tag => conditionTag(tag) && !STRUCTURAL_TAGS.has(norm(CONDITION_ALIASES[conditionName(tag)] || conditionName(tag))));
     for (const tag of unsupportedConditions) errors.push(`Unsupported conditional marker <${tag}>. Conditional markers are document structure, not input fields. Use a supported Sale section marker or retain the active template's original markers.`);
     const reference = referenceBytes ?? await loadSaleDeedTemplate();
@@ -895,13 +896,30 @@ function enforcePartySharePolicy(body: string, values: Record<string, string>): 
   }).join('');
 }
 
-function selectAuthorityDeclaration(body: string, values: Record<string, string>): string {
+async function selectAuthorityDeclaration(body: string, values: Record<string, string>): Promise<string> {
   const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
   const texts = chunks.map(chunk => plainText(chunk).trim());
   const start = texts.indexOf(`<${AUTHORITY_DECLARATION_START}>`);
   const end = texts.indexOf(`<${AUTHORITY_DECLARATION_END}>`);
-  if (start < 0 && end < 0) return body;
+  if (start < 0 && end < 0) {
+    if (!['gpa', 'agpa'].includes(values['Sale Document Mode'])) return body;
+    // Older/replacement Word files cannot silently remove the approved declaration.
+    const approved = await readZip(await loadSaleDeedTemplate());
+    const document = approved.find(entry => entry.name === 'word/document.xml');
+    if (!document) throw new Error('The approved GPA/AGPA declaration is unavailable.');
+    const xml = new TextDecoder().decode(document.data);
+    const approvedBody = xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>'));
+    const approvedChunks = topLevelChildren(approvedBody).map(child => approvedBody.slice(child.start, child.end));
+    const first = approvedChunks.findIndex(chunk => plainText(chunk).trim() === `<${AUTHORITY_DECLARATION_START}>`);
+    const last = approvedChunks.findIndex(chunk => plainText(chunk).trim() === `<${AUTHORITY_DECLARATION_END}>`);
+    const signature = texts.findIndex((text, index) => /SIGN\/S OF VENDOR\/S/i.test(text) && texts.slice(0, index).some(value => /^DECLARATION$/i.test(value)));
+    if (first < 0 || last <= first || signature < 0) throw new Error('This template cannot safely place the required GPA/AGPA declaration. Retain the declaration and vendor signature sections from the latest default.');
+    chunks.splice(signature, 0, ...approvedChunks.slice(first + 1, last));
+    return chunks.join('');
+  }
   if (start < 0 || end <= start) throw new Error('The GPA/AGPA declaration condition is incomplete.');
+  const declaration = texts.slice(start + 1, end).join(' ');
+  if (!declaration.includes('<Authority Holder Label>') || !declaration.includes('<Authority Principal Names>')) throw new Error('The GPA/AGPA declaration must retain Authority Holder Label and Authority Principal Names.');
   const include = ['gpa', 'agpa'].includes(values['Sale Document Mode']);
   return chunks.filter((_, index) => index < start || index > end || (include && index > start && index < end)).join('');
 }
@@ -1286,7 +1304,7 @@ export async function fillSaleDeed(
   const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
-  const selectedBody = enforcePartySharePolicy(selectAuthorityDeclaration(selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values), values);
+  const selectedBody = enforcePartySharePolicy(await selectAuthorityDeclaration(selectSaleOpening(xml.slice(bodyStart, bodyEnd), values), values), values);
   const prepared = prepareTemplate(markConsiderationRows(selectedBody));
   if (Object.keys(prepared.clauses).length) rewrites = rewrites
     .filter(rewrite => !(rewrite.find.source.startsWith('Housing Loan:') && rewrite.records?.length === 0 && rewrite.when && !rewrite.regularWeight))
