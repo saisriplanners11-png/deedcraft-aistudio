@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node build-template-runtime.mjs",
+    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs",
     "preview": "vite preview",
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
