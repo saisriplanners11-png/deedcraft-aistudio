@@ -54,7 +54,7 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), templateLibraryApi(env), referencePlanApi(env), aiProxy(env)],
+    plugins: [react(), tailwindcss(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),

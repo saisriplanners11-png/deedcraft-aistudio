@@ -1,3 +1,4 @@
+import { applyAuthorityPerson } from './authority-import';
 import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -1345,7 +1346,7 @@ export default function WizardApp() {
           {state.form.giftRelationship === 'other' && <label className="field"><span>Relationship wording</span><input aria-label="Relationship wording" value={state.form.giftRelationshipCustom || ''} onChange={event => edit('property', 'primary', 'giftRelationshipCustom', event.target.value)} /><small>Enter the full phrase, for example “son and daughter” for two Donees. Confirm it applies to the listed Donors.</small></label>}
           <p><strong>Clause preview</strong></p><p>{giftRelationshipValues(state)['Gift Relationship Recital']}</p>
         </section>}
-        {step === 6 && <SaleAuthorityEditor state={state} onChange={value => dispatch({ type: 'sale-authority', value })} />}
+        {step === 6 && <SaleAuthorityEditor key={draft.id} state={state} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }} />}
         {authorityErrors.length > 0 && [6, 8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
           const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);

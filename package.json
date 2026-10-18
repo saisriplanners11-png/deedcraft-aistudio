@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs && node qa/sale-v10.mjs && node qa/gift-deed-flow.mjs && vitest run docx.test.ts merge.test.ts gift-options.test.ts instruments.test.ts file-drop-zone.test.ts source-draft.test.ts template-version-status.test.ts draft-preservation.test.ts workflow-steps.test.ts payments.test.ts",
+    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs && node qa/sale-v10.mjs && node qa/gift-deed-flow.mjs && vitest run docx.test.ts merge.test.ts gift-options.test.ts instruments.test.ts file-drop-zone.test.ts source-draft.test.ts template-version-status.test.ts draft-preservation.test.ts workflow-steps.test.ts authority-import.test.ts payments.test.ts",
     "preview": "vite preview",
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -16,6 +16,7 @@
     "test:sale-v9-browser": "node qa/sale-v9-browser.mjs",
     "test:sale-v7": "node qa/sale-v7.mjs",
     "test:sale-v7-browser": "node qa/sale-v7-browser.mjs",
+    "test:authority-e2e": "node qa/authority-upload-flow.mjs",
     "test:e2e": "node qa/section-upload-flow.mjs",
     "test:plan-e2e": "node qa/property-plan-flow.mjs",
     "test:exact-plan-e2e": "node qa/exact-reference-flow.mjs",
