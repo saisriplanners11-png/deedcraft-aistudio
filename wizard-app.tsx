@@ -1,9 +1,9 @@
-import { applyAuthorityPerson } from './authority-import';
+import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
 import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
-import { ALL_FIELDS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
 import { FileDropZone } from './file-drop-zone';
@@ -214,11 +214,12 @@ function ScopedSectionUpload({ label, busy, onUpload }: { label: string; busy?: 
 /** The named passes a document goes through while it's being read, ticked off as each completes. */
 /** One role-scoped field group, bound to a specific record through the draft's manual-edit dispatch. */
 function RecordFieldGroup({
-  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType, omitConsideration,
+  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType, omitConsideration, afterField,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
   label?: string;
+  afterField?: (fieldId: string) => React.ReactNode;
   fallbackValues?: Record<string, string>;
   hidePartyType?: boolean;
   omitConsideration?: boolean;
@@ -266,6 +267,7 @@ function RecordFieldGroup({
     {groups.map(g => (
       <FieldGroup
         key={g.title}
+        afterField={afterField}
         group={label ? { ...g, title: `${g.title} — ${label}` } : g}
         form={form}
         setField={(id, v) => edit(role, record, id, v)}
@@ -375,8 +377,9 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
  * different record's — the same way LinkRecordCard scopes an upload to one row.
  */
 function PartyRecordCard({
-  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose,
+  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose, shareFields,
 }: {
+  shareFields?: React.ReactNode;
   role: 'executant' | 'claimant'; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
   label?: string; onDelete?: () => void; onUpload: (files: File[]) => void; busy?: boolean; sources: Source[];
@@ -384,7 +387,7 @@ function PartyRecordCard({
   upload: (files: File[], assignment: { role: Role; record: string }, profile: ExtractionProfile) => void;
   choose: (key: string, candidateId: string) => void;
 }) {
-  const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || 'Individual') as PartyType;
+  const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || (role === 'executant' && appStateFor(draft).saleDocument !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual')) as PartyType;
   const entity = isEntity({ [role + 'PartyType']: partyType }, role);
   const people = peopleFor(draft, partyKey(role, record), resolved);
   const society = partyType === 'Society / Association' || partyType === 'Society / Trust';
@@ -423,7 +426,7 @@ function PartyRecordCard({
         <ScopedSectionUpload label="entity particulars" busy={busy} onUpload={files => upload(files, { role, record }, ('entity:' + role + ':' + partyType) as ExtractionProfile)} />
         <SourceFeedback sources={sources.filter(s => !s.profile?.startsWith('authorization:'))} />
         <FieldGroup group={{ step, title: 'Organisation particulars', cols: 3, fields: entityFields.filter(f => !addressField(f.id)) }} form={entityForm} setField={(id, value) => edit(role, record, id, value)} />
-        <FieldGroup group={{ step, title: 'Office and communication addresses', cols: 3, fields: entityFields.filter(f => addressField(f.id) && f.id !== role + 'EntityCommunicationSame' && !(same && f.id === role + 'EntityCommunicationAddress')) }} form={entityForm} setField={(id, value) => edit(role, record, id, value)} />
+        <FieldGroup afterField={id => id.endsWith('PinCode') ? shareFields : null} group={{ step, title: 'Office and communication addresses', cols: 3, fields: entityFields.filter(f => addressField(f.id) && f.id !== role + 'EntityCommunicationSame' && !(same && f.id === role + 'EntityCommunicationAddress')) }} form={entityForm} setField={(id, value) => edit(role, record, id, value)} />
         <label className="entity-same-address"><input type="checkbox" checked={same} onChange={e => edit(role, record, role + 'EntityCommunicationSame', e.target.checked ? 'Yes' : 'No')} /> Same as registered office address</label>
         <ScopedSectionUpload label="board resolution / authorization" busy={busy} onUpload={files => upload(files, { role, record }, ('authorization:' + role + ':' + partyType) as ExtractionProfile)} />
         <SourceFeedback sources={sources.filter(s => s.profile?.startsWith('authorization:'))} />
@@ -433,7 +436,7 @@ function PartyRecordCard({
       {society && personList('memberIds')}
     </> : <>
       <div className="party-identity-upload"><ScopedSectionUpload label="party identity" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} /></div>
-      <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType />
+      <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType afterField={id => id.endsWith('PinCode') ? shareFields : null} />
     </>}
     {onDelete && <button type="button" className="quiet" onClick={onDelete}>Delete this {role}</button>}
   </section></PlacementRecord>;
@@ -451,41 +454,29 @@ function AddPartyRecord({ noun, onAdd }: { noun: string; onAdd: (files: File[]) 
   </FileDropZone>;
 }
 
-function PartySharesEditor({
-  parties, schedules, shares, side, onChange,
-}: {
-  parties: { id: string; name: string }[];
-  schedules: { id: string }[];
-  shares: VendeeSharesBySchedule;
-  side: 'Vendor' | 'Vendee';
-  onChange: (scheduleId: string, partyId: string, value: string) => void;
+function PartyShareFields({ role, record, parties, schedules, shares, dispatch }: {
+  role: 'executant' | 'claimant'; record: string; parties: string[];
+  schedules: { id: string }[]; shares: VendeeSharesBySchedule; dispatch: React.Dispatch<Action>;
 }) {
-  return <Section title={`${side} undivided ownership shares`}>
-    <p style={{ margin: '0 0 14px', fontSize: 12, color: C.body }}>Optional: leave all percentages blank to omit the share clause. If you enter a percentage for a property, complete every party’s share for that property, totalling 100%.</p>
-    {schedules.map((schedule, scheduleIndex) => {
-      const values = parties.map(party => shares[schedule.id]?.[party.id] || '');
-      const cents = values.map(vendeeShareCents);
-      const entered = values.some(value => value.trim());
-      const complete = cents.every(value => value !== null);
-      const total = cents.reduce<number>((sum, value) => sum + (value || 0), 0);
-      return <div key={schedule.id} style={{ marginTop: scheduleIndex ? 22 : 0 }}>
-        <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {scheduleIndex + 1}</h3>
-        <div className="ownership-share-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-          {parties.map((party, index) => <label key={party.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: C.body }}>
-            <span>{side} {index + 1}{party.name ? ` — ${party.name}` : ''} (%)</span>
-            <input type="text" inputMode="decimal" value={values[index]} aria-label={`Schedule ${scheduleIndex + 1} ${side} ${index + 1} undivided share percent`}
-              aria-invalid={entered && cents[index] === null}
-              onChange={event => onChange(schedule.id, party.id, event.target.value)}
-              style={{ padding: '8px 2px', border: 0, borderBottom: `1px solid ${C.goldLight}`, background: 'transparent', fontSize: 14, color: C.ink }} />
-            {entered && cents[index] === null && <small style={{ color: C.gold }}>{values[index] ? 'Enter more than 0% and no more than 100%, with up to two decimal places.' : 'Share required.'}</small>}
-          </label>)}
-        </div>
-        <p style={{ margin: '9px 0 0', fontSize: 12, color: complete && total === 10000 ? C.green : C.gold }}>
-          {!entered ? 'Share clause omitted. ' : ''}Total: {(total / 100).toFixed(2).replace(/\.00$/, '')}%{!entered ? '' : complete && total === 10000 ? ' ✓' : ' — enter shares totalling 100%'}
-        </p>
-      </div>;
-    })}
-  </Section>;
+  const side = role === 'executant' ? 'Vendor' : 'Vendee';
+  return <>{schedules.map((schedule, index) => {
+    const value = shares[schedule.id]?.[record] || '';
+    const values = parties.map(id => shares[schedule.id]?.[id] || '');
+    const entered = values.some(value => value.trim());
+    const cents = values.map(vendeeShareCents);
+    const total = cents.reduce<number>((sum, value) => sum + (value || 0), 0);
+    const invalid = entered && (cents.some(value => value === null) || total !== 10000);
+    return <label className="field" key={schedule.id}>
+      <span>Share percentage (%) {schedules.length > 1 ? '— Schedule ' + (index + 1) : '(optional)'}</span>
+      <input type="text" inputMode="decimal" value={value}
+        aria-label={'Schedule ' + (index + 1) + ' ' + side + ' ' + (parties.indexOf(record) + 1) + ' undivided share percent'}
+        aria-invalid={invalid}
+        onChange={event => dispatch(role === 'executant'
+          ? { type: 'vendor-share', scheduleId: schedule.id, executantId: record, value: event.target.value }
+          : { type: 'vendee-share', scheduleId: schedule.id, claimantId: record, value: event.target.value })} />
+      <small>{invalid ? 'Complete all parties’ shares for this property, totalling 100%. Current total: ' + total / 100 + '%.' : 'Leave blank to omit the share clause from the document.'}</small>
+    </label>;
+  })}</>;
 }
 
 /** The real template SCHEDULE OF PROPERTY paragraph, loaded live for one property record. */
@@ -624,7 +615,7 @@ export default function WizardApp() {
   const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v10'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
   const authorityErrors = draft.instrumentId === 'gift' ? [...(!giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state)] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
-  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin('gift-deed-v1') } : libraryTemplate && libraryTemplate.versionId !== 'gift-deed-v1' ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId]);
+  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin('gift-deed-v2') } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-deed-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
     additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
@@ -635,7 +626,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:gift-grammar-v1:${templateMode === 'custom' ? `custom:${customTemplate?.hash || 'missing'}:${canonicalContract(fieldContract)}` : libraryTemplate ? `library:${libraryTemplate.versionId}:${libraryTemplate.packageHash || libraryTemplate.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v3:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:gift-format-policy-v2:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v3:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -649,7 +640,7 @@ export default function WizardApp() {
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
     planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
-    templateMode, customTemplate, libraryTemplate: draft.instrumentId === 'gift' && templateMode === 'built-in' ? bundledTemplatePin('gift-deed-v1') : libraryTemplate, generationManifest,
+    templateMode, customTemplate, libraryTemplate: draft.instrumentId === 'gift' && templateMode === 'built-in' ? bundledTemplatePin('gift-deed-v2') : libraryTemplate, generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
     const sequence = ++saveSequence.current;
@@ -1063,21 +1054,6 @@ export default function WizardApp() {
   const activeScheduleMerge = scheduleMerges[activePropertyIndex];
   const claimantIds = partyRecordIds('claimant');
   const executantIds = partyRecordIds('executant');
-  const vendorShareEditor = executantIds.length > 1 && <PartySharesEditor
-    side="Vendor"
-    parties={executantIds.map(record => ({ id: record, name: partyDisplayName(Object.fromEntries(ALL_FIELDS.filter(f => f.id.startsWith('executant')).map(f => [f.id, resolved.values[fieldKey('executant', record, f.id)] || ''])), 'executant') }))}
-    schedules={propertyRecords}
-    shares={draft.vendorSharesBySchedule || {}}
-    onChange={(scheduleId, executantId, value) => dispatch({ type: 'vendor-share', scheduleId, executantId, value })}
-  />;
-  const shareEditor = claimantIds.length > 1 && <PartySharesEditor
-    side="Vendee"
-    parties={claimantIds.map(record => ({ id: record, name: partyDisplayName(Object.fromEntries(ALL_FIELDS.filter(f => f.id.startsWith('claimant')).map(f => [f.id, resolved.values[fieldKey('claimant', record, f.id)] || ''])), 'claimant') }))}
-    schedules={propertyRecords}
-    shares={draft.vendeeSharesBySchedule || {}}
-    onChange={(scheduleId, claimantId, value) => dispatch({ type: 'vendee-share', scheduleId, claimantId, value })}
-  />;
-
   async function generate(kind: 'word' | 'pdf') {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
@@ -1148,7 +1124,7 @@ export default function WizardApp() {
 
   async function downloadStarterTemplate() {
     try {
-      const bytes = draft.instrumentId === 'gift' && templateMode !== 'custom' ? await loadTemplate('gift-deed-v1') : await templateBytes(activeTemplateSource);
+      const bytes = draft.instrumentId === 'gift' && templateMode !== 'custom' ? await loadTemplate('gift-deed-v2') : await templateBytes(activeTemplateSource);
       saveBlob(new Blob([bytes as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), `DeedCraft-${draft.instrumentId === 'gift' ? 'Gift' : 'Sale'}-Deed-Template.docx`);
     } catch (error: any) {
       setMessage(`Starter template could not be downloaded: ${error?.message || 'Please retry.'}`);
@@ -1239,7 +1215,7 @@ export default function WizardApp() {
           <div className="step-toolbar">
             <div className="workspace-breadcrumb">{step >= 0 ? <><button type="button" className="quiet" onClick={() => goto(-1)}>Overview</button><span aria-hidden="true">/</span><span>{['', 'Setup & sources', draft.instrumentId === 'gift' ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][STEPS[step].phase]}</span></> : <span>Workspace / Overview</span>}</div>
             <div className="step-toolbar-status">{!storageError && hasStarted && <span className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</span>}
-              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{draft.instrumentId === 'gift' ? 'Gift Settlement v1' : libraryTemplate?.name || 'Built-in Sale v10'}</strong><small>{draft.instrumentId === 'gift' ? 'gift-deed-v1' : libraryTemplate?.versionId || 'sale-deed-v10'}</small>{draft.instrumentId === 'sale' && latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v10') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
+              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{draft.instrumentId === 'gift' ? 'Gift Settlement v2' : libraryTemplate?.name || 'Built-in Sale v10'}</strong><small>{draft.instrumentId === 'gift' ? 'gift-deed-v2' : libraryTemplate?.versionId || 'sale-deed-v10'}</small>{draft.instrumentId === 'sale' && latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v10') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
             </div>
           </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
@@ -1279,8 +1255,6 @@ export default function WizardApp() {
             const open = notices.filter(n => n.step === (side === 'executant' ? 6 : 7)).length;
             return <div className="party-summary" key={side + id}><b>{partyDisplayName(party.values, side) || 'Unnamed ' + side}</b><span>{party.values[side + 'PartyType'] || 'Individual'}{isEntity(party.values, side) ? ' · ' + count + ' representative(s)' : ''} · {open ? open + ' outstanding details on this side' : 'Complete'}</span><button type="button" className="quiet" onClick={() => goto(side === 'executant' ? 6 : 7)}>Edit {side}</button></div>;
           }))}</section></div>
-          {vendorShareEditor}
-          {shareEditor}
           <section className="dashboard-section" aria-labelledby="workflow-title">
             <div className="dashboard-section-head"><div><p className="eyebrow">WORKFLOW</p><h2 id="workflow-title">Your drafting steps</h2></div><span>Choose any step to continue</span></div>
             {[1, 2, 3, 4].map(phase => <div className="dashboard-phase" key={phase}>
@@ -1346,7 +1320,7 @@ export default function WizardApp() {
           {state.form.giftRelationship === 'other' && <label className="field"><span>Relationship wording</span><input aria-label="Relationship wording" value={state.form.giftRelationshipCustom || ''} onChange={event => edit('property', 'primary', 'giftRelationshipCustom', event.target.value)} /><small>Enter the full phrase, for example “son and daughter” for two Donees. Confirm it applies to the listed Donors.</small></label>}
           <p><strong>Clause preview</strong></p><p>{giftRelationshipValues(state)['Gift Relationship Recital']}</p>
         </section>}
-        {step === 6 && <SaleAuthorityEditor key={draft.id} state={state} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }} />}
+        {step === 6 && <SaleAuthorityEditor key={draft.id} state={state} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = applyGpaExtraction(current.current, authority, result); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }} />}
         {authorityErrors.length > 0 && [6, 8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
           const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);
@@ -1484,6 +1458,8 @@ export default function WizardApp() {
             {records.map((record, i, all) => {
               const busySource = sourceBusyFor(role, record);
               return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
+                shareFields={<PartyShareFields role={role} record={record} parties={records} schedules={propertyRecords}
+                  shares={(role === 'executant' ? draft.vendorSharesBySchedule : draft.vendeeSharesBySchedule) || {}} dispatch={dispatch} />}
                 label={all.length > 1 ? `${noun} ${i + 1}` : undefined}
                 onDelete={all.length > 1 && record !== 'primary' ? () => clearPartyRecord(role, record) : undefined}
                 draft={draft} dispatch={dispatch} upload={(files, assignment, profile) => void runUpload(files, assignment, profile)} choose={(key, candidateId) => dispatch({ type: 'choose', key, candidateId })}
@@ -1492,8 +1468,6 @@ export default function WizardApp() {
                 busy={!!busySource} />;
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
-            {role === 'executant' && vendorShareEditor}
-            {role === 'claimant' && shareEditor}
           </>;
         })()}
 

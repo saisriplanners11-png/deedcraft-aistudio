@@ -9,7 +9,7 @@ export const SALE_DOCUMENT_OPTIONS = [
 export type SaleDocument = typeof SALE_DOCUMENT_OPTIONS[number]['id'];
 export type AuthorityDocument = { id: string; name: string; dataUrl: string; size: number };
 export type AuthorityPerson = { id: string; role: 'principal' | 'attorney' | 'unknown'; values: Record<string, string>; principalNames: string[]; quote: string; page: number; sourceName: string };
-export type AuthorityExtraction = { id: string; documentIds: string[]; people: AuthorityPerson[]; details: Record<string, string>; notes: string[] };
+export type AuthorityExtraction = { incomplete?: boolean; id: string; documentIds: string[]; people: AuthorityPerson[]; details: Record<string, string>; notes: string[] };
 export type SaleAttorney = { id: string; principalIds: string[]; extractedPersonId?: string; values: Record<string, string>; documents?: AuthorityDocument[] };
 export type SaleAuthority = { documentNo: string; bookNumber?: string; documentDate: string; sro: string; sroCode: string; adjustedAmount: string; attorneys: SaleAttorney[]; documents?: AuthorityDocument[]; extractions?: AuthorityExtraction[] };
 export const emptySaleAuthority = (): SaleAuthority => ({ documentNo: '', documentDate: '', sro: '', sroCode: '', adjustedAmount: '', attorneys: [] });

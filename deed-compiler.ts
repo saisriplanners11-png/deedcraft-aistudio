@@ -58,7 +58,7 @@ export async function renderArtifact(
   if (binding.errors.length) throw new Error(binding.errors.join(' '));
   if (templateSource.kind !== 'built-in' && templateSource.fieldContract?.fields.length && !compiled.snapshot.templateFieldData) throw new Error('Template field values are missing from this draft snapshot.');
   const result = compiled.snapshot.instrumentId === 'gift'
-    ? await fillGiftDeed(binding.values, binding.rewrites, binding.schedules, templateSource)
+    ? await fillGiftDeed({ ...binding.values, 'Gift Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)
     : await fillSaleDeed(binding.values, first.variant, binding.rewrites, binding.schedules, templateSource);
   if (binding.markers.length) {
     const entries = await readZip(new Uint8Array(await result.blob.arrayBuffer()));

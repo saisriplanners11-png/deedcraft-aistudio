@@ -2,7 +2,7 @@ import { extractAuthorityDocuments } from './authority-extraction';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { FileDropZone } from './file-drop-zone';
 import { partyRecords, type AppState } from './logic';
-import { emptySaleAuthority, saleDocumentLabel, type SaleAuthority, type AuthorityDocument, type AuthorityPerson } from './sale-options';
+import { emptySaleAuthority, saleDocumentLabel, type SaleAuthority, type AuthorityDocument, type AuthorityPerson, type AuthorityExtraction } from './sale-options';
 
 function AuthorityUploads({ label, documents = [], onChange, onExtract }: { label: string; documents?: AuthorityDocument[]; onChange: (documents: AuthorityDocument[]) => void; onExtract: (files: File[], ids: string[]) => Promise<void> }) {
   const id = useId();
@@ -36,7 +36,7 @@ function AuthorityUploads({ label, documents = [], onChange, onExtract }: { labe
   }
   return <FileDropZone className="authority-uploads" disabled={busy}>
     <label className="field" htmlFor={id}><span>{label}</span></label>
-    <p id={`${id}-hint`}>Upload documents (up to 20 MB each) to extract details. Select each person’s role below to fill their record. Existing entered values are retained.</p>
+    <p id={`${id}-hint`}>Upload documents (up to 20 MB each) to extract details. GPA/AGPA authority uploads replace executants automatically. For other uploads, select each person’s role below; existing entered values are retained.</p>
     <input id={id} type="file" multiple accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,.gif" disabled={busy} aria-describedby={`${id}-hint`} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void upload(files); }} />
     {busy && <p role="status">Attaching and extracting documents…</p>}
     {error && <p role="alert">{error}</p>}
@@ -51,18 +51,19 @@ const fields = [
   ['District', 'District'], ['State', 'State'], ['PinCode', 'PIN code'], ['Aadhaar', 'Aadhaar number'],
   ['Mobile', 'Mobile (optional)'], ['Pan', 'PAN (optional)'],
 ];
-export function SaleAuthorityEditor({ state, onChange, onApplyPerson }: { state: AppState; onChange: (value: SaleAuthority) => void; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
+export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa }: { state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
   const authority = state.saleAuthority || emptySaleAuthority();
-  const latest = useRef({ authority, onChange }); latest.current = { authority, onChange };
+  const latest = useRef({ authority, onChange, onApplyGpa }); latest.current = { authority, onChange, onApplyGpa };
   const controllers = useRef(new Set<AbortController>());
   const mounted = useRef(true);
   const [progress, setProgress] = useState('');
   const [extractionError, setExtractionError] = useState('');
+  const [extracting, setExtracting] = useState(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controllers.current.forEach(controller => controller.abort()); controllers.current.clear(); }; }, [state.saleDocument]);
   if (!state.saleDocument || state.saleDocument === 'ordinary') return null;
-  async function extract(files: File[], ids: string[]) {
+  async function extract(files: File[], ids: string[], authorityUpload = false) {
     if (!mounted.current) return;
-    const controller = new AbortController(); controllers.current.add(controller); setExtractionError('');
+    const controller = new AbortController(); controllers.current.add(controller); setExtractionError(''); setExtracting(true); setProgress('Preparing authority documents…');
     try {
       const result = await extractAuthorityDocuments(files, ids, controller.signal, setProgress);
       const current = latest.current.authority;
@@ -70,25 +71,35 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson }: { state:
       if (controller.signal.aborted || ids.some(id => !retained.has(id))) return;
       const updated = { ...current, extractions: [...(current.extractions || []).filter(item => !item.documentIds.some(id => ids.includes(id))), result] };
       for (const [key, value] of Object.entries(result.details)) if (!String((updated as any)[key] || '').trim()) (updated as any)[key] = value;
+      if (authorityUpload && (state.saleDocument === 'gpa' || state.saleDocument === 'agpa')) {
+        const error = latest.current.onApplyGpa(updated, result);
+        if (error) { latest.current.onChange({ ...current, extractions: updated.extractions }); setExtractionError(error); return; }
+        setProgress('GPA/AGPA authority details and Principal executants filled. Review the extracted source quotes and completed records.');
+        return;
+      }
       latest.current.onChange(updated);
       setProgress(`Found ${result.people.length} people. Review the source quotes and select Principal or GPA holder to fill the correct record.`);
     } catch (error) {
       if (!controller.signal.aborted) { const message = error instanceof Error ? error.message : 'Authority extraction failed.'; setExtractionError(message); throw error; }
-    } finally { controllers.current.delete(controller); }
+    } finally { controllers.current.delete(controller); if (mounted.current) setExtracting(controllers.current.size > 0); }
   }
-  async function retry(documents: AuthorityDocument[]) {
+  async function retry(documents: AuthorityDocument[], authorityUpload = false) {
     try {
       const files = await Promise.all(documents.map(async document => { const blob = await (await fetch(document.dataUrl)).blob(); return new File([blob], document.name, { type: blob.type }); }));
-      await extract(files, documents.map(document => document.id));
-    } catch { /* Extraction error is shown with the retained attachments. */ }
+      await extract(files, documents.map(document => document.id), authorityUpload);
+    } catch (error) {
+      setExtractionError(error instanceof Error ? error.message : 'Could not read the attached documents. Please upload them again.');
+    }
   }
   const principals = partyRecords(state, 'executant').map((record, index) => ({ ...record, id: index ? record.id : state.primaryExecutantId || 'primary' }));
   return <section className="panel" aria-label="Sale authority details">
     <h2>{saleDocumentLabel(state.saleDocument)} — authority details</h2>
-    <p>Upload the authority document, then select each extracted individual as Principal or GPA/AGPA holder. Review the filled records and the principals represented by each holder.</p>
-    <AuthorityUploads label={`Upload ${state.saleDocument.toUpperCase()} documents`} documents={authority.documents} onExtract={extract} onChange={documents => updateDocuments({ ...authority, documents })} />
-    {!!authority.documents?.length && <button type="button" disabled={controllers.current.size > 0} onClick={() => void retry(authority.documents || [])}>Extract details from attached authority documents</button>}
-    {progress && <p role="status" aria-live="polite">{progress}</p>}
+    <p>GPA and AGPA uploads automatically replace Executants with the verified principals and select Principal as Party type. Missing authority details stay blank. Review source quotes and select holders separately.</p>
+    <AuthorityUploads label={`Upload ${state.saleDocument.toUpperCase()} documents`} documents={authority.documents} onExtract={(files, ids) => extract(files, ids, true)} onChange={documents => updateDocuments({ ...authority, documents })} />
+    {!!authority.documents?.length && <button type="button" disabled={extracting} onClick={() => void retry(authority.documents || [], true)}>Extract details from attached authority documents</button>}
+    {!!authority.documents?.length && !extracting && !extractionError && authority.documents.some(document => !(authority.extractions || []).some(read => read.documentIds.includes(document.id))) && <p role="alert">The authority document is attached, but extraction has not completed. Click “Extract details from attached authority documents”. If extraction fails, the error will appear here; uploading alone does not confirm that details were filled.</p>}
+    {extracting && <p role="status">Extracting authority details…</p>}
+    {progress && !extractionError && <p role="status" aria-live="polite">{progress}</p>}
     {extractionError && <p role="alert">Extraction could not finish: {extractionError} Your attached documents are retained; retry extraction.</p>}
     {(authority.extractions || []).map(extraction => <section key={extraction.id} aria-label="Extracted authority people">
       {extraction.people.map(person => <ExtractedAuthorityPerson key={person.id} person={person} principals={principals} authority={authority} onApply={onApplyPerson} holderLabel={state.saleDocument === 'agpa' ? 'AGPA holder' : 'GPA holder'} />)}

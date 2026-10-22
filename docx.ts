@@ -1595,6 +1595,33 @@ export function saveBlob(blob: Blob, filename: string) {
 }
 
 
+const GIFT_SCHEDULE_NAMES = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE', 'IF HOUSE', 'IF HOUSE SEMI FINISHED', 'IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
+
+function giftTemplateParts(body: string) {
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  const texts = chunks.map(chunk => plainText(chunk).trim());
+  const headings = texts.map((text, index) => text === 'SCHEDULE OF PROPERTY' ? index : -1).filter(index => index >= 0);
+  const first = texts.findIndex(text => /^<IF /.test(text));
+  const tail = texts.findIndex((text, index) => index > (headings.at(-1) ?? Infinity) && (text === '<FOR ALL THE DOCUMENTS>' || text === 'The schedule property is not the assigned property.' || text === 'DECLARATION'));
+  const blocks = new Map<string, string>();
+  for (const [index, heading] of headings.entries()) {
+    const marker = texts.slice(0, heading).reverse().find(text => /^<IF /.test(text)) || '';
+    const label = conditionName(marker);
+    const name = label === 'IF DEMOLISHE HOUSE' ? 'IF DIMOLISHED HOUSE' : CONDITION_ALIASES[label] || label;
+    if (!GIFT_SCHEDULE_NAMES.includes(name) || blocks.has(name)) throw new Error(`Missing, duplicate or unsupported Gift schedule marker: ${marker || 'none'}.`);
+    blocks.set(name, chunks.slice(heading, headings[index + 1] ?? tail).filter(chunk => !/^<IF |^<FOR ALL/.test(plainText(chunk).trim())).join(''));
+  }
+  if (first < 0 || tail < 0 || blocks.size !== 8) throw new Error('Retain all eight labelled Gift property schedules and the closing declaration.');
+  return { chunks, first, tail, blocks };
+}
+
+function giftParagraphWording(paragraph: string, donors: number, donees: number): string {
+  giftPartyWording(plainText(paragraph), donors, donees, (find, replacement) => {
+    paragraph = replaceRunText(paragraph, find, () => replacement);
+  });
+  return paragraph;
+}
+
 /** Gift uses its supplied reference package, with application-owned relationship and agreement. */
 export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<TemplateValidationResult> {
   const errors: string[] = [];
@@ -1603,15 +1630,20 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
     const entries = await readZip(bytes, { maxEntries: 2000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
     const document = entries.find(entry => entry.name === 'word/document.xml');
     if (!document) throw new Error('Missing word/document.xml.');
-    const text = plainText(new TextDecoder().decode(document.data));
-    detectedPlaceholders = angleTags(new TextDecoder().decode(document.data));
-    const approved = await readZip(await loadTemplate('gift-deed-v1'));
+    const xml = new TextDecoder().decode(document.data);
+    const text = plainText(xml);
+    detectedPlaceholders = angleTags(xml);
+    const approved = await readZip(await loadTemplate('gift-deed-v2'));
     const approvedDocument = approved.find(entry => entry.name === 'word/document.xml')!;
-    const supported = new Set([...angleTags(new TextDecoder().decode(approvedDocument.data)), 'Gift Relationship Recital', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT'].map(norm));
+    const supported = new Set([...angleTags(new TextDecoder().decode(approvedDocument.data)), ...GIFT_SCHEDULE_NAMES, 'FOR ALL THE DOCUMENTS', 'Gift Relationship Recital', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT', 'Date'].map(norm));
     for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Gift placeholder <${tag}>. Keep the starter bindings so details are not silently discarded.`);
     if (!/GIFT SETTLEMENT/i.test(text) || !/without any monetary consideration/i.test(text)) errors.push('Choose the supplied Gift Settlement reference, not a Sale deed.');
-    for (const tag of ['EXECUTANT NAME', 'CLAIMANT NAME']) if (!new RegExp(`<\\s*${tag}\\s*>`, 'i').test(text)) errors.push(`The Gift template must retain <${tag}>.`);
-    if ((text.match(/SCHEDULE OF PROPERTY/g) || []).length !== 8 || !/DECLARATION/.test(text) || !/SIGN\/S OF THE DONOR\/S/i.test(text)) errors.push('Retain all eight Gift property schedules, declaration and donor signature sections.');
+    const detected = new Set(detectedPlaceholders.map(norm));
+    for (const tag of ['EXECUTANT NAME', 'EXECUTANT RELATION NAME', 'Executant Age', 'Executant Dob', 'Executant Occupation', 'Executant Address', 'Executant Adhar Number', 'Executant Cell.No.', 'CLAIMANT NAME', 'CLAIMANT RELATION NAME', 'Claimant Age', 'Claimant Dob', 'Claimant Occupation', 'Claimant Address', 'Claimant Adhar Number', 'Claimant Cell.No.']) if (!detected.has(norm(tag))) errors.push(`The Gift template must retain <${tag}> so saved party details are not lost.`);
+    if ((text.match(/SCHEDULE OF PROPERTY/g) || []).length !== 8 || !/DECLARATION/.test(text) || !/SIGN\/S OF THE DONOR\/S/i.test(text) || !/SIGN\/S OF THE DONEE\/S/i.test(text)) errors.push('Retain all eight Gift property schedules, declaration and donor/donee signature sections.');
+    const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
+    if (sections.length < 2 || !/w:top="8208"/.test(sections[0])) errors.push('Retain the Gift page sections, including the first-page stamp space.');
+    giftTemplateParts(xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>')));
   } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
   return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
@@ -1619,7 +1651,7 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
 export async function fillGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
   if (!values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
   if (!schedules.length) throw new Error('Add a Gift property schedule.');
-  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId !== 'gift-deed-v1' ? await loadTemplate('gift-deed-v1') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v1');
+  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v2') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v2');
   const validation = await validateGiftDeedTemplate(bytes);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
@@ -1627,15 +1659,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   let xml = new TextDecoder().decode(document.data);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const body = xml.slice(start, end);
-  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
-  const texts = chunks.map(chunk => plainText(chunk).trim());
-  const headings = texts.map((text, index) => text === 'SCHEDULE OF PROPERTY' ? index : -1).filter(index => index >= 0);
-  const first = texts.findIndex(text => /^<IF /.test(text));
-  const tail = texts.findIndex((text, index) => index > headings[7] && (text === '<FOR ALL THE DOCUMENTS>' || text === 'The schedule property is not the assigned property.' || text === 'DECLARATION'));
-  if (first < 0 || tail < 0) throw new Error('The Gift schedule boundaries are missing.');
-  const names = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE', 'IF HOUSE', 'IF HOUSE SEMI FINISHED', 'IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
-  const blocks = new Map<string, string>();
-  headings.forEach((heading, index) => blocks.set(names[index], chunks.slice(heading, headings[index + 1] ?? tail).filter(chunk => !/^<IF |^<FOR ALL/.test(plainText(chunk).trim())).join('')));
+  const { chunks, first, tail, blocks } = giftTemplateParts(body);
   const donors = Number(values['Ownership Vendor Count']) || 1, donees = Number(values['Ownership Vendee Count']) || 1;
   const missing = new Set<string>();
   const map = (record: Record<string, string>) => new Map(Object.entries(record).map(([key, value]) => [norm(key), value ?? '']));
@@ -1650,7 +1674,8 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       return replaceRunText(paragraph, /[\s\S]+/, () => values['Gift Relationship Recital']);
     }
     paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
-    return replaceRunText(paragraph, /[\s\S]+/, () => giftPartyWording(plainText(paragraph), donors, donees));
+    if (values['Gift Variant'] && values['Gift Variant'] !== 'family-gift') paragraph = replaceRunText(paragraph, /FAMILY MEMBERS?/gi, () => values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY' : 'DONEE');
+    return giftParagraphWording(paragraph, donors, donees);
   });
   if (!relationshipFound) {
     const children = topLevelChildren(opening);
@@ -1693,23 +1718,30 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     return fill(block, giftValues);
   }).join('');
   let closing = chunks.slice(tail).filter(chunk => !/^<FOR ALL/.test(plainText(chunk).trim())).join('');
-  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /[\s\S]+/, () => giftPartyWording(plainText(paragraph), donors, donees)));
+  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => giftParagraphWording(paragraph, donors, donees));
   closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => !values['Include Prepared By'] && /Prepared By:/i.test(plainText(paragraph)) ? '' : paragraph);
   closing = fill(closing, values);
-  // The source is a catalogue with a stamp-space section, manual spacers and
-  // blank table rows. Let the selected deed paginate naturally with its final
-  // source page settings instead of carrying empty catalogue pages forward.
+  // Match Sale's registration page setup, including the first-page stamp
+  // space. Keep section boundaries while removing catalogue-only spacers.
   let result = opening + selected + closing;
   let empty = 0;
   let signing = false;
   result = topLevelChildren(result).map(child => result.slice(child.start, child.end)).map(chunk => {
     chunk = chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
-      paragraph = paragraph.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, '');
       if (/SIGNATURES? OF THE|^\s*\(Accepted\)/i.test(plainText(paragraph))) {
         paragraph = paragraph.replace(/<w:ind\b[^>]*\/>/g, '').replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="right"/>');
         paragraph = paragraph.replace(/<w:spacing\b[^>]*\/>/g, '<w:spacing w:before="360" w:after="240"/>');
+        if (/SIGNATURES? OF THE DONORS?/i.test(plainText(paragraph)) && /SIGNATURES? OF THE DONEES?/i.test(plainText(paragraph))) {
+          // A right tab keeps both source-styled labels on one line even when
+          // singular/plural agreement makes them longer than the source labels.
+          paragraph = replaceRunText(paragraph, /[ \t]+(?=SIGNATURES? OF THE DONEES?)/i, () => '__GIFT_SIGNATURE_TAB__');
+          paragraph = paragraph.replace('__GIFT_SIGNATURE_TAB__', '</w:t><w:tab/><w:t xml:space="preserve">');
+          paragraph = paragraph.replace(/<w:tabs\b[^>]*>[\s\S]*?<\/w:tabs>/g, '').replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="left"/>');
+          paragraph = paragraph.replace(/<w:pPr\b[^>]*>/, tag => tag + '<w:tabs><w:tab w:val="right" w:pos="9760"/></w:tabs>');
+        }
       }
-      if (/^\s*(?:SCHEDULE OF PROPERTY|\(Description of the property|ANNEXURE|Boundaries of (?:Apartment|Flat))/i.test(plainText(paragraph))) paragraph = keepWithNext(paragraph);
+      if (/^\s*(?:SCHEDULE OF PROPERTY|\(Description of the property|ANNEXURE|Boundaries of (?:Apartment|Flat)|DECLARATION)/i.test(plainText(paragraph))) paragraph = keepWithNext(paragraph);
+      if (/^\s*THIS DEED of gift/i.test(plainText(paragraph))) paragraph = paragraph.replace(/<w:pPr\b[^>]*>/, tag => tag + '<w:keepLines/>');
       if (/^\s*IN WITNESS/i.test(plainText(paragraph))) signing = true;
       if (signing) paragraph = keepWithNext(paragraph);
       if (signing && /^\s*2\.\s*$/.test(plainText(paragraph))) signing = false;
@@ -1720,6 +1752,13 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     if (plainText(chunk).trim() || /<w:(?:sectPr|drawing|tbl)\b/.test(chunk)) { empty = 0; return true; }
     return ++empty <= 1;
   }).join('');
+  let sectionIndex = 0;
+  result = result.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, section => {
+    const top = sectionIndex++ === 0 && /w:top="8208"/.test(section) ? '8208' : '1080';
+    return section
+      .replace(/<w:pgSz\b[^>]*\/>/, '<w:pgSz w:w="11920" w:h="16840"/>')
+      .replace(/<w:pgMar\b[^>]*\/>/, `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>`);
+  });
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
   document.data = new TextEncoder().encode(xml.slice(0, start) + result + xml.slice(end));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };

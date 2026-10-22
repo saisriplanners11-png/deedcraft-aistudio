@@ -206,8 +206,9 @@ const SOURCE_TAG: Record<DocKind, string> = {
 
 /** One titled group of fields. */
 export function FieldGroup({
-  group, form, setField, derived, conflicts, fieldSource, fieldEvidence, onAccept, onDismiss, onAcceptGroup,
+  group, form, setField, derived, conflicts, fieldSource, fieldEvidence, onAccept, onDismiss, onAcceptGroup, afterField,
 }: {
+  afterField?: (fieldId: string) => React.ReactNode;
   group: Group;
   form: Record<string, string>;
   setField: (id: string, v: string) => void;
@@ -256,6 +257,7 @@ export function FieldGroup({
             onDismiss={() => onDismiss?.(f.id)}
             onChange={v => setField(f.id, v)}
           />
+          {afterField?.(f.id)}
           <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="after" />
         </React.Fragment>))}
         <PlacementSlot sectionId={sectionForGroup(group)} />

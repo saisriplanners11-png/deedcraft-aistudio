@@ -32,7 +32,7 @@ export interface TemplateVersion {
 
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
-  id: 'ts-gift-2026-10-v1', instrumentId: 'gift', variantIds: ['family-gift'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-18', version: '1.0.0', status: 'approved', templateVersionId: 'gift-deed-v1', sourceDocument: 'GIFT SETTLEMENT.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
+  id: 'ts-gift-2026-10-v1', instrumentId: 'gift', variantIds: DEED_DEFINITIONS.gift.variants.map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-18', version: '1.0.0', status: 'approved', templateVersionId: 'gift-deed-v2', sourceDocument: 'GIFT SETTLEMENT (2).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }, {
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana',
@@ -43,6 +43,8 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'gift-deed-v2', referenceId: 'ts-gift-2026-10-v1', instrumentId: 'gift', version: '2.0.0', asset: 'gift-deed-template-v2.docx', sha256: '61c41669cd57c290ccaf2651fa2f641455069260e12509d04e40b7875b390513', immutable: true,
+}, {
   id: 'gift-deed-v1', referenceId: 'ts-gift-2026-10-v1', instrumentId: 'gift', version: '1.0.0', asset: 'gift-deed-template-v1.docx', sha256: 'e1b7eb99701e65ac54716df596056e5437f7832e424982ee387453d8e4df941a', immutable: true,
 }, {
   id: 'sale-deed-v10', referenceId: 'ts-sale-2026-09-v1', instrumentId: 'sale',

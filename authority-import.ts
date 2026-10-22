@@ -1,3 +1,4 @@
+import { PARTY_CAPACITY_OPTIONS } from './fields';
 import { appStateFor, resolveDraft, type Draft } from './source-draft';
 import { partyRecords } from './logic';
 import { emptySaleAuthority, type AuthorityExtraction, type AuthorityPerson } from './sale-options';
@@ -21,7 +22,7 @@ export function cleanAuthorityRead(raw: any, sourceName: string, page: number): 
   const people: AuthorityPerson[] = (Array.isArray(raw?.people) ? raw.people : []).flatMap((person: any, index: number) => {
     const fields = values(person?.values, AUTHORITY_PERSON_FIELDS);
     if (!fields.Name || typeof person.quote !== 'string' || !person.quote.trim()) return [];
-    return [{ id: `${page}-${index}`, role: raw?.kind !== 'identity' && ['principal', 'attorney'].includes(person.role) ? person.role : 'unknown', values: fields, principalNames: Array.isArray(person.principalNames) ? person.principalNames.filter((name: unknown) => typeof name === 'string' && name.trim()) : [], quote: person.quote.trim(), page, sourceName }];
+    return [{ id: `${page}-${index}`, role: raw?.kind === 'authority' && ['principal', 'attorney'].includes(person.role) ? person.role : 'unknown', values: fields, principalNames: Array.isArray(person.principalNames) ? person.principalNames.filter((name: unknown) => typeof name === 'string' && name.trim()) : [], quote: person.quote.trim(), page, sourceName }];
   });
   if (!people.length) notes.push(`${sourceName}, page ${page}: no clearly evidenced individual identities found.`);
   return { people, details: raw?.kind === 'authority' ? values(raw?.details, AUTHORITY_DETAIL_FIELDS) : {}, notes: [...notes, ...(Array.isArray(raw?.notes) ? raw.notes.filter((note: unknown) => typeof note === 'string') : [])] };
@@ -44,7 +45,7 @@ export function applyAuthorityPerson(draft: Draft, person: AuthorityPerson, role
   }
   if (role === 'principal') {
     for (const key of AUTHORITY_PERSON_FIELDS) if (person.values[key] && !resolved[`executant|${targetId}|executant${key}`]) manual[`executant|${targetId}|executant${key}`] = person.values[key];
-    if (!existing?.executantPartyType) manual[`executant|${targetId}|executantPartyType`] = 'Individual';
+    if (!existing?.executantPartyType) manual[`executant|${targetId}|executantPartyType`] = PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))!;
   }
   let attorneys = authority.attorneys;
   if (role === 'attorney') {
@@ -62,4 +63,38 @@ export function applyAuthorityPerson(draft: Draft, person: AuthorityPerson, role
     return { ...attorney, principalIds: [...new Set([...attorney.principalIds, ...linked])] };
   });
   return next;
+}
+
+/** Apply a verified GPA as the exclusive source of executant identities. */
+export function applyGpaExtraction(draft: Draft, authority: import('./sale-options').SaleAuthority, result: AuthorityExtraction): Draft {
+  if (result.incomplete) throw new Error('Some GPA/AGPA pages could not be read. Existing executants were retained; retry extraction.');
+  const principals: AuthorityPerson[] = [];
+  for (const person of result.people.filter(p => p.role === 'principal' && p.values.Name && p.quote)) {
+    const match = principals.find(p => nameKey(p.values.Name) === nameKey(person.values.Name) && !['Aadhaar', 'Pan', 'Dob'].some(k => p.values[k] && person.values[k] && p.values[k] !== person.values[k]));
+    if (match) {
+      for (const [key, value] of Object.entries(person.values)) {
+        if (match.values[key] && match.values[key] !== value) throw new Error('Conflicting principal details. Existing executants were retained; review the GPA/AGPA.');
+        match.values[key] = value;
+      }
+    } else principals.push({ ...person, values: { ...person.values } });
+  }
+  if (!principals.length) throw new Error('No verified GPA/AGPA principals found. Existing executants were retained.');
+  const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith('executant|')));
+  const ids = principals.map((_, i) => i ? crypto.randomUUID() : 'primary');
+  principals.forEach((person, i) => {
+    for (const key of AUTHORITY_PERSON_FIELDS) manual['executant|' + ids[i] + '|executant' + key] = person.values[key] || '';
+    manual['executant|' + ids[i] + '|executantPartyType'] = PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))!;
+  });
+  const state = appStateFor(draft);
+  const previous = partyRecords(state, 'executant');
+  const nextAuthority = { ...authority, attorneys: authority.attorneys.map(attorney => {
+    const evidence = authority.extractions?.flatMap(e => e.people).find(p => p.id === attorney.extractedPersonId);
+    const names = evidence?.principalNames || previous.filter((p, i) => attorney.principalIds.includes(i ? p.id : state.primaryExecutantId || 'primary')).map(p => p.values.executantName);
+    return { ...attorney, principalIds: ids.filter((_, i) => names.some(name => name && nameKey(name) === nameKey(principals[i].values.Name))) };
+  }) };
+  for (const key of ['documentNo', 'bookNumber', 'documentDate', 'sro', 'sroCode'] as const) nextAuthority[key] = result.details[key] || '';
+  return { ...draft, manual, gpaExecutantsReplaced: true, saleAuthority: nextAuthority, vendorSharesBySchedule: {},
+    templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([key, values]) => [key, Object.fromEntries(Object.entries(values).filter(([record]) => !record.startsWith('executant:')))])),
+    choices: Object.fromEntries(Object.entries(draft.choices).filter(([key]) => !key.startsWith('executant|'))),
+    partyPeople: Object.fromEntries(Object.entries(draft.partyPeople || {}).filter(([key]) => !key.startsWith('executant'))), revision: draft.revision + 1 };
 }

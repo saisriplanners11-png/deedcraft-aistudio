@@ -1,5 +1,5 @@
 import { normalizeWorkflowStep } from './workflow-steps';
-import { localAuthorityName } from './fields';
+import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
@@ -42,6 +42,7 @@ import { saleDocumentForVariant, type SaleAuthority } from './sale-options';
 
 export type Draft = {
   saleAuthority?: SaleAuthority;
+  gpaExecutantsReplaced?: boolean;
   id: string; revision: number; sources: Source[];
   manual: Record<string, string>; choices: Record<string, string>;
   step: number; manualEdits: number;
@@ -222,6 +223,7 @@ export function resolveDraft(draft: Draft) {
       c.role = source.assignment.role; c.record = source.assignment.record;
       c.field = c.field.replace(/^party/, c.role);
     }
+    if (draft.gpaExecutantsReplaced && c.role === 'executant') continue;
     all.push(c);
   }
   const aliases = new Map<string, string>();
@@ -370,13 +372,13 @@ export function appStateFor(draft: Draft): AppState {
   const defaultIfUnset = (field: string, value: string) => { if (!derived[field] && !unresolvedFields.includes(field)) derived[field] = value; };
   defaultIfUnset('propState', 'Telangana');
   for (const side of ['executant', 'claimant']) {
-    defaultIfUnset(`${side}PartyType`, 'Individual');
-    defaultIfUnset(`${side}Relation`, 'S/O');
+    defaultIfUnset(`${side}PartyType`, side === 'executant' && saleDocumentForVariant(draft.variantId) !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual');
+    if (!(side === 'executant' && draft.gpaExecutantsReplaced)) defaultIfUnset(`${side}Relation`, 'S/O');
   }
   const partyDefaults = (side: 'executant' | 'claimant', values: Record<string, string>) => ({
     ...values,
-    [`${side}PartyType`]: values[`${side}PartyType`] || 'Individual',
-    [`${side}Relation`]: values[`${side}Relation`] || 'S/O',
+    [`${side}PartyType`]: values[`${side}PartyType`] || (side === 'executant' && saleDocumentForVariant(draft.variantId) !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual'),
+    [`${side}Relation`]: values[`${side}Relation`] || (side === 'executant' && draft.gpaExecutantsReplaced ? '' : 'S/O'),
   });
   return {
     ...initialState, step: draft.step,

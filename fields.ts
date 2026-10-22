@@ -262,7 +262,7 @@ export const GROUPS: Group[] = [
     telugu: 'పరిధి వివరాలు',
     note: 'Where the property lies and where the deed will be presented for registration.',
     fields: [
-      { id: 'propState', label: 'State', ph: 'Property State', type: 'select', options: ['Telangana', 'Andhra Pradesh'] },
+      { id: 'propState', label: 'State', ph: ['Property State', 'State'], type: 'select', options: ['Telangana', 'Andhra Pradesh'] },
       { id: 'districtRegistrar', label: 'District Registrar', ph: 'District Registrar', span: 2 },
       { id: 'sro', label: 'Sub-Registrar Office', span: 2 },
       { id: 'district', label: 'District', ph: 'District' },
