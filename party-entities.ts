@@ -1,3 +1,4 @@
+import { deedDate } from './deed-format';
 import { partyEntityFields, type PartyPeople, type PartyType } from './fields';
 
 export type PartySide = 'executant' | 'claimant';
@@ -15,7 +16,7 @@ export function entityRequiredFields(side: PartySide, type: PartyType): string[]
 export function activePartyFields(values: Record<string, string>, side: PartySide): string[] {
   return isEntity(values, side) ? partyEntityFields(side, values[side + 'PartyType'] as PartyType).filter(f => !f.hidden).map(f => f.id) : [];
 }
-const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.split('-').reverse().join('-') : value;
+const date = deedDate;
 export function entityRecital(values: Record<string, string>, side: PartySide, people: PartyPeople): string {
   const v = (suffix: string) => (values[side + suffix] || '').trim();
   const type = v('PartyType');

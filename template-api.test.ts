@@ -39,7 +39,7 @@ describe('shared template library API', { timeout: 30000 }, () => {
   }
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), 'deedcraft-template-test-'));
-    starter = await readFile(new URL('./sale-deed-template-v6.docx', import.meta.url));
+    starter = await readFile(new URL('./sale-deed-template-v10.docx', import.meta.url));
     runtime = await loadTemplateRuntime(); await start(); await login();
   }, 30000);
   afterAll(async () => {
@@ -49,10 +49,10 @@ describe('shared template library API', { timeout: 30000 }, () => {
   });
   it('seeds a public immutable version but protects drafts and management', async () => {
     const listing = await (await fetch(base)).json();
-    expect(listing.active.sale).toBe('sale-deed-v6');
+    expect(listing.active.sale).toBe('sale-deed-v10');
     expect(listing.versions[0].validation).toBeUndefined();
-    expect((await fetch(base + '/versions/sale-deed-v6')).status).toBe(401);
-    const bytes = Buffer.from(await (await fetch(base + '/versions/sale-deed-v6/download')).arrayBuffer());
+    expect((await fetch(base + '/versions/sale-deed-v10')).status).toBe(401);
+    const bytes = Buffer.from(await (await fetch(base + '/versions/sale-deed-v10/download')).arrayBuffer());
     expect(bytes.equals(starter)).toBe(true);
     expect((await fetch(base + '/upload?filename=x.docx', { method: 'POST', body: new Uint8Array(starter).buffer })).status).toBe(401);
     expect((await fetch(base + '/upload?filename=x.docx', { method: 'POST', headers: { Cookie: cookie }, body: new Uint8Array(starter).buffer })).status).toBe(403);
@@ -61,10 +61,10 @@ describe('shared template library API', { timeout: 30000 }, () => {
   it('validates, renders all categories, publishes atomically, preserves old bytes and survives restart', async () => {
     const revision = await (await upload(await changed(xml => xml.replace('DECLARATION', 'DECLARATION')))).json();
     expect(revision.validation.valid).toBe(true);
-    expect(revision.samples).toHaveLength(8);
+    expect(revision.samples).toHaveLength(25);
     expect(revision.samples.every((item: any) => !item.error)).toBe(true);
     expect((await fetch(base + `/versions/${revision.id}/download`)).status).toBe(401);
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', reviewed: false })).status).toBe(400);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', reviewed: false })).status).toBe(400);
     const originalEntries = await runtime.readZip(starter);
     for (const sample of revision.samples) {
       const response = await fetch(base + `/versions/${revision.id}/samples/${sample.id}`, { headers: { Cookie: cookie } });
@@ -75,18 +75,19 @@ describe('shared template library API', { timeout: 30000 }, () => {
       }
       const xml = new TextDecoder().decode(entries.find((item: any) => item.name === 'word/document.xml').data);
       const original = new TextDecoder().decode(originalEntries.find((item: any) => item.name === 'word/document.xml').data);
-      expect(xml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0]).toBe(original.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0]);
+      const section = (document: string) => document.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0].replace(/\s+w:rsid\w+="[^"]*"/g, '');
+      expect(section(xml), sample.id).toBe(section(original));
       if (sample.id === 'multiple') expect(await runtime.docxToText(new Uint8Array(await runtime.renderSample('multiple', { kind: 'custom', bytes: starter, validation: revision.validation })))).toContain('SECOND SAMPLE');
     }
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', reviewed: true })).status).toBe(200);
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', reviewed: true })).status).toBe(409);
-    const pinned = Buffer.from(await (await fetch(base + '/versions/sale-deed-v6/download')).arrayBuffer());
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', reviewed: true })).status).toBe(200);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', reviewed: true })).status).toBe(409);
+    const pinned = Buffer.from(await (await fetch(base + '/versions/sale-deed-v10/download')).arrayBuffer());
     expect(pinned.equals(starter)).toBe(true);
     await close(); await start();
     expect((await (await fetch(base)).json()).active.sale).toBe(revision.id);
     await login();
-    expect((await post('/versions/sale-deed-v6/rollback', { expectedActive: revision.id })).status).toBe(200);
-    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v6');
+    expect((await post('/versions/sale-deed-v10/rollback', { expectedActive: revision.id })).status).toBe(200);
+    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v10');
     expect((await post(`/versions/${revision.id}/validate`, {})).status).toBe(409);
   }, 30000);
   it('retains actionable validation errors without changing the active version', async () => {
@@ -94,10 +95,10 @@ describe('shared template library API', { timeout: 30000 }, () => {
     const revision = await (await upload(invalid)).json();
     expect(revision.validation.valid).toBe(false);
     expect(revision.validation.errors.join(' ')).toContain('Unsupported placeholder');
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', reviewed: true })).status).toBe(400);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', reviewed: true })).status).toBe(400);
     const malformed = await (await upload(Buffer.from('not a zip'))).json();
     expect(malformed.validation.valid).toBe(false);
-    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v6');
+    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v10');
     expect((await upload(starter, 'bad.txt')).status).toBe(400);
     expect((await upload(Buffer.alloc(20 * 1024 * 1024 + 1))).status).toBe(413);
   });
@@ -105,8 +106,8 @@ describe('shared template library API', { timeout: 30000 }, () => {
     expect((await fetch(base + '/upload?instrument=gift&filename=gift.docx', { method: 'POST', headers: headers(), body: new Uint8Array(starter).buffer })).status).toBe(400);
     const revision = await (await upload()).json();
     await writeFile(join(directory, revision.id + '.docx'), 'tampered');
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', reviewed: true })).status).toBe(503);
-    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v6');
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', reviewed: true })).status).toBe(503);
+    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v10');
   });
   it('configures new placeholders, invalidates samples, checks schema conflicts and publishes the complete package', async () => {
     const bytes = await changed(xml => xml.replace('<w:body>', '<w:body><w:p><w:r><w:t>Maintenance is &lt;Maintenance Amount&gt;.</w:t></w:r></w:p>'));
@@ -129,25 +130,25 @@ describe('shared template library API', { timeout: 30000 }, () => {
     expect(configured.schemaHash).toHaveLength(64);
     expect(configured.packageHash).toHaveLength(64);
     expect((await patch(0)).status).toBe(409);
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', expectedSchemaRevision: 1, expectedSchemaHash: configured.schemaHash, reviewed: true })).status).toBe(400);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', expectedSchemaRevision: 1, expectedSchemaHash: configured.schemaHash, reviewed: true })).status).toBe(400);
     const sampled = await (await post(`/versions/${revision.id}/validate`, {})).json();
-    expect(sampled.samples).toHaveLength(8);
+    expect(sampled.samples).toHaveLength(25);
     expect(sampled.samplesSchemaHash).toBe(sampled.schemaHash);
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', expectedSchemaRevision: 0, expectedSchemaHash: sampled.schemaHash, reviewed: true })).status).toBe(409);
-    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v6', expectedSchemaRevision: 1, expectedSchemaHash: sampled.schemaHash, reviewed: true })).status).toBe(200);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', expectedSchemaRevision: 0, expectedSchemaHash: sampled.schemaHash, reviewed: true })).status).toBe(409);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v10', expectedSchemaRevision: 1, expectedSchemaHash: sampled.schemaHash, reviewed: true })).status).toBe(200);
     expect((await patch(1)).status).toBe(409);
     const publicVersion = (await (await fetch(base)).json()).versions.find((item: any) => item.id === revision.id);
     expect(publicVersion.fieldContract.fields[0].id).toBe('custom-maintenance');
     expect(publicVersion.inspection).toBeUndefined();
-    expect((await post('/versions/sale-deed-v6/rollback', { expectedActive: revision.id })).status).toBe(200);
+    expect((await post('/versions/sale-deed-v10/rollback', { expectedActive: revision.id })).status).toBe(200);
   });
   it('serializes simultaneous publication and expires administrator sessions', async () => {
     const first = await (await upload()).json();
     const second = await (await upload()).json();
-    const results = await Promise.all([first, second].map(item => post(`/versions/${item.id}/publish`, { expectedActive: 'sale-deed-v6', reviewed: true })));
+    const results = await Promise.all([first, second].map(item => post(`/versions/${item.id}/publish`, { expectedActive: 'sale-deed-v10', reviewed: true })));
     expect(results.map(response => response.status).sort()).toEqual([200, 409]);
     const active = (await (await fetch(base)).json()).active.sale;
-    expect((await post('/versions/sale-deed-v6/rollback', { expectedActive: active })).status).toBe(200);
+    expect((await post('/versions/sale-deed-v10/rollback', { expectedActive: active })).status).toBe(200);
     const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 9 * 60 * 60 * 1000);
     try {
       expect((await (await fetch(base + '/session', { headers: { Cookie: cookie } })).json()).authenticated).toBe(false);
@@ -162,22 +163,22 @@ describe('shared template library API', { timeout: 30000 }, () => {
     expect((await fetch(base + path, { method: 'DELETE', headers: { Cookie: cookie }, body })).status).toBe(403);
     expect((await fetch(base + path, { method: 'DELETE', headers: { ...headers(), Origin: 'https://evil.example' }, body })).status).toBe(403);
     expect((await fetch(base + path, { method: 'DELETE', headers: headers(), body: JSON.stringify({ expectedSchemaRevision: 999, expectedHash: revision.hash }) })).status).toBe(409);
-    expect((await fetch(base + '/versions/sale-deed-v6', { method: 'DELETE', headers: headers(), body })).status).toBe(409);
-    const published = (await (await fetch(base)).json()).versions.find((item: any) => item.id !== 'sale-deed-v6');
+    expect((await fetch(base + '/versions/sale-deed-v10', { method: 'DELETE', headers: headers(), body })).status).toBe(409);
+    const published = (await (await fetch(base)).json()).versions.find((item: any) => item.id !== 'sale-deed-v10');
     expect((await fetch(base + `/versions/${published.id}`, { method: 'DELETE', headers: headers(), body })).status).toBe(409);
     expect((await fetch(base + path, { method: 'DELETE', headers: headers(), body })).status).toBe(200);
     const admin = await (await fetch(base, { headers: headers() })).json();
     expect(admin.versions.some((item: any) => item.id === revision.id)).toBe(false);
     expect(admin.deletedVersions.find((item: any) => item.id === revision.id).deletedAt).toBeTruthy();
-    expect(admin.active.sale).toBe('sale-deed-v6');
+    expect(admin.active.sale).toBe('sale-deed-v10');
     expect((await (await fetch(base)).json()).deletedVersions).toBeUndefined();
     expect((await fetch(base + path + '/download', { headers: headers() })).status).toBe(404);
     expect((await post(path + '/validate', {})).status).toBe(404);
-    expect((await post(path + '/publish', { expectedActive: 'sale-deed-v6', reviewed: true })).status).toBe(404);
+    expect((await post(path + '/publish', { expectedActive: 'sale-deed-v10', reviewed: true })).status).toBe(404);
     expect((await fetch(base + path + '/restore', { method: 'POST', body: '{}' })).status).toBe(401);
     expect((await post(path + '/restore', {})).status).toBe(200);
     expect((await fetch(base + path + '/download', { headers: headers() })).status).toBe(200);
-    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v6');
+    expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v10');
   });
   it('disables management without a password and limits failed logins', async () => {
     await close(); await start('');

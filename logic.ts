@@ -236,7 +236,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['localAuthorityType', 'plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
+const PROPERTY_IDS = ['localAuthorityType', 'plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'landmarkHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['houseStage', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];
@@ -373,6 +373,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     add('nearAdjacent', 'Choose whether the landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   }
   if (f.nearHNo && !['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
+  if (f.landmarkHNo && ['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose Near or Adjacent for the separately entered landmark house.', 'Link deed or property plan');
   if (['Residential', 'Commercial'].includes(state.category)) {
     ['bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
@@ -422,7 +423,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   const label = vendor ? 'Vendor' : 'Vendee';
   const key = vendor ? 'vendor' : 'vendee';
   const shares = vendor ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
-  if (parties.length > 1) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
+  if (parties.length) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
     if (!parties.some((party, index) => shares?.[schedule.id]?.[index === 0 ? (vendor ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id]?.trim())) return;
     let totalCents = 0;
     let allValid = true;
@@ -505,12 +506,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   return missing;
 }
 
-/** dd-mm-yyyy, as the deed reads dates. */
-export function deedDate(iso: string): string {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return y && m && d ? `${d}-${m}-${y}` : iso;
-}
+export { deedDate } from './deed-format';
 
 /** Completed years between two ISO dates. Blank if the birth date is unusable. */
 export function ageFrom(dobISO: string, onISO?: string): string {

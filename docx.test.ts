@@ -121,20 +121,20 @@ describe('sale deed template merge', () => {
     }
   });
 
-  it('prints the selected execution month and year with a blank day for handwriting', async () => {
-    const state = { ...initialState, form: { ...initialState.form, extentSqYards:'100', govtRate:'10000', consid:'800000', executionDate:'2026-10' } };
+  it('prints the complete selected execution date as DD-MM-YYYY', async () => {
+    const state = { ...initialState, form: { ...initialState.form, extentSqYards:'100', govtRate:'10000', consid:'800000', executionDate:'2026-10-22' } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).not.toContain('10,00,000');
     expect(text).toContain('Market Value of Rs.8,00,000');
     expect(text).toContain('total sale consideration of Rs.8,00,000');
-    expect(text).toContain('made and executed on     -10-2026');
+    expect(text).toContain('made and executed on 22-10-2026');
     expect(text).toContain('on the afore mentioned date.');
 
     const legacyState = { ...state, form: { ...state.form, executionDate: '2026-09-11' } };
     const legacy = await fillSaleDeed(mergeValues(legacyState), 'IF OPEN PLOT', rewritesFor(legacyState));
     const legacyText = await docxToText(new Uint8Array(await legacy.blob.arrayBuffer()));
-    expect(legacyText).toContain('made and executed on     -09-2026');
+    expect(legacyText).toContain('made and executed on 11-09-2026');
 
     const blank = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState));
     const blankText = await docxToText(new Uint8Array(await blank.blob.arrayBuffer()));
@@ -179,7 +179,7 @@ describe('sale deed template merge', () => {
     const state = { ...initialState, category: 'Vacant Plot', form: { ...initialState.form, nearAdjacent: 'Adjacent', nearHNo: '10-1-36/1' } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), scheduleMergesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text.toLowerCase()).toContain('situated adjacent h.no.10-1-36/1');
+    expect(text.toLowerCase()).toContain('situated adjacent house no.10-1-36/1');
     expect(text.toLowerCase()).not.toContain('situated near/adjacent h.no.10-1-36/1');
   });
 

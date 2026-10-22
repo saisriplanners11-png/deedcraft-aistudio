@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, generationBlockers } from './logic';
 import { deedFilename, mergeValues } from './merge';
+import { deedDate } from './deed-format';
+
+describe('Printed deed date policy', () => {
+  it('formats ISO and restored local dates as DD-MM-YYYY without changing day/month order', () => {
+    for (const value of ['2026-10-22', '22-10-2026', '22/10/2026', '22102026']) expect(deedDate(value)).toBe('22-10-2026');
+    expect(deedDate('2024-02-29')).toBe('29-02-2024');
+    for (const value of ['', '2026-10', '2026-02-29', '2026-13-01', '31/04/2026']) expect(deedDate(value)).toBe('');
+  });
+  it('uses the entered value for Gift totals, not the calculated basic-rate market value', () => {
+    const values = mergeValues({ ...initialState, deedType: 'Gift', form: { ...initialState.form, consid: '765432', govtRate: '5000', extentSqYards: '200', structValue: '100000' } });
+    expect(values['Market of Value Rs./-']).toBe('7,65,432');
+    expect(values['Statement of Market Value Consideration']).toBe('7,65,432');
+  });
+});
 
 describe('deed download filename', () => {
   it('uses the deed type and primary claimant name', () => {

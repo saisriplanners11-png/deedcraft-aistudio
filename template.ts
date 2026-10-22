@@ -1,4 +1,6 @@
-import giftDeedTemplateUrl from './gift-deed-template-v2.docx?url';
+import giftDeedTemplateUrl from './gift-deed-template-v4.docx?url';
+import giftDeedTemplateV3Url from './gift-deed-template-v3.docx?url';
+import giftDeedTemplateV2Url from './gift-deed-template-v2.docx?url';
 import giftDeedTemplateV1Url from './gift-deed-template-v1.docx?url';
 // The Word file is the source of truth for the generated deed. Keeping it as
 // a bundled asset prevents template revisions from drifting from a base64 copy.
@@ -30,7 +32,7 @@ export function loadSaleDeedTemplate(): Promise<Uint8Array> {
 
 /** Instrument-neutral loader. Unknown or unapproved assets fail closed. */
 export async function loadTemplate(templateVersionId: string): Promise<Uint8Array> {
-  if (templateVersionId === 'gift-deed-v1' || templateVersionId === 'gift-deed-v2') { const response = await fetch(templateVersionId === 'gift-deed-v1' ? giftDeedTemplateV1Url : giftDeedTemplateUrl); if (!response.ok) throw new Error('Could not load the Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
+  if (['gift-deed-v1', 'gift-deed-v2', 'gift-deed-v3', 'gift-deed-v4'].includes(templateVersionId)) { const response = await fetch(templateVersionId === 'gift-deed-v1' ? giftDeedTemplateV1Url : templateVersionId === 'gift-deed-v2' ? giftDeedTemplateV2Url : templateVersionId === 'gift-deed-v3' ? giftDeedTemplateV3Url : giftDeedTemplateUrl); if (!response.ok) throw new Error('Could not load the Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
   const version = TEMPLATE_VERSIONS.find(item => item.id === templateVersionId);
   if (!version) throw new Error(`Template version ${templateVersionId} is not registered.`);
   if (version.instrumentId === 'sale' && version.asset === 'sale-deed-template-v10.docx') return loadSaleDeedTemplate();

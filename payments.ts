@@ -1,3 +1,4 @@
+import { deedDate } from './deed-format';
 // The payments recited in the receipt clause.
 //
 // A sale is rarely discharged by one instrument: an advance token by UPI, a
@@ -200,11 +201,6 @@ export const recitalFor = (ps: Payment[]) =>
     .filter(p => p.amount !== '')
     .map(p => modeSpec(p.mode).recital(p) + (p.advance ? ' (paid in advance)' : ''))
     .join('; ');
-
-const deedDate = (iso: string) => {
-  const [year, month, day] = iso.split('-');
-  return year && month && day ? `${day}-${month}-${year}` : iso;
-};
 
 /** Template-style recital that preserves every individual payment amount. */
 export const deedPaymentRecital = (ps: Payment[]) =>

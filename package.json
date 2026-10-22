@@ -5,11 +5,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs && node qa/sale-v10.mjs && node qa/gift-deed-flow.mjs && node qa/authority-download-flow.mjs && vitest run docx.test.ts merge.test.ts gift-options.test.ts instruments.test.ts file-drop-zone.test.ts source-draft.test.ts template-version-status.test.ts draft-preservation.test.ts workflow-steps.test.ts authority-import.test.ts payments.test.ts",
+    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs && node qa/sale-v10.mjs && node qa/gift-deed-flow.mjs && node qa/output-format-flow.mjs && node qa/authority-download-flow.mjs && vitest run docx.test.ts merge.test.ts gift-options.test.ts instruments.test.ts file-drop-zone.test.ts source-draft.test.ts template-version-status.test.ts draft-preservation.test.ts workflow-steps.test.ts authority-import.test.ts payments.test.ts",
     "preview": "vite preview",
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=1",
     "test:production-stalls": "node qa/production-stalls.mjs",
     "test:sale-v9": "node qa/sale-v9.mjs",
     "test:sale-v9-api": "node qa/sale-v9-api.mjs",

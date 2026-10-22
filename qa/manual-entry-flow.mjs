@@ -23,7 +23,7 @@ async function scenario(name, category, { titles = false, extraLink = false, par
   page.on('pageerror', error => errors.push(error.message));
   const step = async (number) => page.locator('.rail-step').nth(number - 1).click();
   const fill = async (scope, label, value, index = 0) => {
-    let input = label === 'Sale deed execution month and year' ? scope.locator('input[type="month"]') : scope.getByLabel(label, { exact: true });
+    let input = label === 'Deed execution date' ? scope.locator('input[type="date"]') : scope.getByLabel(label, { exact: true });
     if (!(await input.count())) input = scope.locator('label').filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i') }).locator('input, select, textarea');
     assert.ok(await input.count(), `${name}: expected ${label} field`);
     input = input.nth(index);
@@ -64,7 +64,7 @@ async function scenario(name, category, { titles = false, extraLink = false, par
     await fill(page, 'District', `DISTRICT-${suffix}`);
     await fill(page, 'Mandal', `MANDAL-${suffix}`);
     await fill(page, 'Village', `VILLAGE-${suffix}`);
-    await fill(page, 'Sale deed execution month and year', '2026-10');
+    await fill(page, 'Deed execution date', '2026-10-22');
   };
   const fillProperty = async (suffix, propertyCategory = category) => {
     for (const [label, value] of Object.entries({ 'Plot number': `PLOT-${suffix}`, 'Extent (Sq. Yards)': '100.33', 'Survey no(s).': `SURVEY-${suffix}`, 'Locality': `LOCALITY-${suffix}`, 'PIN code': '505301', North: `NORTH-${suffix}`, South: `SOUTH-${suffix}`, East: `EAST-${suffix}`, West: `WEST-${suffix}` })) await fill(page, label, value);

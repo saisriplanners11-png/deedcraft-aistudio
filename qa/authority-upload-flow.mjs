@@ -8,8 +8,10 @@ const text = `SYNTHETIC GENERAL POWER OF ATTORNEY — QA ONLY. This GPA is regis
 const response = { kind: 'authority', details: { documentNo: 'AUTH-QA-2026', bookNumber: '1', documentDate: '2026-10-01', sro: 'TEST SRO', sroCode: 'TEST-01' }, people: [
   { role: 'principal', values: { Name: 'OWNER ONE', Relation: 'W/O', RelativeName: 'PARENT ONE', Village: 'SOURCE VILLAGE' }, principalNames: [], quote: 'Principals: OWNER ONE, W/O PARENT ONE' },
   { role: 'principal', values: { Name: 'OWNER TWO', Relation: 'S/O', RelativeName: 'PARENT TWO', Village: 'SECOND VILLAGE' }, principalNames: [], quote: 'Principals: OWNER TWO, S/O PARENT TWO' },
-  { role: 'attorney', values: { Name: 'AGENT ONE', Relation: 'S/O', RelativeName: 'AGENT PARENT', Village: 'AGENT VILLAGE' }, principalNames: ['OWNER ONE','OWNER TWO'], quote: 'Attorney / GPA holder: AGENT ONE. AGENT ONE explicitly represents both OWNER ONE and OWNER TWO.' },
+  { role: 'attorney', values: { Name: 'AGENT ONE', Relation: 'S/O', RelativeName: 'AGENT PARENT', Village: 'AGENT VILLAGE' }, principalNames: ['OWNER ONE'], quote: 'Attorney / GPA holder: AGENT ONE. AGENT ONE explicitly represents both OWNER ONE and OWNER TWO.' },
 ], notes: [] };
+// Repeat a holder appearance to verify one card per distinct individual.
+response.people.push({ ...response.people[2] }, { role: 'attorney', values: { Name: 'AGENT TWO', Relation: 'S/O', RelativeName: 'SECOND PARENT' }, principalNames: ['OWNER TWO'], quote: 'AGENT TWO represents OWNER TWO.' });
 const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 try {
   for (const mode of real ? ['gpa'] : ['gpa','agpa']) {
@@ -24,25 +26,57 @@ try {
     assert.match(await page.locator('.party-type-selector select').first().inputValue(),/^Principal/);
     if(mode==='gpa') await panel.getByLabel('Upload GPA documents',{exact:true}).setInputFiles({name:'synthetic-gpa.txt',mimeType:'text/plain',buffer:Buffer.from(text)});
     else {const transfer=await page.evaluateHandle(text=>{const data=new DataTransfer();data.items.add(new File([text],'synthetic-agpa.txt',{type:'text/plain'}));return data;},text);await panel.locator('.authority-uploads').first().dispatchEvent('drop',{dataTransfer:transfer});}
-    const owner=panel.getByRole('group',{name:'OWNER ONE — extracted individual',exact:true});await Promise.race([owner.waitFor({timeout:180000}),panel.getByRole('alert').first().waitFor().then(async()=>{throw new Error(await panel.getByRole('alert').first().innerText());})]);console.log('Authority people ready:',mode,real?'real':'mock');
+    await page.getByRole('dialog').waitFor();
+    await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+    await panel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor({timeout:180000});
+    const attorneys = page.getByRole('region',{name:'Sale attorney details',exact:true});
+    assert.equal(await page.locator('details[aria-label="Authority extraction review"]').getAttribute('open'),null);
+    assert.equal(await page.locator('.party-record-card').first().evaluate(el => !!(document.querySelector('[aria-label="Sale authority details"]').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(el.compareDocumentPosition(document.querySelector('[aria-label="Sale attorney details"]')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
     assert.equal(await panel.getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
     for (const [label, value] of Object.entries({ 'Authority book number': '1', 'Authority document date': '2026-10-01', 'Authority Sub-Registrar Office': 'TEST SRO', 'Authority SRO code': 'TEST-01' })) assert.equal(await panel.getByLabel(label,{exact:true}).inputValue(),value);
-    for(const name of ['AGENT ONE']) await panel.getByRole('group',{name:`${name} — extracted individual`,exact:true}).getByRole('button',{name:'Fill selected role',exact:true}).click();
-    await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{const draft=get.result?.draft;db.close();resolve(draft?.saleAuthority?.attorneys?.[0]?.principalIds?.length===2);};};}),draft.id,{timeout:20000});
+    assert.equal(await attorneys.getByRole('group',{name:'Attorney 1',exact:true}).getByLabel('Full name',{exact:true}).inputValue(),'AGENT ONE');
+    assert.equal(await page.locator('.party-record-card').first().getByLabel('Full name',{exact:true}).inputValue(),'OWNER ONE');
+    assert.match(await page.locator('.party-type-selector select').first().inputValue(),/^Principal/);
+    await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{const draft=get.result?.draft;db.close();resolve(draft?.saleAuthority?.attorneys?.length===2 && draft.saleAuthority.attorneys[0].principalIds.length===1);};};}),draft.id,{timeout:20000});
+    assert.equal(await attorneys.getByRole('group',{name:/^Attorney \d+$/}).count(),2);
+    for (const [index, principalName] of [[1,'OWNER ONE'],[2,'OWNER TWO']]) {
+      const card=attorneys.getByRole('group',{name:'Attorney '+index,exact:true});
+      assert.equal(await card.getByLabel(principalName,{exact:true}).isChecked(),true);
+      assert.equal(await card.getByLabel(index===1?'OWNER TWO':'OWNER ONE',{exact:true}).isChecked(),false);
+    }
     console.log('Selected roles saved:',mode);
     const stored=await page.evaluate(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{db.close();resolve(get.result);};};}),draft.id);
-    assert.equal(stored.draft.manual['executant|primary|executantName'],'OWNER ONE');assert.equal(stored.draft.manual['executant|primary|executantRelation'],'W/O');assert.equal(stored.draft.manual['executant|primary|executantVillage'],'SOURCE VILLAGE');assert.match(stored.draft.manual['executant|primary|executantPartyType'],/^Principal/);assert.equal(stored.draft.saleAuthority.attorneys[0].values.Name,'AGENT ONE');assert.equal(stored.draft.saleAuthority.extractions[0].people.length,3);assert.equal(stored.draft.saleAuthority.documents.length,1);
-    await page.reload();await page.getByRole('button',{name:'Continue / Edit',exact:true}).click();await page.getByRole('group',{name:'OWNER ONE — extracted individual',exact:true}).waitFor();assert.equal(await page.getByRole('region',{name:'Sale authority details',exact:true}).getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
+    assert.equal(stored.draft.manual['executant|primary|executantName'],'OWNER ONE');assert.equal(stored.draft.manual['executant|primary|executantRelation'],'W/O');assert.equal(stored.draft.manual['executant|primary|executantVillage'],'SOURCE VILLAGE');assert.match(stored.draft.manual['executant|primary|executantPartyType'],/^Principal/);assert.equal(stored.draft.saleAuthority.attorneys[0].values.Name,'AGENT ONE');assert.equal(stored.draft.saleAuthority.extractions[0].people.length,5);assert.equal(stored.draft.saleAuthority.documents.length,1);
+    await page.reload();await page.getByRole('button',{name:'Continue / Edit',exact:true}).click();await page.locator('details[aria-label="Authority extraction review"] > summary').click();await page.getByRole('group',{name:'OWNER ONE — extracted individual',exact:true}).waitFor();assert.equal(await page.getByRole('region',{name:'Sale authority details',exact:true}).getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
     if (!real) {
       const currentPanel=page.getByRole('region',{name:'Sale authority details',exact:true});
-      await currentPanel.getByLabel('Upload Attorney 1 identity / supporting documents',{exact:true}).setInputFiles({name:'agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
+      await attorneys.getByLabel('Upload Attorney 1 identity / supporting documents',{exact:true}).setInputFiles({name:'agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
+      await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
       console.log('Attorney identity uploaded:',mode);
-      const identity=currentPanel.getByRole('group',{name:'AGENT ONE — extracted individual',exact:true}).last();await identity.getByText('Detected role: unknown',{exact:false}).waitFor();
+      const identity=page.getByRole('group',{name:'AGENT ONE — extracted individual',exact:true}).last();await identity.getByText('Detected role: unknown',{exact:false}).waitFor();
       await identity.getByLabel('Assign role for AGENT ONE',{exact:true}).selectOption('attorney');await identity.getByRole('button',{name:'Fill selected role',exact:true}).click();
       await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{db.close();resolve(get.result?.draft?.saleAuthority?.attorneys?.[0]?.values.Mobile==='9876543210');};};}),draft.id);
       assert.equal(await currentPanel.getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
-      await currentPanel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();await currentPanel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor();
+      await currentPanel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();await currentPanel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor();
       assert.equal(requests,6);
+    }
+    await attorneys.getByRole('button',{name:'Add attorney',exact:true}).click();
+    await attorneys.getByRole('group',{name:'Attorney 3',exact:true}).waitFor();
+    await attorneys.getByRole('button',{name:'Remove attorney 3',exact:true}).click();
+    assert.equal(await attorneys.getByRole('group',{name:/^Attorney \d+$/}).count(),2);
+    if (!real) {
+      await page.route('**/api/anthropic/**', route => route.fulfill({ status:400, contentType:'application/json', body:JSON.stringify({error:{type:'invalid_request_error',message:'Synthetic extraction failure'}}) }));
+      await panel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();
+      const failed=page.getByRole('dialog');await failed.getByText(/Synthetic extraction failure/).waitFor();
+      await failed.getByRole('button',{name:'Close',exact:true}).click();
+      assert.equal(await page.locator('.party-record-card').first().getByLabel('Full name',{exact:true}).inputValue(),'OWNER ONE');
+      assert.equal(await attorneys.getByRole('group',{name:/^Attorney \d+$/}).count(),2);
+      await page.route('**/api/anthropic/**', async route => { await new Promise(resolve=>setTimeout(resolve,1000)); await route.abort().catch(()=>{}); });
+      await panel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();
+      const cancelled=page.getByRole('dialog');await cancelled.getByRole('button',{name:'Cancel',exact:true}).click();
+      await cancelled.getByText(/Reading was cancelled/).waitFor();
+      await cancelled.getByRole('button',{name:'Close',exact:true}).click();
+      assert.equal(await panel.getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
     }
     assert.deepEqual(errors,[]);console.log(`PASS: ${mode.toUpperCase()} ${mode==='gpa'?'picker':'drag-drop'} upload → independent extraction/verification → role selection → separate principal/holder records and links → save/reopen; Principal records filled automatically${real?' (real AI provider)':''}.`);
     await context.close();

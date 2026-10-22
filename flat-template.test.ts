@@ -13,12 +13,13 @@ const fixture = (stage = 'Finished', category = 'Flat') => ({ ...initialState, c
   structureDetailsBySchedule: { primary: { totalFloors: '1', rows: [{ id: 'floor', floorNo: 'Ground Floor', structureType: 'R.C.C. Building', customStructureType: '', stage: 'Finished', buildingAge: '29', builtUpAreaSqFt: '532' }] } },
 });
 
-describe('final supplied sale deed template', () => {
+describe('v6 full-deed compatibility', () => {
   const previous = globalThis.fetch;
   let bytes: Uint8Array;
   beforeAll(async () => {
     bytes = new Uint8Array(await readFile(new URL('./sale-deed-template-v6.docx', import.meta.url)));
-    globalThis.fetch = async input => new Response(await readFile(new URL(String(input).includes('v6') ? './sale-deed-template-v6.docx' : './sale-deed-template.docx', import.meta.url)));
+    // Pin this legacy compatibility suite to its v6 fixture, independently of the current default URL.
+    globalThis.fetch = async () => new Response(Uint8Array.from(bytes).buffer);
   });
   afterAll(() => { globalThis.fetch = previous; });
   const generate = async (state: AppState, source?: DeedTemplateSource) => {

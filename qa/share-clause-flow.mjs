@@ -16,7 +16,7 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const vendors of [1, 2]) fo
   const state = rt.sampleState(mode + '-plot');
   if (vendors > 1) state.additionalExecutants = [{ id: 'vendor-2', values: { ...state.form, executantName: 'SECOND VENDOR' }, docNames: [] }];
   if (vendees > 1) state.additionalClaimants = [{ id: 'vendee-2', values: { ...state.form, claimantName: 'SECOND VENDEE' }, docNames: [] }];
-  // Deliberately retain an old 50% allocation on single parties to exercise saved drafts.
+  // Explicit percentages appear even for a single party.
   state.vendorSharesBySchedule = { primary: { primary: '50', 'vendor-2': '50' } };
   state.vendeeSharesBySchedule = { primary: { primary: '50', 'vendee-2': '50' } };
   if (mode !== 'ordinary' && vendors > 1) state.saleAuthority.attorneys[0].principalIds.push('vendor-2');
@@ -25,11 +25,11 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const vendors of [1, 2]) fo
   assert(remaining, 'Missing party boundary');
   const vendeeBlock = remaining.split('FLOW OF TITLE')[0];
   const share = /holding\s+(?:an\s+)?undivided share of/i;
-  assert.equal(share.test(vendorBlock), vendors > 1, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendor clause`);
-  assert.equal(share.test(vendeeBlock), vendees > 1, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendee clause`);
+  assert.equal(share.test(vendorBlock), true, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendor clause`);
+  assert.equal(share.test(vendeeBlock), true, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendee clause`);
   if (vendors > 1) assert.match(vendorBlock, /50%/);
   if (vendees > 1) assert.match(vendeeBlock, /50%/);
-  if (vendors === 1 && vendees === 1) assert.doesNotMatch(text, /holding\s+(?:an\s+)?undivided share of/i);
+  if (vendors === 1 && vendees === 1) assert.match(text, /50%/);
 }
 const singleFlat = await render(rt.sampleState('ordinary-flat-finished'));
 assert.match(singleFlat, /undivided share of land/i, 'Flat land-area UDS is independent of party ownership allocation');
@@ -58,7 +58,7 @@ for (const wording of ['50%', 'short', 'unsupported']) {
       await assert.rejects(() => render(state, replacement), /share clause.*not supported/);
       continue;
     }
-    assert.doesNotMatch(await render(state, replacement), /holding.*(?:50%|undivided share)/i);
+    assert.match(await render(state, replacement), /50%/);
     state.additionalExecutants = [{ id: 'vendor-2', values: { ...state.form, executantName: 'SECOND VENDOR' }, docNames: [] }];
     state.additionalClaimants = [{ id: 'vendee-2', values: { ...state.form, claimantName: 'SECOND VENDEE' }, docNames: [] }];
     state.vendorSharesBySchedule = { primary: { primary: '40', 'vendor-2': '60' } };
@@ -84,3 +84,26 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) {
   assert.match(text.split('IN FAVOUR OF')[1], /40%/);
 }
 console.log('PASS: blank percentages omit all share clauses for multiple ordinary/GPA/AGPA parties; vendor and vendee entry are independent.');
+
+for (const mode of ['gpa', 'agpa']) {
+  const state = rt.sampleState(mode + '-plot');
+  state.saleAuthority.attorneys[0].values.SharePercentage = '37.25';
+  const text = await render(state);
+  assert.match(text, /holding an undivided share of 37\.25%/i);
+  state.saleAuthority.attorneys[0].values.SharePercentage = '';
+  assert.doesNotMatch(await render(state), /37\.25%|holding.*undivided share/i);
+}
+console.log('PASS: explicit attorney percentages appear independently of principal count and blank values omit the clause in GPA and AGPA.');
+
+for (const category of ['ordinary-plot', 'ordinary-house-finished', 'ordinary-flat-finished']) {
+  const state = rt.sampleState(category); state.deedType = 'Gift'; state.form.giftRelationship = 'daughter';
+  state.vendorSharesBySchedule = { primary: { primary: '100' } };
+  state.vendeeSharesBySchedule = { primary: { primary: '100' } };
+  const output = await rt.fillGiftDeed(rt.mergeValues(state), rt.rewritesFor(state), rt.scheduleMergesFor(state));
+  const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
+  assert.match(text, /undivided share of 100%/i);
+  delete state.vendorSharesBySchedule; delete state.vendeeSharesBySchedule;
+  const blank = await rt.fillGiftDeed(rt.mergeValues(state), rt.rewritesFor(state), rt.scheduleMergesFor(state));
+  assert.doesNotMatch(await rt.docxToText(new Uint8Array(await blank.blob.arrayBuffer())), /holding.*undivided share|100%/i);
+}
+console.log('PASS: explicit single-party Gift shares appear for plot, house and flat; blank shares are omitted.');

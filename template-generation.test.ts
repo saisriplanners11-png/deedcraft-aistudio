@@ -43,6 +43,6 @@ describe('pinned library generation', () => {
     await expect(loadLibraryBytes({ ...source, hash: '0'.repeat(64) })).rejects.toThrow(/integrity/i);
   });
   it('does not open unsupported deed generation when supplied a library template', () => {
-    expect(() => compileDeed({ instrumentId: 'gift', variantId: DEED_DEFINITIONS.gift.variants[0].id, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] }, { kind: 'library', versionId: 'sale-test', name: '', hash: '' })).toThrow(/approved legal reference/i);
+    expect(() => compileDeed({ instrumentId: 'will', variantId: DEED_DEFINITIONS.will.variants[0].id, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] }, { kind: 'library', versionId: 'sale-test', name: '', hash: '' })).toThrow(/approved legal reference/i);
   });
 });

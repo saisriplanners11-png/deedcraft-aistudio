@@ -262,7 +262,7 @@ function RecordFieldGroup({
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
-      : resolved.values[fieldKey(role, record, f.id)] || fallbackValues?.[f.id] || defaults[f.id] || '';
+      : resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
   return <PlacementRecord scope={role} id={record}>
     {groups.map(g => (
       <FieldGroup
@@ -615,7 +615,7 @@ export default function WizardApp() {
   const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v10'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
   const authorityErrors = draft.instrumentId === 'gift' ? [...(!giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state)] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
-  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin('gift-deed-v2') } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-deed-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId]);
+  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin('gift-deed-v4') } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-deed-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
     additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
@@ -626,7 +626,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:gift-format-policy-v2:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v3:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -640,7 +640,7 @@ export default function WizardApp() {
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
     planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
-    templateMode, customTemplate, libraryTemplate: draft.instrumentId === 'gift' && templateMode === 'built-in' ? bundledTemplatePin('gift-deed-v2') : libraryTemplate, generationManifest,
+    templateMode, customTemplate, libraryTemplate: draft.instrumentId === 'gift' && templateMode === 'built-in' ? bundledTemplatePin('gift-deed-v4') : libraryTemplate, generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
     const sequence = ++saveSequence.current;
@@ -1124,7 +1124,7 @@ export default function WizardApp() {
 
   async function downloadStarterTemplate() {
     try {
-      const bytes = draft.instrumentId === 'gift' && templateMode !== 'custom' ? await loadTemplate('gift-deed-v2') : await templateBytes(activeTemplateSource);
+      const bytes = draft.instrumentId === 'gift' && templateMode !== 'custom' ? await loadTemplate('gift-deed-v4') : await templateBytes(activeTemplateSource);
       saveBlob(new Blob([bytes as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), `DeedCraft-${draft.instrumentId === 'gift' ? 'Gift' : 'Sale'}-Deed-Template.docx`);
     } catch (error: any) {
       setMessage(`Starter template could not be downloaded: ${error?.message || 'Please retry.'}`);
@@ -1215,7 +1215,7 @@ export default function WizardApp() {
           <div className="step-toolbar">
             <div className="workspace-breadcrumb">{step >= 0 ? <><button type="button" className="quiet" onClick={() => goto(-1)}>Overview</button><span aria-hidden="true">/</span><span>{['', 'Setup & sources', draft.instrumentId === 'gift' ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][STEPS[step].phase]}</span></> : <span>Workspace / Overview</span>}</div>
             <div className="step-toolbar-status">{!storageError && hasStarted && <span className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</span>}
-              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{draft.instrumentId === 'gift' ? 'Gift Settlement v2' : libraryTemplate?.name || 'Built-in Sale v10'}</strong><small>{draft.instrumentId === 'gift' ? 'gift-deed-v2' : libraryTemplate?.versionId || 'sale-deed-v10'}</small>{draft.instrumentId === 'sale' && latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v10') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
+              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{draft.instrumentId === 'gift' ? 'Gift Settlement v4' : libraryTemplate?.name || 'Built-in Sale v10'}</strong><small>{draft.instrumentId === 'gift' ? 'gift-deed-v4' : libraryTemplate?.versionId || 'sale-deed-v10'}</small>{draft.instrumentId === 'sale' && latestTemplate && latestTemplate.versionId !== (libraryTemplate?.versionId || 'sale-deed-v10') && <button type="button" onClick={() => void updateDraftTemplate()}>New template available → Update this draft</button>}</div></details>}
             </div>
           </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
@@ -1320,8 +1320,7 @@ export default function WizardApp() {
           {state.form.giftRelationship === 'other' && <label className="field"><span>Relationship wording</span><input aria-label="Relationship wording" value={state.form.giftRelationshipCustom || ''} onChange={event => edit('property', 'primary', 'giftRelationshipCustom', event.target.value)} /><small>Enter the full phrase, for example “son and daughter” for two Donees. Confirm it applies to the listed Donors.</small></label>}
           <p><strong>Clause preview</strong></p><p>{giftRelationshipValues(state)['Gift Relationship Recital']}</p>
         </section>}
-        {step === 6 && <SaleAuthorityEditor key={draft.id} state={state} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = applyGpaExtraction(current.current, authority, result); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }} />}
-        {authorityErrors.length > 0 && [6, 8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
+        {authorityErrors.length > 0 && [8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
           const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);
           const activeProperty = propertyRecords.find(record => record.id === activePropertyId);
@@ -1421,7 +1420,7 @@ export default function WizardApp() {
               <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit} />
             </div>)}
           </section>
-          {draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift consideration</h2><p>Nil — this Gift Settlement is made without monetary consideration. Market value is recorded separately.</p></section> : <><section className="panel" aria-label="Consideration value">
+          {draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
             <h2>Consideration value</h2>
             <p>The agreed sale consideration for this deed. Calculated market value remains available for validation and duty calculations.</p>
             <strong style={{ fontSize: 22, color: C.ink }}>{vm.considINR || 'Enter sale consideration'}</strong>
@@ -1454,7 +1453,8 @@ export default function WizardApp() {
           const role: 'executant' | 'claimant' = step === 6 ? 'executant' : 'claimant';
           const noun = step === 6 ? 'Executant' : 'Claimant';
           const records = partyRecordIds(role);
-          return <>
+          const parties = <>
+        {authorityErrors.length > 0 && step === 6 && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
             {records.map((record, i, all) => {
               const busySource = sourceBusyFor(role, record);
               return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
@@ -1469,7 +1469,9 @@ export default function WizardApp() {
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
           </>;
+          return role === 'executant' ? <SaleAuthorityEditor key={draft.id} state={state} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = applyGpaExtraction(current.current, authority, result); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
         })()}
+
 
         {step === 8 && <section className="panel reverify">
           <section className="template-field-summary" aria-label="Configured template fields"><h2>Template fields</h2>{templateFieldResolution.instances.filter(instance => instance.field.placement).map(instance => <div key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}><strong>{instance.record.label} — {instance.field.label}</strong><span>{instance.value || '____'}</span>{instance.error && <p role="alert">{instance.error}</p>}<button type="button" onClick={() => gotoTemplateField(instance)}>Edit in {PLACEMENT_CATALOG.find(step => step.id === instance.field.placement?.stepId)?.label}</button></div>)}</section>

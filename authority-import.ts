@@ -68,16 +68,22 @@ export function applyAuthorityPerson(draft: Draft, person: AuthorityPerson, role
 /** Apply a verified GPA as the exclusive source of executant identities. */
 export function applyGpaExtraction(draft: Draft, authority: import('./sale-options').SaleAuthority, result: AuthorityExtraction): Draft {
   if (result.incomplete) throw new Error('Some GPA/AGPA pages could not be read. Existing executants were retained; retry extraction.');
-  const principals: AuthorityPerson[] = [];
-  for (const person of result.people.filter(p => p.role === 'principal' && p.values.Name && p.quote)) {
-    const match = principals.find(p => nameKey(p.values.Name) === nameKey(person.values.Name) && !['Aadhaar', 'Pan', 'Dob'].some(k => p.values[k] && person.values[k] && p.values[k] !== person.values[k]));
-    if (match) {
-      for (const [key, value] of Object.entries(person.values)) {
-        if (match.values[key] && match.values[key] !== value) throw new Error('Conflicting principal details. Existing executants were retained; review the GPA/AGPA.');
-        match.values[key] = value;
-      }
-    } else principals.push({ ...person, values: { ...person.values } });
-  }
+  const collect = (role: 'principal' | 'attorney') => {
+    const principals: AuthorityPerson[] = [];
+    for (const person of result.people.filter(p => p.role === role && p.values.Name && p.quote)) {
+      const match = principals.find(p => nameKey(p.values.Name) === nameKey(person.values.Name) && !['Aadhaar', 'Pan', 'Dob'].some(k => p.values[k] && person.values[k] && p.values[k] !== person.values[k]));
+      if (match) {
+        match.principalNames = [...new Set([...match.principalNames, ...person.principalNames])];
+        for (const [key, value] of Object.entries(person.values)) {
+          if (match.values[key] && match.values[key] !== value) throw new Error('Conflicting principal details. Existing executants were retained; review the GPA/AGPA.');
+          match.values[key] = value;
+        }
+      } else principals.push({ ...person, values: { ...person.values } });
+    }
+    return principals;
+  };
+  const principals = collect('principal');
+  const holders = collect('attorney');
   if (!principals.length) throw new Error('No verified GPA/AGPA principals found. Existing executants were retained.');
   const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith('executant|')));
   const ids = principals.map((_, i) => i ? crypto.randomUUID() : 'primary');
@@ -92,6 +98,12 @@ export function applyGpaExtraction(draft: Draft, authority: import('./sale-optio
     const names = evidence?.principalNames || previous.filter((p, i) => attorney.principalIds.includes(i ? p.id : state.primaryExecutantId || 'primary')).map(p => p.values.executantName);
     return { ...attorney, principalIds: ids.filter((_, i) => names.some(name => name && nameKey(name) === nameKey(principals[i].values.Name))) };
   }) };
+  if (holders.length) nextAuthority.attorneys = holders.map(holder => {
+    const existing = authority.attorneys.find(attorney => nameKey(attorney.values.Name || '') === nameKey(holder.values.Name) && !['Aadhaar', 'Pan', 'Dob'].some(key => attorney.values[key] && holder.values[key] && attorney.values[key] !== holder.values[key]));
+    return { id: existing?.id || crypto.randomUUID(), documents: existing?.documents, extractedPersonId: holder.id,
+      values: Object.fromEntries(AUTHORITY_PERSON_FIELDS.map(key => [key, holder.values[key] || ''])),
+      principalIds: ids.filter((_, index) => holder.principalNames.some(name => nameKey(name) === nameKey(principals[index].values.Name))) };
+  });
   for (const key of ['documentNo', 'bookNumber', 'documentDate', 'sro', 'sroCode'] as const) nextAuthority[key] = result.details[key] || '';
   return { ...draft, manual, gpaExecutantsReplaced: true, saleAuthority: nextAuthority, vendorSharesBySchedule: {},
     templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([key, values]) => [key, Object.fromEntries(Object.entries(values).filter(([record]) => !record.startsWith('executant:')))])),

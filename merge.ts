@@ -11,8 +11,6 @@ import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForS
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
 function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId: string): string {
-  const parties = partyRecords(state, side);
-  if (parties.length < 2) return '';
   const schedules = scheduleRecords(state);
   const shares = side === 'executant' ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
   return schedules.map((schedule, index) => {
@@ -57,6 +55,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   // for the relationship, but uses a literal "near/adjacent" phrase instead.
   out['Local Authority Type'] = localAuthorityName(f.localAuthorityType || '');
   out['Near / Adjacent'] = f.nearAdjacent || '';
+  out['Landmark House No.'] = ['Demolished', 'Part open place'].includes(state.category) ? f.landmarkHNo || '' : f.nearHNo || '';
   out['Municipal House Nos.'] = f.bearingHNo || '';
   out['Municipality/Municipal Corporation/Gram Panchayat Name'] = f.permissionAuthorityName || '';
   out['House Permission No.'] = f.permBuildingPermitNo || f.buildingPermitNo || '';
@@ -74,6 +73,11 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Floors'] = state.structureDetailsBySchedule.primary?.totalFloors || '';
   const areas = houseRows.map(row => row.builtUpAreaSqFt).filter(value => value !== '').map(Number).filter(Number.isFinite);
   out['Plinth Area'] = areas.length ? areas.reduce((sum, area) => sum + area, 0).toLocaleString('en-IN') : '';
+
+  // Historical template aliases use the same entered structure facts.
+  out['Structure Type'] = out['Nature of House'];
+  out['Building Age'] = out['Age of House'];
+  out['Total Built-up Area'] = out['Plinth Area'];
 
   // Derived values.
   const squareYards = Number(String(f.extentSqYards || '').replace(/,/g, ''));
@@ -95,10 +99,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   const rate = Number(f.govtRate);
   const consid = Number(f.consid);
   const considText = f.consid && Number.isFinite(consid) ? consid.toLocaleString('en-IN') : '';
-  const giftMarkets = state.deedType === 'Gift' ? scheduleRecords(state).map(record => record.values.govtRate?.trim() && record.values.extentSqYards?.trim() ? Math.round(Number(record.values.govtRate) * Number(record.values.extentSqYards)) + (Number(record.values.structValue) || 0) : NaN) : [];
-  const giftMarket = giftMarkets.reduce((total, value) => total + value, 0);
   out['Market of Value Rs./-'] = considText;
-  if (state.deedType === 'Gift') out['Market of Value Rs./-'] = Number.isFinite(giftMarket) ? giftMarket.toLocaleString('en-IN') : '';
   out['Sale Consideration'] = considText;
   out['Statement of Market Value Consideration'] = considText;
   out['Sale Consideration Words'] = words(f.consid);
@@ -167,13 +168,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   return out;
 }
 
-/** Format an execution month while reserving the day for handwriting. */
-export function executionMonthDate(value: string): string {
-  const match = value.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
-  // Keep a marker through paragraph whitespace cleanup; docx.ts expands it to
-  // the four literal spaces the drafter needs for the handwritten day.
-  return match ? `\uE000-${match[2]}-${match[1]}` : '';
-}
+/** Compatibility name for saved drafts; full dates use the shared deed format. */
+export const executionMonthDate = deedDate;
 
 /**
  * The template writes the opening recital as a fill-in-by-hand line. The app
@@ -250,7 +246,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
   }
   for (const side of ['executant', 'claimant'] as const) {
     const records = partyRecords(state, side);
-    if (records.length < 2 && !records.some(record => isEntity(record.values, side)) && !(side === 'executant' && state.saleDocument && state.saleDocument !== 'ordinary')) continue;
+
     rewrites.push({
       find: new RegExp(side === 'executant' ? '<EXECUTANT NAME>' : '<CLAIMANT NAME>'), replace: '',
       partyRole: side,
@@ -259,7 +255,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
         for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = record.values[field.id] || '';
         const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
-        return { ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': records.length > 1 && ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
+        return { ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
       }),
     });
   }
@@ -272,7 +268,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
       ...authorityPartyValues(attorney.values, 'Attorney'),
-      'Attorney Share': attorney.principalIds.map(id => ownershipShare(state, 'executant', id)).filter(Boolean).join(' + '),
+      'Attorney Share': vendeeShareCents(attorney.values.SharePercentage || '') === null ? '' : `${(vendeeShareCents(attorney.values.SharePercentage) || 0) / 100}%`,
       'Represented Principals': attorney.principalIds.map(id => principals.find((record, index) => (index ? record.id : state.primaryExecutantId || 'primary') === id)?.values.executantName || '').filter(Boolean).join(', '),
     })) });
   }
@@ -398,7 +394,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);
-    const vendeeShares = vendees.length > 1 && vendees.some((party, index) => state.vendeeSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryClaimantId || 'primary' : party.id]?.trim()) ? vendees.map((vendee, index) => {
+    const vendeeShares = vendees.some((party, index) => state.vendeeSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryClaimantId || 'primary' : party.id]?.trim()) ? vendees.map((vendee, index) => {
       const partyId = index === 0 ? state.primaryClaimantId || 'primary' : vendee.id;
       const cents = vendeeShareCents(state.vendeeSharesBySchedule?.[record.id]?.[partyId] || '');
       return {
@@ -407,7 +403,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }) : undefined;
-    const vendorShares = vendors.length > 1 && vendors.some((party, index) => state.vendorSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryExecutantId || 'primary' : party.id]?.trim()) ? vendors.map((vendor, index) => {
+    const vendorShares = vendors.some((party, index) => state.vendorSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryExecutantId || 'primary' : party.id]?.trim()) ? vendors.map((vendor, index) => {
       const partyId = index === 0 ? state.primaryExecutantId || 'primary' : vendor.id;
       const cents = vendeeShareCents(state.vendorSharesBySchedule?.[record.id]?.[partyId] || '');
       return {

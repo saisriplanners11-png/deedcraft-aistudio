@@ -38,7 +38,7 @@ describe('generation safeguards', () => {
   it('allows compilation without professional approval but blocks unonboarded deeds', () => {
     const common = { variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'hash', values: {}, schedules: [], unresolvedWarnings: [] };
     expect(() => compileDeed({ ...common, instrumentId: 'sale' })).not.toThrow();
-    for (const variant of DEED_DEFINITIONS.gift.variants) expect(compileDeed({ ...common, instrumentId: 'gift', variantId: variant.id }).templateVersionId).toBe('gift-deed-v2');
+    for (const variant of DEED_DEFINITIONS.gift.variants) expect(compileDeed({ ...common, instrumentId: 'gift', variantId: variant.id }).templateVersionId).toBe('gift-deed-v4');
     expect(() => compileDeed({ ...common, instrumentId: 'will' })).toThrow(/approved legal reference/i);
   });
 });

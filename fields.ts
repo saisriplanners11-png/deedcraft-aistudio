@@ -131,7 +131,7 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
     { id: k('Dob'), label: 'Date of birth', ph: `${P} Dob`, type: 'date' },
     { id: k('Occupation'), label: 'Occupation', ph: `${P} Occupation` },
     { id: k('Aadhaar'), label: 'Aadhaar number', ph: `${P} Adhar Number` },
-    { id: k('Pan'), label: 'PAN', ph: `${P} Pan No.`, hint: 'Required above ₹50 lakh', omitWhenEmpty: true },
+    { id: k('Pan'), label: 'PAN', ph: [`${P} Pan No.`, `${P} PAN`], hint: 'Required above ₹50 lakh', omitWhenEmpty: true },
     { id: k('Mobile'), label: 'Mobile', ph: `${P} Cell.No.`, type: 'tel', omitWhenEmpty: true },
     { id: k('HNo'), label: 'House no.', ph: `${P} H.No.` },
     { id: k('Locality'), label: 'Locality', ph: `${P} Locality`, omitWhenEmpty: true },
@@ -268,7 +268,7 @@ export const GROUPS: Group[] = [
       { id: 'district', label: 'District', ph: 'District' },
       { id: 'mandal', label: 'Mandal', ph: 'Mandal' },
       { id: 'village', label: 'Village', ph: 'Village' },
-      { id: 'executionDate', label: 'Sale deed execution month and year', type: 'month', hint: 'Select the month and year. Leave the day blank to write it by hand after printing.' },
+      { id: 'executionDate', label: 'Deed execution date', ph: ['Execution Date', 'Date'], type: 'date', hint: 'Select the full date. The document prints DD-MM-YYYY.' },
     ],
   },
   {
@@ -287,6 +287,8 @@ export const GROUPS: Group[] = [
         hint: 'Choose the relationship of the landmark house number to the property.' },
       { id: 'nearHNo', label: 'Near / adjacent H.No.', ph: 'Near H.No.',
         hint: 'Door/house number of a neighbouring property used as a landmark in the boundary description — not the subject property\'s own number (see Bearing H.No.).' },
+      { id: 'landmarkHNo', label: 'Near / adjacent landmark house number', ph: 'Landmark House No.', only: ['Demolished', 'Part open place'],
+        hint: 'Neighbouring house used as a landmark; keep the subject property house number in its separate field.' },
       { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot', 'Open Place'],
         hint: 'Vacant Land Tax / assessment number, exactly as printed in the local-body record.' },
       { id: 'locality', label: 'Locality', ph: 'Locality' },
@@ -501,8 +503,7 @@ export function groupsForStep(step: number, category: string): Group[] {
   return GROUPS.filter(g => g.step === step)
     .map(g => ({ ...g,
       ...(category === 'Flat' && g.title === 'Boundaries' ? { title: 'Boundaries of Apartment', note: 'The four apartment-level property boundaries. Enter the individual flat boundaries separately below.' } : {}),
-      fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
-      && !(f.id === 'nearAdjacent' && ['Demolished', 'Part open place'].includes(category)))
+      fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category)))
       .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
         ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' }
         : f.id === 'bearingHNo' && category === 'Flat' ? { ...f, label: 'Municipal H.Nos.' } : f) }))

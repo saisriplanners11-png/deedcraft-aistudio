@@ -31,7 +31,7 @@ const CONDITION_ALIASES: Record<string, string> = { 'IF HOUSE FINISHED': 'IF HOU
 const conditionName = (value: string) => value.replace(/^<|>$/g, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
 const conditionTag = (value: string) => /^(?:IF|FOR|END)\b/i.test(value.trim());
 const LEGACY_TEMPLATE_TAGS = new Set([
-  'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
+  'Structure Type', 'Building Age', 'Total Built-up Area', 'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
   'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals', 'Attorney Share', 'Authority Book Number', 'Authority Holder Label', 'Authority Principal Names',
 ].map(value => value.toLowerCase()));
@@ -625,9 +625,10 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
 }
 
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
-  // The source contains an unconditional share sentence; single parties do not need it.
-  for (const [count, tags] of [['Ownership Vendor Count', 'Executant|Attorney'], ['Ownership Vendee Count', 'Claimant']] as const) {
-    if (values.get(norm(count)) === '1') p = replaceRunText(p, new RegExp(`,?\\s*holding\\s+(?:an\\s+)?undivided\\s+share\\s+of\\s*<(?:${tags}) Share>(?:\\s+in the schedule property)?\\.?`, 'gi'), () => '.');
+  const landmark = values.get(norm('Near / Adjacent'))?.toLowerCase();
+  if (landmark === 'near' || landmark === 'adjacent') {
+    p = replaceRunText(p, /<[^<>]*>|\b(?:near\s*\/\s*adjacent|near|adjacent)\s+(?:house\s+no\.?|h\.?\s*no\.?)/gi,
+      match => match[0].startsWith('<') ? match[0] : `${landmark} house No.`);
   }
   for (const tag of ['Executant Share', 'Attorney Share', 'Claimant Share']) {
     if (values.has(norm(tag)) && !values.get(norm(tag))) p = replaceRunText(p, new RegExp(`,?\\s*holding\\s+(?:an\\s+)?undivided\\s+share\\s+of\\s*<${tag}>(?:\\s+in the schedule property)?\\.?`, 'gi'), () => '.');
@@ -644,7 +645,13 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
       const paragraph = replaceRunText(p, /[\s\S]+/, () => recital);
       return fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([k, v]) => [norm(k), v] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
     }
-    let paragraph = repeat.partyRole ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
+    let paragraph = repeat.partyRole && repeat.records!.length > 1 ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
+    if (record['Executant Share'] && /<PRINCIPAL NAME>/i.test(plainText(paragraph)) && !/<Executant Share>/i.test(plainText(paragraph))) {
+      paragraph = replaceRunText(paragraph, /<\s*Principal Pin Code\s*>/i, match => match[0] + ', holding an undivided share of <Executant Share> in the schedule property');
+    }
+    if (record['Attorney Share'] && !/<Attorney Share>/i.test(plainText(paragraph))) {
+      paragraph = replaceRunText(paragraph, /<\s*Attorney Pin Code\s*>/i, match => match[0] + ', holding an undivided share of <Attorney Share> in the schedule property');
+    }
     if (repeat.finalSuffix && index < repeat.records!.length - 1) paragraph = replaceRunText(paragraph, repeat.finalSuffix, () => '.');
     if (repeat.partyRole && record['UNDIVIDED SHARE RECITAL'] && !/<(?:Executant|Claimant) Share>/i.test(plainText(paragraph))) {
       const panField = repeat.partyRole === 'executant' ? /<Executant PAN>/i : /<Claimant PAN>/i;
@@ -887,7 +894,6 @@ function enforcePartySharePolicy(body: string, values: Record<string, string>): 
       const text = plainText(paragraph);
       const side = /<\s*CLAIMANT NAME\s*>/i.test(text) ? 'Vendee' : /<\s*(?:EXECUTANT|PRINCIPAL|ATTORNEY) NAME\s*>/i.test(text) ? 'Vendor' : '';
       if (!side || !values[`Ownership ${side} Count`]) return paragraph;
-      const count = Number(values[`Ownership ${side} Count`]);
       const tag = side === 'Vendee' ? 'Claimant Share' : /<\s*ATTORNEY NAME\s*>/i.test(text) ? 'Attorney Share' : 'Executant Share';
       const expected = [...text.matchAll(/holding\s+(?:(?:an?\s+)?undivided\s+shares?\b|\d+(?:\.\d+)?\s*%\s+(?:ownership\s+)?shares?\b)/gi)].length;
       let handled = 0;
@@ -898,7 +904,7 @@ function enforcePartySharePolicy(body: string, values: Record<string, string>): 
       ];
       for (const pattern of patterns) paragraph = replaceRunText(paragraph, pattern, () => {
         handled++;
-        return count < 2 || values[`Ownership ${side} Enabled`] === 'false' ? '.' : `, holding an undivided share of <${tag}> in the schedule property.`;
+        return tag !== 'Attorney Share' && values[`Ownership ${side} Enabled`] === 'false' ? '.' : `, holding an undivided share of <${tag}> in the schedule property.`;
       });
       if (expected > handled) throw new Error(`The ${side.toLowerCase()} share clause in this template is not supported. Correct its share wording before generating or publishing; ownership percentages must come from the draft.`);
       return paragraph;
@@ -1058,9 +1064,9 @@ export async function scheduleText(
   const missing = new Set<string>();
 
   const selected = markConsiderationRows(children.slice(start, stop).map(c => body.slice(c.start, c.end)).join(''));
-  const withEvidence = addOwnershipShareParagraphs(['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant)
+  const withEvidence = prepareLandmarkBlock(addOwnershipShareParagraphs(['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant)
     ? prepareHouseBlock(selected, values, structureDetails)
-    : prepareNonHouseIdentifiers(selected, variant, values), vendorShares, vendeeShares);
+    : prepareNonHouseIdentifiers(selected, variant, values), vendorShares, vendeeShares), values);
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
     .map(paragraph => plainText(fillParagraph(paragraph, values_, missing, [])).trim())
     .filter(Boolean)
@@ -1302,6 +1308,38 @@ function prepareNonHouseIdentifiers(block: string, variant: string, values: Reco
   });
 }
 
+/** Add a supplied landmark wherever a source schedule/valuation omits its slot. */
+function prepareLandmarkBlock(block: string, values: Record<string, string>): string {
+  const relation = values['Near / Adjacent']?.toLowerCase();
+  const landmarkNumber = values['Landmark House No.'] ?? values['Near H.No.'];
+  if (!['near', 'adjacent'].includes(relation) || !landmarkNumber?.trim()) return block;
+  block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph);
+    if (!/^\s*All that\b/i.test(text) || /<\s*Landmark House No\.\s*>/i.test(text) || (/near\s*\/\s*adjacent|near house|adjacent house/i.test(text) && /<\s*Near H\.No\.\s*>/i.test(text))) return paragraph;
+    return replaceRunText(paragraph, /\bsituated\s+at\b/i, () => `situated ${relation} house No.<Landmark House No.> at`);
+  });
+  return block.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
+    const text = plainText(table);
+    if (!/Total\s+Market\s+Value|estimate\s+M\.V\.|PARTICULARS[\s\S]*DETAILS/i.test(text) || /<\s*Landmark House No\.\s*>/i.test(text) || (/near\s*\/\s*adjacent|near house|adjacent house/i.test(text) && /<\s*Near H\.No\.\s*>/i.test(text))) return table;
+    const rows = [...table.matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)];
+    const sample = rows.find(row => /Market Value per|Total Market Value|estimate\s+M\.V\./i.test(plainText(row[0])));
+    if (!sample) return table;
+    const cells = [...sample[0].matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)];
+    if (cells.length < 2) return table;
+    let index = 0;
+    const row = sample[0].replace(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g, cell => {
+      const column = index++;
+      let first = true;
+      return cell.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+        const value = first ? column === cells.length - 1 ? ': <Landmark House No.>' : column === cells.length - 2 ? `${relation} house No.` : '' : '';
+        first = false;
+        return replaceRunText(paragraph, /[\s\S]+/, () => value);
+      });
+    });
+    return table.slice(0, sample.index) + row + table.slice(sample.index);
+  });
+}
+
 /**
  * @param values   placeholder name -> value, keyed exactly as the template writes it
  * @param variant  which SCHEDULE OF PROPERTY block to keep, e.g. 'IF OPEN PLOT'
@@ -1419,6 +1457,7 @@ export async function fillSaleDeed(
       block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(schedule.variant)
         ? prepareHouseBlock(block, schedule.values, schedule.structureDetails)
         : prepareNonHouseIdentifiers(block, schedule.variant, schedule.values);
+      block = prepareLandmarkBlock(block, schedule.values);
       block = addOwnershipShareParagraphs(block, schedule.vendorShares, schedule.vendeeShares);
       block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
           fillParagraph(
@@ -1633,13 +1672,17 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
     const xml = new TextDecoder().decode(document.data);
     const text = plainText(xml);
     detectedPlaceholders = angleTags(xml);
-    const approved = await readZip(await loadTemplate('gift-deed-v2'));
+    const approved = await readZip(await loadTemplate('gift-deed-v4'));
     const approvedDocument = approved.find(entry => entry.name === 'word/document.xml')!;
-    const supported = new Set([...angleTags(new TextDecoder().decode(approvedDocument.data)), ...GIFT_SCHEDULE_NAMES, 'FOR ALL THE DOCUMENTS', 'Gift Relationship Recital', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT', 'Date'].map(norm));
+    const supported = new Set([...angleTags(new TextDecoder().decode(approvedDocument.data)), ...GIFT_SCHEDULE_NAMES, 'Executant Address', 'Claimant Address', 'FOR ALL THE DOCUMENTS', 'Gift Relationship Recital', 'Landmark House No.', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT', 'Date'].map(norm));
     for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Gift placeholder <${tag}>. Keep the starter bindings so details are not silently discarded.`);
     if (!/GIFT SETTLEMENT/i.test(text) || !/without any monetary consideration/i.test(text)) errors.push('Choose the supplied Gift Settlement reference, not a Sale deed.');
     const detected = new Set(detectedPlaceholders.map(norm));
-    for (const tag of ['EXECUTANT NAME', 'EXECUTANT RELATION NAME', 'Executant Age', 'Executant Dob', 'Executant Occupation', 'Executant Address', 'Executant Adhar Number', 'Executant Cell.No.', 'CLAIMANT NAME', 'CLAIMANT RELATION NAME', 'Claimant Age', 'Claimant Dob', 'Claimant Occupation', 'Claimant Address', 'Claimant Adhar Number', 'Claimant Cell.No.']) if (!detected.has(norm(tag))) errors.push(`The Gift template must retain <${tag}> so saved party details are not lost.`);
+    for (const tag of ['EXECUTANT NAME', 'EXECUTANT RELATION NAME', 'Executant Age', 'Executant Dob', 'Executant Occupation', 'Executant Adhar Number', 'Executant Cell.No.', 'CLAIMANT NAME', 'CLAIMANT RELATION NAME', 'Claimant Age', 'Claimant Dob', 'Claimant Occupation', 'Claimant Adhar Number', 'Claimant Cell.No.']) if (!detected.has(norm(tag))) errors.push(`The Gift template must retain <${tag}> so saved party details are not lost.`);
+    for (const party of ['Executant', 'Claimant']) {
+      if (detected.has(norm(`${party} Address`))) continue;
+      for (const part of ['H.No.', 'Locality', 'Village', 'Mandal', 'District', 'State', 'Pin Code']) if (!detected.has(norm(`${party} ${part}`))) errors.push(`Retain <${party} ${part}> or the combined <${party} Address> so saved address details are not lost.`);
+    }
     if ((text.match(/SCHEDULE OF PROPERTY/g) || []).length !== 8 || !/DECLARATION/.test(text) || !/SIGN\/S OF THE DONOR\/S/i.test(text) || !/SIGN\/S OF THE DONEE\/S/i.test(text)) errors.push('Retain all eight Gift property schedules, declaration and donor/donee signature sections.');
     const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
     if (sections.length < 2 || !/w:top="8208"/.test(sections[0])) errors.push('Retain the Gift page sections, including the first-page stamp space.');
@@ -1651,7 +1694,7 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
 export async function fillGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
   if (!values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
   if (!schedules.length) throw new Error('Add a Gift property schedule.');
-  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v2') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v2');
+  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v4') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v4');
   const validation = await validateGiftDeedTemplate(bytes);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
@@ -1669,11 +1712,14 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   let relationshipFound = false;
   opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     const text = plainText(paragraph);
+    for (const [name, party] of [['EXECUTANT', 'Executant'], ['CLAIMANT', 'Claimant']]) {
+      if (new RegExp(`<\\s*${name} NAME\\s*>`, 'i').test(text) && !new RegExp(`<\\s*${party} PAN\\s*>`, 'i').test(text)) paragraph = replaceRunText(paragraph, /[.,]?\s*\(Hereinafter called the/i, () => `, PAN: <${party} PAN>. (Hereinafter called the`);
+    }
     if (/WHEREAS\s+the\s+Donee|<Gift Relationship Recital>/i.test(text)) {
       relationshipFound = true;
       return replaceRunText(paragraph, /[\s\S]+/, () => values['Gift Relationship Recital']);
     }
-    paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
+    paragraph = replaceRunText(paragraph, /DD[-/.]?MM[-/.]?YYYY/g, () => '<Date>');
     if (values['Gift Variant'] && values['Gift Variant'] !== 'family-gift') paragraph = replaceRunText(paragraph, /FAMILY MEMBERS?/gi, () => values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY' : 'DONEE');
     return giftParagraphWording(paragraph, donors, donees);
   });
@@ -1702,6 +1748,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     if (!block) throw new Error(`No Gift schedule is available for ${variant}.`);
     block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant) ? prepareHouseBlock(block, schedule.values, schedule.structureDetails) : prepareNonHouseIdentifiers(block, variant, schedule.values);
     if (variant === 'IF HOUSE SEMI FINISHED') block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /^\s*All that the\b/i.test(plainText(paragraph)) && !/semi.finished/i.test(plainText(paragraph)) ? replaceRunText(paragraph, /All that the\s+/i, () => 'All that the semi-finished ') : paragraph);
+    block = prepareLandmarkBlock(block, schedule.values);
     block = block.replace(/property hereby sold/gi, 'property hereby gifted');
     // Gift is without monetary consideration, including every annexure variant.
     block = block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {

@@ -92,16 +92,16 @@ describe('Supabase template persistence', () => {
     await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
     const base = `http://127.0.0.1:${(server.address() as any).port}/api/templates`;
     try {
-      expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v6');
+      expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v10');
       const login = await fetch(base + '/login', { method: 'POST', body: JSON.stringify({ password: 'test-password' }) });
       const cookie = login.headers.get('set-cookie')!.split(';')[0], csrf = (await login.json()).csrf;
       const headers = { Cookie: cookie, 'X-CSRF-Token': csrf };
-      const bytes = await readFile(new URL('./sale-deed-template-v6.docx', import.meta.url));
+      const bytes = await readFile(new URL('./sale-deed-template-v10.docx', import.meta.url));
       const response = await fetch(base + '/upload?filename=updated.docx', { method: 'POST', headers, body: bytes });
       expect(response.status).toBe(201);
       const revision = await response.json();
-      expect(revision.validation.valid).toBe(true); expect(revision.samples).toHaveLength(8);
-      expect((await fetch(base + `/versions/${revision.id}/samples/plot`, { headers })).status).toBe(200);
+      expect(revision.validation.valid).toBe(true); expect(revision.samples).toHaveLength(25);
+      expect((await fetch(base + `/versions/${revision.id}/samples/ordinary-plot`, { headers })).status).toBe(200);
       expect((await fetch(base + `/versions/${revision.id}/download`)).status).toBe(401);
       const remove = () => fetch(base + `/versions/${revision.id}`, { method: 'DELETE', headers, body: JSON.stringify({ expectedHash: revision.hash, expectedSchemaRevision: revision.schemaRevision || 0 }) });
       expect((await remove()).status).toBe(200);
@@ -113,14 +113,14 @@ describe('Supabase template persistence', () => {
       expect(trash.versions.some((item: any) => item.id === revision.id)).toBe(false);
       expect((await fetch(base + `/versions/${revision.id}/download`, { headers })).status).toBe(404);
       expect((await fetch(base + `/versions/${revision.id}/restore`, { method: 'POST', headers, body: '{}' })).status).toBe(200);
-      const publish = await fetch(base + `/versions/${revision.id}/publish`, { method: 'POST', headers, body: JSON.stringify({ expectedActive: 'sale-deed-v6', reviewed: true }) });
+      const publish = await fetch(base + `/versions/${revision.id}/publish`, { method: 'POST', headers, body: JSON.stringify({ expectedActive: 'sale-deed-v10', reviewed: true }) });
       expect(publish.status).toBe(200);
       api = createTemplateApi({ ...options, production: true, password: 'test-password' });
       expect((await (await fetch(base)).json()).active.sale).toBe(revision.id);
       const download = await fetch(base + `/versions/${revision.id}/download`);
       expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
       expect((await (await fetch(base + '/session', { headers })).json()).authenticated).toBe(false);
-      expect((await fetch(base + `/versions/${revision.id}/samples/plot`)).status).toBe(401);
+      expect((await fetch(base + `/versions/${revision.id}/samples/ordinary-plot`)).status).toBe(401);
     } finally { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
   }, 60000);
   it('fails closed on incomplete setup and does not fall back to disk', async () => {

@@ -16,14 +16,27 @@ try {
  await panel.getByLabel('Upload '+(process.env.AUTHORITY_QA_MODE || 'gpa').toUpperCase()+' documents',{exact:true}).setInputFiles(process.env.AUTHORITY_QA_FILE);
  await page.waitForFunction(()=>Array.from(document.querySelectorAll('[role=status],[role=alert]')).some(el=>/Principal executants filled|Extraction could not finish/.test(el.textContent)),{},{timeout:360000});
  const alert=await panel.getByRole('alert').allTextContents();if(alert.length) throw new Error(alert.join(' '));
+ await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+ const principal = page.locator('.party-record-card').first();
+ assert.equal(await principal.getByLabel('Full name',{exact:true}).inputValue(),'MALAVATH SARITHA');
+ assert.match(await principal.locator('.party-type-selector select').inputValue(),/^Principal/);
+ const attorney = page.getByRole('region',{name:'Sale attorney details',exact:true}).getByRole('group',{name:'Attorney 1',exact:true});
+ assert.equal(await attorney.getByLabel('Full name',{exact:true}).inputValue(),'BHOOKYA THIRUPATHI');
+ for (const [label, value] of Object.entries({ Relation:'S/O', 'Father’s / relative’s name':'REDDY NAYAK', Age:'48', Occupation:'Business', 'House no.':'3-39' })) assert.equal(await (label === 'Relation' ? attorney.locator('select').first() : attorney.getByLabel(label,{exact:true})).inputValue(),value);
+ assert.equal((await attorney.getByLabel('Mobile (optional)',{exact:true}).inputValue()).replace(/\s/g,''),'9121980426');
+ for (const [label, value] of Object.entries({ Relation:'W/O', "Father's / relative's name":'SANGYA', Age:'45', Occupation:'Agriculture', 'House no.':'1-6/1' })) assert.equal(await (label === 'Relation' ? principal.locator('select').nth(1) : principal.getByLabel(label === 'Age' ? /^Age/ : label,{exact:label !== 'Age'})).inputValue(),value);
+ assert.equal(await attorney.getByLabel('MALAVATH SARITHA',{exact:true}).isChecked(),true);
+ assert.equal(await principal.evaluate(el => !!(document.querySelector('[aria-label="Sale authority details"]').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(el.compareDocumentPosition(document.querySelector('[aria-label="Sale attorney details"]')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
  const stored=await page.evaluate(id=>new Promise(resolve=>{const req=indexedDB.open('deedcraft-saved-deeds',1);req.onsuccess=()=>{const db=req.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{db.close();resolve(get.result);};};}),draft.id);
  const values={};for(const label of ['Authority document number','Authority book number','Authority document date','Authority Sub-Registrar Office','Authority SRO code']) values[label]=await panel.getByLabel(label,{exact:true}).inputValue();
- console.log(JSON.stringify({mode:process.env.AUTHORITY_QA_MODE || 'gpa',values,manual:stored.draft.manual,notes:stored.draft.saleAuthority.extractions.flatMap(e=>e.notes)},null,2));
+ console.log(JSON.stringify({mode:process.env.AUTHORITY_QA_MODE || 'gpa',values,manual:stored.draft.manual,attorneys:stored.draft.saleAuthority.attorneys,notes:stored.draft.saleAuthority.extractions.flatMap(e=>e.notes)},null,2));
  assert.match(stored.draft.manual['executant|primary|executantName'],/MALAVATH SARITHA/i);
  assert.match(stored.draft.manual['executant|primary|executantPartyType'],/^Principal/);
  assert.equal(Object.keys(stored.draft.manual).filter(k=>k.endsWith('|executantName')).length,1);
  assert.equal(values['Authority document number'],'6003/2023');assert.equal(values['Authority document date'],'2023-07-18');
  assert.equal(values['Authority book number'],'');assert.equal(values['Authority SRO code'],'');assert.equal(values['Authority Sub-Registrar Office'],'');
  await page.reload();await page.getByRole('button',{name:'Continue / Edit',exact:true}).click();assert.equal(await page.getByRole('region',{name:'Sale authority details',exact:true}).getByLabel('Authority document number',{exact:true}).inputValue(),'6003/2023');
+ assert.equal(await page.locator('.party-record-card').first().getByLabel('Full name',{exact:true}).inputValue(),'MALAVATH SARITHA');
+ assert.equal(await page.getByRole('group',{name:'Attorney 1',exact:true}).getByLabel('MALAVATH SARITHA',{exact:true}).isChecked(),true);
  console.log('PASS: actual PDF upload, verified principal and five authority fields, saved and reloaded.');
 } finally {await browser.close();}

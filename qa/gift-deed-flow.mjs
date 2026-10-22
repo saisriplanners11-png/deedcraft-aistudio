@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {loadTemplateRuntime} from '../template-runtime-loader.mjs';
 const rt=await loadTemplateRuntime();
-const referenceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v2.docx',import.meta.url)));
+const referenceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx',import.meta.url)));
 const referenceEntries=await rt.readZip(referenceBytes);
 const referenceXml=new TextDecoder().decode(referenceEntries.find(entry=>entry.name==='word/document.xml').data);
 await mkdir('tmp/gift/qa',{recursive:true});
 for(const id of ['ordinary-plot','ordinary-open','ordinary-dismantled','ordinary-part','ordinary-house-finished','ordinary-house-semi','ordinary-flat-finished','ordinary-flat-semi']) for(const donors of [1,2]) for(const donees of [1,2]){
- const state=rt.sampleState(id);state.deedType='Gift';state.form={...state.form,giftRelationship:'daughter',govtRate:'5000',structValue:'100000'};
+ const state=rt.sampleState(id);state.deedType='Gift';state.form={...state.form,giftRelationship:'daughter',govtRate:'5000',structValue:'100000',executantPan:'ABCDE1234F',claimantPan:'PQRST5678L'};
  if(donors>1)state.additionalExecutants=[{id:'second-donor',values:{...state.form,executantName:'SECOND DONOR'},docNames:[]}];
  if(donees>1)state.additionalClaimants=[{id:'second-donee',values:{...state.form,claimantName:'SECOND DONEE'},docNames:[]}];
  const schedules=rt.scheduleMergesFor(state);const output=await rt.fillGiftDeed(rt.mergeValues(state),rt.rewritesFor(state),schedules);
@@ -25,7 +25,10 @@ for(const id of ['ordinary-plot','ordinary-open','ordinary-dismantled','ordinary
  assert.match(sections[1],/w:top="1080"/);
  assert.deepEqual(output.unmapped,[],id);
  assert.match(text,/State:Telangana/);
- assert.match(documentXml,/<w:tab w:val="right" w:pos="9760"\/>/);
+ assert.match(text,/ABCDE1234F/);assert.match(text,/PQRST5678L/);
+ assert.doesNotMatch(documentXml,/__GIFT_SIGNATURE_TAB__/);
+ assert.match(text,/SIGNATURES? OF THE DONORS?/);
+ assert.match(text,/SIGNATURES? OF THE DONEES?/);
  assert.match(text,new RegExp(`WHEREAS the ${donees>1?'Donees are the daughters':'Donee is the daughter'} of the ${donors>1?'Donors':'Donor'}\\.`));
  if(id==='ordinary-house-semi') assert.match(text,/All that the semi-finished/);
  if(id.includes('flat')) assert.match(text,/30 Sq.yds equivalent to 25.08 square meters/);
@@ -43,9 +46,9 @@ const state=rt.sampleState('multiple');state.deedType='Gift';state.form.giftRela
 const schedules=rt.scheduleMergesFor(state);
 const compiled=rt.compileDeed({instrumentId:'gift',variantId:'family-gift',snapshotHash:'synthetic',values:rt.mergeValues(state),schedules,rewrites:rt.rewritesFor(state),unresolvedWarnings:[]});
 const artifact=await rt.renderArtifact(compiled,'docx');
-assert.equal(artifact.manifest.templateVersionId,'gift-deed-v2');
+assert.equal(artifact.manifest.templateVersionId,'gift-deed-v4');
 assert.match(await rt.docxToText(new Uint8Array(await artifact.result.blob.arrayBuffer())),/WHEREAS the Donees are the son and daughter of the Donors/);
-const sourceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v2.docx',import.meta.url)));
+const sourceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx',import.meta.url)));
 const entries=await rt.readZip(sourceBytes);const document=entries.find(entry=>entry.name==='word/document.xml');
 document.data=new TextEncoder().encode(new TextDecoder().decode(document.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,paragraph=>{
  const changed=rt.replaceRunText(paragraph,/WHEREAS the Donee\/s is\/are the <Relationship> of the Donor\/s\./gi,()=> '');
@@ -64,15 +67,16 @@ const unknownEntries=await rt.readZip(sourceBytes);const unknownDoc=unknownEntri
 const unknownValidation=await rt.validateGiftDeedTemplate(await rt.writeZip(unknownEntries));assert.equal(unknownValidation.valid,false);assert(unknownValidation.errors.some(error=>/Unsupported Gift placeholder/.test(error)));
 console.log('PASS: unknown Gift bindings block replacement rather than silently dropping newly added details.');
 
-for(const version of ['v1','v2']) {
+for(const version of ['v1','v2','v3','v4']) {
  const templateBytes=new Uint8Array(await readFile(new URL(`../gift-deed-template-${version}.docx`,import.meta.url)));
  const validation=await rt.validateGiftDeedTemplate(templateBytes);assert.equal(validation.valid,true,validation.errors.join(' '));
  const custom={kind:'custom',name:`Gift ${version}.docx`,hash:`synthetic-${version}`,bytes:templateBytes,validation};
  for(const variantId of ['family-gift','non-family-gift','gift-to-trust-or-charity']) {
-  const restored=JSON.parse(JSON.stringify(state));restored.form.giftRelationship='friend';
+  const restored=JSON.parse(JSON.stringify(state));restored.form.giftRelationship='friend';restored.form.executantPan='ABCDE1234F';restored.form.claimantPan='PQRST5678L';
   const compiled=rt.compileDeed({instrumentId:'gift',variantId,snapshotHash:'saved-reloaded',values:rt.mergeValues(restored),schedules:rt.scheduleMergesFor(restored),rewrites:rt.rewritesFor(restored),unresolvedWarnings:[]},custom);
   const generated=await rt.renderArtifact(compiled,'docx',custom);const text=await rt.docxToText(new Uint8Array(await generated.result.blob.arrayBuffer()));
   assert.match(text,/WHEREAS the Donees are the friends of the Donors/);
+  assert.match(text,/ABCDE1234F/);assert.match(text,/PQRST5678L/);
   assert.match(text,/DECLARATION/);assert.match(text,/Donors further declare that they have/);
   assert.doesNotMatch(text,/has\/have|is\/are|property hereby sold|____%/i);
   if(variantId!=='family-gift')assert.doesNotMatch(text,/FAMILY MEMBERS?/);
@@ -88,4 +92,4 @@ for(const [find,replacement,message] of [
  document.data=new TextEncoder().encode(new TextDecoder().decode(document.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>rt.replaceRunText(p,find,()=>replacement)).replace(find,replacement));
  const checked=await rt.validateGiftDeedTemplate(await rt.writeZip(entries));assert.equal(checked.valid,false);assert(checked.errors.some(error=>message.test(error)),checked.errors.join(' '));
 }
-console.log('PASS: both Gift revisions and all three Gift variants preserve saved relationship/grammar; party identity, stamp-space and schedule damage is rejected.');
+console.log('PASS: all four Gift revisions and all three Gift variants preserve saved relationship/grammar; party identity, stamp-space and schedule damage is rejected.');

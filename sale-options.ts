@@ -1,4 +1,4 @@
-import { ageFrom, deedDate, partyRecords, scheduleRecords, type AppState } from './logic';
+import { ageFrom, deedDate, partyRecords, scheduleRecords, vendeeShareCents, type AppState } from './logic';
 import { flatStage } from './flat-options';
 
 export const SALE_DOCUMENT_OPTIONS = [
@@ -51,6 +51,7 @@ export function saleAuthorityErrors(state: AppState): string[] {
   }
   if (!authority.attorneys.length) errors.push('Add at least one attorney.');
   for (const [index, attorney] of authority.attorneys.entries()) {
+    if (attorney.values.SharePercentage?.trim() && vendeeShareCents(attorney.values.SharePercentage) === null) errors.push(`Attorney ${index + 1}: enter a share percentage greater than 0 and no more than 100, with up to two decimal places.`);
     const missing = Object.entries(required).filter(([key]) => !attorney.values[key]?.trim()).map(([, label]) => label);
     if (missing.length) errors.push(`Attorney ${index + 1}: enter ${missing.join(', ')}.`);
     if (!attorney.principalIds.length) errors.push(`Attorney ${index + 1}: select the represented principals.`);
