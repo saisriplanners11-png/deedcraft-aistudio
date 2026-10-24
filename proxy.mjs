@@ -9,6 +9,8 @@
 // dev server, `vite preview`, and server.mjs for production — all from here, so
 // there is one implementation of the forwarding rule.
 
+import { withGeminiMedia } from './gemini-media.mjs';
+
 const UPSTREAM = 'https://api.anthropic.com';
 const GEMINI_UPSTREAM = 'https://generativelanguage.googleapis.com/v1beta';
 export const PROXY_PREFIX = '/api/anthropic';
@@ -119,13 +121,20 @@ export function createProxyHandler(getConfig, options = {}) {
         // use that identifier so extraction, vision and verification can each
         // select the right Gemini model.
         const model = request.model || config.geminiModel;
-        const upstream = await fetch(`${GEMINI_UPSTREAM}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-          method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(geminiRequest(request)),
+        const payload = await withGeminiMedia(geminiRequest(request), {
+          apiKey, signal: controller.signal, store: options.mediaStore,
+          send: async body => {
+            const upstream = await fetch(`${GEMINI_UPSTREAM}/models/${encodeURIComponent(model)}:generateContent`, {
+              method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body),
+            });
+            const payload = await upstream.json();
+            if (!upstream.ok) throw Object.assign(new Error(payload.error?.message || 'Gemini request failed.'), { status: upstream.status });
+            return payload;
+          },
         });
-        const payload = await upstream.json();
-        if (!upstream.ok) return json(res, upstream.status, { error: { type: 'gemini_error', message: payload.error?.message || 'Gemini request failed.' } });
         return json(res, 200, anthropicResponse(payload, request.model));
       } catch (err) {
+        if (err.status) return json(res, err.status, { error: { type: 'gemini_error', message: err.message } });
         return json(res, 502, { error: { type: 'proxy_error', message: `Could not reach the Gemini API: ${err?.message || err}` } });
       }
     }

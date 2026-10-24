@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createProxyHandler, PROXY_PREFIX } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
 import { createTemplateApi } from './template-api.mjs';
+import { sendStatic } from './static-response.mjs';
 
 const PORT = Number(process.env.PORT) || 4173;
 const DIST = fileURLToPath(new URL('./dist/', import.meta.url));
@@ -39,6 +40,7 @@ const MIME = {
   '.json': 'application/json', '.svg': 'image/svg+xml', '.map': 'application/json',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.pdf': 'application/pdf',
   '.woff2': 'font/woff2', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.wasm': 'application/wasm',
 };
 
 createServer(async (req, res) => {
@@ -47,7 +49,13 @@ createServer(async (req, res) => {
   if (req.url?.startsWith('/api/analyze-sketch') || req.url?.startsWith('/api/parse-document')) return referencePlanApi(req, res);
 
   // Static files, with a directory-traversal guard.
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.statusCode = 405;
+    res.setHeader('Allow', 'GET, HEAD');
+    return res.end();
+  }
   const path = (req.url || '/').split('?')[0];
+  if (path.endsWith('.map')) { res.statusCode = 404; return res.end(); }
   const rel = normalize(path === '/' ? '/index.html' : path).replace(/^(\.\.[/\\])+/, '');
   const file = join(DIST, rel);
   if (!file.startsWith(DIST)) {
@@ -56,13 +64,15 @@ createServer(async (req, res) => {
   }
   try {
     const body = await readFile(file);
-    res.setHeader('content-type', MIME[extname(file)] || 'application/octet-stream');
-    res.end(body);
+    await sendStatic(req, res, body, {
+      type: MIME[extname(file)] || 'application/octet-stream',
+      immutable: /^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[^/]+$/.test(path),
+    });
   } catch {
+    if (extname(path)) { res.statusCode = 404; return res.end('Not found'); }
     // Single-page app: unknown paths fall back to index.html.
     try {
-      res.setHeader('content-type', 'text/html');
-      res.end(await readFile(join(DIST, 'index.html')));
+      await sendStatic(req, res, await readFile(join(DIST, 'index.html')), { type: 'text/html' });
     } catch {
       res.statusCode = 404;
       res.end('Not found');

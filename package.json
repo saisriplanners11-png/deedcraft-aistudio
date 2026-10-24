@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --maxWorkers=1",
     "test:production-stalls": "node qa/production-stalls.mjs",
+    "test:ai-bandwidth": "node --test qa/ai-bandwidth.test.mjs",
     "test:sale-v9": "node qa/sale-v9.mjs",
     "test:sale-v9-api": "node qa/sale-v9-api.mjs",
     "test:sale-v9-browser": "node qa/sale-v9-browser.mjs",

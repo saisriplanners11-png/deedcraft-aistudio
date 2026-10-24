@@ -1,5 +1,6 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
+import { withGeminiMedia } from '../gemini-media.mjs';
 
 
 let aiClient = null;
@@ -15,6 +16,19 @@ function getGenAI() {
     });
   }
   return aiClient;
+}
+
+async function generateContent(ai, request, res) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+  res.on('close', disconnect);
+  try {
+    return await withGeminiMedia(request, {
+      apiKey: process.env.GEMINI_API_KEY, signal: controller.signal,
+      send: body => ai.models.generateContent({ ...body, config: { ...body.config, abortSignal: controller.signal } }),
+    });
+  } finally { clearTimeout(timer); res.off('close', disconnect); }
 }
 
 export function createReferencePlanApi() {
@@ -144,7 +158,7 @@ Return ONLY a valid JSON object matching this structure:
   "summaryNotes": "Cadastral reproduction of uploaded sketch with faithful geometry, exact boundaries, and zero invented values."
 }`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContent(ai, {
         model: 'gemini-3.8-flash',
         contents: {
           parts: [
@@ -163,7 +177,7 @@ Return ONLY a valid JSON object matching this structure:
           responseMimeType: 'application/json',
           temperature: 0.1, // low temperature for precise factual extraction
         },
-      });
+      }, res);
 
       const responseText = response.text || '{}';
       let parsedData;
@@ -372,14 +386,14 @@ CRITICAL RULES FOR ACCURATE EXTRACTION:
         parts.push({ text: prompt });
       }
 
-      const response = await ai.models.generateContent({
+      const response = await generateContent(ai, {
         model: 'gemini-3.8-flash',
         contents: { parts },
         config: {
           responseMimeType: 'application/json',
           temperature: 0.1,
         },
-      });
+      }, res);
 
       const responseText = response.text || '{}';
       let parsedData;
