@@ -1588,7 +1588,8 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   const beforeForm = closingChunks.slice(0, headingIndex);
   let lastText = beforeForm.length - 1;
   while (lastText >= 0 && !plainText(beforeForm[lastText]).trim()) lastText--;
-  const sectionStartsForm = beforeForm.slice(lastText + 1).some(chunk => /<w:sectPr\b/.test(chunk));
+  // The GPA source carries its form section break on the Prepared By paragraph.
+  const sectionStartsForm = beforeForm.slice(generalPoa ? Math.max(0, lastText) : lastText + 1).some(chunk => /<w:sectPr\b/.test(chunk));
   const afterForm = closingChunks.slice(tableIndex + 1);
   const signatureStart = afterForm.findIndex(chunk => /SIGNATURES OF WITNESSES/i.test(plainText(chunk)));
   const signatureEnd = afterForm.findIndex((chunk, index) => index > signatureStart && /^1\.\s+2\.$/.test(plainText(chunk).trim()));
