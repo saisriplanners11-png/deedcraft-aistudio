@@ -19,6 +19,7 @@ add(['Nature of House'], 'Property Schedules / Structure details', ['roofMateria
 add(['Type of structure'], 'Property Schedules / Structure & Annexure I-A', ['constructionDescription']);
 add(['Age of House'], 'Property Schedules / Structure details', ['structureDetails.rows.buildingAge']);
 add(['Plinth Area', 'Ground Floor Area', 'First Floor Area'], 'Property Schedules / Structure details', ['structureDetails.rows.floorNo', 'structureDetails.rows.builtUpAreaSqFt']);
+add(['Friend/Relationship'], 'Attorney details / Relationship to principal(s)', ['variantId', 'claimant.poaRelationship', 'claimant.poaRelationshipCustom']);
 add(['Relationship'], 'Gift relationship', ['giftRelationship', 'giftRelationshipCustom']);
 add(['ULB'], 'Property Schedules / Municipal Gift recipient', ['localAuthorityType', 'village']);
 add(['Consideration in words'], 'Market Value / calculated from entered amount', ['consid']);
@@ -38,12 +39,13 @@ for (const [tag, suffix] of Object.entries({NAME:'Name','RELATION NAME':'Relatio
  add(['Attorney ' + tag], 'Executant Details / attorney identity', ['saleAuthority.attorneys.values.' + suffix]);
 }
 add(['Attorney Share'], 'Executant Details / optional attorney share', ['saleAuthority.attorneys.values.SharePercentage']);
+add(['Executant Address', 'Claimant Address'], 'Party details / composed address', ['party.HNo', 'party.Locality', 'party.Village', 'party.Mandal', 'party.District', 'party.State', 'party.PinCode']);
 add(['Amount'], 'Payment Details / payment amount', ['payments.amount']);
 add(['Bank Name', 'Housing Loan Bank'], 'Payment Details / bank', ['payments.bank']);
 add(['Housing Loan Branch'], 'Payment Details / bank branch', ['payments.branch']);
 add(['Cheque No.', 'DD No.', 'Transaction ID', 'Utr/Reference No.'], 'Payment Details / method-specific reference', ['payments.refNo']);
 const report = [];
-for (const file of ['sale-deed-template-v10.docx', 'gift-deed-template-v4.docx', 'gift-municipal-template-v1.docx']) {
+for (const file of ['sale-deed-template-v10.docx', 'gift-deed-template-v4.docx', 'gift-municipal-template-v1.docx', 'agreement-sale-gpa-template-v1.docx', 'general-poa-template-v1.docx']) {
  const text = await rt.docxToText(new Uint8Array(await readFile(new URL('../' + file, import.meta.url))));
  const tags = [...new Set([...text.matchAll(/<([^<>]+)>/g)].map(match => norm(match[1])))].filter(tag => !/^(?:if|end|for)\b/.test(tag));
  const rows = tags.sort().map(placeholder => {

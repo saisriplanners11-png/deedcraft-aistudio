@@ -50,6 +50,12 @@ describe('shared template library API', { timeout: 30000 }, () => {
   it('seeds a public immutable version but protects drafts and management', async () => {
     const listing = await (await fetch(base)).json();
     expect(listing.active.sale).toBe('sale-deed-v10');
+    expect(listing.active.agreement_of_sale).toBe('agreement-sale-gpa-v1');
+    expect(listing.active.power_of_attorney).toBe('general-poa-v1');
+    const poa = Buffer.from(await (await fetch(base + '/versions/general-poa-v1/download')).arrayBuffer());
+    expect(poa.equals(await readFile(new URL('./general-poa-template-v1.docx', import.meta.url)))).toBe(true);
+    const agreement = Buffer.from(await (await fetch(base + '/versions/agreement-sale-gpa-v1/download')).arrayBuffer());
+    expect(agreement.equals(await readFile(new URL('./agreement-sale-gpa-template-v1.docx', import.meta.url)))).toBe(true);
     expect(listing.versions[0].validation).toBeUndefined();
     expect((await fetch(base + '/versions/sale-deed-v10')).status).toBe(401);
     const bytes = Buffer.from(await (await fetch(base + '/versions/sale-deed-v10/download')).arrayBuffer());
@@ -75,7 +81,7 @@ describe('shared template library API', { timeout: 30000 }, () => {
       }
       const xml = new TextDecoder().decode(entries.find((item: any) => item.name === 'word/document.xml').data);
       const original = new TextDecoder().decode(originalEntries.find((item: any) => item.name === 'word/document.xml').data);
-      const section = (document: string) => document.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0].replace(/\s+w:rsid\w+="[^"]*"/g, '');
+      const section = (document: string) => document.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0].replace(/\s+w:rsid\w+="[^"]*"/g, '').replace(/<w:type w:val="nextPage"\/>/g, '');
       expect(section(xml), sample.id).toBe(section(original));
       if (sample.id === 'multiple') expect(await runtime.docxToText(new Uint8Array(await runtime.renderSample('multiple', { kind: 'custom', bytes: starter, validation: revision.validation })))).toContain('SECOND SAMPLE');
     }

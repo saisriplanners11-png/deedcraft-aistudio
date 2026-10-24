@@ -1,5 +1,6 @@
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
 import { isMunicipalGift } from './municipal-gift';
+import { poaValues } from './poa-options';
 import { giftRelationshipValues } from './gift-options';
 import { localAuthorityName } from './fields';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
@@ -27,7 +28,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   const f = state.form;
   const out: Record<string, string> = {};
   if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || ''); out.VILLAGE = f.village || ''; }
-  Object.assign(out, giftRelationshipValues(state));
+  Object.assign(out, giftRelationshipValues(state), poaValues(state));
 
   // Straight field -> placeholder mappings declared in fields.ts.
   for (const field of ALL_FIELDS) {
@@ -116,7 +117,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     out[ph] = [f[`${side}Relation`]?.toUpperCase(), uppercasePartyIdentity(`${side}RelativeName`, f[`${side}RelativeName`] || '')].filter(Boolean).join(' ');
   }
 
-  if (state.deedType === 'Gift') {
+  if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA'].includes(state.deedType)) {
     out['Municipality/Gram Panchayat Name'] = f.permissionAuthorityName || '';
     out.Date = deedDate(f.executionDate || '');
     for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
@@ -263,7 +264,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
         const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
         const prefix = partyCapacityPrefix(record.values[side + 'PartyType']);
-        return { 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
+        return { 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), 'Registration Name': partyDisplayName(record.values, side), 'Registration Address': isEntity(record.values, side) ? record.values[side + 'EntityAddress'] || '' : ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => record.values[side + suffix]?.trim()).filter(Boolean).join(', '), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
       }),
     });
   }

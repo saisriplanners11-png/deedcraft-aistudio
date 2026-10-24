@@ -4,10 +4,11 @@ export { mergeValues, rewritesFor, scheduleMergesFor, deedFilename } from './mer
 export { saleAuthorityErrors, salePropertyErrors, saleVariant } from './sale-options';
 export { newDraft, appStateFor, draftReducer, resolveDraft } from './source-draft';
 export { applyAuthorityPerson, cleanAuthorityRead } from './authority-import';
+export { poaValues, poaRelationshipErrors } from './poa-options';
 export { initialState, partyRecords } from './logic';
 export { newPayment, MODES } from './payments';
 export { PLACEMENT_CATALOG } from './template-placement';
-export { validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
+export { validateGeneralPoaTemplate, fillGeneralPoaDeed, validateAgreementSaleGpaTemplate, fillAgreementSaleGpaDeed, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
 export { validateFieldContract, canonicalContract, EMPTY_FIELD_CONTRACT } from './template-fields';
 import { fillSaleDeed, type DeedTemplateSource } from './docx';
 import { initialState, type AppState } from './logic';

@@ -57,3 +57,18 @@ it('keeps municipal and regular Gift defaults separate across refresh and reload
   const regular = { ...updated, draft: { ...updated.draft, variantId: 'family-gift' } };
   expect(updateSavedDeedTemplate(regular, {}).libraryTemplate?.versionId).toBe('gift-deed-v4');
 });
+
+
+it('refreshes Agreement of Sale Cum GPA defaults while preserving both variants and saved facts', () => {
+  for (const variantId of ['with-possession', 'without-possession']) {
+    const deed = saved({ deedType: 'Agreement of Sale', draft: { ...newDraft(), instrumentId: 'agreement_of_sale', variantId, manual: { 'executant|primary|executantName': 'KEPT NAME' } }, generationManifest: { templateVersionId: 'old' } });
+    const updated = updateSavedDeedTemplate(deed, {});
+    expect(updated.libraryTemplate?.versionId).toBe('agreement-sale-gpa-v1');
+    expect(updated.deedType).toBe('Agreement of Sale Cum GPA');
+    expect(updated.draft).toBe(deed.draft);
+    expect(updated.generationManifest).toBeNull();
+    expect(savedTemplateStatus(updated).label).toContain('Agreement of Sale Cum GPA');
+    const custom = { ...deed, templateMode: 'custom' as const };
+    expect(updateSavedDeedTemplate(custom, {})).toBe(custom);
+  }
+});

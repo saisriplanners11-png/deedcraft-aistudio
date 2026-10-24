@@ -50,8 +50,46 @@ export function createTemplateApi(options = {}) {
       if (!current || current.active?.sale !== version.id || !current.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
     }
   }
+  async function seedAgreementLibrary() {
+    const current = await read();
+    if (current.versions.some(item => item.id === 'agreement-sale-gpa-v1')) return;
+    const bytes = await readFile(join(ROOT, 'agreement-sale-gpa-template-v1.docx'));
+    const runtime = await loadTemplateRuntime();
+    const validation = await runtime.validateAgreementSaleGpaTemplate(bytes);
+    if (!validation.valid) throw fail(503, 'Bundled Agreement of Sale Cum GPA template failed validation.');
+    const at = new Date().toISOString();
+    const version = { id: 'agreement-sale-gpa-v1', instrumentId: 'agreement_of_sale', filename: 'agreement-sale-gpa-template-v1.docx', hash: hash(bytes), sourceHash: hash(bytes), sourceDocument: 'AGREEMENT OF SALE CUM GPA.docx', createdAt: at, publishedAt: at, contractVersion: 'agreement-sale-gpa-fields-1', validation, samples: [] };
+    await atomic(version.id + '.docx', bytes);
+    current.versions.push(version);
+    current.active.agreement_of_sale ||= version.id;
+    current.history.push({ versionId: version.id, at, action: 'seed' });
+    try { await save(current); }
+    catch (error) {
+      const latest = error.status === 409 ? await storage.read() : null;
+      if (!latest?.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
+    }
+  }
+  async function seedGeneralPoaLibrary() {
+    const current = await read();
+    if (current.versions.some(item => item.id === 'general-poa-v1')) return;
+    const bytes = await readFile(join(ROOT, 'general-poa-template-v1.docx'));
+    const runtime = await loadTemplateRuntime();
+    const validation = await runtime.validateGeneralPoaTemplate(bytes);
+    if (!validation.valid) throw fail(503, 'Bundled General Power of Attorney template failed validation.');
+    const at = new Date().toISOString();
+    const version = { id: 'general-poa-v1', instrumentId: 'power_of_attorney', filename: 'general-poa-template-v1.docx', hash: hash(bytes), sourceHash: hash(bytes), sourceDocument: 'G.P.A FOR CONSIDERATION.docx', createdAt: at, publishedAt: at, contractVersion: 'general-poa-fields-1', validation, samples: [] };
+    await atomic(version.id + '.docx', bytes);
+    current.versions.push(version);
+    current.active.power_of_attorney ||= version.id;
+    current.history.push({ versionId: version.id, at, action: 'seed' });
+    try { await save(current); }
+    catch (error) {
+      const latest = error.status === 409 ? await storage.read() : null;
+      if (!latest?.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
+    }
+  }
   let initialization;
-  const ensureInitialized = () => initialization ??= serial(seedLibrary).catch(error => { initialization = undefined; throw error; });
+  const ensureInitialized = () => initialization ??= serial(async () => { await seedLibrary(); await seedAgreementLibrary(); await seedGeneralPoaLibrary(); }).catch(error => { initialization = undefined; throw error; });
 
   async function body(req, limit = 65536) {
     if (Number(req.headers['content-length']) > limit) { req.resume(); throw fail(413, 'The upload exceeds the allowed size.'); }
