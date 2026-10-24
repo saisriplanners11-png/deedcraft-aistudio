@@ -2,6 +2,18 @@ import { deedDate } from './deed-format';
 import { partyEntityFields, type PartyPeople, type PartyType } from './fields';
 
 export type PartySide = 'executant' | 'claimant';
+
+/** Suggestions only: existing and custom designations remain valid. */
+export function representativeDesignationOptions(partyType: string): string[] {
+  switch (partyType) {
+    case 'Firm / LLP': return ['Managing Partner', 'Partner', 'Designated Partner', 'Authorised Signatory', 'Authorised Representative'];
+    case 'Society / Association':
+    case 'Society / Trust': return ['President', 'Vice President', 'Secretary', 'Joint Secretary', 'General Secretary', 'Treasurer', 'Managing Trustee', 'Trustee', 'Authorised Signatory', 'Authorised Representative'];
+    case 'Company': return ['Managing Director', 'Director', 'Whole-time Director', 'Chairperson', 'Chief Executive Officer', 'Company Secretary', 'Branch Manager', 'Authorised Signatory', 'Authorised Representative'];
+    default: return ['Karta', 'Manager', 'Authorised Signatory', 'Authorised Representative'];
+  }
+}
+
 export const isEntity = (values: Record<string, string>, side: PartySide) => ['Firm / LLP', 'Company', 'Society / Association', 'Society / Trust', 'Others / HUF'].includes(values[side + 'PartyType']);
 export function partyDisplayName(values: Record<string, string>, side: PartySide): string {
   const name = values[side + (isEntity(values, side) ? 'EntityName' : 'Name')] || '';
@@ -39,7 +51,8 @@ export function entityRecital(values: Record<string, string>, side: PartySide, p
   add('GSTIN ', firm ? v('FirmGstin') : '');
   add('acting under authorization ', company ? v('CompanyBoardResolution') : firm ? v('FirmAuthority') : society ? v('SocietyResolutionNo') : v('OtherAuthority'));
   const reps = people.representatives.map(p => {
-    const text = [p.designation, p.name.toLocaleUpperCase('en-IN') || '____'];
+    const designation = p.designation.trim().replace(/[:\s]+$/, '');
+    const text = [(designation ? designation + ': ' : '') + (p.name.toLocaleUpperCase('en-IN') || '____')];
     if (p.relationName) text.push([p.relation, p.relationName.toLocaleUpperCase('en-IN')].filter(Boolean).join(' '));
     if (p.age) text.push('aged ' + p.age + ' years');
     if (p.dob) text.push('(DOB: ' + date(p.dob) + ')');
@@ -50,6 +63,6 @@ export function entityRecital(values: Record<string, string>, side: PartySide, p
     if (p.mobile) text.push('Mobile No. ' + p.mobile);
     return text.filter(Boolean).join(', ');
   });
-  parts.push('represented by ' + (reps.join('; and ') || '____'));
+  parts.push('represented by\n' + (reps.join('\n') || '____'));
   return parts.join(', ');
 }

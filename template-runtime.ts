@@ -1,3 +1,4 @@
+export { ALL_FIELDS, GROUPS, LINK_OPTIONS, groupsForStep } from './fields';
 // Bundled for Node with a filesystem implementation of template.ts.
 export { mergeValues, rewritesFor, scheduleMergesFor, deedFilename } from './merge';
 export { saleAuthorityErrors, salePropertyErrors, saleVariant } from './sale-options';

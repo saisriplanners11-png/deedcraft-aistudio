@@ -263,7 +263,7 @@ export function FieldGroup({
           {afterField?.(f.id)}
           <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="after" />
         </React.Fragment>))}
-        <PlacementSlot sectionId={sectionForGroup(group)} />
+        {!group.placementContinuation && <PlacementSlot sectionId={sectionForGroup(group)} />}
       </div>
     </Section>
   );

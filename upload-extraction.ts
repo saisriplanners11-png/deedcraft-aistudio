@@ -2,7 +2,7 @@ import { localAuthorityName } from './fields';
 import type Anthropic from '@anthropic-ai/sdk';
 import { flatStage } from './flat-options';
 import { getClient, EXTRACT_MODEL, VISION_MODEL, VERIFY_MODEL, readableError } from './claude';
-import { ALL_FIELDS, PERSON_FIELDS, PARTY_ENTITY_FIELDS, partyEntityFields, type PartyType, GROUPS, LINK_OPTIONS } from './fields';
+import { FLAT_AGREEMENT_FIELDS, ALL_FIELDS, PERSON_FIELDS, PARTY_ENTITY_FIELDS, partyEntityFields, type PartyType, GROUPS, LINK_OPTIONS } from './fields';
 import { docxToText, readZip } from './docx';
 import { type Candidate, type Role, type SourceResult, type SourcePlan } from './source-draft';
 import { WorkQueue, aiRequestQueue } from './work-queue';
@@ -19,11 +19,12 @@ export const LINK_DEED_STEP2_PAGES = 2;
 export type ExtractionProfile =
   | 'phase1:linkDoc' | 'phase1:houseTax' | 'phase1:titleDeed' | 'phase1:nala' | 'phase1:permissions' | 'phase1:layoutLrs' | 'phase1:landLayoutLrs'
   | 'phase1:vacantTax' | 'phase1:approvedLayout' | 'phase1:assessment' | 'phase1:lrsApplication' | 'phase1:lrsProceeding'
-  | 'party:executant' | 'party:claimant' | 'entity:executant' | 'entity:claimant' | 'authorization:executant' | 'authorization:claimant' | 'party-person' | `${'entity' | 'authorization'}:${'executant' | 'claimant'}:${PartyType}` | 'jurisdiction' | 'property-schedule' | 'general';
+  | 'party:executant' | 'party:claimant' | 'entity:executant' | 'entity:claimant' | 'authorization:executant' | 'authorization:claimant' | 'party-person' | `${'entity' | 'authorization'}:${'executant' | 'claimant'}:${PartyType}` | 'jurisdiction' | 'property-schedule' | 'flat-agreements' | 'general';
 export type ExtractionProgress = string | { id: string; title: string; state: 'queued' | 'running' | 'done' | 'review' | 'error' };
 export function sectionFields(profile: ExtractionProfile) {
   const allowed = new Set(profileFields(profile));
   if (profile === 'party-person' || profile.startsWith('entity:') || profile.startsWith('authorization:')) return [{ id: profile, title: profile === 'party-person' ? 'Representative / member details' : profile.startsWith('authorization:') ? 'Authorization details' : 'Entity particulars', fields: [...allowed] }];
+  if (profile === 'flat-agreements') return [{ id: 'flat-agreements', title: 'Landowner–developer agreements', fields: [...allowed] }];
   if (profile === 'jurisdiction') return [{
     id: 'jurisdiction', title: 'Jurisdiction details', fields: [...allowed],
   }];
@@ -159,6 +160,7 @@ export function profileFields(profile: ExtractionProfile): string[] {
   if (profile === 'party:claimant') return partyFields('claimant');
   if (profile === 'jurisdiction') return jurisdictionFields;
   if (profile === 'property-schedule') return propertyScheduleFields;
+  if (profile === 'flat-agreements') return FLAT_AGREEMENT_FIELDS.map(field => field.id);
   return [...ALL_FIELDS.map(field => field.id), ...extraFields];
 }
 
@@ -172,6 +174,7 @@ function profileInstruction(profile: ExtractionProfile) {
     : `This is a ${option.label} uploaded in Phase 1. Use role="link" and record="primary". Return only its own card fields (${option.fields.map(field => field.id).join(', ')}). ${profile === 'phase1:houseTax' ? 'Read the receipt number, assessment/PTIN number into bltNo, local body and tax paid date. Keep receipt number, assessment number, demand number, house number and payment amount separate.' : profile === 'phase1:landLayoutLrs' ? 'For each uploaded document, copy only explicitly labelled vacant land tax/V.L.T., approved layout file, LRS 2020 application and LRS proceeding values and dates. Do not infer one identifier from another or overwrite unrelated details.' : profile === 'phase1:vacantTax' ? 'Copy only the identifier explicitly labelled vacant land tax or V.L.T.; do not use a house-tax receipt or demand number.' : profile === 'phase1:assessment' ? 'Copy only the subject property assessment or PTIN identifier; do not use receipt or demand numbers.' : profile === 'phase1:titleDeed' ? 'Read only the title deed number and khata number, using the exact labels beside each value.' : profile === 'phase1:nala' ? 'Read only the NALA order number, proceeding date, original Acre-Guntas extent in nalaExtent, and its square-yard equivalent in convertedExtentText.' : profile === 'phase1:permissions' ? 'Read only the permission number, date, and issuing local authority.' : ''} Do not return Phase 2 jurisdiction/property/valuation facts, and do not return executant, claimant or payment facts from this document.`;
   if (profile === 'party:executant') return 'This file was uploaded specifically for the current executant. Return every visibly supported executant individual/signatory identity, address, contact, occupation and PAN/Aadhaar field AND every visibly supported legal-entity field: party type, entity name, PAN, official mobile, registered/principal office address, signatory designation, firm/LLP registration, ROF office, partnership deed number/date, GSTIN and authority; society/trust classification, registration, registrar, NOC and governing-body resolution; company classification, CIN, DIN and board resolution; or HUF/other entity description, registration and authorization. Set executantPartyType only when the document explicitly establishes it. On Aadhaar cards, inspect the line labelled S/O, W/O, D/O or C/O and return the relationship prefix in executantRelation and only the father/relative name in executantRelativeName; do not omit it when it is clearly visible. Read the front and back and independently recheck names, identifiers, authority and address blocks. Do not return claimant, property, link-deed or payment facts.';
   if (profile === 'party:claimant') return 'This file was uploaded specifically for the current claimant. Return every visibly supported claimant individual/signatory identity, address, contact, occupation and PAN/Aadhaar field AND every visibly supported legal-entity field: party type, entity name, PAN, official mobile, registered/principal office address, signatory designation, firm/LLP registration, ROF office, partnership deed number/date, GSTIN and authority; society/trust classification, registration, registrar, NOC and governing-body resolution; company classification, CIN, DIN and board resolution; or HUF/other entity description, registration and authorization. Set claimantPartyType only when the document explicitly establishes it. On Aadhaar cards, inspect the line labelled S/O, W/O, D/O or C/O and return the relationship prefix in claimantRelation and only the father/relative name in claimantRelativeName; do not omit it when it is clearly visible. Read the front and back and independently recheck names, identifiers, authority and address blocks. Do not return executant, property, link-deed or payment facts.';
+  if (profile === 'flat-agreements') return 'Read only the development agreement-cum-GPA document number, execution date, registering SRO and SRO code, stilt and upper floor counts, and the separate supplemental/allotment agreement number and its own SRO/code. Use role=property and record=primary. Keep development and supplemental registration details separate. Never use the older title deed number or the current sale GPA/AGPA authority number for either agreement. Omit facts that are not explicitly stated. Do not return party, payment, consideration or other property fields.';
   if (profile === 'jurisdiction') return 'This file was uploaded specifically to fill Jurisdiction for the current property. Return only propState, districtRegistrar, sro, district, mandal and village, all with role="property" and record="primary". Do not return link-document, property-schedule, party, valuation or payment facts.';
   if (profile === 'property-schedule') return 'This file was uploaded specifically to fill the Property Schedule for the current property. Return only property identification, boundaries, structure/annexure details, category and unit, all with role="property" and record="primary". Do not return link-document, jurisdiction, valuation, party or payment facts.';
   return '';
@@ -186,7 +189,7 @@ function allowedByProfile(candidate: Candidate, profile: ExtractionProfile) {
   if (profile.startsWith('entity:') || profile.startsWith('authorization:')) return candidate.role === profile.split(':')[1] && candidate.field.startsWith(profile.split(':')[1]);
   if (profile === 'party:executant') return candidate.role === 'executant' && candidate.field.startsWith('executant');
   if (profile === 'party:claimant') return candidate.role === 'claimant' && candidate.field.startsWith('claimant');
-  if (profile === 'jurisdiction' || profile === 'property-schedule') return candidate.role === 'property';
+  if (profile === 'jurisdiction' || profile === 'property-schedule' || profile === 'flat-agreements') return candidate.role === 'property';
   return true;
 }
 const catalog = [...ALL_FIELDS, ...PERSON_FIELDS].map(f => `${f.id}: ${f.label}`).join('\n') + '\n' +

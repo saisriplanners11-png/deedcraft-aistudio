@@ -13,7 +13,13 @@ sections[0] = [
   { id: 'setup-deed', label: 'Deed & draft form', scope: 'transaction', anchors: [{ id: 'instrumentId', label: 'Deed type' }, { id: 'variantId', label: 'Draft form' }] },
 ];
 sections[1] = TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id)!).map(option => ({ id: 'link-' + option.id, label: option.label, scope: 'property', anchors: anchors(option.fields) }));
-for (const group of GROUPS) if (groupIds[group.title]) sections[group.step].push({ id: groupIds[group.title], label: group.title, scope: 'property', anchors: anchors(group.fields) });
+for (const group of GROUPS) {
+  const id = group.placementSection || groupIds[group.title];
+  if (!id) continue;
+  const existing = sections[group.step].find(section => section.id === id);
+  if (existing) existing.anchors = anchors([...existing.anchors, ...group.fields]);
+  else sections[group.step].push({ id, label: group.title, scope: 'property', anchors: anchors(group.fields) });
+}
 sections[5] = [{ id: 'payment-records', label: 'Payment records', scope: 'transaction', anchors: anchors([{ id: 'amount', label: 'Amount' }, { id: 'refNo', label: 'Reference number' }, { id: 'bank', label: 'Bank' }, { id: 'branch', label: 'Branch' }, { id: 'date', label: 'Payment date' }, { id: 'payer', label: 'Purchaser' }, { id: 'payee', label: 'Vendor' }]) }];
 for (const [role, step] of [['executant', 6], ['claimant', 7]] as const) {
   const fields = GROUPS.find(group => group.step === step)!.fields;

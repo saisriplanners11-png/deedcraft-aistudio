@@ -36,14 +36,18 @@ describe('deed download filename', () => {
 });
 
 describe('Optional party percentages', () => {
-  it('omits unspecified percentages but validates a partially entered allocation', () => {
+  it('allows independent optional percentages without requiring other parties or a 100% total', () => {
     const state = { ...initialState, additionalExecutants: [{ id: 'second', values: { executantName: 'SECOND' }, docNames: [] }], vendorSharesBySchedule: {} as Record<string, Record<string, string>> };
     expect(mergeValues(state)['Executant Share']).toBe('');
     expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share'))).toEqual([]);
     state.vendorSharesBySchedule = { primary: { primary: '40' } };
-    expect(generationBlockers(state).some(item => item.id === 'vendor-share-primary-second')).toBe(true);
+    expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share'))).toEqual([]);
     state.vendorSharesBySchedule.primary.second = '60';
     expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share'))).toEqual([]);
     expect(mergeValues(state)['Executant Share']).toBe('40%');
+    state.vendorSharesBySchedule.primary.second = '30';
+    expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share'))).toEqual([]);
+    state.vendorSharesBySchedule.primary.second = '101';
+    expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share')).map(item => item.id)).toEqual(['vendor-share-primary-second']);
   });
 });

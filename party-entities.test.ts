@@ -2,10 +2,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { newPartyRepresentative, type PartyPeople } from './fields';
 import { appStateFor, draftReducer, fieldKey, migratePartyPeople, newDraft, peopleFor, resolveDraft, type Candidate, type Source } from './source-draft';
-import { entityRecital, partyDisplayName } from './party-entities';
+import { entityRecital, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import { generationBlockers, initialState, type AppState } from './logic';
 import { deedFilename, mergeValues, rewritesFor, scheduleMergesFor } from './merge';
-import { docxToText, fillSaleDeed, type DeedTemplateSource, validateSaleDeedTemplate } from './docx';
+import { readZip, docxToText, fillSaleDeed, type DeedTemplateSource, validateSaleDeedTemplate } from './docx';
 import { cleanCandidate, profileFields } from './upload-extraction';
 
 const person = (id: string, name: string) => ({ ...newPartyRepresentative(), id, name, relationName: 'TEST PARENT', designation: 'Branch Manager', dob: '1986-08-06', age: '40', mobile: '9000000001', hNo: '1-2-3', locality: 'Test Street', village: 'Test Town', mandal: 'Test Mandal', district: 'Test District', state: 'Telangana', pinCode: '505301', aadhaar: '1234 5678 9012' });
@@ -70,10 +70,28 @@ describe('entity parties and their people', () => {
     expect(cleanCandidate({ ...raw, value: '1990-02-30' }, 1, 0)).toBeNull();
     expect(cleanCandidate({ ...raw, role: 'executant' }, 1, 0)).toBeNull();
   });
+  it('suggests designations appropriate to each entity type', () => {
+    expect(representativeDesignationOptions('Firm / LLP')).toContain('Designated Partner');
+    expect(representativeDesignationOptions('Society / Association')).toContain('President');
+    expect(representativeDesignationOptions('Company')).toContain('Managing Director');
+    expect(representativeDesignationOptions('Company')).not.toContain('Partner');
+  });
+  it.each(['Firm / LLP', 'Society / Association', 'Company'])('prints each %s representative as Designation: NAME', type => {
+    const values = { ...entityValues('executant'), executantPartyType: type };
+    const representatives = [{ ...person('one', 'Alice'), designation: 'President: ' }, { ...person('two', 'Bob'), designation: 'Custom Officer' }];
+    const text = entityRecital(values, 'executant', { representatives, members: [] });
+    expect(text).toContain('represented by\nPresident: ALICE, S/O TEST PARENT');
+    expect(text).toContain('\nCustom Officer: BOB, S/O TEST PARENT');
+    expect(text).not.toContain('President::');
+    expect(text.match(/represented by/g)).toHaveLength(1);
+    expect(text).not.toContain('; and');
+    const blank = entityRecital(values, 'executant', { representatives: [{ ...person('one', 'Alice'), designation: '' }], members: [] });
+    expect(blank).toContain('represented by\nALICE, S/O TEST PARENT');
+  });
   it('recites representatives in order, excluding committee and optional empty fields', () => {
     const text = entityRecital(entityValues('executant'), 'executant', people);
     expect(text.indexOf('FIRST SIGNATORY')).toBeLessThan(text.indexOf('SECOND SIGNATORY'));
-    expect(text).toContain('represented by Branch Manager'); expect(text).toContain('Corporate Office'); expect(text).toContain('Branch Office');
+    expect(text).toContain('represented by\nBranch Manager: FIRST SIGNATORY'); expect(text).toContain('Corporate Office'); expect(text).toContain('Branch Office');
     expect(text).not.toContain('COMMITTEE ONLY'); expect(text).not.toContain('PAN No.');
   });
   it('excludes inactive legal particulars after switching entity type', () => {
@@ -100,8 +118,14 @@ describe('entity parties and their people', () => {
     const custom: DeedTemplateSource = { kind: 'custom', name: 'custom.docx', hash: 'test', bytes, validation: await validateSaleDeedTemplate(bytes, 'custom.docx', bytes) };
     for (const template of [{ kind: 'built-in' } as DeedTemplateSource, custom]) {
       const result = await fillSaleDeed(mergeValues(state), 'IF HOUSE', rewritesFor(state), scheduleMergesFor(state), template);
-      const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-      expect(text).toContain('EXAMPLE FINANCE LIMITED'); expect(text).toContain('represented by Branch Manager');
+      const outputBytes = new Uint8Array(await result.blob.arrayBuffer());
+      const entries = await readZip(outputBytes);
+      const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
+      expect(xml).toMatch(/represented by<\/w:t><w:br\s*\/><w:t[^>]*>Branch Manager: FIRST SIGNATORY/);
+      expect(xml).toMatch(/<w:br\s*\/><w:t[^>]*>Branch Manager: SECOND SIGNATORY/);
+      const text = await docxToText(outputBytes);
+      expect(text.match(/represented by/g)).toHaveLength(1);
+      expect(text).toContain('EXAMPLE FINANCE LIMITED'); expect(text).toContain('represented byBranch Manager: FIRST SIGNATORY');
       expect(text).toContain('SECOND SIGNATORY'); expect(text).not.toContain('COMMITTEE ONLY');
       if (side === 'executant') expect(text).not.toContain('OLD PERSONAL VALUE,'); expect(text).toContain('Ground Floor'); expect(text).toContain('532');
       expect(text).not.toContain('1. EXAMPLE FINANCE LIMITED');

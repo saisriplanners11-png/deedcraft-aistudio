@@ -21,6 +21,11 @@ for (const mode of ['ordinary','gpa','agpa','gift']) for (const property of prop
     const output = new Uint8Array(await result.blob.arrayBuffer());
     const text = await rt.docxToText(output);
     const context = `${mode}/${property}/${relation}/${source.kind}`;
+    const packageEntries = await rt.readZip(output);
+    const xml = new TextDecoder().decode(packageEntries.find(entry => entry.name === 'word/document.xml').data);
+    const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
+    assert(sections.length >= 2, `${context}: separate stamp and continuation sections`);
+    assert.match(sections[0], /<w:pgMar\b[^>]*\bw:top="8208"/, `${context}: mandatory Sale-sized stamp space`);
     assert.deepEqual(result.unmapped, [], context);
     assert.match(text, /22-10-2026/, context);
     assert.doesNotMatch(text, /2026-10-22|DD-MM-YYYY|22102026/, context);
@@ -39,4 +44,4 @@ for (const mode of ['ordinary','gpa','agpa','gift']) for (const property of prop
     count++;
   }
 }
-console.log(`PASS: date, entered-value and landmark output policies in ${count} Sale/GPA/AGPA/Gift property/replacement combinations.`);
+console.log(`PASS: stamp-space, date, entered-value and landmark output policies in ${count} Sale/GPA/AGPA/Gift property/replacement combinations.`);

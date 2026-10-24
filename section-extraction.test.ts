@@ -222,6 +222,15 @@ describe('shared document section extraction', () => {
     expect(sectionFields('property-schedule')).toEqual([{ id: 'property-schedule', title: 'Property schedule details', fields: expect.arrayContaining(['plotNo', 'boundaryNorth']) }]);
   });
 
+  it('limits agreement uploads to their own development and supplemental registration fields', () => {
+    const sections = sectionFields('flat-agreements');
+    expect(sections).toHaveLength(1);
+    expect(sections[0].fields).toEqual(expect.arrayContaining(['developmentDocNo', 'developmentDocDate', 'developmentSro', 'developmentSroCode', 'supplementalDocNo', 'supplementalSro', 'supplementalSroCode', 'stiltFloors', 'upperFloors']));
+    expect(sections[0].fields).not.toContain('linkDocNo');
+    expect(sections[0].fields).not.toContain('consid');
+    expect(sections[0].fields).not.toContain('executantName');
+  });
+
   it('tolerates typography and case while preserving identifier and extent differences', () => {
     const c={field:'boundarySouth',value:"21' Road",role:'property',record:'primary'} as Candidate;
     expect(sameTranscription(c,{...c,value:'21’ ROAD.'})).toBe(true);

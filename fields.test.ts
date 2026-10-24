@@ -5,7 +5,7 @@ import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
 
 describe('field mapping', () => {
-  it('requires each schedule’s vendee percentages to total 100 with at most two decimals', () => {
+  it('validates entered vendee percentages while allowing blanks and partial totals per schedule', () => {
     expect(vendeeShareCents('33.33')).toBe(3333);
     expect(vendeeShareCents('33.333')).toBeNull();
     expect(vendeeShareCents('0')).toBeNull();
@@ -16,10 +16,10 @@ describe('field mapping', () => {
       vendeeSharesBySchedule: { primary: { primary: '50', 'buyer-2': '50' }, second: { primary: '40', 'buyer-2': '50' } },
     };
     const shareIssues = (state: AppState) => generationBlockers(state).filter(issue => issue.id.startsWith('vendee-share'));
-    expect(shareIssues(base).map(issue => issue.id)).toEqual(['vendee-share-total-second']);
+    expect(shareIssues(base)).toEqual([]);
     expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40', 'buyer-2': '60' } } })).toEqual([]);
-    expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40' } } }).map(issue => issue.id))
-      .toContain('vendee-share-second-buyer-2');
+    expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40' } } })).toEqual([]);
+    expect(shareIssues({ ...base, vendeeSharesBySchedule: { ...base.vendeeSharesBySchedule, second: { primary: '40', 'buyer-2': '101' } } }).map(issue => issue.id)).toEqual(['vendee-share-second-buyer-2']);
   });
   it('validates vendor shares independently by schedule and primary record ID', () => {
     const base = {
@@ -31,8 +31,9 @@ describe('field mapping', () => {
     };
     const issues = (state: AppState) => generationBlockers(state).filter(issue => issue.id.startsWith('vendor-share'));
     expect(issues(base)).toEqual([]);
-    expect(issues({ ...base, vendorSharesBySchedule: { ...base.vendorSharesBySchedule, second: { 'uploaded-vendor': '60', 'vendor-2': '30' } } }).map(issue => issue.id)).toEqual(['vendor-share-total-second']);
-    for (const invalid of ['', '0', '101', '33.333']) {
+    expect(issues({ ...base, vendorSharesBySchedule: { ...base.vendorSharesBySchedule, second: { 'uploaded-vendor': '60', 'vendor-2': '30' } } })).toEqual([]);
+    expect(issues({ ...base, vendorSharesBySchedule: { ...base.vendorSharesBySchedule, second: { 'uploaded-vendor': '', 'vendor-2': '40' } } })).toEqual([]);
+    for (const invalid of ['0', '101', '33.333']) {
       expect(issues({ ...base, vendorSharesBySchedule: { ...base.vendorSharesBySchedule, second: { 'uploaded-vendor': invalid, 'vendor-2': '40' } } }).map(issue => issue.id))
         .toContain('vendor-share-second-uploaded-vendor');
     }

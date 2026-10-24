@@ -36,6 +36,7 @@ export type Field = {
 
 export type Group = {
   placementSection?: string;
+  placementContinuation?: boolean;
   step: number;
   title: string;
   telugu?: string;
@@ -360,16 +361,25 @@ export const GROUPS: Group[] = [
       { id: 'carpetAreaSqFt', label: 'Carpet area (Sq. Ft.)', type: 'number', only: ['Flat'] },
       { id: 'parkingSlotNos', label: 'Parking slot no(s).', only: ['Flat'] },
       { id: 'parkingAreaSqFt', label: 'Car parking area (Sq. Ft.)', ph: ['Car Parking Area', '100'], type: 'number', only: ['Flat'] },
+      { id: 'buildingPermitNo', label: 'Building permit number', only: ['Flat'], hint: 'Add the permission date and issuing local authority in Link Deed & Enclosures → Permissions.' },
+    ],
+  },
+  {
+    step: 3,
+    title: 'Landowner–developer agreements',
+    placementSection: 'flat-particulars',
+    placementContinuation: true,
+    note: 'Development agreement and flat-allotment details for the selected Word template.',
+    fields: [
       { id: 'stiltFloors', label: 'Number of stilt floors', ph: ['Stilt Floors', '1'], type: 'number', only: ['Flat'] },
       { id: 'upperFloors', label: 'Number of upper floors', ph: ['Upper Floors', '5'], type: 'number', only: ['Flat'] },
-      { id: 'developmentSro', label: 'Development agreement SRO', ph: 'Development SRO', only: ['Flat'] },
-      { id: 'developmentSroCode', label: 'Development agreement SRO code', ph: 'Development SRO Code', only: ['Flat'] },
-      { id: 'supplementalSro', label: 'Supplemental agreement SRO', ph: 'Supplemental SRO', only: ['Flat'] },
-      { id: 'supplementalSroCode', label: 'Supplemental agreement SRO code', ph: 'Supplemental SRO Code', only: ['Flat'] },
+      { id: 'developmentSro', label: 'Development agreement — SRO', ph: 'Development SRO', only: ['Flat'] },
+      { id: 'developmentSroCode', label: 'Development agreement — SRO code', ph: 'Development SRO Code', only: ['Flat'] },
+      { id: 'supplementalSro', label: 'Supplemental agreement — SRO', ph: 'Supplemental SRO', only: ['Flat'] },
+      { id: 'supplementalSroCode', label: 'Supplemental agreement — SRO code', ph: 'Supplemental SRO Code', only: ['Flat'] },
       { id: 'developmentDocNo', label: 'Development agreement-cum-GPA document number', ph: 'Document No.', only: ['Flat'] },
       { id: 'developmentDocDate', label: 'Development agreement-cum-GPA date', ph: 'Document Date', type: 'date', only: ['Flat'] },
       { id: 'supplementalDocNo', label: 'Supplemental agreement document number', ph: 'Supplemental Agreement No.', only: ['Flat'] },
-      { id: 'buildingPermitNo', label: 'Building permit number', only: ['Flat'], hint: 'Add the permission date and issuing local authority in Link Deed & Enclosures → Permissions.' },
     ],
   },
   {
@@ -494,6 +504,8 @@ export const ALL_FIELDS: Field[] = Object.values(
     [...GROUPS.flatMap(g => g.fields), ...LINK_OPTIONS.flatMap(o => o.fields), ...PARTY_ENTITY_FIELDS].map(f => [f.id, f])
   )
 );
+
+export const FLAT_AGREEMENT_FIELDS = GROUPS.find(group => group.title === 'Landowner–developer agreements')!.fields;
 
 export const FLAT_SCHEDULE_FIELDS = ['flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards'] as const;
 export const FLAT_BOUNDARY_FIELDS = ['flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest'] as const;

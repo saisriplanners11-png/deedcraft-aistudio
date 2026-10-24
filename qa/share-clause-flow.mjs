@@ -107,3 +107,35 @@ for (const category of ['ordinary-plot', 'ordinary-house-finished', 'ordinary-fl
   assert.doesNotMatch(await rt.docxToText(new Uint8Array(await blank.blob.arrayBuffer())), /holding.*undivided share|100%/i);
 }
 console.log('PASS: explicit single-party Gift shares appear for plot, house and flat; blank shares are omitted.');
+
+for (const mode of ['ordinary', 'gpa', 'agpa', 'gift']) {
+  const state = rt.sampleState((mode === 'gift' ? 'ordinary' : mode) + '-plot');
+  if (mode === 'gift') { state.deedType = 'Gift'; state.form.giftRelationship = 'daughter'; }
+  state.form.executantName = 'FIRST OWNER'; state.form.claimantName = 'FIRST RECIPIENT';
+  state.additionalExecutants = [
+    { id: 'owner-2', values: { ...state.form, executantName: 'BLANK OWNER' }, docNames: [] },
+    { id: 'owner-3', values: { ...state.form, executantName: 'THIRD OWNER' }, docNames: [] },
+  ];
+  state.additionalClaimants = [
+    { id: 'recipient-2', values: { ...state.form, claimantName: 'BLANK RECIPIENT' }, docNames: [] },
+    { id: 'recipient-3', values: { ...state.form, claimantName: 'THIRD RECIPIENT' }, docNames: [] },
+  ];
+  state.vendorSharesBySchedule = { primary: { primary: '50', 'owner-2': '', 'owner-3': '30' } };
+  state.vendeeSharesBySchedule = { primary: { primary: '25', 'recipient-2': ' ', 'recipient-3': '15' } };
+  if (mode === 'gpa' || mode === 'agpa') state.saleAuthority.attorneys[0].principalIds.push('owner-2', 'owner-3');
+  const schedules = rt.scheduleMergesFor(state);
+  assert.deepEqual(schedules[0].vendorShares.map(s => [s.partyNumber, s.percentage]), [[1, '50'], [3, '30']]);
+  assert.deepEqual(schedules[0].vendeeShares.map(s => [s.partyNumber, s.percentage]), [[1, '25'], [3, '15']]);
+  const output = mode === 'gift'
+    ? await rt.fillGiftDeed(rt.mergeValues(state), rt.rewritesFor(state), schedules)
+    : await rt.fillSaleDeed(rt.mergeValues(state), schedules[0].variant, rt.rewritesFor(state), schedules, source);
+  const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
+  for (const name of ['BLANK OWNER', 'BLANK RECIPIENT']) {
+    assert(text.includes(name), `${mode}: blank-share party must remain in the deed`);
+    assert.doesNotMatch(text, new RegExp(name + '[^\\n]*undivided share', 'i'));
+    assert.doesNotMatch(text, new RegExp('\\(2\\) ' + name + ' —'));
+  }
+  assert.doesNotMatch(text, /____%/);
+  assert.match(text, /50%/); assert.match(text, /30%/); assert.match(text, /25%/); assert.match(text, /15%/);
+}
+console.log('PASS: independent partial percentages for three executants and claimants in Sale/GPA/AGPA/Gift; blank parties remain without share wording or placeholders.');

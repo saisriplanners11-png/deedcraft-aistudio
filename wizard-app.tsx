@@ -3,7 +3,7 @@ import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
 import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
-import { isEntity, partyDisplayName } from './party-entities';
+import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
 import { ALL_FIELDS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
@@ -408,7 +408,7 @@ function PartyRecordCard({
       {rows.map((person, index) => {
         const ownSources = draft.sources.filter(s => s.assignment?.role === 'party-person' && s.assignment.record === person.id);
         const form = Object.fromEntries(PERSON_FIELDS.map(f => [f.id, resolved.values[fieldKey('party-person', person.id, f.id)] || (f.id === 'personRelation' ? 'S/O' : '')]));
-        const fields = members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS;
+        const fields = (members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS).map(field => field.id === 'personDesignation' ? { ...field, type: 'select' as const, allowCustom: true, options: representativeDesignationOptions(partyType), hint: 'Choose a designation or type your own.' } : field);
         return <div className="representative-card" key={person.id} data-person-id={person.id}>
           <div className="representative-heading"><b>{members ? 'Member' : 'Representative'} {index + 1}</b><IconButton label={`Delete ${members ? 'member' : 'representative'} ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
           <ScopedSectionUpload label={members ? 'member' : 'representative'} busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
@@ -466,11 +466,7 @@ function PartyShareFields({ role, record, parties, schedules, shares, dispatch }
   const side = role === 'executant' ? 'Vendor' : 'Vendee';
   return <>{schedules.map((schedule, index) => {
     const value = shares[schedule.id]?.[record] || '';
-    const values = parties.map(id => shares[schedule.id]?.[id] || '');
-    const entered = values.some(value => value.trim());
-    const cents = values.map(vendeeShareCents);
-    const total = cents.reduce<number>((sum, value) => sum + (value || 0), 0);
-    const invalid = entered && (cents.some(value => value === null) || total !== 10000);
+    const invalid = !!value.trim() && vendeeShareCents(value) === null;
     return <label className="field" key={schedule.id}>
       <span>Share percentage (%) {schedules.length > 1 ? '— Schedule ' + (index + 1) : '(optional)'}</span>
       <input type="text" inputMode="decimal" value={value}
@@ -479,7 +475,7 @@ function PartyShareFields({ role, record, parties, schedules, shares, dispatch }
         onChange={event => dispatch(role === 'executant'
           ? { type: 'vendor-share', scheduleId: schedule.id, executantId: record, value: event.target.value }
           : { type: 'vendee-share', scheduleId: schedule.id, claimantId: record, value: event.target.value })} />
-      <small>{invalid ? 'Complete all parties’ shares for this property, totalling 100%. Current total: ' + total / 100 + '%.' : 'Leave blank to omit the share clause from the document.'}</small>
+      <small>{invalid ? 'Enter a percentage greater than 0 and no more than 100, with up to two decimal places.' : 'Leave blank to omit the share clause from the document.'}</small>
     </label>;
   })}</>;
 }
@@ -635,7 +631,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:stamp-space-policy-v1:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -1081,7 +1077,7 @@ export default function WizardApp() {
       if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
       if (kind === 'word' && authorityErrors.length) throw new Error(authorityErrors.join(' '));
       if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
-      if (kind === 'word' && shareBlockers.length) throw new Error('Enter valid vendor and vendee shares totaling 100% for every property before downloading the Word deed');
+      if (kind === 'word' && shareBlockers.length) throw new Error('Correct the entered ownership percentages before downloading the Word deed');
       if (kind === 'word' && templateFieldErrors.length) throw new Error(templateFieldErrors.join(' '));
       const templateSource = activeTemplateSource;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
@@ -1402,6 +1398,12 @@ export default function WizardApp() {
               })}
             </React.Fragment>;
           })}
+          {category === 'Flat' && draft.instrumentId === 'sale' && <section className="panel flat-agreement-documents" aria-label="Landowner–developer agreements">
+            <h2>Landowner–developer agreements</h2>
+            <ScopedSectionUpload label="development / supplemental agreement" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'flat-agreements')} />
+            <SourceFeedback sources={draft.sources.filter(source => source.profile === 'flat-agreements' && source.assignment?.record === activePropertyId)} />
+            <PlacementRecord scope="property" id={activePropertyId}><FieldGroup group={{ ...GROUPS.find(group => group.title === 'Landowner–developer agreements')!, step: 1, title: 'Development & flat-allotment registration', placementSection: 'flat-agreement-documents', note: '' }} form={Object.fromEntries(GROUPS.find(group => group.title === 'Landowner–developer agreements')!.fields.map(field => [field.id, resolved.values[fieldKey('property', activePropertyId, field.id)] || '']))} setField={(field, value) => edit('property', activePropertyId, field, value)} /></PlacementRecord>
+          </section>}
           <AddLinkDocument onAdd={addLinkDocuments} />
           </>}
         </div>;
@@ -1567,7 +1569,7 @@ export default function WizardApp() {
           <div className="export-options" aria-busy={exporting}>
             <article className="export-card export-word"><div className="export-file-icon"><FileDown size={25} aria-hidden="true" /></div><div><span className="export-format">WORD DOCUMENT · .DOCX</span><h3>Editable deed</h3><p>Open in Microsoft Word to review the wording and finish any write-in details.</p></div>
               <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || authorityErrors.length > 0 || shareBlockers.length > 0 || templateFieldErrors.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
-              <small id="word-download-state">{exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Complete vendor and vendee shares for every property first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.'}</small>
+              <small id="word-download-state">{exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Correct the invalid ownership percentages first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.'}</small>
             </article>
             <article className="export-card"><div className="export-file-icon"><MapIcon size={25} aria-hidden="true" /></div><div><span className="export-format">PROPERTY PLAN · PDF</span><h3>Plan for printing</h3><p>Download the property-plan PDF. This is a separate file from the Word deed.</p></div>
               <button aria-describedby="plan-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button>
@@ -1576,7 +1578,7 @@ export default function WizardApp() {
           </div>
           {message && <p className="export-feedback" role="status">{message}</p>}
           {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldResolution.instances.filter(instance => instance.error).map(instance => <li key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}>{instance.record.label}: {instance.error}{instance.field.placement && <button type="button" onClick={() => gotoTemplateField(instance)}>Go to field</button>}</li>)}</ul></div>}
-          {shareBlockers.length > 0 && <p className="notice" role="alert">Vendor and vendee shares must total 100% for each property before downloading the Word deed. <button type="button" onClick={() => goto(-1)}>Enter shares on the dashboard</button></p>}
+          {shareBlockers.length > 0 && <p className="notice" role="alert">Correct invalid ownership percentages before downloading the Word deed. Blank percentages are omitted. <button type="button" onClick={() => goto(-1)}>Review party details</button></p>}
           <details className="download-outstanding"><summary><AlertCircle size={17} aria-hidden="true" />{notices.length ? `${notices.length} details to review before using this draft` : 'Review the current readiness status'}</summary><ReviewIssues issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} compact /></details>
 
         </section>}

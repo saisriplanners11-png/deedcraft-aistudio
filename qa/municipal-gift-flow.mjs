@@ -34,7 +34,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   const entries = await rt.readZip(bytes);
   for (const entry of sourceEntries.filter(entry => entry.name !== 'word/document.xml')) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
-  assert.match(xml, /w:top="8222"/); assert.match(xml, /w:top="1440"/);
+  assert.match(xml, /w:top="8208"/); assert.match(xml, /w:top="1440"/);
   await writeFile(`tmp/municipal-gift/qa/${id}-${donors}.docx`, bytes);
 }
 const state = stateFor('ordinary-plot');

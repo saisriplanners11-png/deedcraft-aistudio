@@ -178,6 +178,11 @@ export const executionMonthDate = deedDate;
  * collects the current deed date, but deliberately leaves the template's
  * existing place text untouched.
  */
+function partyCapacityPrefix(value: string = ''): string {
+  const capacity = value.split(' (')[0].trim();
+  return ['Guardian', 'Confirming Party', 'Consenting Party', 'Legal Heir'].includes(capacity) ? capacity + ': ' : '';
+}
+
 export function rewritesFor(state: AppState): Rewrite[] {
   const date = executionMonthDate(state.form.executionDate || '');
   const rewrites: Rewrite[] = [{
@@ -257,7 +262,8 @@ export function rewritesFor(state: AppState): Rewrite[] {
         for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = record.values[field.id] || '';
         const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
-        return { ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
+        const prefix = partyCapacityPrefix(record.values[side + 'PartyType']);
+        return { 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
       }),
     });
   }
@@ -265,7 +271,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     const principals = partyRecords(state, 'executant');
     const principalRecords = principals.map((record, index) => {
       const values = Object.fromEntries(Object.entries(record.values).filter(([key]) => key.startsWith('executant')).map(([key, value]) => [key.slice(9), value]));
-      return { ...authorityPartyValues(values, 'Principal'), 'Executant Share': ownershipShare(state, 'executant', index === 0 ? state.primaryExecutantId || 'primary' : record.id) };
+      return { 'PARTY CAPACITY PREFIX': partyCapacityPrefix(record.values.executantPartyType), ...authorityPartyValues(values, 'Principal'), 'Executant Share': ownershipShare(state, 'executant', index === 0 ? state.primaryExecutantId || 'primary' : record.id) };
     });
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
@@ -404,7 +410,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         name: partyDisplayName(vendee.values, 'claimant').toLocaleUpperCase('en-IN'),
         percentage: cents === null ? '' : String(cents / 100),
       };
-    }) : undefined;
+    }).filter(share => share.percentage !== '') : undefined;
     const vendorShares = vendors.some((party, index) => state.vendorSharesBySchedule?.[record.id]?.[index === 0 ? state.primaryExecutantId || 'primary' : party.id]?.trim()) ? vendors.map((vendor, index) => {
       const partyId = index === 0 ? state.primaryExecutantId || 'primary' : vendor.id;
       const cents = vendeeShareCents(state.vendorSharesBySchedule?.[record.id]?.[partyId] || '');
@@ -413,7 +419,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         name: partyDisplayName(vendor.values, 'executant').toLocaleUpperCase('en-IN'),
         percentage: cents === null ? '' : String(cents / 100),
       };
-    }) : undefined;
+    }).filter(share => share.percentage !== '') : undefined;
     return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
   });
 }

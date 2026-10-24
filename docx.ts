@@ -646,6 +646,9 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
       return fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([k, v]) => [norm(k), v] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
     }
     let paragraph = repeat.partyRole && repeat.records!.length > 1 ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
+    if (record['PARTY CAPACITY PREFIX']) {
+      paragraph = replaceRunText(paragraph, repeat.find, match => record['PARTY CAPACITY PREFIX'] + match[0]);
+    }
     if (record['Executant Share'] && /<PRINCIPAL NAME>/i.test(plainText(paragraph)) && !/<Executant Share>/i.test(plainText(paragraph))) {
       paragraph = replaceRunText(paragraph, /<\s*Principal Pin Code\s*>/i, match => match[0] + ', holding an undivided share of <Executant Share> in the schedule property');
     }
@@ -1107,6 +1110,8 @@ export type VendeeShare = { partyNumber: number; name: string; percentage: strin
 
 /** Place each side's ownership allocation inside its schedule, after the boundaries. */
 function addOwnershipShareParagraphs(block: string, vendorShares?: VendeeShare[], vendeeShares?: VendeeShare[]): string {
+  vendorShares = vendorShares?.filter(share => share.percentage.trim());
+  vendeeShares = vendeeShares?.filter(share => share.percentage.trim());
   if (!vendorShares?.length && !vendeeShares?.length) return block;
   const children = topLevelChildren(block);
   const boundary = children.find(child => {
@@ -1118,7 +1123,7 @@ function addOwnershipShareParagraphs(block: string, vendorShares?: VendeeShare[]
     .find(chunk => /^\s*All that the\b/i.test(plainText(chunk)));
   const properties = description?.match(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/)?.[0] || '<w:pPr/>';
   const paragraph = (shares: VendeeShare[], side: 'vendors' | 'vendees') => {
-    const allocations = shares.map(share => `(${share.partyNumber}) ${share.name || '________________'} — ${share.percentage || '____'}%`).join('; ');
+    const allocations = shares.map(share => `(${share.partyNumber}) ${share.name || '________________'} — ${share.percentage}%`).join('; ');
     const sentence = `The ${side} ${side === 'vendors' ? 'convey' : 'acquire'} this Schedule Property in the following undivided shares: ${allocations}.`;
     return `<w:p>${properties}<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">${escapeXml(sentence)}</w:t></w:r></w:p>`;
   };
@@ -1353,6 +1358,33 @@ function prepareLandmarkBlock(block: string, values: Record<string, string>): st
  * @param variant  which SCHEDULE OF PROPERTY block to keep, e.g. 'IF OPEN PLOT'
  * @param rewrites literal phrases to fix up after substitution
  */
+/** Apply the mandatory Sale-sized stamp area to every generated deed package. */
+export function ensureStampPaperSpace(xml: string): string {
+  const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
+  const stampSection = (section: string) => {
+    if (/<w:pgMar\b/.test(section)) return section.replace(/<w:pgMar\b[^>]*\/>/, margin =>
+      /\bw:top="[^"]*"/.test(margin) ? margin.replace(/\bw:top="[^"]*"/, 'w:top="8208"') : margin.replace('/>', ' w:top="8208"/>'));
+    return section.replace('</w:sectPr>', '<w:pgMar w:top="8208" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>');
+  };
+  if (sections.length >= 2) return xml.replace(sections[0], stampSection(sections[0]));
+
+  // A single-section replacement needs a separate opening section so the
+  // continuation pages do not inherit the large stamp-paper margin.
+  const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
+  if (start < 8 || end < start) throw new Error('Document body is missing; stamp-paper space could not be reserved.');
+  const body = xml.slice(start, end);
+  const children = topLevelChildren(body);
+  const paragraphs = children.filter(child => /^<w:p(?:\s|>)/.test(body.slice(child.start, child.end)));
+  const boundary = [...paragraphs].reverse().find(child => /(?:of the OTHER PART|hereinafter[^\n]*(?:DONEE|CLAIMANT))/i.test(plainText(body.slice(child.start, child.end))))
+    || paragraphs.find(child => plainText(body.slice(child.start, child.end)).trim());
+  if (!boundary) throw new Error('Opening paragraph is missing; stamp-paper space could not be reserved.');
+  const continuation = sections[0] || '<w:sectPr><w:pgSz w:w="11920" w:h="16840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
+  const opening = stampSection(continuation).replace(/<w:type\b[^>]*\/>/g, '').replace(/<w:(?:pgSz|pgMar)\b/, tag => '<w:type w:val="nextPage"/>' + tag);
+  const sectionBreak = `<w:p><w:pPr>${opening}</w:pPr></w:p>`;
+  const rebuilt = body.slice(0, boundary.end) + sectionBreak + body.slice(boundary.end) + (sections.length ? '' : continuation);
+  return xml.slice(0, start) + rebuilt + xml.slice(end);
+}
+
 export async function fillSaleDeed(
   values: Record<string, string>,
   variant: string,
@@ -1568,7 +1600,7 @@ export async function fillSaleDeed(
     ),
   ];
 
-  xml = xml.slice(0, bodyStart) + body + xml.slice(bodyEnd);
+  xml = ensureStampPaperSpace(xml.slice(0, bodyStart) + body + xml.slice(bodyEnd));
   doc.data = new TextEncoder().encode(xml);
   for (const part of entries.filter(entry => /^word\/(?:header|footer)\d+\.xml$/.test(entry.name))) {
     const filled = new TextDecoder().decode(part.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, values_, missing, []));
@@ -1772,7 +1804,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => !values['Include Prepared By'] && /Prepared By:/i.test(plainText(paragraph)) ? '' : paragraph);
   const result = opening + selected + fill(closing, values);
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(xml.slice(0, start) + result + xml.slice(end));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end)));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -1893,6 +1925,6 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       .replace(/<w:pgMar\b[^>]*\/>/, `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>`);
   });
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(xml.slice(0, start) + result + xml.slice(end));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end)));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }

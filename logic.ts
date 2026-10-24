@@ -428,28 +428,21 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   const shares = vendor ? state.vendorSharesBySchedule : state.vendeeSharesBySchedule;
   if (parties.length) scheduleRecords(state).forEach((schedule, scheduleIndex) => {
     if (!parties.some((party, index) => shares?.[schedule.id]?.[index === 0 ? (vendor ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id]?.trim())) return;
-    let totalCents = 0;
-    let allValid = true;
     parties.forEach((party, index) => {
       const partyId = index === 0 ? (vendor ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id;
       const value = shares?.[schedule.id]?.[partyId] || '';
+      if (!value.trim()) return;
       const cents = vendeeShareCents(value);
       if (cents === null) {
-        allValid = false;
         missing.push({
           id: `${key}-share-${schedule.id}-${partyId}`,
           label: `Schedule ${scheduleIndex + 1}: ${label} ${index + 1} undivided share`,
           reason: value ? 'Enter a percentage greater than 0 and no more than 100, with at most two decimal places.' : `Enter this ${label.toLowerCase()}’s undivided ownership percentage.`,
           source: 'Agreed ownership allocation entered by the drafter.', step: vendor ? 6 : 7,
         });
-      } else totalCents += cents;
+      }
     });
-    if (allValid && totalCents !== 10000) missing.push({
-      id: `${key}-share-total-${schedule.id}`,
-      label: `Schedule ${scheduleIndex + 1}: total ${label.toLowerCase()} shares`,
-      reason: `Undivided shares must total 100%; currently ${(totalCents / 100).toFixed(2).replace(/\.00$/, '')}%.`,
-      source: 'Agreed ownership allocation entered by the drafter.', step: vendor ? 6 : 7,
-    });
+
   });
   }
   state.additionalSchedules.forEach((record, index) => {

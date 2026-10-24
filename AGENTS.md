@@ -12,3 +12,9 @@ The user requires these behaviors to survive every future template upload or rep
 - Run `npm run typecheck` and `npm run build` after changes. Keep the build's Gift, Sale/share/declaration, authority-download and output-format regression checks; a new template must pass them too.
 
 - Existing saved deeds automatically follow the current published default for their own instrument, including all Sale GPA/AGPA and property variants. Preserve entered data, invalidate stale generation metadata, and do not require an explicit template-upgrade action. Explicit custom templates remain selected.
+
+- Ownership percentages are optional for each individual executant/claimant and each property. Print a percentage only for the party with a valid entered value; blank values produce no share wording or percentage placeholders for that party. Partial allocations need not total 100%, and entering one party's value must not require or invent values for others. Continue rejecting invalid entered percentages.
+
+- Every generated deed download must reserve the Sale-sized first-section stamp-paper space (top margin 8208 twips), including Sale/GPA/AGPA, regular and Municipal Gift, all property variants, and compatible custom/replacement templates. Keep a separate continuation section so later pages retain their normal margins. Apply this as an output policy without rewriting immutable source assets or discarding document formatting/package parts.
+
+- Keep landowner/developer development-agreement and separate supplemental/allotment agreement fields discoverable for flat schedules in both source-document entry and property particulars. Reuse the existing property-scoped IDs, keep each property's agreements isolated, format agreement dates with deedDate, and never substitute a title-link number or sale authority number for an agreement. Keep template-to-dashboard coverage and flat-agreement download regressions in the build.

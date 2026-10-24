@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
-  docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip,
+  ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip,
   validateSaleDeedTemplate, MAX_CUSTOM_TEMPLATE_BYTES, type DeedTemplateSource,
 } from './docx';
 import { ALL_FIELDS, newStructureDetail } from './fields';
@@ -438,6 +438,18 @@ describe('sale deed template merge', () => {
     for (const value of ['OLD-LAYOUT', 'OLD-APP', 'OLD-PROC', 'OLD-VLT', 'OLD-PTIN']) expect(text).toContain(value);
   });
 
+  it.each(['Guardian', 'Confirming Party', 'Consenting Party', 'Legal Heir'])('prefixes %s on each party recital without changing signature names', async capacity => {
+    const state = { ...initialState, form: { ...initialState.form,
+      executantName: 'First Seller', executantPartyType: capacity + ' (సంరక్షకుడు)',
+      claimantName: 'First Buyer', claimantPartyType: capacity + ' (సంరక్షకుడు)',
+    }, additionalExecutants: [{ id: 'second', docNames: [], values: { executantName: 'Second Seller', executantPartyType: capacity } }],
+    additionalClaimants: [{ id: 'second', docNames: [], values: { claimantName: 'Second Buyer', claimantPartyType: capacity } }] };
+    const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    for (const name of ['FIRST SELLER', 'SECOND SELLER', 'FIRST BUYER', 'SECOND BUYER']) expect(text).toContain(capacity + ': ' + name);
+    expect(text.split(capacity + ': ')).toHaveLength(5);
+  });
+
   it('does not borrow missing secondary party details from the first party', async () => {
     const state={...initialState,form:{...initialState.form,executantName:'First',executantMobile:'9876543210'},additionalExecutants:[{id:'second',docNames:[],values:{executantName:'Second'}}]};
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
@@ -767,7 +779,7 @@ describe('sale deed template merge', () => {
     expect((signatureXml.match(/<w:spacing w:before="0" w:after="0"\/>/g) || []).length).toBeGreaterThanOrEqual(4);
   });
 
-  it('keeps a single vendor unnumbered and shows blank shares in an incomplete multi-vendee draft', async () => {
+  it('keeps a single vendor unnumbered and omits an unspecified buyer share', async () => {
     const state = {
       ...initialState, deedType: 'Sale', category: 'Vacant Plot',
       form: { ...initialState.form, executantName: 'Only Vendor', claimantName: 'First Buyer' },
@@ -785,7 +797,9 @@ describe('sale deed template merge', () => {
     expect(opening.split('(Hereinafter called the "VENDEE/S") of the OTHER PART.')).toHaveLength(2);
     expect(opening.split('\n').find(line => line.startsWith('1. FIRST BUYER'))).not.toContain('Hereinafter called');
     expect(opening.split('\n').find(line => line.startsWith('2. SECOND BUYER'))).toContain('(Hereinafter called the "VENDEE/S") of the OTHER PART.');
-    expect(text).toContain('(1) FIRST BUYER — 70%; (2) SECOND BUYER — ____%');
+    expect(text).toContain('(1) FIRST BUYER — 70%');
+    expect(text).not.toContain('(2) SECOND BUYER —');
+    expect(text).not.toContain('____%');
     const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
     expect(signatures).toContain('________________');
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(3);
@@ -1041,5 +1055,39 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).toContain('Tax/Assessment & Identification Particulars:');
     expect(text).toContain('Assessment No. PTIN-88');
+  });
+});
+
+
+describe('Mandatory stamp-paper space', () => {
+  const section = '<w:sectPr><w:footerReference w:type="default" r:id="rId7"/><w:pgSz w:w="11920" w:h="16840"/><w:pgMar w:top="1080" w:left="1080" w:right="1080" w:bottom="1080"/></w:sectPr>';
+  const title = '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>DEED</w:t></w:r></w:p>';
+  const parties = '<w:p><w:r><w:t>Buyer of the OTHER PART.</w:t></w:r></w:p>';
+  const recital = '<w:p><w:r><w:t>FLOW OF TITLE</w:t></w:r></w:p>';
+  it('adds a separate stamp section to a single-section replacement without changing its styled content', () => {
+    const output = ensureStampPaperSpace(`<w:document><w:body>${title}${parties}${recital}${section}</w:body></w:document>`);
+    const sections = output.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)!;
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('w:top="8208"');
+    expect(sections[0]).toContain('<w:type w:val="nextPage"/>');
+    expect(sections[1]).toBe(section);
+    expect(output).toContain(title + parties);
+    expect(output).toContain(recital);
+    expect(output.indexOf(sections[0])).toBeLessThan(output.indexOf(recital));
+    expect(ensureStampPaperSpace(output)).toBe(output);
+  });
+  it('normalizes an existing first section and preserves continuation sections and footer references', () => {
+    const first = `<w:p><w:pPr>${section.replace('w:top="1080"', 'w:top="1440"')}</w:pPr></w:p>`;
+    const output = ensureStampPaperSpace(`<w:document><w:body>${title}${first}${recital}${section}</w:body></w:document>`);
+    const sections = output.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)!;
+    expect(sections[0]).toContain('w:top="8208"');
+    expect(sections[0]).toContain('r:id="rId7"');
+    expect(sections[1]).toBe(section);
+  });
+  it('adds stamp and continuation sections when a replacement has no explicit page setup', () => {
+    const output = ensureStampPaperSpace(`<w:document><w:body>${title}${recital}</w:body></w:document>`);
+    expect(output.match(/<w:sectPr\b/g)).toHaveLength(2);
+    expect(output).toContain('w:top="8208"');
+    expect(output).toContain('w:top="1080"');
   });
 });
