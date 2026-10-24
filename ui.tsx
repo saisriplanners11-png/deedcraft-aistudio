@@ -4,6 +4,7 @@ import { sectionForGroup } from './template-placement';
 import { flatStage } from './flat-options';
 import { css } from './css';
 import type { Field, Group } from './fields';
+import { fieldHelp } from './field-help';
 import type { Conflict, FieldEvidence } from './logic';
 import { DOC_KINDS, type DocKind } from './extract';
 
@@ -96,6 +97,8 @@ export function Input({
   onDismiss?: () => void;
 }) {
   const suggestionsId = React.useId();
+  const helpId = React.useId();
+  const help = fieldHelp(field);
   const span = field.span || 1;
   const readOnly = field.derived;
   // A derived field can receive an explicit display value from a parent, or
@@ -121,16 +124,16 @@ export function Input({
         {sourceDocument ? <span style={css(`font-size:9px;color:${C.mutedSoft};max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`)} title={sourceDocument}>{sourceDocument}</span> : null}
       </span>
       {field.type === 'select' && field.allowCustom ? (
-        <><input aria-label={field.ariaLabel} readOnly={readOnly} list={suggestionsId} value={shown} onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{field.options?.map(o => <option key={o} value={o} />)}</datalist></>
+        <><input aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined} readOnly={readOnly} list={suggestionsId} value={shown} onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{field.options?.map(o => <option key={o} value={o} />)}</datalist></>
       ) : field.type === 'select' ? (
         <select
-          aria-label={field.ariaLabel}
+          aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined}
           disabled={readOnly}
           value={shown}
           onChange={e => onChange(e.target.value)}
           style={css(`padding:7px 2px;border:0;border-bottom:1px solid ${C.goldLight};background:transparent;font-size:13.5px;color:${C.ink};outline:none`)}
         >
-          <option value=""></option>
+          <option value="">Choose an option…</option>
             {field.id === 'flatStage' && shown && !field.options?.includes(shown) && <option value={shown}>Unverified: {shown}</option>}
             {(field.options || []).map(o => (
             <option key={o} value={o}>{field.optionLabels?.[o] || o}</option>
@@ -138,7 +141,7 @@ export function Input({
         </select>
       ) : field.type === 'textarea' ? (
         <textarea
-          aria-label={field.ariaLabel}
+          aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined}
           readOnly={readOnly}
           value={shown}
           rows={3}
@@ -148,7 +151,7 @@ export function Input({
       ) : field.type === 'money' ? (
         <input
           type="text"
-          aria-label={field.ariaLabel}
+          aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined}
           inputMode="decimal"
           value={formatMoneyInput(shown)}
           readOnly={readOnly}
@@ -163,7 +166,7 @@ export function Input({
       ) : (
         <input
           type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
-          aria-label={field.ariaLabel}
+          aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined}
           list={field.options?.length ? suggestionsId : undefined}
           value={shown}
           readOnly={readOnly}
@@ -189,8 +192,8 @@ export function Input({
             </button>
           </span>
         </span>
-      ) : field.hint ? (
-        <span style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{field.hint}</span>
+      ) : help ? (
+        <span id={helpId} className="field-help">{help}</span>
       ) : null}
     </label>
   );

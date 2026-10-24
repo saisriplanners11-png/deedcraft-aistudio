@@ -182,11 +182,12 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
                     <button
                       type="button"
                       title={`Remove ${roleName} ${index + 1}`}
+                      aria-label={`Remove ${roleName} ${index + 1}`}
                       onClick={() => removeParty(parties, index, setter)}
                       className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 rounded-md transition-colors cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remove</span>
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span className="sr-only">Remove</span>
                     </button>
                   )}
                   {parties.length === 1 && (

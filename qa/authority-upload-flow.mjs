@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
@@ -29,18 +30,20 @@ try {
     await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
     await panel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor({timeout:180000});
-    const attorneys = page.getByRole('region',{name:'Sale attorney details',exact:true});
+    const attorneys = page;
+    assert.equal(await page.getByRole('button',{name:'Add attorney',exact:true}).count(),0);
+    assert.equal(await page.locator('[aria-label="Sale attorney details"]').count(),0);
     assert.equal(await page.locator('details[aria-label="Authority extraction review"]').getAttribute('open'),null);
-    assert.equal(await page.locator('.party-record-card').first().evaluate(el => !!(document.querySelector('[aria-label="Sale authority details"]').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(el.compareDocumentPosition(document.querySelector('[aria-label="Sale attorney details"]')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
+    assert.equal(await page.locator('.party-record-card').first().evaluate(el => !!(document.querySelector('[aria-label="Sale authority details"]').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(el.compareDocumentPosition(document.querySelector('[aria-label="Executant 3 Attorney"]')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
     assert.equal(await panel.getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
     for (const [label, value] of Object.entries({ 'Authority book number': '1', 'Authority document date': '2026-10-01', 'Authority Sub-Registrar Office': 'TEST SRO', 'Authority SRO code': 'TEST-01' })) assert.equal(await panel.getByLabel(label,{exact:true}).inputValue(),value);
-    assert.equal(await attorneys.getByRole('group',{name:'Attorney 1',exact:true}).getByLabel('Full name',{exact:true}).inputValue(),'AGENT ONE');
-    assert.equal(await page.locator('.party-record-card').first().getByLabel('Full name',{exact:true}).inputValue(),'OWNER ONE');
+    assert.equal(await attorneys.getByRole('region',{name:'Executant 3 Attorney',exact:true}).getByLabel(/^Full name/).inputValue(),'AGENT ONE');
+    assert.equal(await page.locator('.party-record-card').first().getByLabel(/^Full name/).inputValue(),'OWNER ONE');
     assert.match(await page.locator('.party-type-selector select').first().inputValue(),/^Principal/);
-    await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{const draft=get.result?.draft;db.close();resolve(draft?.saleAuthority?.attorneys?.length===2 && draft.saleAuthority.attorneys[0].principalIds.length===1);};};}),draft.id,{timeout:20000});
-    assert.equal(await attorneys.getByRole('group',{name:/^Attorney \d+$/}).count(),2);
+    await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{const draft=get.result?.draft;db.close();resolve(draft?.manual?.['executant|primary|executantName']==='OWNER ONE' && draft?.saleAuthority?.attorneys?.length===2 && draft.saleAuthority.attorneys[0].principalIds.length===1 && draft.saleAuthority.executantOrder?.length===4);};};}),draft.id,{timeout:20000});
+    assert.equal(await attorneys.locator('.party-record-card[aria-label$=" Attorney"]').count(),2);
     for (const [index, principalName] of [[1,'OWNER ONE'],[2,'OWNER TWO']]) {
-      const card=attorneys.getByRole('group',{name:'Attorney '+index,exact:true});
+      const card=attorneys.getByRole('region',{name:'Executant '+(index+2)+' Attorney',exact:true});
       assert.equal(await card.getByLabel(principalName,{exact:true}).isChecked(),true);
       assert.equal(await card.getByLabel(index===1?'OWNER TWO':'OWNER ONE',{exact:true}).isChecked(),false);
     }
@@ -50,7 +53,7 @@ try {
     await page.reload();await page.getByRole('button',{name:'Continue / Edit',exact:true}).click();await page.locator('details[aria-label="Authority extraction review"] > summary').click();await page.getByRole('group',{name:'OWNER ONE — extracted individual',exact:true}).waitFor();assert.equal(await page.getByRole('region',{name:'Sale authority details',exact:true}).getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
     if (!real) {
       const currentPanel=page.getByRole('region',{name:'Sale authority details',exact:true});
-      await attorneys.getByLabel('Upload Attorney 1 identity / supporting documents',{exact:true}).setInputFiles({name:'agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
+      await attorneys.getByLabel('Upload Attorney 3 identity / supporting documents',{exact:true}).setInputFiles({name:'agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
       await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
       console.log('Attorney identity uploaded:',mode);
       const identity=page.getByRole('group',{name:'AGENT ONE — extracted individual',exact:true}).last();await identity.getByText('Detected role: unknown',{exact:false}).waitFor();
@@ -60,17 +63,42 @@ try {
       await currentPanel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();await currentPanel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor();
       assert.equal(requests,6);
     }
-    await attorneys.getByRole('button',{name:'Add attorney',exact:true}).click();
-    await attorneys.getByRole('group',{name:'Attorney 3',exact:true}).waitFor();
-    await attorneys.getByRole('button',{name:'Remove attorney 3',exact:true}).click();
-    assert.equal(await attorneys.getByRole('group',{name:/^Attorney \d+$/}).count(),2);
+    await page.getByRole('button',{name:'Add blank executant instead',exact:true}).click();
+    const added = page.locator('.party-record-card').last();
+    await added.getByLabel(/^Full name/).fill('MANUAL AGENT');
+    await added.locator('.party-type-selector select').selectOption({label:'Attorney / Agent (ఏజెంట్)'});
+    const newAttorney = page.getByRole('region',{name:'Executant 5 Attorney',exact:true});
+    await newAttorney.waitFor();
+    assert.equal(await newAttorney.getByLabel(/^Full name/).inputValue(),'MANUAL AGENT');
+    if (!real) {
+      await newAttorney.getByLabel('Upload Attorney 5 identity / supporting documents',{exact:true}).setInputFiles({name:'manual-agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
+      const reading = page.getByRole('dialog');
+      await reading.getByText('Found 1 people.',{exact:false}).waitFor();
+      await reading.getByRole('button',{name:'Close',exact:true}).click();
+    }
+    await newAttorney.locator('.party-type-selector select').selectOption({label:'Principal (పవర్ ఆఫ్ అటార్నీ ఇచ్చేవారు)'});
+    const restored = page.locator('.party-record-card').last();
+    assert.equal(await restored.getByLabel(/^Full name/).inputValue(),'MANUAL AGENT');
+    await restored.locator('.party-type-selector select').selectOption({label:'Attorney / Agent (ఏజెంట్)'});
+    await newAttorney.waitFor();
+    if (!real) assert.equal(await newAttorney.getByRole('link',{name:'manual-agent-id.txt',exact:true}).count(),1);
+    await page.getByRole('button',{name:'Add blank executant instead',exact:true}).click();
+    await page.locator('.party-record-card').last().getByLabel(/^Full name/).fill('LATE OWNER');
+    await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{const draft=get.result?.draft;db.close();resolve(draft?.saleAuthority?.executantOrder?.length===6 && Object.values(draft.manual).includes('LATE OWNER'));};};}),draft.id);
+    await page.reload();await page.getByRole('button',{name:'Continue / Edit',exact:true}).click();
+    assert.deepEqual(await page.locator('.party-record-card h2').filter({hasText:/^Executant \d/}).allTextContents(),['Executant 1 — Principal','Executant 2 — Principal','Executant 3 — Attorney','Executant 4 — Attorney','Executant 5 — Attorney','Executant 6 — Principal']);
+    await mkdir('tmp/authority-combined-qa',{recursive:true});
+    await page.getByRole('region',{name:'Executant 3 Attorney',exact:true}).screenshot({path:`tmp/authority-combined-qa/${mode}-attorney.png`});
+    await page.locator('.party-record-card').last().getByRole('button',{name:/^Delete Executant 6/}).click();
+    await newAttorney.getByRole('button',{name:'Remove Executant 5',exact:true}).click();
+    assert.equal(await attorneys.locator('.party-record-card[aria-label$=" Attorney"]').count(),2);
     if (!real) {
       await page.route('**/api/anthropic/**', route => route.fulfill({ status:400, contentType:'application/json', body:JSON.stringify({error:{type:'invalid_request_error',message:'Synthetic extraction failure'}}) }));
       await panel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();
       const failed=page.getByRole('dialog');await failed.getByText(/Synthetic extraction failure/).waitFor();
       await failed.getByRole('button',{name:'Close',exact:true}).click();
-      assert.equal(await page.locator('.party-record-card').first().getByLabel('Full name',{exact:true}).inputValue(),'OWNER ONE');
-      assert.equal(await attorneys.getByRole('group',{name:/^Attorney \d+$/}).count(),2);
+      assert.equal(await page.locator('.party-record-card').first().getByLabel(/^Full name/).inputValue(),'OWNER ONE');
+      assert.equal(await attorneys.locator('.party-record-card[aria-label$=" Attorney"]').count(),2);
       await page.route('**/api/anthropic/**', async route => { await new Promise(resolve=>setTimeout(resolve,1000)); await route.abort().catch(()=>{}); });
       await panel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();
       const cancelled=page.getByRole('dialog');await cancelled.getByRole('button',{name:'Cancel',exact:true}).click();

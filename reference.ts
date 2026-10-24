@@ -3,17 +3,17 @@
 // engine works from. Everything a user types lives in AppState.form (see fields.ts).
 
 export const STEPS = [
-    { id: 0, label: 'Deed setup', sub: 'Instrument and draft form', phase: 1 },
-    { id: 1, label: 'Link Deed & Enclosures', sub: 'Prior document & enclosures', phase: 1 },
-    { id: 2, label: 'Jurisdiction', sub: 'State, district & SRO', phase: 2 },
-    { id: 3, label: 'Property Schedules', sub: 'Identification, extent, boundaries & scheduled description', phase: 2 },
-    { id: 4, label: 'Market Value', sub: 'Per say vs consideration', phase: 2 },
-    { id: 5, label: 'Payment Details', sub: 'Instrument recited in the receipt', phase: 2 },
+    { id: 0, label: 'Deed setup', sub: 'Choose your transaction and property type', phase: 1 },
+    { id: 1, label: 'Link Deed & Enclosures', sub: 'Add the previous deed and supporting records', phase: 1 },
+    { id: 2, label: 'Jurisdiction', sub: 'Confirm the location, registration office and deed date', phase: 2 },
+    { id: 3, label: 'Property Schedules', sub: 'Describe each property, its area and boundaries', phase: 2 },
+    { id: 4, label: 'Market Value', sub: 'Check property rates and the entered document value', phase: 2 },
+    { id: 5, label: 'Payment Details', sub: 'Record payments and check the remaining balance', phase: 2 },
     { id: 6, label: 'Executant Details', sub: 'Seller / donor / first party', phase: 3 },
     { id: 7, label: 'Claimant Details', sub: 'Buyer / donee / second party', phase: 3 },
-    { id: 8, label: 'Reverify', sub: 'Readiness checks & review', phase: 4 },
-    { id: 9, label: 'Generate Deed', sub: 'Fill the template & download', phase: 4 },
-    { id: 10, label: 'Property Plan — Exact Reference', sub: 'Exact reference tools with schedule details pre-filled', phase: 4 }
+    { id: 8, label: 'Reverify', sub: 'Review missing details and check the draft', phase: 4 },
+    { id: 9, label: 'Generate Deed', sub: 'Prepare your Word deed and download your files', phase: 4 },
+    { id: 10, label: 'Property Plan — Exact Reference', sub: 'Optional: draw and attach a plan for each property', phase: 4 }
   ];
 
 export const DEEDS = [

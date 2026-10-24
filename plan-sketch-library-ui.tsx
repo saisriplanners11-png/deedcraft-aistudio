@@ -1,3 +1,4 @@
+import { IconButton } from './icon-button';
 import { FileDropZone } from './file-drop-zone';
 import React, { useEffect, useState } from 'react';
 import { Section, Button, C } from './ui';
@@ -55,7 +56,7 @@ export function PlanSketchLibrary({ current, onLoad }: { current: PlanDocument; 
             <Button onClick={() => downloadJson(plan, `${plan.title.replace(/[^a-z0-9_-]+/gi, '_')}.json`)}>Download JSON</Button>
             {tab === 'saved' && <>
               <Button onClick={() => void planSketchLibrary.save(plan, true).then(refresh).catch(error => setMessage(error.message))}>Duplicate</Button>
-              <Button onClick={() => { if (window.confirm(`Delete saved plan “${plan.title}”?`)) void planSketchLibrary.remove(plan.id).then(refresh).catch(error => setMessage(error.message)); }}>Delete</Button>
+              <IconButton label={`Delete ${plan.title}`} onClick={() => { if (window.confirm(`Delete saved plan “${plan.title}”?`)) void planSketchLibrary.remove(plan.id).then(refresh).catch(error => setMessage(error.message)); }} />
             </>}
           </div>
         </div>)}

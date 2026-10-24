@@ -1,0 +1,108 @@
+/* Compact drafting workspace. Help is available on demand without reducing form density. */
+.wizard-app .stage{padding:12px 18px 24px}
+.wizard-app .stage-head{margin-bottom:10px}
+.wizard-app .stage-head h1{font-size:23px;line-height:1.25}
+.wizard-app .stage-head p:last-child{font-size:12px;line-height:1.5;margin-top:2px}
+.wizard-app .form-tools{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;min-height:32px}
+.wizard-app .screen-guide{min-width:0;flex:1}
+.wizard-app .screen-guide-toggle{display:flex;align-items:center;gap:7px;min-height:32px;width:fit-content;padding:4px 0;color:var(--dc-green);font-size:12px;font-weight:600;cursor:pointer;list-style:none}
+.wizard-app .screen-guide-toggle::after{content:'+';margin-left:3px;font-size:16px}
+.wizard-app .screen-guide[open]>.screen-guide-toggle::after{content:'−'}
+.wizard-app .screen-guide[open]{border:1px solid var(--dc-rule);border-radius:8px;background:var(--dc-paper)}
+.wizard-app .screen-guide[open]>.screen-guide-toggle{padding-inline:14px}
+.wizard-app .screen-guide-heading{display:flex;gap:10px;padding:12px 14px 10px;align-items:flex-start}
+.wizard-app .screen-guide-icon{color:var(--dc-green);flex-shrink:0}
+.wizard-app .screen-guide-kicker{display:none}
+.wizard-app .screen-guide-heading h2{font:600 16px/1.4 'IBM Plex Sans',sans-serif;margin:0 0 5px;color:var(--dc-ink)}
+.wizard-app .screen-guide-heading p{font-size:13px;line-height:1.6;margin:0;color:var(--dc-body);max-width:85ch}
+.wizard-app .screen-guide-tasks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;list-style:none;padding:0 14px 12px;margin:0}
+.wizard-app .screen-guide-tasks li{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.5;color:var(--dc-body)}
+.wizard-app .screen-guide-tasks li>span{display:grid;place-items:center;flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--dc-green-bg);color:var(--dc-green);font-size:11px;font-weight:600}
+.wizard-app .screen-guide-help{border-top:1px solid var(--dc-rule-soft)}
+.wizard-app .screen-guide-help summary{display:flex;align-items:center;gap:7px;min-height:36px;padding:8px 14px;cursor:pointer;font-size:12px;color:var(--dc-green)}
+.wizard-app .screen-guide-help summary>span{font-size:11px;color:var(--dc-body);margin-left:auto}
+.wizard-app .screen-guide-help dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin:0;padding:8px 14px 14px}
+.wizard-app .screen-guide-help dt{font-size:12px;font-weight:600;color:var(--dc-ink);margin-bottom:4px}
+.wizard-app .screen-guide-help dd{font-size:12px;line-height:1.6;color:var(--dc-body);margin:0}
+.wizard-app .field-help-toggle{display:flex;align-items:center;gap:7px;flex-shrink:0;min-height:32px;font-size:12px;line-height:1.4;color:var(--dc-body);cursor:pointer}
+.wizard-app .field-help-toggle input{width:15px;height:15px;margin:0;accent-color:var(--dc-green)}
+.wizard-app:not(.show-field-help) .field-help{display:none}
+.wizard-app .field-help{font-size:11px!important;line-height:1.5!important;color:var(--dc-body)!important}
+.wizard-app .panel{padding:14px;margin-bottom:12px;border-radius:10px}
+.wizard-app :is(.setup-step,.documents-step,.workflow-step){gap:12px}
+.wizard-app .workflow-section-heading,.wizard-app .setup-card-content{padding:12px 16px}
+.wizard-app .deed-section>div:first-child{padding:10px 14px!important;align-items:center!important}
+.wizard-app .deed-section>div:first-child h2{font-size:15px!important;line-height:1.4!important;text-transform:none!important;letter-spacing:0!important}
+.wizard-app .deed-section>div:last-child{padding:14px!important}
+.wizard-app .deed-field-grid{gap:12px 14px!important;align-items:start}
+.wizard-app .deed-field{gap:5px!important;min-width:0}
+.wizard-app .deed-field>span:first-child>span:first-child{font-size:12px!important;font-weight:600!important;letter-spacing:0!important;text-transform:none!important;color:var(--dc-ink)!important;line-height:1.35}
+.wizard-app .deed-field :is(input,select,textarea){height:36px!important;min-height:36px!important;border-radius:6px!important;padding:6px 9px!important;font-size:13px!important;line-height:1.4!important}
+.wizard-app .deed-field textarea{height:68px!important;min-height:68px!important}
+.wizard-app .deed-field :is(input,textarea)[readonly]{background:var(--dc-ground)!important;color:var(--dc-body)!important;border-style:dashed!important}
+.wizard-app .setup-field>small{font-size:11px;line-height:1.5}
+.wizard-app .setup-field select{min-height:36px;font-size:13px;padding:6px 9px}
+.wizard-app .setup-fields{gap:14px}
+.wizard-app .deed-quick-choices{gap:8px;padding:12px 16px 0}
+.wizard-app .deed-quick-choices button{min-height:58px;padding:10px;gap:8px;border-radius:8px}
+.wizard-app .deed-quick-choices strong{font-size:13px}
+.wizard-app .deed-quick-choices small{font-size:11px;margin-top:2px}
+.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']){padding:14px;margin-block:12px}
+.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']) h2{font-size:16px;margin-bottom:6px}
+.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']) p{font-size:12px;line-height:1.6;margin-block:6px 10px}
+.wizard-app .sale-authority-grid{gap:12px 14px;margin-block:12px}
+.wizard-app :is(.sale-authority-grid,.gift-relationship-panel) .field{gap:5px}
+.wizard-app :is(.sale-authority-grid,.gift-relationship-panel) .field>span{font-size:12px;line-height:1.35}
+.wizard-app :is(.sale-authority-grid,.gift-relationship-panel,.party-record-card label.field) :is(input,select):not([type=checkbox]){height:36px;min-height:36px;padding:6px 9px;font-size:13px;border-radius:6px}
+.wizard-app .party-record-card label.field{gap:5px;font-size:12px}
+.wizard-app .party-record-card label.field>small{font-size:11px;line-height:1.5}
+.wizard-app .gift-relationship-panel>.field{margin-block:12px}
+.wizard-app .gift-clause-preview{padding:10px 12px;margin-top:12px}
+.wizard-app [aria-label='Sale attorney details'] fieldset{padding:12px;margin-block:12px}
+.wizard-app .attorney-empty{padding:12px;border:1px dashed var(--dc-control-border);border-radius:8px;background:var(--dc-ground);margin-block:12px;font-size:12px;color:var(--dc-ink)}
+.wizard-app .attorney-empty p{margin:5px 0 0}
+.wizard-app .authority-uploads{padding:12px}
+.wizard-app .navigation{padding:10px 12px;gap:12px;margin-top:16px}
+.wizard-app .navigation>span{display:flex;flex-direction:column;gap:3px;text-align:center;color:var(--dc-body)}
+.wizard-app .navigation>span strong{font-size:11px;font-weight:500}
+.wizard-app .navigation>span small{font-size:11px;line-height:1.4}
+.wizard-app .navigation button{min-height:36px;font-size:12px;white-space:normal}
+.wizard-app .document-upload{padding:12px 14px;gap:10px}
+.wizard-app .document-upload .upload-copy p{font-size:12px;line-height:1.5;margin-block:3px}
+.wizard-app .document-upload .upload-copy small{font-size:11px}
+.wizard-app .property-card-heading,.wizard-app .party-card-heading{padding-bottom:10px}
+.wizard-app .party-identity-upload{padding-block:10px}
+.wizard-app .template-panel{border-radius:10px}
+.wizard-app .template-heading>div>small{overflow-wrap:anywhere}
+.wizard-app .template-intro{font-size:13px;line-height:1.65;padding:12px 16px;background:var(--dc-green-bg);border:1px solid var(--dc-green-line);border-radius:8px;margin-block:14px;color:var(--dc-body)}
+.wizard-app .template-intro strong{color:var(--dc-ink)}
+.wizard-app .library-welcome{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:24px;padding:18px;margin-block:16px;border:1px solid var(--dc-green-line);border-radius:10px;background:var(--dc-green-bg);color:var(--dc-ink)}
+.wizard-app .library-welcome h2{font:600 19px/1.35 'IBM Plex Sans',sans-serif;margin:8px 0 6px}
+.wizard-app .library-welcome p{font-size:13px;line-height:1.6;color:var(--dc-body);margin:0}
+.wizard-app .library-welcome ol{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.wizard-app .library-welcome li{display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--dc-body);line-height:1.5}
+.wizard-app .library-welcome li b{flex-shrink:0;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--dc-paper);color:var(--dc-green)}
+.wizard-app .library-welcome li strong{display:block;font-size:13px;color:var(--dc-ink)}
+@media(min-width:1000px){.wizard-app :is(.workflow-step,.documents-step) .deed-field-grid,.wizard-app .workflow-step .payment-fields,.wizard-app .sale-authority-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wizard-app .deed-field:has(textarea){grid-column:span 2!important}}
+@media(min-width:1440px){.wizard-app :is(.workflow-step,.documents-step) .deed-field-grid,.wizard-app .workflow-step .payment-fields,.wizard-app .sale-authority-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+@media(max-width:900px){.wizard-app .stage{padding:12px 16px 24px}.wizard-app .screen-guide-tasks{grid-template-columns:1fr}.wizard-app .library-welcome{grid-template-columns:1fr;gap:16px}}
+@media(max-width:620px){.wizard-app .stage{padding:10px 12px 20px}.wizard-app .stage-head h1{font-size:22px}.wizard-app .form-tools{gap:10px}.wizard-app .field-help-toggle{font-size:11px}.wizard-app .screen-guide-toggle{font-size:11px}.wizard-app .screen-guide-help summary>span{display:none}.wizard-app .screen-guide-help dl{grid-template-columns:1fr}.wizard-app .deed-field :is(input,select,textarea){font-size:16px!important;min-height:40px!important;height:40px!important}.wizard-app .deed-field textarea{height:68px!important;min-height:68px!important}.wizard-app .deed-field-grid{gap:12px!important}.wizard-app .navigation>span{order:3;width:100%}.wizard-app .navigation button{min-height:44px}.wizard-app .deed-quick-choices{padding-inline:14px}.wizard-app .library-welcome{padding:16px}}
+
+/* Keep record headers and upload areas from pushing the fields down the page. */
+.wizard-app .compact-step-header{padding-bottom:8px;margin-bottom:6px}
+.wizard-app .form-tools{margin-bottom:6px;min-height:28px}
+.wizard-app .screen-guide-toggle,.wizard-app .field-help-toggle{min-height:28px}
+.wizard-app :is(.property-schedule-card,.party-record-card){padding:12px}
+.wizard-app .party-record-card>.party-card-heading{padding:0;align-self:center}
+.wizard-app .party-type-selector>.deed-section>div:last-child{padding:0!important}
+.wizard-app .party-identity-upload{padding:0;margin:8px 0}
+.wizard-app .party-record-card .document-upload{padding:8px 10px!important;min-height:52px}
+.wizard-app:not(.show-field-help) .document-upload .upload-copy p{display:none}
+.wizard-app .workflow-step-3 .property-schedule-card>.deed-section,.wizard-app :is(.workflow-step-6,.workflow-step-7) .party-record-card>.deed-section{margin-top:8px}
+.wizard-app .workflow-step-3 .property-schedule-card>.deed-section>div:first-child,.wizard-app :is(.workflow-step-6,.workflow-step-7) .party-record-card>.deed-section>div:first-child{padding:6px 0!important}
+.wizard-app .workflow-step-3 .property-schedule-card>.deed-section>div:last-child,.wizard-app :is(.workflow-step-6,.workflow-step-7) .party-record-card>.deed-section>div:last-child{padding:8px 0 0!important}
+.wizard-app .party-add-card,.wizard-app .property-add-card{padding:10px!important;margin-top:0}
+.wizard-app .workflow-step>.party-add-card::after{display:none}
+@media(min-width:901px){.wizard-app .deed-field-grid{gap:10px 12px!important}.wizard-app .party-record-card label.field{align-self:start}}
+@media(max-width:620px){.wizard-app .form-tools{flex-wrap:wrap}.wizard-app .screen-guide{flex-basis:50%}.wizard-app .document-upload .upload-copy small{font-size:11px}}
+.wizard-app .library-start-help>summary{font-size:12px;color:var(--dc-green);cursor:pointer;padding:6px 0;min-height:32px}

@@ -11,7 +11,12 @@ export type AuthorityDocument = { id: string; name: string; dataUrl: string; siz
 export type AuthorityPerson = { id: string; role: 'principal' | 'attorney' | 'unknown'; values: Record<string, string>; principalNames: string[]; quote: string; page: number; sourceName: string };
 export type AuthorityExtraction = { incomplete?: boolean; id: string; documentIds: string[]; people: AuthorityPerson[]; details: Record<string, string>; notes: string[] };
 export type SaleAttorney = { id: string; principalIds: string[]; extractedPersonId?: string; values: Record<string, string>; documents?: AuthorityDocument[] };
-export type SaleAuthority = { documentNo: string; bookNumber?: string; documentDate: string; sro: string; sroCode: string; adjustedAmount: string; attorneys: SaleAttorney[]; documents?: AuthorityDocument[]; extractions?: AuthorityExtraction[] };
+export type SaleAuthority = {
+  /** Stable mixed principal/attorney display order; absent in older saved deeds. */
+  executantOrder?: string[];
+  /** Retain attorney uploads when that same person is changed to a principal. */
+  personDocuments?: Record<string, AuthorityDocument[]>;
+  documentNo: string; bookNumber?: string; documentDate: string; sro: string; sroCode: string; adjustedAmount: string; attorneys: SaleAttorney[]; documents?: AuthorityDocument[]; extractions?: AuthorityExtraction[] };
 export const emptySaleAuthority = (): SaleAuthority => ({ documentNo: '', documentDate: '', sro: '', sroCode: '', adjustedAmount: '', attorneys: [] });
 export const saleDocumentLabel = (mode: SaleDocument = 'ordinary') => SALE_DOCUMENT_OPTIONS.find(option => option.id === mode)?.label || 'Ordinary Sale';
 export const saleDocumentForVariant = (variant = ''): SaleDocument => variant === 'sale-deed-by-gpa-holder' ? 'gpa' : variant === 'sale-through-existing-agpa' ? 'agpa' : 'ordinary';

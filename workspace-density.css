@@ -131,3 +131,39 @@
 @media(min-width:1200px){.wizard-app .workflow-step .deed-field-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wizard-app .workflow-step .payment-fields{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
 @media(max-width:900px){.wizard-app .shell{grid-template-columns:minmax(0,1fr)}.wizard-app .stage{padding:10px 16px 24px}.wizard-app .mobile-step-picker{padding-block:10px}.wizard-app .mobile-step-picker select{min-height:36px;font-size:13px}.wizard-app .dashboard-details{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:620px){.wizard-app .stage-head h1{font-size:22px}.wizard-app .stage{padding-inline:12px}.wizard-app .panel{padding:12px}.wizard-app :is(.setup-step,.documents-step,.workflow-step){gap:12px}.wizard-app .workflow-step>.deed-section{padding:12px}.wizard-app .workflow-section-heading,.wizard-app .setup-card-content{padding:12px 14px}.wizard-app .document-card-heading{grid-template-columns:36px minmax(0,1fr)}.wizard-app .documents-step .document-card-heading{grid-template-columns:36px minmax(0,1fr)}.wizard-app :is(.property-context,.document-picker,.document-add,.documents-step>.link-record){padding:12px 14px}.wizard-app .navigation{padding:10px;margin-top:14px}.wizard-app .dashboard-hero{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px}.wizard-app .dashboard-hero h2{font-size:21px}.wizard-app .dashboard-progress{display:flex;flex-direction:row;gap:12px;justify-content:flex-start;padding-top:12px;border-top:1px solid var(--dc-hero-rule)}.wizard-app .progress-orbit{width:64px;height:64px;padding:4px}.wizard-app .dashboard-progress-number{width:56px;height:56px;padding-top:13px;font-size:23px}.wizard-app .dashboard-progress-number span{font-size:12px}.wizard-app .dashboard-progress>span{margin:0}.wizard-app .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.wizard-app .dashboard-stats>div{padding:10px;min-width:0}.wizard-app .dashboard-stats strong{font-size:19px}.wizard-app .dashboard-stats strong>span{font-size:10px}.wizard-app .dashboard-stats .metric-icon{display:none}.wizard-app .dashboard-stats>div>span:last-child{font-size:10px;line-height:1.4}.wizard-app .dashboard-section-head{align-items:flex-start;flex-direction:column;gap:6px}.wizard-app .overview-grid{grid-template-columns:minmax(0,1fr)}.wizard-app .overview-card{min-height:80px;padding:12px}.wizard-app .dashboard-readiness{padding:12px}.wizard-app .saved-deeds-dashboard{padding:20px 12px 28px}.wizard-app .saved-deeds-heading h1{font-size:23px}.wizard-app .library-empty{padding:20px 16px 0}}
+
+/* Instrument choices and conditional details share the workspace's theme tokens. */
+.wizard-app .deed-quick-choices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:18px 20px 0}
+.wizard-app .deed-quick-choices button{display:flex;align-items:center;gap:10px;text-align:left;min-width:0;min-height:76px;padding:14px 12px;border:1px solid var(--dc-control-border);border-radius:10px;background:var(--dc-paper);color:var(--dc-ink);transition:background .15s,border-color .15s,box-shadow .15s}
+.wizard-app .deed-quick-choices button:hover{background:var(--dc-green-bg);border-color:var(--dc-green)}
+.wizard-app .deed-quick-choices button[aria-pressed=true]{background:var(--dc-green-bg);border-color:var(--dc-green);box-shadow:inset 0 0 0 1px var(--dc-green)}
+.wizard-app .deed-quick-choices strong{display:block;font-size:14px;letter-spacing:.03em}
+.wizard-app .deed-quick-choices small{display:block;font-size:12px;line-height:1.5;color:var(--dc-body);margin-top:3px}
+.wizard-app .deed-choice-icon{color:var(--dc-green);flex-shrink:0}
+.wizard-app .deed-choice-check{margin-left:auto;flex-shrink:0;color:var(--dc-green);visibility:hidden}
+.wizard-app [aria-pressed=true]>.deed-choice-check{visibility:visible}
+.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']){padding:22px;border-radius:12px;border:1px solid var(--dc-rule);margin-block:16px;background:var(--dc-paper)}
+.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']) h2{font:600 18px/1.4 'IBM Plex Sans',sans-serif;margin:0 0 10px;color:var(--dc-ink)}
+.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']) p{font-size:14px;line-height:1.65;color:var(--dc-body);max-width:76ch}
+.wizard-app .sale-authority-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-block:20px}
+.wizard-app :is(.sale-authority-grid,.gift-relationship-panel) .field{display:flex;flex-direction:column;gap:8px;min-width:0;margin:0}
+.wizard-app :is(.sale-authority-grid,.gift-relationship-panel) .field>span{font-size:13px;font-weight:600;line-height:1.5;color:var(--dc-ink)}
+.wizard-app :is(.sale-authority-grid,.gift-relationship-panel) :is(input,select):not([type=checkbox]){width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--dc-control-border);border-radius:7px;background:var(--dc-paper);color:var(--dc-ink);font-size:14px}
+.wizard-app .gift-relationship-panel>.field{max-width:560px;margin-block:18px}
+.wizard-app .gift-clause-preview{padding:16px 18px;background:var(--dc-green-bg);border:1px solid var(--dc-green-line);border-radius:8px;margin-top:20px}
+.wizard-app .gift-clause-preview>strong{font-size:12px;color:var(--dc-green)}
+.wizard-app .gift-clause-preview p{margin:8px 0 0;font-family:Georgia,serif}
+.wizard-app [aria-label='Sale attorney details'] fieldset{min-width:0;padding:18px;margin:20px 0;border:1px solid var(--dc-rule);border-radius:10px}
+.wizard-app [aria-label='Sale attorney details'] legend{padding:0 8px;font-size:14px;font-weight:600;color:var(--dc-green)}
+.wizard-app .authority-uploads{padding:16px;background:var(--dc-ground);border:1px dashed var(--dc-control-border);border-radius:8px;overflow-wrap:anywhere}
+.wizard-app :is(button,input,select,textarea,summary):focus-visible{outline:3px solid var(--dc-green);outline-offset:3px;scroll-margin-block:80px}
+.wizard-app .stage-head p:last-child{font-size:14px;line-height:1.6}
+.wizard-app .overview-card-title{line-height:1.45;overflow-wrap:anywhere}
+.wizard-app :is(.setup-field,.setup-reference,.dashboard-details,.panel){min-width:0}
+@media(max-width:1200px){.wizard-app .deed-quick-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.wizard-app .deed-quick-choices{padding:14px 14px 0;gap:8px}.wizard-app .deed-quick-choices button{padding:12px 10px;gap:8px}.wizard-app .deed-choice-icon{display:none}.wizard-app .sale-authority-grid{grid-template-columns:minmax(0,1fr);gap:16px}.wizard-app :is(.gift-relationship-panel,[aria-label='Sale authority details'],[aria-label='Sale attorney details']){padding:16px}.wizard-app [aria-label='Sale attorney details'] fieldset{padding:12px}.wizard-app .mobile-step-picker select{min-height:44px}.wizard-app .dashboard-stats>div>span:last-child{font-size:12px}.wizard-app .navigation button{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.wizard-app .deed-quick-choices button{transition:none}}
+/* Optional ownership shares use the same control treatment as party details. */
+.wizard-app .party-record-card label.field{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:13px;line-height:1.5;color:var(--dc-ink)}
+.wizard-app .party-record-card label.field>input{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--dc-control-border);border-radius:7px;background:var(--dc-paper);color:var(--dc-ink);font-size:14px}
+.wizard-app .party-record-card label.field>small{font-size:12px;line-height:1.5;color:var(--dc-body)}

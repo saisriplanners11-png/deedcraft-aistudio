@@ -1,3 +1,4 @@
+import { IconButton } from './icon-button';
 import { FileDropZone } from './file-drop-zone';
 import React, { useEffect, useRef, useState } from 'react';
 import { listTemplates, templateRequest } from './template-library-client';
@@ -48,7 +49,8 @@ export function TemplateLibrary({ onClose, onPublished }: { onClose: () => void;
     if (input.current) input.current.value = '';
   }
   return <main id="workspace-main" tabIndex={-1} className="template-library saved-deeds-dashboard">
-    <div className="template-heading"><div><p className="eyebrow">SHARED LIBRARY</p><h1>Deed templates</h1><p>Download → Edit in Word → Upload → Configure fields → Validate → Review → Publish</p></div><button onClick={onClose}>Back to deeds</button></div>
+    <div className="template-heading"><div><p className="eyebrow">SHARED LIBRARY</p><h1>Deed templates</h1><p>View the Word formats used to prepare your deeds.</p></div><button onClick={onClose}>Back to deeds</button></div>
+    <div className="template-intro"><strong>Preparing a deed?</strong> The published template is selected automatically in your workspace. Download a copy here to inspect its format.<br /><strong>Managing templates?</strong> Sign in below, upload your edited Word file, configure its fields, then validate and review it before publishing.</div>
     {error && <p className="notice" role="alert">{error} <button disabled={busy} onClick={() => void run(refresh)}>Refresh library</button></p>}
     {notice && <p className="notice" role="status">{notice}</p>}
     <section className="template-panel"><h2>Sale Deed</h2><p>One approved template covers plot, open place, part open place, house, dismantled house, and flats. Published changes apply automatically to new and existing saved deeds. Entered details are retained.</p>
@@ -65,7 +67,7 @@ export function TemplateLibrary({ onClose, onPublished }: { onClose: () => void;
     {listing?.versions.map(version => <section className="template-panel" key={version.id}>
       <div className="template-heading"><div><h2>{version.filename}</h2><p>{version.id === listing.active.sale ? 'Active' : version.publishedAt ? 'Previously published' : 'Unpublished revision'} · {new Date(version.createdAt).toLocaleString()}</p><small>{version.id} · SHA-256 {version.hash}</small></div><a href={`/api/templates/versions/${version.id}/download`}>Download Word</a></div>
       {session.authenticated && version.validation && <>
-        {!version.publishedAt && <div className="template-delete"><button disabled={busy} onClick={() => setDeleting(version.id)}>Delete revision</button>{deleting === version.id && <div role="alertdialog" aria-label={`Delete ${version.filename}`}><p>Move <strong>{version.filename}</strong> to Trash? It will be removed from this list. You can restore it from Trash. The active template will stay unchanged.</p><div className="template-actions"><button autoFocus disabled={busy} onClick={() => setDeleting(null)}>Cancel deletion</button><button disabled={busy} onClick={() => void run(async () => {
+        {!version.publishedAt && <div className="template-delete"><IconButton label="Delete revision" disabled={busy} onClick={() => setDeleting(version.id)} />{deleting === version.id && <div role="alertdialog" aria-label={`Delete ${version.filename}`}><p>Move <strong>{version.filename}</strong> to Trash? It will be removed from this list. You can restore it from Trash. The active template will stay unchanged.</p><div className="template-actions"><button autoFocus disabled={busy} onClick={() => setDeleting(null)}>Cancel deletion</button><button disabled={busy} onClick={() => void run(async () => {
           await templateRequest(`/versions/${version.id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf || '' }, body: JSON.stringify({ expectedSchemaRevision: version.schemaRevision || 0, expectedHash: version.hash }) });
           setDeleting(null); if (configuring === version.id) setConfiguring(null); setReviewed(old => ({ ...old, [version.id]: false })); await refresh(); setNotice('Revision moved to Trash. The active template is unchanged.');
         })}>Move to Trash</button></div></div>}</div>}

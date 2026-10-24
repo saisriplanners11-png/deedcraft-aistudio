@@ -1,9 +1,11 @@
+import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
+import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
 import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
+import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
 import { ALL_FIELDS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
@@ -54,6 +56,8 @@ import './compact-workflow.css';
 import './finish-workflow.css';
 import './property-party-polish.css';
 import './workspace-density.css';
+import './friendly-workspace.css';
+import { ScreenGuide, GettingStartedGuide } from './screen-guide';
 import { DocumentUpload, ReviewIssues } from './workflow-ui';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
@@ -66,7 +70,6 @@ import { deleteDeed, listSavedDeeds, saveDeed, type SavedDeed } from './saved-de
 // upload-extraction.ts's own apiQueue/pageQueue.
 const fileQueue = new WorkQueue(10);
 const ACCEPT = '.pdf,.docx,.txt,.md,image/jpeg,image/png,image/webp,image/gif';
-const LINK_FIELDS = ['linkOption', ...LINK_OPTIONS.flatMap(o => o.fields.map(f => f.id))];
 function StructureDetailsTable({ value, defaultRoof, onChange, onNotice }: { value: StructureDetails; defaultRoof: string; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
   const total = Number(details.totalFloors);
@@ -106,7 +109,7 @@ function StructureDetailsTable({ value, defaultRoof, onChange, onNotice }: { val
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.builtUpAreaSqFt} onChange={event => patchRow(row.id, { builtUpAreaSqFt: event.target.value })} style={{ width: 112, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><button type="button" className="gold" disabled={!canAdd} onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button>{details.rows.length > 1 && <button type="button" className="quiet" onClick={() => onChange({ ...details, rows: details.rows.filter(item => item.id !== row.id) })} style={{ marginLeft: 6 }}>−</button>}</td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><button type="button" className="gold" aria-label="Add structure row" disabled={!canAdd} onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button><IconButton label={`Delete structure row ${index + 1}`} onClick={() => onChange({ ...details, rows: details.rows.length > 1 ? details.rows.filter(item => item.id !== row.id) : [newStructureDetail()] })} style={{ marginLeft: 6 }} /></td>
         </tr>)}</tbody>
       </table>
     </div>
@@ -274,7 +277,7 @@ function RecordFieldGroup({
         setField={(id, v) => edit(role, record, id, v)}
       />
     ))}
-    {onDelete && <button className="quiet" onClick={onDelete} style={{ marginTop: 8 }}>{deleteLabel || 'Delete this record'}</button>}
+    {onDelete && <IconButton label={deleteLabel || `Delete ${label || role}`} onClick={onDelete} />}
   </PlacementRecord>;
 }
 
@@ -314,7 +317,7 @@ function LinkRecordCard({
     </FileDropZone>
     <SourceFeedback sources={sources} visibleFields={option.id === 'linkDoc' ? ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro'] : undefined} />
     <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: option.label, note: option.note, fields: option.fields }} form={form} setField={(id, v) => edit('link', record, id, v)} />
-    {onDelete && <button className="quiet" onClick={onDelete} style={{ marginTop: 8 }}>Delete this document</button>}
+    {onDelete && <IconButton label={`Delete ${label || 'document'}`} onClick={onDelete} />}
   </section>;
 }
 
@@ -335,7 +338,7 @@ function TitlePointCard({ option, record, form, onField, onUpload, sources, busy
       ['LRS Proceeding', 'lrsProceedingNo', 'lrsProceedingDate'],
     ].map(([title, ...ids]) => <FieldGroup key={title} group={{ placementSection: 'link-' + option.id, step: 1, title, note: '', fields: visibleFields.filter(field => ids.includes(field.id)) }} form={form} setField={onField} />)
       : <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: option.label, note: option.note, fields: visibleFields }} form={form} setField={onField} />}
-    {onDelete && <button type="button" className="quiet" onClick={onDelete}>Remove these details</button>}
+    {onDelete && <IconButton label={`Delete ${option.label} details`} onClick={onDelete} />}
   </section>;
 }
 
@@ -378,8 +381,9 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
  * different record's — the same way LinkRecordCard scopes an upload to one row.
  */
 function PartyRecordCard({
-  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose, shareFields,
+  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose, shareFields, onCapacityChange,
 }: {
+  onCapacityChange?: (value: string) => void;
   shareFields?: React.ReactNode;
   role: 'executant' | 'claimant'; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
@@ -406,7 +410,7 @@ function PartyRecordCard({
         const form = Object.fromEntries(PERSON_FIELDS.map(f => [f.id, resolved.values[fieldKey('party-person', person.id, f.id)] || (f.id === 'personRelation' ? 'S/O' : '')]));
         const fields = members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS;
         return <div className="representative-card" key={person.id} data-person-id={person.id}>
-          <div className="representative-heading"><b>{members ? 'Member' : 'Representative'} {index + 1}</b><button type="button" className="quiet" onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })}>Remove {members ? 'member' : 'representative'}</button></div>
+          <div className="representative-heading"><b>{members ? 'Member' : 'Representative'} {index + 1}</b><IconButton label={`Delete ${members ? 'member' : 'representative'} ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
           <ScopedSectionUpload label={members ? 'member' : 'representative'} busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
           <SourceFeedback sources={ownSources} />
           <FieldGroup group={{ step, title: (members ? 'Member' : 'Representative') + ' ' + (index + 1) + ' details', cols: 3, fields }} form={form} setField={(id, value) => edit('party-person', person.id, id, value)} />
@@ -421,7 +425,7 @@ function PartyRecordCard({
   };
   return <PlacementRecord scope={role} id={record}><section className="panel party-record-card">
     <div className="party-card-heading"><span className="record-heading-icon">{entity ? <Building2 size={21} aria-hidden="true" /> : <UserRound size={21} aria-hidden="true" />}</span><div><h2>{label || (role === 'executant' ? 'Executant' : 'Claimant')}</h2><p>{(entity ? entityForm[role + 'EntityName'] : resolved.values[fieldKey(role, record, role + 'Name')]) || (role === 'executant' ? 'Party transferring the property rights' : 'Party receiving the property rights')}</p></div><span className="record-kind">{partyType}</span></div>
-    <div className="party-type-selector"><FieldGroup group={{ step, title: 'Party type', fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType') }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => edit(role, record, id, value)} /></div>
+    <div className="party-type-selector"><FieldGroup group={{ step, title: 'Party type', fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType') }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => onCapacityChange ? onCapacityChange(value) : edit(role, record, id, value)} /></div>
     {entity ? <>
       <Section title={society ? 'Society / association details' : partyType === 'Company' ? 'Company details' : 'Firm / entity details'}>
         <ScopedSectionUpload label="entity particulars" busy={busy} onUpload={files => upload(files, { role, record }, ('entity:' + role + ':' + partyType) as ExtractionProfile)} />
@@ -439,7 +443,7 @@ function PartyRecordCard({
       <div className="party-identity-upload"><ScopedSectionUpload label="party identity" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} /></div>
       <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType afterField={id => id.endsWith('PinCode') ? shareFields : null} />
     </>}
-    {onDelete && <button type="button" className="quiet" onClick={onDelete}>Delete this {role}</button>}
+    {onDelete && <IconButton label={`Delete ${label || role}`} onClick={onDelete} />}
   </section></PlacementRecord>;
 }
 
@@ -547,6 +551,7 @@ function ReviewQueue({ sources, record, edit }: { sources: Source[]; record: str
 }
 
 export default function WizardApp() {
+  const [showFieldHelp, setShowFieldHelp] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return localStorage.getItem('deedcraft-theme') === 'dark' ? 'dark' : 'light'; }
     catch { return 'light'; }
@@ -1162,9 +1167,9 @@ export default function WizardApp() {
     if (Number.isFinite(vm.balanceN) && vm.balanceN > 0) edit('payment', record, 'amount', String(Math.round(vm.balanceN)));
   };
   const removePayment = (record: string) => {
-    for (const key of ['mode', 'amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee', 'advance', 'tds', 'filled', 'docName']) edit('payment', record, key, '');
+    dispatch({ type: 'remove-record', role: 'payment', record });
   };
-  const clearLinkRecord = (record: string) => { for (const field of LINK_FIELDS) edit('link', record, field, ''); };
+  const clearLinkRecord = (record: string) => { dispatch({ type: 'remove-record', role: 'link', record }); };
   const propertyForLinkRecord = (record: string) => draft.linkPropertyRecords[record]
     || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === record)?.assignment?.propertyRecord
     || 'primary';
@@ -1180,7 +1185,7 @@ export default function WizardApp() {
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
-  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className="wizard-app" data-theme={theme}>
+  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app${showFieldHelp ? ' show-field-help' : ''}`} data-theme={theme}>
     <ExtractDialog
       open={!!activeUpload}
       label={activeUpload?.label || 'Document'}
@@ -1193,18 +1198,19 @@ export default function WizardApp() {
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
     <a className="skip-link" href="#workspace-main">Skip to content</a>
-    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}<span>{theme === 'light' ? 'Dark mode' : 'Light mode'}</span></button>{!libraryView && <button type="button" onClick={() => void showLibrary()}><FolderOpen size={16} aria-hidden="true" />Saved deeds</button>}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
+    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
     {templateLibraryError && <p className="notice" role="alert">Shared template library: {templateLibraryError} <button onClick={() => void refreshPublishedTemplate()}>Retry</button></p>}
     {templatesView ? <TemplateLibrary onClose={() => setTemplatesView(false)} onPublished={() => void refreshPublishedTemplate()} /> : libraryView ? <main id="workspace-main" tabIndex={-1} className="saved-deeds-dashboard">
-      <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1><p>A clear workspace for every deed. Pick up a draft or start something new.</p></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
+      <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
       {storageError && <p className="notice" role="alert">{storageError}</p>}
       <div className="library-context"><span><FolderOpen size={16} aria-hidden="true" /> {savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'}</span><span>Stored in this browser · Keep using this device to access your drafts</span></div>
+      {savedDeeds.length > 0 && <GettingStartedGuide />}
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed =>
         <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
-          <div><h2>{(isMunicipalGift(appStateFor(deed.draft)) ? [mergeValues(appStateFor(deed.draft)).ULB, appStateFor(deed.draft).form.village].filter(Boolean).join(', ') : partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ')) || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`}</h2><p>{deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span>{deed.draft.sources.length} source {deed.draft.sources.length === 1 ? 'document' : 'documents'}</span><span>Last viewed: {STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
-          <div className="saved-deed-actions"><button type="button" className="primary" onClick={() => openSaved(deed)}>Continue / Edit</button><button type="button" onClick={() => void removeSaved(deed)}>Delete</button></div>
+          <div><h2>{(isMunicipalGift(appStateFor(deed.draft)) ? [mergeValues(appStateFor(deed.draft)).ULB, appStateFor(deed.draft).form.village].filter(Boolean).join(', ') : partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ')) || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`}</h2><p>{deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
+          <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
         </article>)}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
     </main> : <div className="shell">
@@ -1234,8 +1240,10 @@ export default function WizardApp() {
           </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
         </header>
+        {step >= 0 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
         {[-1, 3, 6, 7, 8, 9].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
         {fieldContract.fields.some(field => field.placement) && (extractingTemplateFields || templateFieldMessage) && <div className="notice"><p role="status">{templateFieldMessage}</p>{extractingTemplateFields && <button type="button" onClick={cancelTemplateExtraction}>Cancel additional-field read</button>}</div>}
+
 
         {step === -1 && <div className="dashboard">
           <section className="dashboard-hero" aria-labelledby="dashboard-title">
@@ -1293,10 +1301,19 @@ export default function WizardApp() {
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="setup-card" aria-labelledby="setup-property-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">01</span><div><h2 id="setup-property-title">Property type <span lang="te">ఆస్తి రకం</span></h2><p>Choose the property covered by this schedule.</p></div></div>
-            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><ScheduleTypeControl municipal={municipalGift} key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values[propertyRecords.find(record => record.id === activePropertyId)?.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
+            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><IconButton label={`Delete property schedule ${activePropertyIndex + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: activePropertyId })} />
+              <ScheduleTypeControl municipal={municipalGift} key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values[propertyRecords.find(record => record.id === activePropertyId)?.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
           </section>
           <section className="setup-card" aria-labelledby="setup-deed-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">02</span><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
+            <div className="deed-quick-choices" role="group" aria-label="Common deed forms">
+              {[
+                { label: 'SALE', detail: 'Ordinary sale', instrument: 'sale' as const, variant: saleVariant('ordinary') },
+                { label: 'GPA', detail: 'Sale through GPA', instrument: 'sale' as const, variant: saleVariant('gpa') },
+                { label: 'AGPA', detail: 'Sale through AGPA', instrument: 'sale' as const, variant: saleVariant('agpa') },
+                { label: 'GIFT', detail: 'Gift settlement', instrument: 'gift' as const, variant: DEED_DEFINITIONS.gift.variants[0].id },
+              ].map(choice => <button key={choice.label} type="button" aria-pressed={draft.instrumentId === choice.instrument && draft.variantId === choice.variant} onClick={() => dispatch({ type: 'instrument', instrumentId: choice.instrument, variantId: choice.variant })}><span className="deed-choice-icon"><FileText size={19} aria-hidden="true" /></span><span><strong>{choice.label}</strong><small>{choice.detail}</small></span><CircleCheck className="deed-choice-check" size={18} aria-hidden="true" /></button>)}
+            </div>
             <div className="setup-card-content setup-fields">
               <PlacementSlot sectionId="setup-deed" anchorFieldId="instrumentId" position="before" />
               <label className="setup-field"><span>Deed type <span lang="te">దస్తావేజు రకం</span></span>
@@ -1324,7 +1341,7 @@ export default function WizardApp() {
         </div>}
 
         {municipalGift && [0, 8].includes(step) && <section className="panel" aria-label="Municipal Gift details"><h2>Municipal Gift</h2><p>Gift to the property ULB, represented by its Commissioner, for the public purpose stated in the supplied template.</p><p><strong>Municipal recipient:</strong> {[mergeValues(state).ULB, state.form.village].filter(Boolean).join(', ') || 'Complete the property ULB and village.'}</p><p>Supports open place, plot, dismantled house and part open place.</p></section>}
-        {draft.instrumentId === 'gift' && !municipalGift && [0, 7, 8].includes(step) && <section className="panel" aria-label="Gift relationship">
+        {draft.instrumentId === 'gift' && !municipalGift && [0, 7, 8].includes(step) && <section className="panel gift-relationship-panel" aria-label="Gift relationship">
           <h2>Donee relationship to Donor</h2>
           <p>Choose how the Donee is related to the Donor. This is separate from the identity-card relation (S/O, W/O or D/O).</p>
           <label className="field"><span>Relationship for gift</span><select aria-label="Relationship for gift" value={state.form.giftRelationship || ''} onChange={event => edit('property', 'primary', 'giftRelationship', event.target.value)}>
@@ -1333,7 +1350,7 @@ export default function WizardApp() {
             <option value="other">Other / mixed relationships</option>
           </select></label>
           {state.form.giftRelationship === 'other' && <label className="field"><span>Relationship wording</span><input aria-label="Relationship wording" value={state.form.giftRelationshipCustom || ''} onChange={event => edit('property', 'primary', 'giftRelationshipCustom', event.target.value)} /><small>Enter the full phrase, for example “son and daughter” for two Donees. Confirm it applies to the listed Donors.</small></label>}
-          <p><strong>Clause preview</strong></p><p>{giftRelationshipValues(state)['Gift Relationship Recital']}</p>
+          <div className="gift-clause-preview"><strong>Clause preview</strong><p>{giftRelationshipValues(state)['Gift Relationship Recital'] || 'Choose a relationship to preview the gift recital.'}</p></div>
         </section>}
         {authorityErrors.length > 0 && [8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
@@ -1408,9 +1425,9 @@ export default function WizardApp() {
             const i = activePropertyIndex;
             const multipleProperties = propertyRecords.length > 1;
             return <section className="panel property-schedule-card" key={record.id}>
-              <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span></div>
+              <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
               <ScheduleTypeControl municipal={municipalGift} scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
-              {multipleProperties && <div className="add-document-row"><button type="button" className="quiet" onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }}>Edit documents for Property {i + 1}</button></div>}
+              {multipleProperties && <div className="add-document-row"><IconButton icon={Pencil} label={`Edit documents for property ${i + 1}`} onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }} /></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} resolved={resolved} edit={edit}
@@ -1453,7 +1470,7 @@ export default function WizardApp() {
           <div className="payment-list-heading"><h3>Payment records</h3><span>Choose a method for each payment</span></div>
           {!state.payments.length && <div className="payment-empty"><CreditCard size={22} aria-hidden="true" /><div><strong>No payment records yet</strong><p>Choose a payment method below to add the first record.</p></div></div>}
           {state.payments.map((p, i) => (
-            <PaymentCard key={p.id} index={i} payment={p} canRemove={state.payments.length > 1}
+            <PaymentCard key={p.id} index={i} payment={p} canRemove={true}
               onPatch={patch => patchPayment(p.id, patch)} onRemove={() => removePayment(p.id)} />
           ))}
           <AddPayment onAdd={addPayment} remaining={vm.balanceINR ? `Balance remaining: ${vm.balanceINR}` : ''} />
@@ -1468,16 +1485,33 @@ export default function WizardApp() {
           if (municipalGift && step === 7) return <section className="panel" aria-label="Municipal donee"><h2>Municipal donee</h2><p>{mergeValues(state).ULB || 'Select the property ULB / municipality'}, {state.form.village || 'enter the property village'}, represented by its Commissioner.</p><p>The municipal recipient comes from the property details.</p><button type="button" onClick={() => goto(3)}>Edit property details</button></section>;
           const role: 'executant' | 'claimant' = step === 6 ? 'executant' : 'claimant';
           const noun = step === 6 ? 'Executant' : 'Claimant';
-          const records = partyRecordIds(role);
+          const combined = role === 'executant' && state.saleDocument !== 'ordinary';
+          const records = partyRecordIds(role).filter(id => !combined || !state.saleAuthority?.attorneys.some(attorney => attorney.id === id));
+          const changeCapacity = async (id: string, value: string) => {
+            try {
+              const originals = value.startsWith('Attorney') ? current.current.sources.filter(source => source.assignment?.role === 'executant' && source.assignment.record === id).flatMap(source => (sourceFiles[source.id] || []).map((file, index) => ({ file, documentId: `executant-source-${source.id}-${index}` }))) : [];
+              const documents = await Promise.all(originals.map(({ file, documentId }) => new Promise<import('./sale-options').AuthorityDocument>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({ id: documentId, name: file.name, size: file.size, dataUrl: String(reader.result) });
+                reader.onerror = () => reject(new Error('Could not retain the identity upload. Please retry.'));
+                reader.readAsDataURL(file);
+              })));
+              const next = changeExecutantCapacity(current.current, id, value, records);
+              if (documents.length && next.saleAuthority) next.saleAuthority = { ...next.saleAuthority, attorneys: next.saleAuthority.attorneys.map(attorney => attorney.id === id ? { ...attorney, documents: [...(attorney.documents || []), ...documents.filter(document => !attorney.documents?.some(existing => existing.id === document.id))] } : attorney) };
+              dispatch({ type: 'load', draft: next });
+              setExtraPartyRecords(previous => ({ ...previous, executant: previous.executant.filter(record => record !== id) }));
+            } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not change this person’s role. Please retry.'); }
+          };
           const parties = <>
         {authorityErrors.length > 0 && step === 6 && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
             {records.map((record, i, all) => {
               const busySource = sourceBusyFor(role, record);
               return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
+                onCapacityChange={combined ? value => { if (!busySource) void changeCapacity(record, value); } : undefined}
                 shareFields={<PartyShareFields role={role} record={record} parties={records} schedules={propertyRecords}
                   shares={(role === 'executant' ? draft.vendorSharesBySchedule : draft.vendeeSharesBySchedule) || {}} dispatch={dispatch} />}
                 label={all.length > 1 ? `${noun} ${i + 1}` : undefined}
-                onDelete={all.length > 1 && record !== 'primary' ? () => clearPartyRecord(role, record) : undefined}
+                onDelete={() => clearPartyRecord(role, record)}
                 draft={draft} dispatch={dispatch} upload={(files, assignment, profile) => void runUpload(files, assignment, profile)} choose={(key, candidateId) => dispatch({ type: 'choose', key, candidateId })}
                 onUpload={uploadFor(role, record)}
                 sources={draft.sources.filter(s => s.assignment?.role === role && s.assignment.record === record)}
@@ -1485,7 +1519,7 @@ export default function WizardApp() {
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
           </>;
-          return role === 'executant' ? <SaleAuthorityEditor key={draft.id} state={state} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = applyGpaExtraction(current.current, authority, result); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
+          return role === 'executant' ? <SaleAuthorityEditor key={draft.id} state={state} principalIds={records} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
         })()}
 
 
@@ -1521,7 +1555,7 @@ export default function WizardApp() {
                 <button type="button" className="gold" disabled={validatingTemplate} onClick={() => templateInput.current?.click()}>{validatingTemplate ? 'Checking…' : customTemplate ? 'Replace template' : 'Upload .docx template'}</button>
                 <input ref={templateInput} type="file" disabled={validatingTemplate} accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden onChange={event => void chooseTemplate(event.target.files?.[0])} />
                 <button type="button" onClick={() => void downloadStarterTemplate()}>Download starter template</button>
-                {customTemplate && <button type="button" onClick={() => { templateValidationRevision.current++; setValidatingTemplate(false); setCustomTemplate(null); setDownload(null); setMessage(''); if (templateInput.current) templateInput.current.value = ''; }}>Remove</button>}
+                {customTemplate && <IconButton label="Remove custom template" onClick={() => { templateValidationRevision.current++; setValidatingTemplate(false); setCustomTemplate(null); setDownload(null); setMessage(''); if (templateInput.current) templateInput.current.value = ''; }} />}
               </div>
               {customTemplate?.validation.valid && <div className="template-status valid"><b>{customTemplate.name}</b><span>Compatible — {customTemplate.validation.detectedPlaceholders.length} supported placeholders found.</span>{customTemplate.validation.omittedPlaceholders.length > 0 && <small>{customTemplate.validation.omittedPlaceholders.length} optional starter placeholders are omitted from this template.</small>}</div>}
               {customTemplate && !customTemplate.validation.valid && <div className="template-status invalid" role="alert"><b>{customTemplate.name} is not compatible</b><ul>{customTemplate.validation.errors.map(error => <li key={error}>{error}</li>)}</ul></div>}
@@ -1567,7 +1601,7 @@ export default function WizardApp() {
         {step >= 0 && step <= 7 && <TemplatePlacementFallback />}
         {step >= 0 && <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(previousStep)}>{step <= 0 ? 'Overview' : STEPS[previousStep]?.label || 'Overview'}</button>
-          <span>Your entries are saved automatically in this browser.</span>
+          <span><strong>Saved as you work</strong><small>You can go back and change any detail.</small></span>
           {step < STEPS.length - 1 && <button className="primary" onClick={() => goto(followingStep)}>{step < 0 ? 'Start at Step 01' : `Continue → ${STEPS[followingStep]?.label ?? 'Generate'}`}</button>}
         </footer>}
       </main>

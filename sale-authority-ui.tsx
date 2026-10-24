@@ -1,3 +1,5 @@
+import { PARTY_CAPACITY_OPTIONS } from './fields';
+import { IconButton } from './icon-button';
 import { extractAuthorityDocuments } from './authority-extraction';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ExtractDialog, type ProgressStep } from './ui';
@@ -40,7 +42,7 @@ function AuthorityUploads({ label, documents = [], onChange, onExtract }: { labe
     <input id={id} type="file" multiple accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,.gif" disabled={busy} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void upload(files); }} />
     {busy && <p role="status">Attaching and extracting documents…</p>}
     {error && <p role="alert">{error}</p>}
-    {documents.length > 0 && <ul>{documents.map(document => <li key={document.id}><a href={document.dataUrl} download={document.name}>{document.name}</a> <small>({Math.ceil(document.size / 1024)} KB)</small> <button type="button" disabled={busy} aria-label={`Remove ${document.name}`} onClick={() => onChange(documents.filter(item => item.id !== document.id))}>Remove</button></li>)}</ul>}
+    {documents.length > 0 && <ul>{documents.map(document => <li key={document.id}><a href={document.dataUrl} download={document.name}>{document.name}</a> <small>({Math.ceil(document.size / 1024)} KB)</small> <IconButton disabled={busy} label={`Remove ${document.name}`} onClick={() => onChange(documents.filter(item => item.id !== document.id))} /></li>)}</ul>}
   </FileDropZone>;
 }
 
@@ -51,7 +53,7 @@ const fields = [
   ['District', 'District'], ['State', 'State'], ['PinCode', 'PIN code'], ['SharePercentage', 'Share percentage (%) — optional'], ['Aadhaar', 'Aadhaar number'],
   ['Mobile', 'Mobile (optional)'], ['Pan', 'PAN (optional)'],
 ];
-export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children }: { children?: React.ReactNode; state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
+export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children, principalIds = [], onCapacityChange, onDeleteAttorney }: { principalIds?: string[]; onCapacityChange?: (id: string, value: string) => void; onDeleteAttorney?: (id: string) => void; children?: React.ReactNode; state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
   const authority = state.saleAuthority || emptySaleAuthority();
   const latest = useRef({ authority, onChange, onApplyGpa }); latest.current = { authority, onChange, onApplyGpa };
   const controllers = useRef(new Set<AbortController>());
@@ -61,6 +63,11 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
   const [extracting, setExtracting] = useState(false);
   const [dialog, setDialog] = useState<{ names: string[]; label: string; result: string } | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controllers.current.forEach(controller => controller.abort()); controllers.current.clear(); }; }, [state.saleDocument]);
+  const visibleIds = [...principalIds, ...authority.attorneys.map(attorney => attorney.id)];
+  const order = [...new Set([...(authority.executantOrder || []).filter(id => visibleIds.includes(id)), ...visibleIds])];
+  useEffect(() => {
+    if (state.saleDocument && state.saleDocument !== 'ordinary' && JSON.stringify(authority.executantOrder) !== JSON.stringify(order)) onChange({ ...authority, executantOrder: order });
+  }, [state.saleDocument, JSON.stringify(order), JSON.stringify(authority.executantOrder)]);
   if (!state.saleDocument || state.saleDocument === 'ordinary') return <>{children}</>;
   async function extract(files: File[], ids: string[], authorityUpload = false) {
     if (!mounted.current) return;
@@ -69,7 +76,7 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     try {
       const result = await extractAuthorityDocuments(files, ids, controller.signal, setProgress);
       const current = latest.current.authority;
-      const retained = new Set([...(current.documents || []), ...current.attorneys.flatMap(attorney => attorney.documents || [])].map(document => document.id));
+      const retained = new Set([...(current.documents || []), ...current.attorneys.flatMap(attorney => attorney.documents || []), ...Object.values(current.personDocuments || {}).flat()].map(document => document.id));
       if (controller.signal.aborted || ids.some(id => !retained.has(id))) return;
       const updated = { ...current, extractions: [...(current.extractions || []).filter(item => !item.documentIds.some(id => ids.includes(id))), result] };
       for (const [key, value] of Object.entries(result.details)) if (!String((updated as any)[key] || '').trim()) (updated as any)[key] = value;
@@ -95,7 +102,17 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
       setExtractionError(error instanceof Error ? error.message : 'Could not read the attached documents. Please upload them again.');
     }
   }
-  const principals = partyRecords(state, 'executant').map((record, index) => ({ ...record, id: index ? record.id : state.primaryExecutantId || 'primary' }));
+  const principals = partyRecords(state, 'executant').map((record, index) => ({ ...record, id: index ? record.id : state.primaryExecutantId || 'primary' })).filter(principal => principalIds.includes(principal.id));
+  const partyContent = React.Children.toArray(React.isValidElement(children) ? (children.props as { children?: React.ReactNode }).children : children);
+  const principalCards = partyContent.filter((node): node is React.ReactElement<{ record: string; label?: string }> => React.isValidElement<{ record?: string }>(node) && typeof node.props.record === 'string');
+  const attorneyCards = authority.attorneys.map((attorney) => { const index = order.indexOf(attorney.id); return <section className="panel party-record-card" key={attorney.id} aria-label={`Executant ${index + 1} Attorney`}><h2>Executant {index + 1} — Attorney</h2><label className="field party-type-selector"><span>Party type</span><select aria-label="Party type" value="attorney" disabled={extracting} onChange={event => onCapacityChange?.(attorney.id, event.target.value)}><option value="attorney">Attorney / Agent</option>{PARTY_CAPACITY_OPTIONS.filter(value => !value.startsWith("Attorney")).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      <AuthorityUploads label={`Upload Attorney ${index + 1} identity / supporting documents`} documents={attorney.documents} onExtract={extract} onChange={documents => updateDocuments({ ...authority, attorneys: authority.attorneys.map(item => item.id === attorney.id ? { ...item, documents } : item) })} />
+      {!!attorney.documents?.length && <button type="button" disabled={controllers.current.size > 0} onClick={() => void retry(attorney.documents || [])}>Extract details for Attorney {index + 1}</button>}
+      <div className="sale-authority-grid">{fields.map(([key, label]) => <label className="field" key={key}><span>{label}</span>{key === 'Relation' ? <select value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)}><option value="">Choose relation</option>{['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'].map(option => <option key={option}>{option}</option>)}</select> : <input type={key === 'Dob' ? 'date' : key === 'Age' ? 'number' : 'text'} inputMode={key === 'SharePercentage' ? 'decimal' : undefined} aria-invalid={key === 'SharePercentage' && !!attorney.values[key]?.trim() && vendeeShareCents(attorney.values[key]) === null} value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)} />}</label>)}</div>
+      <p>Represents these principals:</p>
+      {principals.map((principal, principalIndex) => <label key={principal.id} style={{ display: 'block', marginBottom: 8 }}><input type="checkbox" checked={attorney.principalIds.includes(principal.id)} onChange={event => onChange({ ...authority, attorneys: authority.attorneys.map(item => item.id !== attorney.id ? item : { ...item, principalIds: event.target.checked ? [...item.principalIds, principal.id] : item.principalIds.filter(id => id !== principal.id) }) })} /> {principal.values.executantName || `Principal ${principalIndex + 1}`}</label>)}
+      <IconButton label={`Remove Executant ${index + 1}`} onClick={() => onDeleteAttorney?.(attorney.id)} />
+    </section>; });
   const finished = !!extractionError || !!dialog?.result;
   const preparing = progress.startsWith('Preparing');
   const dialogSteps: ProgressStep[] = [
@@ -109,6 +126,8 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     setProgress('');
   }} /><section className="panel" aria-label="Sale authority details">
     <h2>{saleDocumentLabel(state.saleDocument)} — authority details</h2>
+    <p>Copy these registration details from the existing {state.saleDocument.toUpperCase()} document. Add principals and attorneys in Executant Details below and choose each person’s party type.</p>
+    <AuthorityUploads label={`Upload ${state.saleDocument.toUpperCase()} documents`} documents={authority.documents} onExtract={(files, ids) => extract(files, ids, true)} onChange={documents => updateDocuments({ ...authority, documents })} />
     {!!authority.documents?.length && <button type="button" disabled={extracting} onClick={() => void retry(authority.documents || [], true)}>Extract details from attached authority documents</button>}
     {!!authority.documents?.length && !extracting && !extractionError && authority.documents.some(document => !(authority.extractions || []).some(read => read.documentIds.includes(document.id))) && <p role="alert">The authority document is attached, but extraction has not completed. Click “Extract details from attached authority documents”. If extraction fails, the error will appear here; uploading alone does not confirm that details were filled.</p>}
     {extracting && <p role="status">Extracting authority details…</p>}
@@ -120,29 +139,27 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
       ...(state.saleDocument === 'agpa' ? [['adjustedAmount', 'AGPA adjusted stamp-duty amount (₹)']] : []),
     ] as [keyof SaleAuthority, string][]).map(([key, label]) => <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : key === 'adjustedAmount' ? 'number' : 'text'} min={key === 'adjustedAmount' ? 0 : undefined} value={(authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: event.target.value })} /></label>)}</div>
   </section>
-  {children}
-  <section className="panel" aria-label="Sale attorney details">
-    <h2>Attorneys — {state.saleDocument.toUpperCase()} holders</h2>
-    {authority.attorneys.map((attorney, index) => <fieldset key={attorney.id} aria-label={`Attorney ${index + 1}`}><legend>Attorney {index + 1} — {state.saleDocument.toUpperCase()} holder</legend>
-      <AuthorityUploads label={`Upload Attorney ${index + 1} identity / supporting documents`} documents={attorney.documents} onExtract={extract} onChange={documents => updateDocuments({ ...authority, attorneys: authority.attorneys.map(item => item.id === attorney.id ? { ...item, documents } : item) })} />
-      {!!attorney.documents?.length && <button type="button" disabled={controllers.current.size > 0} onClick={() => void retry(attorney.documents || [])}>Extract details for Attorney {index + 1}</button>}
-      <div className="sale-authority-grid">{fields.map(([key, label]) => <label className="field" key={key}><span>{label}</span>{key === 'Relation' ? <select value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)}><option value="">Choose relation</option>{['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'].map(option => <option key={option}>{option}</option>)}</select> : <input type={key === 'Dob' ? 'date' : key === 'Age' ? 'number' : 'text'} inputMode={key === 'SharePercentage' ? 'decimal' : undefined} aria-invalid={key === 'SharePercentage' && !!attorney.values[key]?.trim() && vendeeShareCents(attorney.values[key]) === null} value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)} />}</label>)}</div>
-      <p>Represents these principals:</p>
-      {principals.map((principal, principalIndex) => <label key={principal.id} style={{ display: 'block', marginBottom: 8 }}><input type="checkbox" checked={attorney.principalIds.includes(principal.id)} onChange={event => onChange({ ...authority, attorneys: authority.attorneys.map(item => item.id !== attorney.id ? item : { ...item, principalIds: event.target.checked ? [...item.principalIds, principal.id] : item.principalIds.filter(id => id !== principal.id) }) })} /> {principal.values.executantName || `Principal ${principalIndex + 1}`}</label>)}
-      <button type="button" onClick={() => onChange({ ...authority, attorneys: authority.attorneys.filter(item => item.id !== attorney.id) })}>Remove attorney {index + 1}</button>
-    </fieldset>)}
-    <button type="button" onClick={() => onChange({ ...authority, attorneys: [...authority.attorneys, { id: crypto.randomUUID(), principalIds: [], values: {} }] })}>Add attorney</button>
-  </section>
+  {order.map(id => {
+    const attorney = attorneyCards.find(card => card.key === id);
+    if (attorney) return attorney;
+    const card = principalCards.find(card => card.props.record === id);
+    if (!card) return null;
+    const index = order.indexOf(id);
+    return <React.Fragment key={id}>{React.cloneElement(card, { label: `Executant ${index + 1} — Principal` })}
+      {!!authority.personDocuments?.[id]?.length && <section className="panel"><AuthorityUploads label={`Upload Executant ${index + 1} supporting documents`} documents={authority.personDocuments[id]} onExtract={extract} onChange={documents => updateDocuments({ ...authority, personDocuments: { ...authority.personDocuments, [id]: documents } })} /><button type="button" disabled={extracting} onClick={() => void retry(authority.personDocuments?.[id] || [])}>Extract details for Executant {index + 1}</button></section>}
+    </React.Fragment>;
+  })}
+  {partyContent.filter(node => !React.isValidElement<{ record?: string }>(node) || !node.props.record)}
   {!!authority.extractions?.length && <details className="panel" aria-label="Authority extraction review"><summary>Review extracted people, source quotes and notes</summary>
     {(authority.extractions || []).map(extraction => <section key={extraction.id} aria-label="Extracted authority people">
       {extraction.people.map(person => <ExtractedAuthorityPerson key={person.id} person={person} principals={principals} authority={authority} onApply={onApplyPerson} holderLabel={state.saleDocument === 'agpa' ? 'AGPA holder' : 'GPA holder'} />)}
       {extraction.notes.length > 0 && <ul>{extraction.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
     </section>)}
   </details>}
-    <style>{`.sale-authority-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:18px 0}.sale-authority-grid input,.sale-authority-grid select{width:100%;min-height:40px}.panel[aria-label="Sale attorney details"] fieldset,details[aria-label="Authority extraction review"] fieldset{padding:18px;margin:18px 0;border:1px solid #aaa;border-radius:8px}`}</style>
+    <style>{`.sale-authority-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:18px 0}.sale-authority-grid input,.sale-authority-grid select{width:100%;min-height:40px}details[aria-label="Authority extraction review"] fieldset{padding:18px;margin:18px 0;border:1px solid #aaa;border-radius:8px}`}</style>
   </>;
   function updateDocuments(value: SaleAuthority) {
-    const retained = new Set([...(value.documents || []), ...value.attorneys.flatMap(attorney => attorney.documents || [])].map(document => document.id));
+    const retained = new Set([...(value.documents || []), ...value.attorneys.flatMap(attorney => attorney.documents || []), ...Object.values(value.personDocuments || {}).flat()].map(document => document.id));
     onChange({ ...value, extractions: (value.extractions || []).filter(extraction => extraction.documentIds.every(id => retained.has(id))) });
   }
   function update(id: string, key: string, value: string) {

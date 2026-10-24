@@ -1,3 +1,4 @@
+import { IconButton } from './icon-button';
 import React from 'react';
 import { Section, Input, C } from './ui';
 import { css } from './css';
@@ -128,7 +129,7 @@ export function PropertyDetailsSection({ property, boundaries, onChange }: { pro
               <input type="checkbox" checked={item.showMeasurements !== false} onChange={e => patchHouse(index, { showMeasurements: e.target.checked })} />
               Show House in Sketch
             </label>
-            <button type="button" className="quiet" onClick={() => setHouses(houses.filter((_, i) => i !== index))}>Remove</button>
+            <IconButton label={`Delete structure ${index + 1}`} onClick={() => setHouses(houses.filter((_, i) => i !== index))} />
           </div>
 
           <div style={css('display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px')}>
@@ -340,13 +341,13 @@ export function PartiesSection({
       {executants.map((party, index) => <div key={`executant-${index}`}>
         <PartyFields label={`Executant ${index + 1}`} telugu="అమ్మకందారు" party={party}
           onChange={next => onExecutants(executants.map((item, i) => i === index ? next : item))} />
-        {executants.length > 1 && <button type="button" className="quiet" onClick={() => onExecutants(executants.filter((_, i) => i !== index))}>Remove executant {index + 1}</button>}
+        {executants.length > 1 && <IconButton label={`Delete executant ${index + 1}`} onClick={() => onExecutants(executants.filter((_, i) => i !== index))} />}
       </div>)}
       <button type="button" className="quiet" onClick={() => onExecutants([...executants, blank()])}>+ Add another executant</button>
       {claimants.map((party, index) => <div key={`claimant-${index}`}>
         <PartyFields label={`Claimant ${index + 1}`} telugu="కొనుగోలుదారు" party={party}
           onChange={next => onClaimants(claimants.map((item, i) => i === index ? next : item))} />
-        {claimants.length > 1 && <button type="button" className="quiet" onClick={() => onClaimants(claimants.filter((_, i) => i !== index))}>Remove claimant {index + 1}</button>}
+        {claimants.length > 1 && <IconButton label={`Delete claimant ${index + 1}`} onClick={() => onClaimants(claimants.filter((_, i) => i !== index))} />}
       </div>)}
       <button type="button" className="quiet" onClick={() => onClaimants([...claimants, blank()])}>+ Add another claimant</button>
       <Section title="Witnesses" telugu="సాక్షులు">

@@ -12,7 +12,7 @@ try {
   await page.getByRole('button', { name: /01\s*Deed setup/ }).click();
   await page.getByLabel(/Deed type/).selectOption('gift');
   await expect(page.getByRole('region', { name: 'Gift relationship' })).toBeVisible();
-  await page.getByLabel(/Draft form/).selectOption('municipal-gift');
+  await page.getByLabel(/Draft form/).selectOption({ label: 'Gift to Local Bodies' });
   await expect(page.getByRole('region', { name: 'Gift relationship' })).toHaveCount(0);
   const property = page.getByLabel('What is this property?');
   assert.equal(await property.locator('option').count(), 5);
@@ -58,6 +58,8 @@ try {
   assert.doesNotMatch(text, /natural love|FAMILY MEMBER|<ULB>|<VILLAGE>/);
   // Switching back restores the unchanged regular Gift default and relationship flow.
   await page.getByRole('button', { name: /01\s*Deed setup/ }).click();
+  await page.getByLabel(/Draft form/).selectOption({ label: 'Others' });
+  await expect(page.getByLabel(/Draft form/)).toHaveValue('non-family-gift');
   await page.getByLabel(/Draft form/).selectOption('family-gift');
   await expect(page.getByRole('region', { name: 'Gift relationship' })).toBeVisible();
   await page.locator('.template-context summary').click();

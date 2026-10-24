@@ -89,6 +89,7 @@ export type Action =
   | { type: 'add-person'; side: 'executant' | 'claimant'; record: string; id: string; kind: 'representativeIds' | 'memberIds' }
   | { type: 'remove-person'; side: 'executant' | 'claimant'; record: string; id: string }
   | { type: 'remove-party'; role: 'executant' | 'claimant'; record: string }
+  | { type: 'remove-record'; role: 'property' | 'link' | 'payment'; record: string }
   | { type: 'instrument'; instrumentId: InstrumentId; variantId?: string }
   | { type: 'manual'; key: string; value: string }
   | { type: 'choose'; key: string; candidateId: string }
@@ -134,7 +135,20 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     next = { ...draft, partyPeople: { ...draft.partyPeople, [key]: { ...people, [action.kind]: [...new Set([...people[action.kind], action.id])] } } };
   }
   if (action.type === 'remove-person') next = removePerson(draft, action.side, action.record, action.id);
+  if (action.type === 'remove-record') {
+    next = removeRecord(draft, action.role, action.record);
+    if (action.role === 'property') {
+      const links = new Set(Object.entries(draft.linkPropertyRecords).filter(([, id]) => id === action.record).map(([id]) => id));
+      for (const source of draft.sources) if (source.assignment?.role === 'link' && (source.assignment.propertyRecord || 'primary') === action.record) links.add(source.assignment.record);
+      for (const record of links) next = removeRecord(next, 'link', record);
+      const omit = <T,>(values: Record<string, T> = {}) => Object.fromEntries(Object.entries(values).filter(([id]) => id !== action.record));
+      next = { ...next, propertyIds: next.propertyIds.filter(id => id !== action.record), activePropertyId: next.activePropertyId === action.record ? 'primary' : next.activePropertyId,
+        linkPropertyRecords: Object.fromEntries(Object.entries(next.linkPropertyRecords).filter(([, id]) => id !== action.record)),
+        structureDetailsBySchedule: omit(next.structureDetailsBySchedule), vendeeSharesBySchedule: omit(next.vendeeSharesBySchedule), vendorSharesBySchedule: omit(next.vendorSharesBySchedule) };
+    }
+  }
   if (action.type === 'remove-party') {
+    const cleared = removeRecord(draft, action.role, action.record);
     const prefix = `${action.role}|${action.record}|`;
     const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith(prefix)));
     const choices = Object.fromEntries(Object.entries(draft.choices).filter(([key]) => !key.startsWith(prefix)));
@@ -153,9 +167,10 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     const partyPeople = { ...draft.partyPeople }; delete partyPeople[partyKey(action.role, action.record)];
     for (const id of ids) for (const key of Object.keys(manual)) if (key.startsWith('party-person|' + id + '|')) delete manual[key];
     for (const id of ids) for (const key of Object.keys(choices)) if (key.startsWith('party-person|' + id + '|')) delete choices[key];
-    next = { ...draft, partyPeople, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
+    next = { ...cleared, partyPeople, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
       templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([id, values]) => [id, Object.fromEntries(Object.entries(values).filter(([key]) => key !== `${action.role}:${action.record}`))])),
-      sources: draft.sources.filter(source => !(source.assignment?.role === 'party-person' && ids.includes(source.assignment.record)) && (source.assignment?.role !== action.role || source.assignment.record !== action.record)) };
+      sources: cleared.sources.filter(source => !(source.assignment?.role === 'party-person' && ids.includes(source.assignment.record))),
+      saleAuthority: draft.saleAuthority ? { ...draft.saleAuthority, attorneys: draft.saleAuthority.attorneys.map(attorney => ({ ...attorney, principalIds: action.role === 'executant' ? attorney.principalIds.filter(id => id !== action.record) : attorney.principalIds })) } : undefined };
   }
   if (action.type === 'instrument') {
     const definition = definitionFor(action.instrumentId);
@@ -175,6 +190,22 @@ export function draftReducer(draft: Draft, action: Action): Draft {
 }
 
 export const fieldKey = (role: Role, record: string, field: string) => `${role}|${record}|${field}`;
+/** Remove both manual data and the underlying readings so deleted cards stay deleted. */
+function removeRecord(draft: Draft, role: Role, record: string): Draft {
+  const prefix = `${role}|${record}|`;
+  const resolved = resolveDraft(draft);
+  const readings = new Set(Object.entries(resolved.groups)
+    .filter(([key]) => key.startsWith(prefix)).flatMap(([, items]) => items.map(item => item.id)));
+  return { ...draft,
+    manual: Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith(prefix))),
+    choices: Object.fromEntries(Object.entries(draft.choices).filter(([key]) => !key.startsWith(prefix))),
+    templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([id, values]) => [id, Object.fromEntries(Object.entries(values).filter(([key]) => key !== `${role}:${record}`))])),
+    sources: draft.sources.filter(source => source.assignment?.role !== role || source.assignment.record !== record).map(source => source.result ? { ...source, result: { ...source.result,
+      candidates: source.result.candidates.filter(candidate => !readings.has(`${source.id}:${source.revision}:${candidate.id}`)),
+      plans: source.result.plans.filter(plan => role !== 'property' || plan.record !== record),
+    } } : source),
+  };
+}
 export type Evidence = Candidate & { sourceId: string; sourceName: string; sourceRevision: number };
 const exact = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 /** Facts that describe a moment in time, not an identity — never trusted from a historical read. */
@@ -307,7 +338,7 @@ export function resolveDraft(draft: Draft) {
     const ageKey = key.replace(/personDob$/, 'personAge');
     if (!(ageKey in draft.manual)) values[ageKey] = ageFrom(dob, todayISO());
   }
-  return { values, evidence, conflicts, unassigned };
+  return { values, evidence, conflicts, unassigned, groups };
 }
 
 export function appStateFor(draft: Draft): AppState {
@@ -320,7 +351,7 @@ export function appStateFor(draft: Draft): AppState {
     const fields = records.get(id) || {};
     fields[field] = value; records.set(id, fields);
   }
-  const forRole = (role: Role): ValueRecord[] => [...records].filter(([id]) => id.startsWith(role + '|')).map(([id, fields]) => ({ id: id.split('|')[1], values: fields, docNames: [] }));
+  const forRole = (role: Role): ValueRecord[] => [...records].filter(([id]) => id.startsWith(role + '|') && !(role === 'executant' && saleDocumentForVariant(draft.variantId) !== 'ordinary' && draft.saleAuthority?.attorneys.some(attorney => id === 'executant|' + attorney.id))).map(([id, fields]) => ({ id: id.split('|')[1], values: fields, docNames: [] }));
   const extractedProperties = forRole('property').filter(r => r.id !== 'transaction');
   // A newly added schedule must remain visible before any manual field or
   // upload has populated it. Preserve IDs discovered in older multi-property

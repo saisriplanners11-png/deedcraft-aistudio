@@ -65,3 +65,18 @@ Consolidated the title area across every drafting step: breadcrumbs, save status
 Property cards now have a compact schedule identity, modern record styling and an expandable generated-wording preview. Executant and claimant cards place the party-type selector beside the record identity on desktop, and separate individual details from residential-address fields. Entity, representative, source and field bindings are preserved. Additional-party/property actions use matching compact cards.
 
 Validation: TypeScript and build pass; 293 unit tests pass. `qa/property-party-polish.mjs` verifies header heights and layout from 320px to 1440px in both themes, isolation between property schedules, the generated wording preview, individual/address field retention through party-type changes, entity/representative values, template disclosure, and saving/reopening. It supports `QUICK_LAYOUT=1` for a focused check of the three changed screens at 375px and 1440px, and `PLAYWRIGHT_MODULE` for the isolated current browser runner. Screenshots are in `tmp/property-party/`.
+
+## Instrument selection and conditional forms — 24 October 2026
+
+Added accessible quick choices for ordinary Sale, Sale through GPA, Sale through AGPA and Gift, retaining the full instrument and variant selectors. Selected choices have a border, check icon and pressed semantics. Refined conditional Gift relationship/recital, authority and attorney panels using existing theme tokens, responsive form grids and consistent controls. Improved optional party-share fields, keyboard focus, mobile navigation targets and dashboard metric readability.
+
+Validation: required TypeScript check and production build including document regressions and 290 tests passed after the final party-share styling adjustment. The existing browser design review passed (dark mode, reduced motion, landscape, persistence and responsive forms). Additional local browser checks visited every available step for Sale, GPA, AGPA and Gift at 375px and 1440px without page overflow. Screenshots are in tmp/instrument-review/. These checks use isolated template API fixtures and do not publish templates or change saved user drafts.
+
+
+## Compact guided workspace — 24 October 2026
+
+Redesigned the shared field presentation around the user's preference for density: 36px desktop controls, 12px sentence-case labels, 10–12px field gaps, four columns at 1440px and above, three at 1000px and above, and responsive narrower layouts. Tightened record headings, upload areas, section spacing and navigation. All 17 individual-party controls fit within a 1440×900 viewport in the measured browser scenario. Mobile controls retain 16px text to avoid input zoom.
+
+Screen instructions are collapsed under “Help with this step”; field descriptions are off by default and can be enabled with “Show field guidance”. Added plain-language step descriptions, accessible field-help associations, explicit empty select prompts, contextual authority guidance, and optional saved-deed onboarding. Existing document wording, IDs, bindings and generation logic are retained. Other concurrent source/template changes in this working tree were preserved.
+
+Validation: browser design-review flow passed, including saved drafts, source uploads, responsive forms, dark mode, reduced motion and focus. Additional browser checks visited every available Sale, GPA, AGPA and Gift step at 375px and 1440px. Density checks confirmed 17 visible party controls at 36px, four aligned columns, value retention when toggling hints, and no overflow with expanded help at 320/375/768/1024/1440px. Evidence is in tmp/instrument-review/. Required typecheck and production build/regressions are run for the final source.

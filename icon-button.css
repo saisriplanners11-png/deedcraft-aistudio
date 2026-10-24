@@ -1,0 +1,8 @@
+.dc-icon-button { border: 1px solid var(--dc-rule, #cfc8ba); border-radius: 5px; background: transparent; color: inherit; cursor: pointer; vertical-align: middle; }
+.dc-icon-button:hover:not(:disabled) { background: var(--dc-ground, #eee9df); }
+.dc-icon-button:focus-visible { outline: 2px solid var(--dc-gold, #956d35); outline-offset: 2px; }
+.dc-icon-button:disabled { opacity: .4; cursor: not-allowed; }
+.wizard-app button.dc-icon-button svg { display: block !important; flex-shrink: 0; }
+@media (pointer: coarse) { button.dc-icon-button { width: 44px !important; height: 44px !important; } }
+
+.wizard-app .saved-deed-meta>span { display: inline-flex; align-items: center; gap: 5px; }

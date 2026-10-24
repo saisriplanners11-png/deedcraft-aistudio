@@ -62,10 +62,10 @@ const gate: ValidationRule[] = [
 const f = (id: string, label: string, kind: FieldDefinition['kind'] = 'text', required = true, legalChoice = false): FieldDefinition => ({ id, label, kind, required, legalChoice });
 const d = (
   id: InstrumentId, legacyType: string, label: string, variants: string[], roles: [string, string, boolean][],
-  fields: FieldDefinition[], options: { property?: boolean; consideration?: boolean; duty?: string } = {},
+  fields: FieldDefinition[], options: { property?: boolean; consideration?: boolean; duty?: string; variantLabels?: Record<string, string> } = {},
 ): DeedDefinition => ({
   id, legacyType, label, version: '2026.09.1',
-  variants: variants.map(label => ({ id: label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), label })),
+  variants: variants.map(label => ({ id: label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), label: options.variantLabels?.[label] || label })),
   roles: roles.map(([id, label, multiple]) => ({ id, label, multiple })),
   sections: options.property === false ? sections.filter(x => x !== 'property') : sections,
   fieldSchema: fields, evidenceRules: propertyEvidence, validationRules: gate,
@@ -75,7 +75,7 @@ const d = (
 
 export const DEED_DEFINITIONS: Record<InstrumentId, DeedDefinition> = {
   sale: d('sale', 'Sale', 'Sale Deed', ['Outright Absolute Sale Deed', 'Sale Deed by GPA Holder', 'Sale through existing AGPA', 'Tripartite Sale Deed', 'Staged Consideration', 'Agreement of Sale cum GPA', 'Court Auction Sale'], [['vendor','Vendor / Executant',true],['purchaser','Purchaser / Claimant',true]], [f('consideration','Sale consideration','money'),f('possession','Delivery of possession')], { consideration: true, duty: 'ts.sale' }),
-  gift: d('gift', 'Gift', 'Gift Deed', ['Family Gift', 'Non-family Gift', 'Gift to Trust or Charity', 'Municipal Gift'], [['donor','Donor',true],['donee','Donee',true]], [f('relationship','Relationship'),f('acceptance','Acceptance by donee'),f('possession','Possession'),f('lifeInterest','Reserved life interest','boolean',false,true),f('revocation','Revocation conditions','long-text',false,true)], { duty: 'ts.gift' }),
+  gift: d('gift', 'Gift', 'Gift Deed', ['Family Gift', 'Non-family Gift', 'Gift to Trust or Charity', 'Municipal Gift'], [['donor','Donor',true],['donee','Donee',true]], [f('relationship','Relationship'),f('acceptance','Acceptance by donee'),f('possession','Possession'),f('lifeInterest','Reserved life interest','boolean',false,true),f('revocation','Revocation conditions','long-text',false,true)], { duty: 'ts.gift', variantLabels: { 'Non-family Gift': 'Others', 'Municipal Gift': 'Gift to Local Bodies' } }),
   will: d('will', 'Will', 'Will / Testament', ['Individual Will', 'Will with Minor Beneficiary', 'Will with Testamentary Trust'], [['testator','Testator',false],['beneficiary','Beneficiary',true],['executor','Executor',true],['witness','Attesting Witness',true]], [f('capacity','Testamentary capacity'),f('bequests','Specific bequests','long-text'),f('residuaryEstate','Residuary estate','long-text'),f('guardian','Guardian','text',false,true),f('priorWillRevocation','Revocation of prior wills','boolean',true,true)], { property: false }),
   mortgage: d('mortgage', 'Mortgage', 'Mortgage Deed', ['Simple Mortgage', 'Usufructuary Mortgage', 'Deposit of Title Deeds'], [['mortgagor','Mortgagor',true],['mortgagee','Mortgagee',true]], [f('securedAmount','Secured amount','money'),f('interest','Interest'),f('repayment','Repayment terms','long-text'),f('possession','Possession'),f('redemption','Redemption terms','long-text')], { consideration: true, duty: 'ts.mortgage' }),
   partition: d('partition', 'Partition', 'Partition Deed', ['Family Partition', 'Co-owner Partition'], [['coparcener','Co-owner / Coparcener',true]], [f('familyTree','Family tree','long-text'),f('existingShares','Pre-existing shares','long-text'),f('allotments','Allotments','long-text'),f('owelty','Balancing consideration','money',false)], { duty: 'ts.partition' }),

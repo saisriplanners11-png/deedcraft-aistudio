@@ -9,6 +9,34 @@ const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${
 const draftWith = (...sources: Source[]): Draft => ({ ...newDraft(), sources });
 
 describe('source-backed drafts', () => {
+  it('deletes a property with its documents and allocations while keeping other schedules', () => {
+    let draft = newDraft();
+    draft = draftReducer(draft, { type: 'add-property', id: 'second' });
+    draft = draftReducer(draft, { type: 'manual', key: 'property|second|surveyNo', value: '22' });
+    draft = draftReducer(draft, { type: 'manual', key: 'property|primary|surveyNo', value: '11' });
+    draft = draftReducer(draft, { type: 'link-property', record: 'second-title', propertyId: 'second' });
+    draft = draftReducer(draft, { type: 'manual', key: 'link|second-title|linkOption', value: 'linkDoc' });
+    draft = draftReducer(draft, { type: 'vendor-share', scheduleId: 'second', executantId: 'primary', value: '100' });
+    draft = draftReducer(draft, { type: 'remove-record', role: 'property', record: 'second' });
+    expect(appStateFor(JSON.parse(JSON.stringify(draft))).additionalSchedules).toEqual([]);
+    expect(appStateFor(draft).form.surveyNo).toBe('11');
+    expect(draft.activePropertyId).toBe('primary');
+    expect(draft.vendorSharesBySchedule).toEqual({});
+    expect(Object.keys(draft.manual)).toEqual(['property|primary|surveyNo']);
+  });
+  it('removes an uploaded payment completely and ignores its late extraction result', () => {
+    const upload = { ...source('payment-upload', [candidate('amount', '500', { role: 'payment' })]), assignment: { role: 'payment' as const, record: 'payment-1' } };
+    let draft = draftWith(upload);
+    draft = draftReducer(draft, { type: 'remove-record', role: 'payment', record: 'payment-1' });
+    expect(appStateFor(draft).payments).toEqual([]);
+    expect(draftReducer(draft, { type: 'job', draftId: draft.id, sourceId: upload.id, sourceRevision: 0, patch: upload })).toBe(draft);
+  });
+  it('removes an unassigned extracted party without deleting unrelated source facts', () => {
+    const draft = draftWith(source('mixed', [candidate('executantName', 'First Vendor'), candidate('surveyNo', '123', { role: 'property' })]));
+    const deleted = draftReducer(draft, { type: 'remove-party', role: 'executant', record: appStateFor(draft).primaryExecutantId });
+    expect(appStateFor(deleted).form.executantName).toBe('');
+    expect(appStateFor(deleted).form.surveyNo).toBe('123');
+  });
   it('opens saved legacy plan steps in the retained editor without changing deed facts', () => {
     for (const step of [10, 11, 12]) {
       const saved = { ...newDraft(), step, manual: { 'property|primary|surveyNo': '123/A' } };
