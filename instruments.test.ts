@@ -20,7 +20,7 @@ describe('multi-instrument registry', () => {
     expect(releaseGate('gift', 'family-gift').ready).toBe(true);
     for (const variant of DEED_DEFINITIONS.gift.variants) expect(releaseGate('gift', variant.id).ready).toBe(true);
     expect(releaseGate('will').reasons[0]).toMatch(/approved legal reference/i);
-    expect(LEGAL_REFERENCES).toHaveLength(2);
+    expect(LEGAL_REFERENCES).toHaveLength(3);
   });
 
   it('persists instrument and definition version through source-backed projections', () => {
@@ -38,7 +38,7 @@ describe('generation safeguards', () => {
   it('allows compilation without professional approval but blocks unonboarded deeds', () => {
     const common = { variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'hash', values: {}, schedules: [], unresolvedWarnings: [] };
     expect(() => compileDeed({ ...common, instrumentId: 'sale' })).not.toThrow();
-    for (const variant of DEED_DEFINITIONS.gift.variants) expect(compileDeed({ ...common, instrumentId: 'gift', variantId: variant.id }).templateVersionId).toBe('gift-deed-v4');
+    for (const variant of DEED_DEFINITIONS.gift.variants) expect(compileDeed({ ...common, instrumentId: 'gift', variantId: variant.id }).templateVersionId).toBe(variant.id === 'municipal-gift' ? 'gift-municipal-v1' : 'gift-deed-v4');
     expect(() => compileDeed({ ...common, instrumentId: 'will' })).toThrow(/approved legal reference/i);
   });
 });

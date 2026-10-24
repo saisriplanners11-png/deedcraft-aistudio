@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bundledTemplatePin } from './template-library-client';
-import { savedTemplateStatus } from './template-version-status';
+import { savedTemplateStatus, updateSavedDeedTemplate } from './template-version-status';
 import { newDraft } from './source-draft';
 import type { SavedDeed } from './saved-deeds';
 const saved = (patch = {}) => ({ draft: newDraft(), templateMode: 'built-in', ...patch } as SavedDeed);
@@ -23,4 +23,37 @@ describe('Saved template version notices', () => {
   it('does not mark drafts as older before the library is loaded', () => {
     expect(savedTemplateStatus(saved()).earlier).toBe(false);
   });
+});
+
+describe('Automatic default template updates', () => {
+  const sale = bundledTemplatePin('sale-deed-v10');
+  const gift = bundledTemplatePin('gift-deed-v4');
+  it('updates every deed type using its own default and preserves facts and files', () => {
+    for (const instrumentId of ['sale', 'gift', 'power_of_attorney', 'development_agreement_agpa'] as const) {
+      const pin = instrumentId === 'gift' ? gift : { ...sale, versionId: instrumentId + '-current' };
+      const deed = saved({ draft: { ...newDraft(), instrumentId }, libraryTemplate: bundledTemplatePin('sale-deed-v9'), generationManifest: { templateVersionId: 'old' }, updatedAt: 'original', sourceFiles: { source: [] } });
+      const updated = updateSavedDeedTemplate(deed, { [instrumentId]: pin });
+      expect(updated.libraryTemplate).toEqual(pin);
+      expect(updated.generationManifest).toBeNull();
+      expect(updated.draft).toBe(deed.draft);
+      expect(updated.sourceFiles).toBe(deed.sourceFiles);
+      expect(updated.updatedAt).toBe('original');
+      expect(updateSavedDeedTemplate(updated, { [instrumentId]: pin })).toBe(updated);
+    }
+  });
+  it('retains explicit custom templates and types without a published default', () => {
+    const custom = saved({ templateMode: 'custom' });
+    expect(updateSavedDeedTemplate(custom, { sale })).toBe(custom);
+    const noDefault = saved();
+    expect(updateSavedDeedTemplate(noDefault, {})).toBe(noDefault);
+  });
+});
+
+it('keeps municipal and regular Gift defaults separate across refresh and reload', () => {
+  const municipal = saved({ draft: { ...newDraft(), instrumentId: 'gift', variantId: 'municipal-gift' }, libraryTemplate: bundledTemplatePin('gift-deed-v4') });
+  const updated = updateSavedDeedTemplate(municipal, { gift: bundledTemplatePin('gift-deed-v4') });
+  expect(updated.libraryTemplate?.versionId).toBe('gift-municipal-v1');
+  expect(savedTemplateStatus(updated).label).toContain('Municipal Gift');
+  const regular = { ...updated, draft: { ...updated.draft, variantId: 'family-gift' } };
+  expect(updateSavedDeedTemplate(regular, {}).libraryTemplate?.versionId).toBe('gift-deed-v4');
 });

@@ -37,8 +37,7 @@ function AuthorityUploads({ label, documents = [], onChange, onExtract }: { labe
   }
   return <FileDropZone className="authority-uploads" disabled={busy}>
     <label className="field" htmlFor={id}><span>{label}</span></label>
-    <p id={`${id}-hint`}>Upload documents (up to 20 MB each) to extract details. GPA/AGPA authority uploads replace executants automatically. For other uploads, select each person’s role below; existing entered values are retained.</p>
-    <input id={id} type="file" multiple accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,.gif" disabled={busy} aria-describedby={`${id}-hint`} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void upload(files); }} />
+    <input id={id} type="file" multiple accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,.gif" disabled={busy} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void upload(files); }} />
     {busy && <p role="status">Attaching and extracting documents…</p>}
     {error && <p role="alert">{error}</p>}
     {documents.length > 0 && <ul>{documents.map(document => <li key={document.id}><a href={document.dataUrl} download={document.name}>{document.name}</a> <small>({Math.ceil(document.size / 1024)} KB)</small> <button type="button" disabled={busy} aria-label={`Remove ${document.name}`} onClick={() => onChange(documents.filter(item => item.id !== document.id))}>Remove</button></li>)}</ul>}
@@ -110,8 +109,6 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     setProgress('');
   }} /><section className="panel" aria-label="Sale authority details">
     <h2>{saleDocumentLabel(state.saleDocument)} — authority details</h2>
-    <p>GPA and AGPA uploads automatically replace Executants with the verified principals and select Principal as Party type. Missing authority details stay blank. The authority fields are followed by Principal executants and attorney details with their representation links. Review any missing details below.</p>
-    <AuthorityUploads label={`Upload ${state.saleDocument.toUpperCase()} documents`} documents={authority.documents} onExtract={(files, ids) => extract(files, ids, true)} onChange={documents => updateDocuments({ ...authority, documents })} />
     {!!authority.documents?.length && <button type="button" disabled={extracting} onClick={() => void retry(authority.documents || [], true)}>Extract details from attached authority documents</button>}
     {!!authority.documents?.length && !extracting && !extractionError && authority.documents.some(document => !(authority.extractions || []).some(read => read.documentIds.includes(document.id))) && <p role="alert">The authority document is attached, but extraction has not completed. Click “Extract details from attached authority documents”. If extraction fails, the error will appear here; uploading alone does not confirm that details were filled.</p>}
     {extracting && <p role="status">Extracting authority details…</p>}

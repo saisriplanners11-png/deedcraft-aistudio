@@ -1038,6 +1038,14 @@ export async function scheduleText(
   const xml = new TextDecoder().decode(doc.data);
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
+  if (Object.hasOwn(values, 'ULB')) {
+    const { blocks } = giftTemplateParts(xml.slice(bodyStart, bodyEnd), true);
+    const selected = blocks.get(variant);
+    if (!selected) throw new Error('Choose a supported Municipal Gift land-property type.');
+    const block = prepareLandmarkBlock(addOwnershipShareParagraphs(prepareNonHouseIdentifiers(selected, variant, values), vendorShares, undefined), values).replace(/The vendors convey/gi, 'The Donors gift');
+    const mapped = new Map(Object.entries(values).map(([key, value]) => [norm(key), value ?? '']));
+    return (block.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || []).map(paragraph => plainText(fillParagraph(paragraph, mapped, new Set(), [])).trim()).filter(Boolean).join('\n\n');
+  }
   const body = prepareTemplate(xml.slice(bodyStart, bodyEnd)).body;
 
   const children = topLevelChildren(body);
@@ -1636,12 +1644,12 @@ export function saveBlob(blob: Blob, filename: string) {
 
 const GIFT_SCHEDULE_NAMES = ['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE', 'IF HOUSE', 'IF HOUSE SEMI FINISHED', 'IF FLAT SEMI FINISHED', 'IF FLAT FINISHED'];
 
-function giftTemplateParts(body: string) {
+function giftTemplateParts(body: string, municipal = false) {
   const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
   const texts = chunks.map(chunk => plainText(chunk).trim());
   const headings = texts.map((text, index) => text === 'SCHEDULE OF PROPERTY' ? index : -1).filter(index => index >= 0);
   const first = texts.findIndex(text => /^<IF /.test(text));
-  const tail = texts.findIndex((text, index) => index > (headings.at(-1) ?? Infinity) && (text === '<FOR ALL THE DOCUMENTS>' || text === 'The schedule property is not the assigned property.' || text === 'DECLARATION'));
+  const tail = texts.findIndex((text, index) => index > (headings.at(-1) ?? Infinity) && (text === '<FOR ALL THE DOCUMENTS>' || text === 'The schedule property is not the assigned property.' || text === 'DECLARATION' || (municipal && /^THE PLAN of schedule property/i.test(text))));
   const blocks = new Map<string, string>();
   for (const [index, heading] of headings.entries()) {
     const marker = texts.slice(0, heading).reverse().find(text => /^<IF /.test(text)) || '';
@@ -1650,7 +1658,7 @@ function giftTemplateParts(body: string) {
     if (!GIFT_SCHEDULE_NAMES.includes(name) || blocks.has(name)) throw new Error(`Missing, duplicate or unsupported Gift schedule marker: ${marker || 'none'}.`);
     blocks.set(name, chunks.slice(heading, headings[index + 1] ?? tail).filter(chunk => !/^<IF |^<FOR ALL/.test(plainText(chunk).trim())).join(''));
   }
-  if (first < 0 || tail < 0 || blocks.size !== 8) throw new Error('Retain all eight labelled Gift property schedules and the closing declaration.');
+  if (first < 0 || tail < 0 || blocks.size !== (municipal ? 4 : 8)) throw new Error(municipal ? 'Retain all four Municipal Gift land schedules and closing clauses.' : 'Retain all eight labelled Gift property schedules and the closing declaration.');
   return { chunks, first, tail, blocks };
 }
 
@@ -1691,7 +1699,85 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
   return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
+export async function validateMunicipalGiftTemplate(bytes: Uint8Array): Promise<TemplateValidationResult> {
+  const errors: string[] = [];
+  let detectedPlaceholders: string[] = [];
+  try {
+    const entries = await readZip(bytes);
+    const document = entries.find(entry => entry.name === 'word/document.xml');
+    if (!document) throw new Error('Missing word/document.xml.');
+    const xml = new TextDecoder().decode(document.data);
+    const text = plainText(xml);
+    detectedPlaceholders = angleTags(xml);
+    const approved = await readZip(await loadTemplate('gift-municipal-v1'));
+    const approvedXml = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
+    const required = angleTags(approvedXml);
+    const detected = new Set(detectedPlaceholders.map(norm));
+    const supported = new Set([...required, 'Date', 'Landmark House No.'].map(norm));
+    for (const tag of required) if (!detected.has(norm(tag))) errors.push(`Retain the Municipal Gift binding <${tag}>.`);
+    for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Municipal Gift placeholder <${tag}>.`);
+    // Municipal wording belongs to this source, independently of regular Gift protections.
+    for (const phrase of ['GIFT DEED', 'Represented by its Commissioner', 'public purpose free of any cost and consideration', 'the said purpose only', 'THIS INDENTURE', 'THE AFORESAID', 'SIGNATURE/S OF DONOR/S']) {
+      if (!text.includes(phrase)) errors.push(`Retain the Municipal Gift clause: ${phrase}.`);
+    }
+    giftTemplateParts(xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>')), true);
+    if ((xml.match(/<w:sectPr\b/g) || []).length < 2) errors.push('Retain the municipal stamp-space and continuation sections.');
+  } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
+  return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
+}
+
+async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource): Promise<MergeResult> {
+  if (!schedules.length) throw new Error('Add a Municipal Gift property schedule.');
+  const first = schedules[0].values;
+  if (!first.ULB?.trim() || !first.VILLAGE?.trim()) throw new Error('Complete the property ULB / municipality and village for the municipal donee.');
+  for (const schedule of schedules) {
+    if (!['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(schedule.variant)) throw new Error('The Municipal Gift reference supports open place, plot, dismantled house and part open place only.');
+    if (norm(schedule.values.ULB || '') !== norm(first.ULB) || norm(schedule.values.VILLAGE || '') !== norm(first.VILLAGE)) throw new Error('All Municipal Gift schedules must name the same ULB and village. Create separate deeds for different municipal donees.');
+  }
+  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId === 'gift-municipal-v1' ? await loadLibraryBytes(source) : await loadTemplate('gift-municipal-v1');
+  const validation = await validateMunicipalGiftTemplate(bytes);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  const entries = await readZip(bytes);
+  const document = entries.find(entry => entry.name === 'word/document.xml')!;
+  const xml = new TextDecoder().decode(document.data);
+  const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
+  const { chunks, first: firstIndex, tail, blocks } = giftTemplateParts(xml.slice(start, end), true);
+  const missing = new Set<string>();
+  const donors = Number(values['Ownership Vendor Count']) || 1;
+  const fill = (block: string, record: Record<string, string>, edits: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    paragraph = replaceRunText(paragraph, /DD[-/.]?MM[-/.]?YYYY/g, () => '<Date>');
+    paragraph = giftParagraphWording(paragraph, donors, 1);
+    paragraph = replaceRunText(paragraph, /title holder\/s/gi, () => donors > 1 ? 'title holders' : 'title holder');
+    paragraph = replaceRunText(paragraph, /his\/their/gi, () => donors > 1 ? 'their' : 'the Donor’s');
+    paragraph = replaceRunText(paragraph, /SIGNATURE\/S OF DONORS?/gi, () => donors > 1 ? 'SIGNATURES OF DONORS' : 'SIGNATURE OF DONOR');
+    return fillParagraph(paragraph, new Map(Object.entries(record).map(([key, value]) => [norm(key), value ?? ''])), missing, edits);
+  });
+  const donorRewrites = rewrites.filter(rewrite => rewrite.partyRole === 'executant');
+  let opening = chunks.slice(0, firstIndex).join('');
+  // Repeat the source title recital for every linked deed, keeping its donor definition once.
+  opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (!/Whereas the donor\/s.*title holder/i.test(plainText(paragraph))) return paragraph;
+    const records = schedules.flatMap(schedule => schedule.titleLinkRecords?.length ? schedule.titleLinkRecords : [schedule.titleValues || schedule.values]);
+    return records.map((record, index) => fill(index < records.length - 1 ? replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '') : paragraph, record)).join('');
+  });
+  opening = fill(opening, { ...values, ULB: first.ULB, VILLAGE: first.VILLAGE }, donorRewrites);
+  const selected = schedules.map((schedule, index) => {
+    let block = prepareNonHouseIdentifiers(blocks.get(schedule.variant)!, schedule.variant, schedule.values);
+    block = prepareLandmarkBlock(block, schedule.values);
+    if (schedules.length > 1) block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${index + 1}`);
+    block = addOwnershipShareParagraphs(block, schedule.vendorShares, undefined).replace(/The vendors convey/gi, 'The Donors gift');
+    return fill(block, schedule.values);
+  }).join('');
+  let closing = chunks.slice(tail).join('');
+  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => !values['Include Prepared By'] && /Prepared By:/i.test(plainText(paragraph)) ? '' : paragraph);
+  const result = opening + selected + fill(closing, values);
+  const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
+  document.data = new TextEncoder().encode(xml.slice(0, start) + result + xml.slice(end));
+  return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
+}
+
 export async function fillGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
+  if (values['Gift Variant'] === 'municipal-gift') return fillMunicipalGiftDeed(values, rewrites, schedules, source);
   if (!values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
   if (!schedules.length) throw new Error('Add a Gift property schedule.');
   const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v4') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v4');
@@ -1720,7 +1806,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       return replaceRunText(paragraph, /[\s\S]+/, () => values['Gift Relationship Recital']);
     }
     paragraph = replaceRunText(paragraph, /DD[-/.]?MM[-/.]?YYYY/g, () => '<Date>');
-    if (values['Gift Variant'] && values['Gift Variant'] !== 'family-gift') paragraph = replaceRunText(paragraph, /FAMILY MEMBERS?/gi, () => values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY' : 'DONEE');
+    if (values['Gift Variant'] && values['Gift Variant'] !== 'family-gift') paragraph = replaceRunText(paragraph, /FAMILY MEMBERS?/gi, () => values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY' : 'OTHER');
     return giftParagraphWording(paragraph, donors, donees);
   });
   if (!relationshipFound) {

@@ -132,7 +132,7 @@ The first command tests the wizard steps, source removal/re-upload, blank-field 
 
 **99% extraction accuracy is not yet established.** See `benchmarks/README.md` for the held-out corpus format, independent manual annotation requirements, precision and coverage gates. The empty corpus intentionally returns `not-verified`; automated tests or repeated model agreement cannot substitute for this evaluation. The supplied template and one reference photograph do not provide a representative handwriting benchmark.
 
-The Saved deeds dashboard shows each draft’s template version and flags earlier versions. Opening an earlier draft shows an Update this draft action; it retains its existing template until explicitly updated. Older Word downloads are unchanged.
+Saved deeds automatically follow the current published default for their deed type when the library loads, a new default is published, or the app regains focus. Updates preserve entered facts and clear stale generation metadata. Custom Word templates remain selected. Older Word downloads are unchanged.
 
 ### Ownership shares when replacing Sale templates
 
@@ -173,3 +173,5 @@ Deed output policy: dates print DD-MM-YYYY using a full execution-date input; sa
 GPA/AGPA authority uploads, attorney supporting uploads and extraction retries use the same ExtractDialog popup as Executant/Claimant identity uploads, including cancellation, errors and completion. The full npm test suite runs one worker to avoid Windows memory exhaustion when loading Word/PDF tooling. Template library tests cover the current 25-case Sale/GPA/AGPA sample matrix; v6 compatibility fixtures remain explicitly pinned.
 
 Gift v4 supports both separate address-component fields and older combined address placeholders. PAN values remain printed with older replacement drafts through renderer-restored PAN slots. Removing an address component is rejected unless a complete combined address slot remains.
+
+Municipal Gift is available under Gift Deed → Draft form. It uses the supplied `GIFT DEED FOR MUNCIPAL.docx` as a separate immutable reference, with the property ULB/municipality and village in its Commissioner recipient recital and linked deed type/date/number/SRO/code below the donors. It supports open place, plot, dismantled house and part open place. Multiple schedules must share one ULB and village. Regular Gift remains on v4.

@@ -19,16 +19,14 @@ try {
     db.close();
   });
   await page.reload();
-  await expect(page.getByText(/1 saved draft\(s\) use an earlier template/)).toBeVisible();
-  const older = page.locator('.saved-deed-card').filter({ hasText: 'Built-in Sale v9' });
-  await expect(older).toContainText('Earlier template');
-  await older.getByRole('button', { name: 'Continue / Edit' }).click();
-  await expect(page.getByText(/This saved draft uses Built-in Sale v9/)).toBeVisible();
-  await page.getByRole('button', { name: 'Update this draft', exact: true }).click();
-  await expect(page.getByText(/This saved draft uses Built-in Sale v9/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Saved deeds', exact: true }).click();
-  await expect(page.getByText(/saved draft\(s\) use an earlier template/)).toHaveCount(0);
   await expect(page.locator('.saved-deed-card').filter({ hasText: 'sale-deed-v10' })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Update this draft', exact: true })).toHaveCount(0);
+  const pins = await page.evaluate(async () => {
+    const db = await new Promise(resolve => { const request = indexedDB.open('deedcraft-saved-deeds', 1); request.onsuccess = () => resolve(request.result); });
+    const rows = await new Promise(resolve => { const request = db.transaction('deeds').objectStore('deeds').getAll(); request.onsuccess = () => resolve(request.result); });
+    db.close(); return rows.map(row => row.libraryTemplate.versionId);
+  });
+  assert.deepEqual(pins, ['sale-deed-v10', 'sale-deed-v10']);
   assert.deepEqual(errors, []);
-  console.log('PASS: v10 default, saved v9 notices, retained old selection until update, and explicit draft upgrade.');
+  console.log('PASS: v10 default, automatic saved v9 migration and persisted current defaults.');
 } finally { await browser.close(); }

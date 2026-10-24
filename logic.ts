@@ -1,3 +1,4 @@
+import { isMunicipalGift } from './municipal-gift';
 import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
 import { flatStage, flatLabel } from './flat-options';
@@ -397,6 +398,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     }
   });
   for (const side of ['executant', 'claimant'] as const) {
+    if (side === 'claimant' && isMunicipalGift(state)) continue;
     partyRecords(state, side).forEach((record, index) => {
       const values = record.values;
       const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
@@ -418,6 +420,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     });
   }
   for (const side of ['executant', 'claimant'] as const) {
+  if (side === 'claimant' && isMunicipalGift(state)) continue;
   const parties = partyRecords(state, side);
   const vendor = side === 'executant';
   const label = vendor ? 'Vendor' : 'Vendee';
@@ -487,6 +490,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     });
   }
   for (const id of Object.keys(state.conflicts)) {
+    if (isMunicipalGift(state) && id.startsWith('claimant')) continue;
     missing.push({ id: `conflict-${id}`, label: displayLabel(id), reason: 'Uploaded documents disagree about this value.', source: 'Review and choose the correct source value.', step: FIELD_STEPS[id] ?? (id.startsWith('executant') ? 6 : id.startsWith('claimant') ? 7 : 0) });
   }
   const invalid = (id: string, reason: string, step: number) => {
@@ -735,6 +739,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   // ---- completeness --------------------------------------------------------
   const required = ALL_FIELDS.filter(x => !x.derived);
   const applicable = required.filter(x => {
+    if (isMunicipalGift(state) && x.id.startsWith('claimant')) return false;
     if (x.only && !x.only.includes(state.category)) return false;
     for (const side of ['executant', 'claimant'] as const) if (x.id.startsWith(side)) {
       if (x.id === side + 'PartyType') return true;

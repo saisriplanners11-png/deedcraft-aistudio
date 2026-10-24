@@ -32,7 +32,9 @@ export interface TemplateVersion {
 
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
-  id: 'ts-gift-2026-10-v1', instrumentId: 'gift', variantIds: DEED_DEFINITIONS.gift.variants.map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-18', version: '1.0.0', status: 'approved', templateVersionId: 'gift-deed-v4', sourceDocument: 'GIFT SETTLEMENT (4).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
+  id: 'ts-gift-municipal-2026-10-v1', instrumentId: 'gift', variantIds: ['municipal-gift'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-24', version: '1.0.0', status: 'approved', templateVersionId: 'gift-municipal-v1', sourceDocument: 'GIFT DEED FOR MUNCIPAL.docx', propertyCategories: ['Vacant Plot', 'Open Place', 'Demolished', 'Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
+}, {
+  id: 'ts-gift-2026-10-v1', instrumentId: 'gift', variantIds: DEED_DEFINITIONS.gift.variants.filter(variant => variant.id !== 'municipal-gift').map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-18', version: '1.0.0', status: 'approved', templateVersionId: 'gift-deed-v4', sourceDocument: 'GIFT SETTLEMENT (4).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }, {
   id: 'ts-sale-2026-09-v1', instrumentId: 'sale',
   variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana',
@@ -43,6 +45,8 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'gift-municipal-v1', referenceId: 'ts-gift-municipal-2026-10-v1', instrumentId: 'gift', version: '1.0.0', asset: 'gift-municipal-template-v1.docx', sha256: '071791b4e82118beb8d1c26a1fbeebc408ff125d23baed3364986e1915f76fd0', immutable: true,
+}, {
   id: 'gift-deed-v4', referenceId: 'ts-gift-2026-10-v1', instrumentId: 'gift', version: '4.0.0', asset: 'gift-deed-template-v4.docx', sha256: 'aa3a7b364bd408393b5611ab13578c0b8a1d2d9b21a52030f8eea009bec161be', immutable: true,
 }, {
   id: 'gift-deed-v3', referenceId: 'ts-gift-2026-10-v1', instrumentId: 'gift', version: '3.0.0', asset: 'gift-deed-template-v3.docx', sha256: 'd9ca6d2cf0a686b43364f5298c0de172b46b26346a8cfce71ab60630a6d107c9', immutable: true,

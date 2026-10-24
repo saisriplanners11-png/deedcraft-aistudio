@@ -17,7 +17,7 @@ export async function buildTemplateRuntime() {
           const root = ${JSON.stringify(root)};
           export async function loadSaleDeedTemplate() { return new Uint8Array(await readFile(root + '/sale-deed-template-v10.docx')); }
           export async function loadTemplate(id) {
-            const files = { 'gift-deed-v4': 'gift-deed-template-v4.docx', 'gift-deed-v3': 'gift-deed-template-v3.docx', 'gift-deed-v2': 'gift-deed-template-v2.docx', 'gift-deed-v1': 'gift-deed-template-v1.docx', 'sale-deed-v10': 'sale-deed-template-v10.docx', 'sale-deed-v7': 'sale-deed-template-v7.docx', 'sale-deed-v9': 'sale-deed-template-v9.docx', 'sale-deed-v6': 'sale-deed-template-v6.docx', 'sale-deed-v5': 'sale-deed-template-v5.docx', 'sale-deed-v4': 'sale-deed-template-v4.docx', 'sale-deed-v3': 'sale-deed-template.docx', 'sale-deed-v2': 'sale-deed-template-v2.docx' };
+            const files = { 'gift-municipal-v1': 'gift-municipal-template-v1.docx', 'gift-deed-v4': 'gift-deed-template-v4.docx', 'gift-deed-v3': 'gift-deed-template-v3.docx', 'gift-deed-v2': 'gift-deed-template-v2.docx', 'gift-deed-v1': 'gift-deed-template-v1.docx', 'sale-deed-v10': 'sale-deed-template-v10.docx', 'sale-deed-v7': 'sale-deed-template-v7.docx', 'sale-deed-v9': 'sale-deed-template-v9.docx', 'sale-deed-v6': 'sale-deed-template-v6.docx', 'sale-deed-v5': 'sale-deed-template-v5.docx', 'sale-deed-v4': 'sale-deed-template-v4.docx', 'sale-deed-v3': 'sale-deed-template.docx', 'sale-deed-v2': 'sale-deed-template-v2.docx' };
             if (!files[id]) throw new Error('Unknown bundled template.');
             return new Uint8Array(await readFile(root + '/' + files[id]));
           }

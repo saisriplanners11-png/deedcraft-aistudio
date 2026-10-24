@@ -1,4 +1,5 @@
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
+import { isMunicipalGift } from './municipal-gift';
 import { giftRelationshipValues } from './gift-options';
 import { localAuthorityName } from './fields';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
@@ -25,6 +26,7 @@ function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId
 export function mergeValues(state: AppState): Record<string, string> {
   const f = state.form;
   const out: Record<string, string> = {};
+  if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || ''); out.VILLAGE = f.village || ''; }
   Object.assign(out, giftRelationshipValues(state));
 
   // Straight field -> placeholder mappings declared in fields.ts.
@@ -337,8 +339,8 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     for (const titleRecord of titleLinkRecords) {
       const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
-      if (['linkDocNo', 'linkDocType'].every(key => !!titleRecord.values[key])
-        && (titleRecord.values.linkSro || scheduleState.form.sro)) {
+      if ((isMunicipalGift(state) && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key])) || (['linkDocNo', 'linkDocType'].every(key => !!titleRecord.values[key])
+        && (titleRecord.values.linkSro || scheduleState.form.sro))) {
         registeredTitleLinks.push({ ...mapped,
           'Sub Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
           'Sub-Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
@@ -421,11 +423,11 @@ export const variantFor = (category: string, stage = '') => category === 'Flat' 
 
 /** Filename for the generated deed, identified by instrument and claimant. */
 export function deedFilename(state: AppState): string {
-  const claimant = partyDisplayName(state.form, 'claimant') || state.additionalClaimants
+  const claimant = isMunicipalGift(state) ? [localAuthorityName(state.form.localAuthorityType || ''), state.form.village].filter(Boolean).join(' ') : partyDisplayName(state.form, 'claimant') || state.additionalClaimants
     .map(record => partyDisplayName(record.values, 'claimant')).find(Boolean) || 'Unnamed deed';
   const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
   const saleMode = state.deedType === 'Sale' ? state.saleDocument : undefined;
-  return `${safe(saleMode ? saleDocumentLabel(saleMode) : state.deedType || 'Deed')}${saleMode ? '-' + safe([state.category, state.category === 'Flat' ? state.form.flatStage : state.form.houseStage].filter(Boolean).join(' ')) : ''}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
+  return `${safe(isMunicipalGift(state) ? 'Municipal Gift' : saleMode ? saleDocumentLabel(saleMode) : state.deedType || 'Deed')}${saleMode ? '-' + safe([state.category, state.category === 'Flat' ? state.form.flatStage : state.form.houseStage].filter(Boolean).join(' ')) : ''}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
 }
 
 export { money, words };

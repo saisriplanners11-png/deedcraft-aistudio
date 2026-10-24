@@ -95,16 +95,13 @@ try {
   assert.equal((await download).suggestedFilename(), 'SAMPLE-multiple.docx');
   await card.getByRole('checkbox', { name: /I reviewed every sample/ }).check();
   await card.getByRole('button', { name: 'Publish version', exact: true }).click();
-  await page.getByText('Published. New deeds will use this version.', { exact: true }).waitFor();
+  await page.getByText('Published. New and saved deeds will use this version.', { exact: true }).waitFor();
   assert.equal(await card.getByRole('button', { name: 'Delete revision', exact: true }).count(), 0);
   const active = (await (await fetch(origin + '/api/templates')).json()).active.sale;
   assert.notEqual(active, oldPin);
   await customer.reload();
   await customer.getByRole('button', { name: 'Continue / Edit', exact: true }).click();
   await customer.locator('.template-context summary').click();
-  await customer.getByRole('button', { name: 'New template available → Update this draft', exact: true }).waitFor();
-  assert.equal(await customer.evaluate(async () => (await (await import('/saved-deeds.ts')).listSavedDeeds())[0].libraryTemplate.versionId), oldPin);
-  await customer.getByRole('button', { name: 'New template available → Update this draft', exact: true }).click();
   await customer.locator('.template-context strong').filter({ hasText: 'revised-library.docx' }).waitFor();
   // A customer has not opened Templates: placement styles must already be loaded.
   await customer.getByRole('button', { name: /^01\s*Deed setup/ }).click();

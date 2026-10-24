@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialState, type AppState } from './logic';
+import { initialState, generationBlockers, type AppState } from './logic';
 import { giftRelationshipValues } from './gift-options';
 import { mergeValues } from './merge';
 import { appStateFor, draftReducer, newDraft } from './source-draft';
@@ -41,4 +41,22 @@ describe('Gift relationship recital', () => {
     expect(appStateFor(restored).form.giftRelationship).toBe('other');
     expect(appStateFor(restored).form.giftRelationshipCustom).toBe('son and daughter');
   });
+});
+
+it('restores Municipal Gift without individual donee requirements or erasing regular Gift data', () => {
+  let draft = draftReducer(newDraft(), { type: 'instrument', instrumentId: 'gift', variantId: 'family-gift' });
+  draft = draftReducer(draft, { type: 'manual', key: 'claimant|primary|claimantName', value: 'ORIGINAL DONEE' });
+  draft = draftReducer(draft, { type: 'manual', key: 'property|primary|giftRelationship', value: 'daughter' });
+  draft = draftReducer(draft, { type: 'manual', key: 'property|primary|localAuthorityType', value: 'Municipal Council' });
+  draft = draftReducer(draft, { type: 'manual', key: 'property|primary|village', value: 'PROPERTY VILLAGE' });
+  draft = draftReducer(draft, { type: 'instrument', instrumentId: 'gift', variantId: 'municipal-gift' });
+  const restored = JSON.parse(JSON.stringify(draft));
+  const state = appStateFor(restored);
+  expect(state.draft).toBe('Municipal Gift');
+  expect(mergeValues(state).ULB).toBe('Municipal Council');
+  expect(mergeValues(state).VILLAGE).toBe('PROPERTY VILLAGE');
+  expect(generationBlockers(state).filter(item => item.step === 7)).toEqual([]);
+  const regular = appStateFor(draftReducer(restored, { type: 'instrument', instrumentId: 'gift', variantId: 'family-gift' }));
+  expect(regular.form.claimantName).toBe('ORIGINAL DONEE');
+  expect(regular.form.giftRelationship).toBe('daughter');
 });
