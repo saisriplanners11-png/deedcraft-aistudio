@@ -33,7 +33,8 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const tops = [...xml.matchAll(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)].map(section => section[0].match(/w:top="(\d+)"/)?.[1]);
   assert.equal(tops[0], ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' })[margin], label);
   assert(!tops.slice(1).includes('8352') && !tops.slice(1).includes('8640'), label + ': continuation margins');
-  assert.match(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent: 242 Sq\. Yards\./, label);
+  if (instrumentId === 'gift' && candidateVariant !== 'municipal-gift') assert.doesNotMatch(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent:/i, label);
+  else assert.match(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent: 242 Sq\. Yards\./, label);
   assert.doesNotMatch(text, /\b(?:Vendor|Vendee|Executant|Principal|Attorney|First Party|Second Party)\/s\b|\bhas\/have\b|\bis\/are\b|\bI\/We\b/i, label);
   if (candidateVariant === 'municipal-gift') assert.match(text, /MUNICIPAL COUNCIL, MUNICIPAL VILLAGE/, label);
   if (instrumentId === 'sale') { assert.match(text, /Vendor has agreed/, label); assert.match(text, /Vendees have agreed/, label); }

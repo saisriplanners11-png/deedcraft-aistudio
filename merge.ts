@@ -1,4 +1,5 @@
 import { minorGuardianRecital, minorPartyErrors } from './minor-parties';
+import { executionDeedDate } from './deed-format';
 import { acreGuntasToSqYards } from './land-area';
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
 import { isMunicipalGift } from './municipal-gift';
@@ -29,10 +30,13 @@ function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId
 export function mergeValues(state: AppState): Record<string, string> {
   const f = withDerived(state.form);
   const out: Record<string, string> = { 'Stamp Paper Margin': f.stampPaperMargin || 'Legacy' };
+  out['Landmark Valuation Enabled'] = String(['Open Place', 'Vacant Plot'].includes(state.category));
   if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || '').toLocaleUpperCase('en-IN'); out.VILLAGE = (f.village || '').toLocaleUpperCase('en-IN'); }
   const nalaArea = acreGuntasToSqYards(f.nalaExtent || '');
   if (nalaArea !== null) out['NALA Converted Extent'] = String(nalaArea);
-  out['Minor Representation Complete'] = String(['executant', 'claimant'].filter(side => side !== 'claimant' || !isMunicipalGift(state)).every(side => partyRecords(state, side as 'executant' | 'claimant').every(record => !minorPartyErrors(record.values, side).length)));
+  const minorErrors = (['executant', 'claimant'] as const).flatMap(side => partyRecords(state, side).flatMap((record, index) => minorPartyErrors(record.values, side).map(reason => `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 1}: ${reason}`)));
+  out['Minor Representation Complete'] = String(!minorErrors.length);
+  out['Minor Representation Errors'] = minorErrors.join('\n');
   Object.assign(out, giftRelationshipValues(state), poaValues(state));
 
   // Straight field -> placeholder mappings declared in fields.ts.
@@ -96,8 +100,10 @@ export function mergeValues(state: AppState): Record<string, string> {
     out['Extent in Sq.yards'] = '';
     out['Extent in Sq.Meters'] = '';
   }
-  for (const field of ['extentSqYards', 'extentSqMeters']) {
-    if (state.unresolvedFields?.includes(field)) out[field === 'extentSqYards' ? 'Extent in Sq.yards' : 'Extent in Sq.Meters'] = '';
+  // Square metres are derived from the verified yard extent. A stale source
+  // disagreement about the derived value must not erase the calculation.
+  if (state.unresolvedFields?.includes('extentSqYards')) {
+    out['Extent in Sq.yards'] = ''; out['Extent in Sq.Meters'] = '';
   }
   out['Total Land Extent'] = out['Extent in Sq.yards'];
 
@@ -124,7 +130,7 @@ export function mergeValues(state: AppState): Record<string, string> {
 
   if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA'].includes(state.deedType)) {
     out['Municipality/Gram Panchayat Name'] = f.permissionAuthorityName || '';
-    out.Date = deedDate(f.executionDate || '');
+    out.Date = executionDeedDate(f.executionDate || '');
     for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
   }
 
@@ -151,6 +157,7 @@ export function mergeValues(state: AppState): Record<string, string> {
 
   out['Sale Document Mode'] = state.saleDocument || 'ordinary';
   out['Execution Date'] = executionMonthDate(f.executionDate || '');
+  out.Date = out['Execution Date'];
   const authority = state.saleAuthority;
   for (const prefix of ['G.P.A.', 'A.G.P.A.']) {
     out[prefix + 'Doct.No.'] = authority?.documentNo || '';
@@ -164,6 +171,9 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Ownership Vendee Enabled'] = String(Object.values(state.vendeeSharesBySchedule || {}).some(shares => Object.values(shares).some(value => value.trim())));
   out['Ownership Vendor Count'] = String(partyRecords(state, 'executant').length);
   out['Ownership Vendee Count'] = String(partyRecords(state, 'claimant').length);
+  out['Executant Gender'] = isEntity(f, 'executant') ? 'Other' : f.executantGender || '';
+  out['Claimant Gender'] = isEntity(f, 'claimant') ? 'Other' : f.claimantGender || '';
+  out['Attorney Gender'] = authority?.attorneys.length ? authority.attorneys[0].values.Gender || '' : out['Claimant Gender'];
   out['Authority Holder Label'] = state.saleDocument === 'gpa' ? 'G.P.A. HOLDER OF' : state.saleDocument === 'agpa' ? 'A.G.P.A. HOLDER OF' : '';
   out['Authority Principal Names'] = partyRecords(state, 'executant').map(record => partyDisplayName(record.values, 'executant').toLocaleUpperCase('en-IN')).filter(Boolean).join(', ');
   out['Executant Share'] = ownershipShare(state, 'executant', state.primaryExecutantId || 'primary');
@@ -178,7 +188,7 @@ export function mergeValues(state: AppState): Record<string, string> {
 }
 
 /** Compatibility name for saved drafts; full dates use the shared deed format. */
-export const executionMonthDate = deedDate;
+export const executionMonthDate = executionDeedDate;
 
 /**
  * The template writes the opening recital as a fill-in-by-hand line. The app
@@ -438,7 +448,7 @@ export const variantFor = (category: string, stage = '') => category === 'Flat' 
 
 /** Filename for the generated deed, identified by instrument and claimant. */
 export function deedFilename(state: AppState): string {
-  const claimant = isMunicipalGift(state) ? [localAuthorityName(state.form.localAuthorityType || ''), state.form.village].filter(Boolean).join(' ') : partyDisplayName(state.form, 'claimant') || state.additionalClaimants
+  const claimant = partyDisplayName(state.form, 'claimant') || state.additionalClaimants
     .map(record => partyDisplayName(record.values, 'claimant')).find(Boolean) || 'Unnamed deed';
   const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
   const saleMode = state.deedType === 'Sale' ? state.saleDocument : undefined;

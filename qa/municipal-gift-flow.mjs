@@ -22,13 +22,13 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   const text = await rt.docxToText(bytes);
   assert.equal(manifest.templateVersionId, 'gift-municipal-v1');
   assert.deepEqual(result.unmapped, []);
-  assert.match(text, /MUNICIPAL COUNCIL, MUNICIPAL VILLAGE/);
-  assert.match(text, /Represented by its Commissioner/);
+  assert.match(text, /SAMPLE PURCHASER/);
+  assert.doesNotMatch(text, /Represented by its Commissioner|constitute under Hyderabad Municipal Corporation Act/);
   assert.match(text, /public purpose free of any cost and consideration/);
   assert.match(text, /Sale Deed dated 02-01-2020/);
   assert.match(text, /TITLE-111/); assert.match(text, /TITLE OFFICE \(111\)/);
   assert.match(text, /13-10-2026/); assert.match(text, /ABCDE1234F/);
-  assert.doesNotMatch(text, /SAMPLE PURCHASER|natural love|Relationship|STATEMENT OF MARKET VALUE|ANNEXURE|FAMILY MEMBER|DD-MM-YYYY|Donor\/s|has\/have|is\/are/);
+  assert.doesNotMatch(text, /natural love|Relationship|STATEMENT OF MARKET VALUE|ANNEXURE|FAMILY MEMBER|DD-MM-YYYY|Donor\/s|has\/have|is\/are/);
   assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 1);
   if (donors === 2) assert.match(text, /SECOND DONOR/);
   const entries = await rt.readZip(bytes);
@@ -48,7 +48,7 @@ for (const title of ['TITLE-111', 'TITLE-222', 'TITLE-333', 'SECOND-SURVEY']) as
 assert.equal((text.match(/Hereinafter called the .Donor/g) || []).length, 1);
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
 state.additionalSchedules[0].values.village = 'OTHER VILLAGE';
-await assert.rejects(() => render(state), /same ULB and village/);
+assert.match(await rt.docxToText(new Uint8Array(await (await render(state)).blob.arrayBuffer())), /OTHER VILLAGE/);
 await assert.rejects(() => render(stateFor('ordinary-flat-finished')), /supports open place/);
 const missingUlb = stateFor('ordinary-plot'); missingUlb.form.localAuthorityType = '';
 await assert.rejects(() => render(missingUlb), /property ULB/);
@@ -56,4 +56,13 @@ const damaged = await rt.readZip(reference);
 const document = damaged.find(entry => entry.name === 'word/document.xml');
 document.data = new TextEncoder().encode(rt.replaceRunText(new TextDecoder().decode(document.data), /<ULB>/g, () => 'Unknown recipient'));
 assert.equal((await rt.validateMunicipalGiftTemplate(await rt.writeZip(damaged))).valid, false);
-console.log('PASS: Municipal Gift compiler, four land schedules, donor agreement, automatic ULB/village and per-property linked titles; original package formatting preserved and incompatible schedules/recipients rejected.');
+for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordinary-part']) {
+ const state = stateFor(id);Object.assign(state.form,{extentSqYards:'30',claimantName:'ENTERED CLAIMANT',claimantPan:'PQRST5678L'});
+ state.unresolvedFields=['extentSqMeters'];
+ state.additionalClaimants=[{id:'second',values:{...state.form,claimantName:'SECOND CLAIMANT'},docNames:[]}];
+ const output=await render(state),text=await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
+ assert.match(text,/30 square yards equivalent to 25\.08 square meters/);
+ assert.match(text,/ENTERED CLAIMANT/);assert.match(text,/SECOND CLAIMANT/);assert.match(text,/PQRST5678L/);
+ assert.doesNotMatch(text,/Represented by its Commissioner|constitute under Hyderabad Municipal Corporation Act/);
+}
+console.log('PASS: Municipal Gift full claimant identities, four land schedules with calculated square metres, multiple recipients/properties and independent linked titles; source package formatting preserved.');

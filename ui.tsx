@@ -98,6 +98,9 @@ export function Input({
 }) {
   const suggestionsId = React.useId();
   const helpId = React.useId();
+  const [blankExecutionDay, setBlankExecutionDay] = React.useState(false);
+  const monthOnlyExecution = field.id === 'executionDate' && (blankExecutionDay || /^\d{4}-\d{2}$/.test(value));
+  const FieldContainer = field.id === 'executionDate' ? 'div' : 'label';
   const help = fieldHelp(field);
   const span = field.span || 1;
   const readOnly = field.derived;
@@ -111,7 +114,7 @@ export function Input({
   const shown = field.id === 'flatStage' ? flatStage(rawShown) || rawShown : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(rawShown) ? rawShown.slice(0, 7) : rawShown;
 
   return (
-    <label className="deed-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
+    <FieldContainer className="deed-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
       <span style={css('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
         <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.mutedSoft}`)}>
           {field.label}
@@ -165,8 +168,8 @@ export function Input({
         />
       ) : (
         <input
-          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
-          aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined}
+          type={monthOnlyExecution ? 'month' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
+          aria-label={field.ariaLabel || (field.id === 'executionDate' ? field.label : undefined)} aria-describedby={help && !conflict ? helpId : undefined}
           list={field.options?.length ? suggestionsId : undefined}
           value={shown}
           readOnly={readOnly}
@@ -177,6 +180,10 @@ export function Input({
           )}
         />
       )}
+      {field.id === 'executionDate' && <button type="button" aria-pressed={monthOnlyExecution} style={css(`align-self:flex-start;padding:6px 8px;min-height:44px;border:1px solid ${C.goldLight};background:${C.paper};color:${C.ink};cursor:pointer`)} onClick={() => {
+        setBlankExecutionDay(!monthOnlyExecution);
+        onChange(monthOnlyExecution ? '' : value.slice(0, 7));
+      }}>{monthOnlyExecution ? 'Enter a full date' : 'Leave day blank'}</button>}
       {field.type !== 'select' && field.options?.length ? <datalist id={suggestionsId}>{field.options.map(option => <option key={option} value={option} />)}</datalist> : null}
       {conflict ? (
         <span style={css(`display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10.5px;color:${C.gold};border:1px solid ${C.goldLight};background:${C.goldBg};padding:5px 8px`)}>
@@ -195,7 +202,7 @@ export function Input({
       ) : help ? (
         <span id={helpId} className="field-help">{help}</span>
       ) : null}
-    </label>
+    </FieldContainer>
   );
 }
 

@@ -249,7 +249,8 @@ function RecordFieldGroup({
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
-      : resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
+      : (f.id === 'executionDate' ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
+        ?? resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
   return <PlacementRecord scope={role} id={record}>
     {groups.map(g => (
       <FieldGroup
@@ -257,7 +258,7 @@ function RecordFieldGroup({
         afterField={afterField}
         group={label ? { ...g, title: `${g.title} — ${label}` } : g}
         form={form}
-        setField={(id, v) => edit(role, record, id, v)}
+        setField={(id, v) => id === 'executionDate' ? edit('property', 'transaction', id, v) : edit(role, record, id, v)}
       />
     ))}
     {onDelete && <IconButton label={deleteLabel || `Delete ${label || role}`} onClick={onDelete} />}
@@ -384,27 +385,26 @@ function PartyRecordCard({
   const addressField = (id: string) => /Entity(?:Address|CommunicationAddress|CommunicationSame|HNo|Locality|Village|Mandal|District|State|PinCode|Landmark|BranchOffice)$/.test(id);
   const same = resolved.values[fieldKey(role, record, role + 'EntityCommunicationSame')] === 'Yes';
   const entityForm = Object.fromEntries(entityFields.map(f => [f.id, f.id === role + 'EntityCommunicationAddress' && same ? resolved.values[fieldKey(role, record, role + 'EntityAddress')] || '' : resolved.values[fieldKey(role, record, f.id)] || '']));
-  const personList = (kind: 'representativeIds' | 'memberIds') => {
-    const members = kind === 'memberIds';
-    const rows = members ? people.members : people.representatives;
-    return <Section title={members ? 'General body / managing committee members' : 'Authorised representatives'}>
-      <p>{members ? 'Committee membership is separate from authority to sign. Add signatories under Authorised representatives.' : 'Add every person authorised to represent this organisation. Each person has an independent ID upload and complete address.'}</p>
+  const personList = () => {
+    const rows = people.representatives;
+    return <Section title={society ? 'Representatives / members' : 'Authorised representatives'}>
+      <p>{society ? 'Add each person once and choose a designation, such as President, Vice President or Member. Each person has an independent ID upload and complete address.' : 'Add every person authorised to represent this organisation. Each person has an independent ID upload and complete address.'}</p>
       {rows.map((person, index) => {
         const ownSources = draft.sources.filter(s => s.assignment?.role === 'party-person' && s.assignment.record === person.id);
         const form = Object.fromEntries(PERSON_FIELDS.map(f => [f.id, resolved.values[fieldKey('party-person', person.id, f.id)] || (f.id === 'personRelation' ? 'S/O' : '')]));
-        const fields = (members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS).map(field => field.id === 'personDesignation' ? { ...field, type: 'select' as const, allowCustom: true, options: representativeDesignationOptions(partyType), hint: 'Choose a designation or type your own.' } : field.id === 'personAge' && form.personDob ? { ...field, derived: true } : field);
+        const fields = PERSON_FIELDS.map(field => field.id === 'personDesignation' ? { ...field, type: 'select' as const, allowCustom: true, options: representativeDesignationOptions(partyType), hint: 'Choose a designation or type your own.' } : field.id === 'personAge' && form.personDob ? { ...field, derived: true } : field);
         return <div className="representative-card" key={person.id} data-person-id={person.id}>
-          <div className="representative-heading"><b>{members ? 'Member' : 'Representative'} {index + 1}</b><IconButton label={`Delete ${members ? 'member' : 'representative'} ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
-          <ScopedSectionUpload label={members ? 'member' : 'representative'} busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
+          <div className="representative-heading"><b>Representative {index + 1}</b><IconButton label={`Delete representative ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
+          <ScopedSectionUpload label="representative" busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
           <SourceFeedback sources={ownSources} />
-          <FieldGroup group={{ step, title: (members ? 'Member' : 'Representative') + ' ' + (index + 1) + ' details', cols: 3, fields }} form={form} setField={(id, value) => edit('party-person', person.id, id, value)} />
+          <FieldGroup group={{ step, title: 'Representative ' + (index + 1) + ' details', cols: 3, fields }} form={form} setField={(id, value) => edit('party-person', person.id, id, value)} />
           {fields.map(f => {
             const key = fieldKey('party-person', person.id, f.id); const conflict = resolved.conflicts[key]; const evidence = resolved.evidence[key];
             return conflict ? <div className="notice" key={key}><b>Review {f.label}</b>{conflict.map(c => <button type="button" key={c.id} className="quiet" onClick={() => choose(key, c.id)}>Use {c.value} — {c.sourceName}</button>)}</div> : evidence?.length ? <small className="person-evidence" key={key}>{f.label}: {evidence[0].sourceName} · {evidence[0].quote}</small> : null;
           })}
         </div>;
       })}
-      <button type="button" className="quiet" onClick={() => { const id = crypto.randomUUID(); dispatch({ type: 'add-person', side: role, record, id, kind }); edit('party-person', id, 'personRelation', 'S/O'); }}>+ Add {members ? 'member' : 'representative'}</button>
+      <button type="button" className="quiet" onClick={() => { const id = crypto.randomUUID(); dispatch({ type: 'add-person', side: role, record, id, kind: 'representativeIds' }); edit('party-person', id, 'personRelation', 'S/O'); }}>+ Add representative</button>
     </Section>;
   };
   return <PlacementRecord scope={role} id={record}><section className="panel party-record-card">
@@ -422,8 +422,7 @@ function PartyRecordCard({
         <SourceFeedback sources={sources.filter(s => s.profile?.startsWith('authorization:'))} />
         {entityFields.map(f => { const key = fieldKey(role, record, f.id); return resolved.conflicts[key] ? <div className="notice" key={key}>Review {f.label}: {resolved.conflicts[key].map(c => <button className="quiet" type="button" key={c.id} onClick={() => choose(key, c.id)}>Use {c.value} — {c.sourceName}</button>)}</div> : null; })}
       </Section>
-      {personList('representativeIds')}
-      {society && personList('memberIds')}
+      {personList()}
     </> : <>
       <div className="party-identity-upload"><ScopedSectionUpload label="party identity" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} /></div>
       {(isMinorParty(Object.fromEntries(Object.entries(resolved.values).filter(([key]) => key.startsWith(role + '|' + record + '|')).map(([key, value]) => [key.split('|')[2], value])), role) || partyType.startsWith('Guardian')) && <Section title="Minor / guardian representation">
@@ -614,6 +613,7 @@ export default function WizardApp() {
   const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v10'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
   const authorityErrors = generalPoa ? [...poaRelationshipErrors(state), ...salePropertyErrors(state)] : agreementSaleGpa ? salePropertyErrors(state) : draft.instrumentId === 'gift' ? [...(!municipalGift && !giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state), ...(municipalGift ? scheduleRecords(state).flatMap(record => MUNICIPAL_GIFT_CATEGORIES.includes(record.category) ? [] : ['Municipal Gift supports open place, plot, dismantled house and part open place only.']) : [])] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
+  const minorDownloadErrors = mergeValues(state)['Minor Representation Errors'] || '';
   const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v1') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v1') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
@@ -634,7 +634,7 @@ export default function WizardApp() {
   const snapshot = (): SavedDeed => ({
     id: draft.id,
     updatedAt: new Date().toISOString(),
-    claimantNames: municipalGift ? [[mergeValues(state).ULB, state.form.village].filter(Boolean).join(', ')] : [...new Set(partyRecords(state, 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean))],
+    claimantNames: [...new Set(partyRecords(state, 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean))],
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
@@ -1199,7 +1199,7 @@ export default function WizardApp() {
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed =>
         <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
-          <div><h2>{(isMunicipalGift(appStateFor(deed.draft)) ? [mergeValues(appStateFor(deed.draft)).ULB, appStateFor(deed.draft).form.village].filter(Boolean).join(', ') : partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ')) || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
+          <div><h2>{(partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ')) || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
           <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
         </article>)}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
@@ -1330,7 +1330,7 @@ export default function WizardApp() {
           <p className="workflow-footnote">Your choices carry forward to the document and property sections.</p>
         </div>}
 
-        {municipalGift && [0, 8].includes(step) && <section className="panel" aria-label="Municipal Gift details"><h2>Municipal Gift</h2><p>Gift to the property ULB, represented by its Commissioner, for the public purpose stated in the supplied template.</p><p><strong>Municipal recipient:</strong> {[mergeValues(state).ULB, state.form.village].filter(Boolean).join(', ') || 'Complete the property ULB and village.'}</p><p>Supports open place, plot, dismantled house and part open place.</p></section>}
+        {municipalGift && [0, 8].includes(step) && <section className="panel" aria-label="Municipal Gift details"><h2>Municipal Gift</h2><p>Enter the recipient in Claimant Details, including their identity, address and representatives where applicable.</p><p><strong>Claimant:</strong> {partyRecords(state, 'claimant').map(record => partyDisplayName(record.values, 'claimant')).filter(Boolean).join(', ') || 'Complete Claimant Details.'}</p><p>Supports open place, plot, dismantled house and part open place.</p></section>}
         {draft.instrumentId === 'gift' && !municipalGift && [0, 7, 8].includes(step) && <section className="panel gift-relationship-panel" aria-label="Gift relationship">
           <h2>Donee relationship to Donor</h2>
           <p>Choose how the Donee is related to the Donor. This is separate from the identity-card relation (S/O, W/O or D/O).</p>
@@ -1478,7 +1478,6 @@ export default function WizardApp() {
         </section>}
 
         {(step === 6 || step === 7) && (() => {
-          if (municipalGift && step === 7) return <section className="panel" aria-label="Municipal donee"><h2>Municipal donee</h2><p>{mergeValues(state).ULB || 'Select the property ULB / municipality'}, {state.form.village || 'enter the property village'}, represented by its Commissioner.</p><p>The municipal recipient comes from the property details.</p><button type="button" onClick={() => goto(3)}>Edit property details</button></section>;
           const role: 'executant' | 'claimant' = step === 6 ? 'executant' : 'claimant';
           const noun = generalPoa ? step === 6 ? 'Principal' : 'Attorney' : step === 6 ? 'Executant' : 'Claimant';
           const combined = role === 'executant' && state.saleDocument !== 'ordinary';
@@ -1574,8 +1573,8 @@ export default function WizardApp() {
           <h3 className="export-section-title">2. Download your files</h3>
           <div className="export-options" aria-busy={exporting}>
             <article className="export-card export-word"><div className="export-file-icon"><FileDown size={25} aria-hidden="true" /></div><div><span className="export-format">WORD DOCUMENT · .DOCX</span><h3>Editable deed</h3><p>Open in Microsoft Word to review the wording and finish any write-in details.</p></div>
-              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || authorityErrors.length > 0 || shareBlockers.length > 0 || templateFieldErrors.length > 0} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
-              <small id="word-download-state">{exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Correct the invalid ownership percentages first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.'}</small>
+              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || authorityErrors.length > 0 || shareBlockers.length > 0 || templateFieldErrors.length > 0 || !!minorDownloadErrors} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
+              <small id="word-download-state">{minorDownloadErrors || (exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Correct the invalid ownership percentages first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.')}</small>{minorDownloadErrors && <button type="button" className="quiet" onClick={() => goto(minorDownloadErrors.startsWith('Claimant') ? 7 : 6)}>Complete guardian details</button>}
             </article>
             <article className="export-card"><div className="export-file-icon"><MapIcon size={25} aria-hidden="true" /></div><div><span className="export-format">PROPERTY PLAN · PDF</span><h3>Plan for printing</h3><p>Download the property-plan PDF. This is a separate file from the Word deed.</p></div>
               <button aria-describedby="plan-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button>

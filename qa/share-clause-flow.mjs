@@ -101,12 +101,14 @@ for (const category of ['ordinary-plot', 'ordinary-house-finished', 'ordinary-fl
   state.vendeeSharesBySchedule = { primary: { primary: '100' } };
   const output = await rt.fillGiftDeed(rt.mergeValues(state), rt.rewritesFor(state), rt.scheduleMergesFor(state));
   const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
-  assert.match(text, /undivided share of 100%/i);
+  assert.doesNotMatch(text, /holding.*undivided share|following undivided shares|100%/i);
+  assert.equal(state.vendorSharesBySchedule.primary.primary, '100');
+  if (category.includes('flat')) assert.match(text, /undivided share of land/i);
   delete state.vendorSharesBySchedule; delete state.vendeeSharesBySchedule;
   const blank = await rt.fillGiftDeed(rt.mergeValues(state), rt.rewritesFor(state), rt.scheduleMergesFor(state));
   assert.doesNotMatch(await rt.docxToText(new Uint8Array(await blank.blob.arrayBuffer())), /holding.*undivided share|100%/i);
 }
-console.log('PASS: explicit single-party Gift shares appear for plot, house and flat; blank shares are omitted.');
+console.log('PASS: Gift party/schedule percentages are omitted for plot, house and flat while saved allocations and flat land UDS survive.');
 
 for (const mode of ['ordinary', 'gpa', 'agpa', 'gift']) {
   const state = rt.sampleState((mode === 'gift' ? 'ordinary' : mode) + '-plot');
@@ -136,6 +138,7 @@ for (const mode of ['ordinary', 'gpa', 'agpa', 'gift']) {
     assert.doesNotMatch(text, new RegExp('\\(2\\) ' + name + ' —'));
   }
   assert.doesNotMatch(text, /____%/);
-  assert.match(text, /50%/); assert.match(text, /30%/); assert.match(text, /25%/); assert.match(text, /15%/);
+  if (mode === 'gift') assert.doesNotMatch(text, /holding.*undivided share|following undivided shares|50%|30%|25%|15%/i);
+  else { assert.match(text, /50%/); assert.match(text, /30%/); assert.match(text, /25%/); assert.match(text, /15%/); }
 }
 console.log('PASS: independent partial percentages for three executants and claimants in Sale/GPA/AGPA/Gift; blank parties remain without share wording or placeholders.');

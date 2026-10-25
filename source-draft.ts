@@ -323,6 +323,14 @@ export function resolveDraft(draft: Draft) {
     if (groups[key]?.some(c => exact(c.value) !== exact(value))) conflicts[key] = groups[key];
   }
   for (const key of Object.keys(values)) if (key.endsWith('|localAuthorityType')) values[key] = localAuthorityName(values[key]);
+  for (const [key, value] of Object.entries(values)) if (key.startsWith('property|') && key.endsWith('|extentSqYards')) {
+    const yards = Number(value.replace(/,/g, ''));
+    if (value && Number.isFinite(yards) && yards > 0 && (!(key in conflicts) || key in draft.manual)) {
+      const metersKey = key.replace(/extentSqYards$/, 'extentSqMeters');
+      values[metersKey] = String(Math.round(yards * 0.836127 * 100) / 100);
+      delete conflicts[metersKey]; // Evidence remains available; this is a computed value.
+    }
+  }
   // RecordFieldGroup renders resolveDraft() directly, before appStateFor()
   // applies form derivations. Put the current Aadhaar-DOB age calculation here as well
   // so the Executant and Claimant inputs fill immediately after upload.
@@ -480,6 +488,17 @@ function removePerson(draft: Draft, side: 'executant' | 'claimant', record: stri
 export function migratePartyPeople(draft: Draft): Draft {
   const resolved = resolveDraft(draft); let changed = false;
   const partyPeople = { ...draft.partyPeople }; const manual = { ...draft.manual };
+  // The designation now identifies committee members in the same person list.
+  // Retain IDs so uploads, evidence, choices and all existing details stay bound.
+  for (const [key, people] of Object.entries(partyPeople)) {
+    if (!people.memberIds?.length) continue;
+    for (const id of people.memberIds) {
+      const designation = fieldKey('party-person', id, 'personDesignation');
+      if (!people.representativeIds.includes(id) && !resolved.values[designation] && !resolved.conflicts[designation]) manual[designation] = 'Member';
+    }
+    partyPeople[key] = { representativeIds: [...new Set([...people.representativeIds, ...people.memberIds])], memberIds: [] };
+    changed = true;
+  }
   const keys = [...new Set(Object.keys(resolved.values).filter(k => /^(executant|claimant)\|/.test(k)).map(k => k.split('|').slice(0, 2).join('|')))];
   for (const key of keys) {
     if (partyPeople[key]) continue;

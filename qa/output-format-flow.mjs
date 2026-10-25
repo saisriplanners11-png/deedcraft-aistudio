@@ -36,7 +36,8 @@ for (const mode of ['ordinary','gpa','agpa','gift']) for (const property of prop
     const valuationAt = schedule.search(/STATEMENT OF MARKET VALUE|ANNEXURE/);
     assert(valuationAt >= 0, context);
     assert.match(schedule.slice(0, valuationAt), new RegExp(`${relation} house No\.\\s*LANDMARK-99`, 'i'), context);
-    assert.match(schedule.slice(valuationAt), new RegExp(`${relation} house No\.[\\s:]*LANDMARK-99`, 'i'), context);
+    if (['plot', 'open'].includes(property)) assert.match(schedule.slice(valuationAt), new RegExp(`${relation} house No\.[\\s:]*LANDMARK-99`, 'i'), context);
+    else assert.doesNotMatch(schedule.slice(valuationAt), /(?:near|adjacent)\s+(?:house\s*no\.?|h\.?no\.?)/i, context);
     assert.doesNotMatch(schedule, /near\s*\/\s*adjacent/i, context);
     if (subject) assert.match(schedule, /SUBJECT-42/, context);
     if (mode === 'gift') assert.match(text, /Consideration\s*: Nil|without any monetary consideration/, context);
@@ -45,3 +46,25 @@ for (const mode of ['ordinary','gpa','agpa','gift']) for (const property of prop
   }
 }
 console.log(`PASS: stamp-space, date, entered-value and landmark output policies in ${count} Sale/GPA/AGPA/Gift property/replacement combinations.`);
+
+// An agricultural schedule shares the plot template but is not an Open Plot.
+const agricultural = rt.sampleState('ordinary-plot'); agricultural.category = 'Agricultural land';
+Object.assign(agricultural.form, { nearAdjacent: 'Near', nearHNo: 'AGRI-LANDMARK-77' });
+const agriculturalSchedules = rt.scheduleMergesFor(agricultural);
+const agriculturalOutput = await rt.fillSaleDeed(rt.mergeValues(agricultural), agriculturalSchedules[0].variant, rt.rewritesFor(agricultural), agriculturalSchedules);
+const agriculturalText = await rt.docxToText(new Uint8Array(await agriculturalOutput.blob.arrayBuffer()));
+assert.match(agriculturalText.split('STATEMENT OF MARKET VALUE')[0], /near house No\.AGRI-LANDMARK-77/i);
+assert.doesNotMatch(agriculturalText.split('STATEMENT OF MARKET VALUE')[1], /near\s+house/i);
+
+// Replacement templates may already contain a fixed landmark row in Annexure I-A.
+const giftSource = new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx', import.meta.url)));
+const giftEntries = await rt.readZip(giftSource), giftDocument = giftEntries.find(entry => entry.name === 'word/document.xml');
+giftDocument.data = new TextEncoder().encode(new TextDecoder().decode(giftDocument.data).replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => table.includes('Annual Rental Value') ? table.replace('</w:tbl>', '<w:tr><w:tc><w:p><w:r><w:t>near house No.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>FIXED-LANDMARK-999</w:t></w:r></w:p></w:tc></w:tr></w:tbl>') : table));
+const customGiftBytes = await rt.writeZip(giftEntries);
+const flatGift = rt.sampleState('ordinary-flat-finished'); flatGift.deedType = 'Gift';
+Object.assign(flatGift.form, { giftRelationship: 'daughter', nearAdjacent: '', nearHNo: '' });
+const flatGiftOutput = await rt.fillGiftDeed(rt.mergeValues(flatGift), rt.rewritesFor(flatGift), rt.scheduleMergesFor(flatGift), { kind: 'custom', name: 'Gift with existing Annexure row.docx', bytes: customGiftBytes, hash: 'fixed-landmark', validation: await rt.validateGiftDeedTemplate(customGiftBytes) });
+const flatGiftText = await rt.docxToText(new Uint8Array(await flatGiftOutput.blob.arrayBuffer()));
+assert.doesNotMatch(flatGiftText, /FIXED-LANDMARK-999/);
+assert.match(flatGiftText, /Annual Rental Value/); assert.match(flatGiftText, /estimate M\.V\./i);
+console.log('PASS: agricultural valuation exclusions and removal of pre-existing replacement-template landmark rows while retaining Annexure I-A valuation points.');

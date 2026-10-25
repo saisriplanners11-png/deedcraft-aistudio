@@ -42,6 +42,30 @@ describe('entity parties and their people', () => {
     expect(draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(migrated)) }).partyPeople).toEqual(migrated.partyPeople);
     expect(appStateFor(migrated).partyPeopleByParty?.['claimant|extra'].representatives).toHaveLength(2);
   });
+  it('moves saved members into the designation list without losing IDs, uploads or custom roles', () => {
+    const draft = newDraft();
+    draft.partyPeople = { 'executant|primary': { representativeIds: ['president'], memberIds: ['member', 'vice', 'president'] } };
+    draft.manual = {
+      'executant|primary|executantPartyType': 'Society / Association',
+      'party-person|president|personName': 'PRESIDENT PERSON',
+      'party-person|president|personDesignation': 'President',
+      'party-person|member|personName': 'MEMBER PERSON',
+      'party-person|member|personMobile': '9000000001',
+      'party-person|vice|personName': 'VICE PERSON',
+      'party-person|vice|personDesignation': 'Vice President',
+    };
+    draft.sources = [source('member-id', 'member', 'MEMBER PERSON')];
+    const migrated = migratePartyPeople(draft);
+    expect(migrated.partyPeople['executant|primary']).toEqual({ representativeIds: ['president', 'member', 'vice'], memberIds: [] });
+    expect(migrated.sources).toEqual(draft.sources);
+    expect(migrated.manual['party-person|member|personMobile']).toBe('9000000001');
+    expect(peopleFor(migrated, 'executant|primary').representatives.map(p => p.designation)).toEqual(['President', 'Member', 'Vice President']);
+    expect(migratePartyPeople(migrated)).toBe(migrated);
+    const restored = draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(migrated)) });
+    expect(peopleFor(restored, 'executant|primary').representatives).toHaveLength(3);
+    expect(representativeDesignationOptions('Society / Association')).toContain('Member');
+    expect(representativeDesignationOptions('Society / Trust')).toContain('Member');
+  });
   it('derives current age from DOB despite saved age', () => {
     const draft = newDraft(); draft.manual[fieldKey('party-person', 'rep', 'personDob')] = '1990-01-01';
     expect(Number(resolveDraft(draft).values[fieldKey('party-person', 'rep', 'personAge')])).toBeGreaterThan(30);

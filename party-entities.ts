@@ -9,7 +9,7 @@ export function representativeDesignationOptions(partyType: string): string[] {
   switch (partyType) {
     case 'Firm / LLP': return ['Managing Partner', 'Partner', 'Designated Partner', 'Authorised Signatory', 'Authorised Representative'];
     case 'Society / Association':
-    case 'Society / Trust': return ['President', 'Vice President', 'Secretary', 'Joint Secretary', 'General Secretary', 'Treasurer', 'Managing Trustee', 'Trustee', 'Authorised Signatory', 'Authorised Representative'];
+    case 'Society / Trust': return ['President', 'Vice President', 'Member', 'Secretary', 'Joint Secretary', 'General Secretary', 'Treasurer', 'Managing Trustee', 'Trustee', 'Authorised Signatory', 'Authorised Representative'];
     case 'Company': return ['Managing Director', 'Director', 'Whole-time Director', 'Chairperson', 'Chief Executive Officer', 'Company Secretary', 'Branch Manager', 'Authorised Signatory', 'Authorised Representative'];
     default: return ['Karta', 'Manager', 'Authorised Signatory', 'Authorised Representative'];
   }

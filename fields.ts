@@ -126,6 +126,7 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
     { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Minor', 'Firm / LLP', 'Society / Association', 'Company', 'Others / HUF', ...PARTY_CAPACITY_OPTIONS], span: 2,
       hint: 'Choose the legal capacity of this executant or claimant.' },
     { id: k('Name'), label: 'Full name', ph: `${C} NAME`, span: 2 },
+    { id: k('Gender'), label: 'Gender', ariaLabel: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'], hint: 'Used for his / her wording in the deed. Other and multiple parties use their. Leave unselected if unknown.' },
     { id: k('Relation'), label: 'Relation', type: 'select', options: ['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'] },
     { id: k('RelativeName'), label: "Father's / relative's name", span: 2 },
     { id: k('Age'), label: 'Age', ph: `${P} Age`, type: 'number', hint: 'Calculated from date of birth to today.' },
@@ -277,7 +278,7 @@ export const GROUPS: Group[] = [
       { id: 'district', label: 'District', ph: 'District' },
       { id: 'mandal', label: 'Mandal', ph: 'Mandal' },
       { id: 'village', label: 'Village', ph: 'Village' },
-      { id: 'executionDate', label: 'Deed execution date', ph: ['Execution Date', 'Date'], type: 'date', hint: 'Select the full date. The document prints DD-MM-YYYY.' },
+      { id: 'executionDate', label: 'Deed execution date', ph: ['Execution Date', 'Date'], type: 'date', hint: 'Prints DD-MM-YYYY. Use “Leave day blank” to print __-MM-YYYY for signing later.' },
     ],
   },
   {
@@ -540,6 +541,7 @@ export type PartyPeopleIds = { representativeIds: string[]; memberIds: string[] 
 export const partyKey = (side: string, record: string) => side + '|' + record;
 export const PERSON_FIELDS: Field[] = [
   { id: 'personName', label: 'Name *', span: 2 },
+  { id: 'personGender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'] },
   { id: 'personRelation', label: 'Relation', type: 'select', options: ['S/O', 'W/O', 'D/O', 'C/O'] },
   { id: 'personRelationName', label: "Father’s / spouse’s name" },
   { id: 'personDesignation', label: 'Designation' },

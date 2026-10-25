@@ -43,7 +43,7 @@ describe('Gift relationship recital', () => {
   });
 });
 
-it('restores Municipal Gift without individual donee requirements or erasing regular Gift data', () => {
+it('restores Municipal Gift with editable claimant requirements without erasing regular Gift data', () => {
   let draft = draftReducer(newDraft(), { type: 'instrument', instrumentId: 'gift', variantId: 'family-gift' });
   draft = draftReducer(draft, { type: 'manual', key: 'claimant|primary|claimantName', value: 'ORIGINAL DONEE' });
   draft = draftReducer(draft, { type: 'manual', key: 'property|primary|giftRelationship', value: 'daughter' });
@@ -55,7 +55,7 @@ it('restores Municipal Gift without individual donee requirements or erasing reg
   expect(state.draft).toBe('Gift to Local Bodies');
   expect(mergeValues(state).ULB).toBe('MUNICIPAL COUNCIL');
   expect(mergeValues(state).VILLAGE).toBe('PROPERTY VILLAGE');
-  expect(generationBlockers(state).filter(item => item.step === 7)).toEqual([]);
+  expect(generationBlockers(state).some(item => item.step === 7)).toBe(true);
   const regular = appStateFor(draftReducer(restored, { type: 'instrument', instrumentId: 'gift', variantId: 'family-gift' }));
   expect(regular.form.claimantName).toBe('ORIGINAL DONEE');
   expect(regular.form.giftRelationship).toBe('daughter');

@@ -18,11 +18,11 @@ const guides = [
 export function ScreenGuide({ step, gift = false, municipal = false, showFieldHelp, onFieldHelpChange }: { step: number; gift?: boolean; municipal?: boolean; showFieldHelp: boolean; onFieldHelpChange: (show: boolean) => void }) {
   const guide = guides[step];
   if (!guide) return null;
-  const title = step === 6 && gift ? 'Add the people giving the property' : step === 7 && gift ? municipal ? 'Check the municipal recipient' : 'Add the people receiving the gift' : guide.title;
-  const intro = step === 7 && municipal ? 'The municipal recipient is filled from this property’s ULB and village. Update those details on the Property Schedules screen.' : step === 6 && gift ? 'Enter each donor separately. Check their identity, address and any organisation representatives.' : guide.intro;
+  const title = step === 6 && gift ? 'Add the people giving the property' : step === 7 && gift ? 'Add the people receiving the gift' : guide.title;
+  const intro = step === 6 && gift ? 'Enter each donor separately. Check their identity, address and any organisation representatives.' : guide.intro;
   return <div className="form-tools"><details className="screen-guide" aria-label="Guide for this screen"><summary className="screen-guide-toggle"><CircleHelp size={16} aria-hidden="true" /> Help with this step</summary>
     <div className="screen-guide-heading"><span className="screen-guide-icon"><ListChecks size={22} aria-hidden="true" /></span><div><p className="screen-guide-kicker">YOUR NEXT STEPS</p><h2>{title}</h2><p>{intro}</p></div></div>
-    <ol className="screen-guide-tasks">{(step === 7 && municipal ? ['Check ULB / municipality', 'Check the property village', 'Confirm the displayed recipient'] : guide.tasks).map((task, index) => <li key={task}><span>{index + 1}</span>{task}</li>)}</ol>
+    <ol className="screen-guide-tasks">{guide.tasks.map((task, index) => <li key={task}><span>{index + 1}</span>{task}</li>)}</ol>
     <details className="screen-guide-help" key={step}><summary><CircleHelp size={17} aria-hidden="true" /> Understand the options on this screen <span>Quick guide</span></summary><dl>{guide.terms.map(([term, explanation]) => <div key={term}><dt>{term}</dt><dd>{explanation}</dd></div>)}</dl></details>
   </details><label className="field-help-toggle"><input type="checkbox" checked={showFieldHelp} onChange={event => onFieldHelpChange(event.target.checked)} /> Show field guidance</label></div>;
 }

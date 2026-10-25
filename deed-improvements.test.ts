@@ -9,6 +9,69 @@ import { draftReducer, newDraft, resolveDraft, appStateFor } from './source-draf
 import { ensureStampPaperSpace } from './docx';
 import { extractUpload, sameTranscription, scopedIdentityCandidate } from './upload-extraction';
 import { authorityPartyValues } from './sale-options';
+import { deedDate, executionDeedDate } from './deed-format';
+import { partyPronouns } from './party-pronouns';
+import { compileDeed } from './deed-compiler';
+
+it('derives square metres from the entered yards even when an older derived value disagrees', () => {
+  let draft = newDraft();
+  for (const [field, value] of Object.entries({ category: 'Demolished', extentSqYards: '30', extentSqMeters: '999' })) draft = draftReducer(draft, { type: 'manual', key: `property|primary|${field}`, value });
+  expect(resolveDraft(draft).values['property|primary|extentSqMeters']).toBe('25.08');
+  const state = appStateFor(JSON.parse(JSON.stringify(draft)));
+  state.unresolvedFields = ['extentSqMeters'];
+  expect(scheduleMergesFor(state)[0].values['Extent in Sq.Meters']).toBe('25.08');
+  state.unresolvedFields = ['extentSqYards'];
+  expect(mergeValues(state)['Extent in Sq.Meters']).toBe('');
+});
+
+it('identifies a claimant guardian omission precisely and retains guardian court particulars', () => {
+  const form = { ...initialState.form, claimantPartyType: 'Guardian (సంరక్షకుడు)', claimantName: 'PARENT', claimantDob: '1980-01-02', claimantAadhaar: '', claimantWardName: 'CHILD', claimantWardDob: '2015-01-02', claimantGuardianRelationship: 'Father' };
+  const state = { ...initialState, form };
+  const values = mergeValues(state);
+  expect(values['Minor Representation Errors']).toContain('Claimant 1: Enter guardian aadhaar');
+  expect(() => compileDeed({ instrumentId: 'sale', variantId: 'outright-absolute-sale-deed', snapshotHash: 'test', values, schedules: [], unresolvedWarnings: [] })).toThrow(/Claimant 1: Enter guardian aadhaar/);
+  form.claimantAadhaar = '123456789012';
+  expect(mergeValues(state)['Minor Representation Complete']).toBe('true');
+  expect(minorPartyErrors({ claimantPartyType: 'Guardian (సంరక్షకుడు)' }, 'claimant')).toContain('Enter the represented minor’s full name.');
+  expect(minorGuardianRecital({ executantPartyType: 'Guardian', executantWardName: 'CHILD', executantWardDob: '2015-01-02', executantCourtOrderNo: 'COURT-42', executantCourtName: 'District Court', executantCourtOrderDate: '2026-01-02' }, 'executant')).toContain('District Court, order COURT-42 dated 02-01-2026');
+});
+
+describe('selected party genders', () => {
+  const values = { 'Executant Gender': 'Female', 'Claimant Gender': 'Male', 'Ownership Vendor Count': '1', 'Ownership Vendee Count': '1' };
+  it('uses the grantor for rights and claims through that grantor, and the recipient for recipient obligations', () => {
+    expect(partyPronouns('The Vendor conveys unto the Vendee all his/her/their rights.', values)).toContain('all her rights');
+    expect(partyPronouns('The Donee shall enjoy without hindrance from the Donor or any person claiming through her/him.', values)).toContain('through her.');
+    expect(partyPronouns('The Vendee agrees that he/she shall pay his/her taxes.', values)).toContain('he shall pay his taxes');
+    expect(partyPronouns('The Donor declares that she/he has title.', values)).toContain('she has title');
+  });
+  it('keeps identity placeholders intact, uses their for groups and supports Other', () => {
+    expect(partyPronouns('The Vendor conveys his/her/their rights.', { ...values, 'Ownership Vendor Count': '2' })).toContain('their rights');
+    expect(partyPronouns('The Vendor declares that he/she/they has title.', { ...values, 'Executant Gender': 'Other' })).toContain('they have title');
+    expect(partyPronouns('<EXECUTANT NAME> includes his/her heirs.', { ...values, 'Ownership Vendor Count': '2' })).toBe('<EXECUTANT NAME> includes her heirs.');
+    expect(partyPronouns('The Vendor conveys his/her rights.', {})).toContain('his/her rights');
+  });
+  it('preserves per-party gender on save and reload', () => {
+    let draft = newDraft();
+    draft = draftReducer(draft, { type: 'manual', key: 'executant|primary|executantGender', value: 'Female' });
+    draft = draftReducer(draft, { type: 'manual', key: 'claimant|primary|claimantGender', value: 'Male' });
+    const state = appStateFor(JSON.parse(JSON.stringify(draft)));
+    expect(mergeValues(state)['Executant Gender']).toBe('Female');
+    expect(mergeValues(state)['Claimant Gender']).toBe('Male');
+  });
+});
+
+it('prints deliberate month-only execution dates without accepting partial record dates', () => {
+  expect(executionDeedDate('2026-10')).toBe('__-10-2026');
+  expect(executionDeedDate('2026-10-22')).toBe('22-10-2026');
+  for (const value of ['', '2026-13', '2026-00', '0000-10', '2026-02-30']) expect(executionDeedDate(value)).toBe('');
+  expect(deedDate('2026-10')).toBe('');
+  let draft = newDraft();
+  draft = draftReducer(draft, { type: 'manual', key: 'property|transaction|executionDate', value: '2026-10' });
+  const state = appStateFor(JSON.parse(JSON.stringify(draft)));
+  expect(state.form.executionDate).toBe('2026-10');
+  expect(mergeValues(state).Date).toBe('__-10-2026');
+  expect(mergeValues(state)['Execution Date']).toBe('__-10-2026');
+});
 
 const mock = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, disagree: false }));
 vi.mock('./claude', () => ({ VISION_MODEL: 'vision', VERIFY_MODEL: 'verify', EXTRACT_MODEL: 'extract', readableError: (error: unknown) => error,
@@ -65,7 +128,7 @@ describe('requested deed improvements', () => {
     const company = { ...initialState, form: { ...initialState.form, executantPartyType: 'Company', executantDob: '2015-01-02' } };
     expect(mergeValues(company)['Minor Representation Complete']).toBe('true');
     const municipal = { ...initialState, deedType: 'Gift', draft: 'Municipal Gift', form: { ...initialState.form, ...minor, claimantGuardianName: '' } };
-    expect(mergeValues(municipal)['Minor Representation Complete']).toBe('true');
+    expect(mergeValues(municipal)['Minor Representation Complete']).toBe('false');
   });
   it('requires guardian particulars for a minor and court permission for a minor executant', () => {
     expect(minorPartyErrors(minor, 'claimant')).toEqual([]);

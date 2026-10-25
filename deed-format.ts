@@ -18,3 +18,9 @@ export function isoDate(value: string): string {
   const local = deedDate(value);
   return local ? local.slice(6) + '-' + local.slice(3, 5) + '-' + local.slice(0, 2) : '';
 }
+
+/** Execution alone may deliberately leave the signing day for handwriting. */
+export function executionDeedDate(value: string): string {
+  const month = value.trim().match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  return month && Number(month[1]) > 0 ? `__-${month[2]}-${month[1]}` : deedDate(value);
+}

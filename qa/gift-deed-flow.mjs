@@ -93,3 +93,28 @@ for(const [find,replacement,message] of [
  const checked=await rt.validateGiftDeedTemplate(await rt.writeZip(entries));assert.equal(checked.valid,false);assert(checked.errors.some(error=>message.test(error)),checked.errors.join(' '));
 }
 console.log('PASS: all four Gift revisions and all three Gift variants preserve saved relationship/grammar; party identity, stamp-space and schedule damage is rejected.');
+
+// Voice-note corrections: retained data must not leak allocation prose into Gift.
+for (const version of ['v1','v2','v3','v4']) {
+ const state=rt.sampleState('ordinary-open');state.deedType='Gift';
+ Object.assign(state.form,{giftRelationship:'friend',executionDate:'2026-10'});
+ state.vendorSharesBySchedule={primary:{primary:'100'}};state.vendeeSharesBySchedule={primary:{primary:'100'}};
+ state.linkRecordsBySchedule={primary:[{id:'nala',docNames:[],values:{linkOption:'nala',nalaOrderNo:'NALA-42',nalaExtent:'00-02'}}]};
+ const bytes=new Uint8Array(await readFile(new URL(`../gift-deed-template-${version}.docx`,import.meta.url)));
+ const source={kind:'custom',name:`Gift ${version}`,hash:version,bytes,validation:await rt.validateGiftDeedTemplate(bytes)};
+ const values={...rt.mergeValues(state),'Gift Variant':'non-family-gift'};
+ const result=await rt.fillGiftDeed(values,rt.rewritesFor(state),rt.scheduleMergesFor(state),source);
+ const output=new Uint8Array(await result.blob.arrayBuffer()),text=await rt.docxToText(output);
+ const entries=await rt.readZip(output),xml=new TextDecoder().decode(entries.find(entry=>entry.name==='word/document.xml').data);
+ assert.deepEqual(result.unmapped,[]);
+ assert.match(text,/made and executed on __-10-2026/);
+ assert.doesNotMatch(text,/Holding\s+(?:an\s+)?Undivided Share|following undivided shares|NALA converted extent:/i);
+ assert.match(text,/NALA-42/); // Keep the linked title record itself.
+ const paragraphText=paragraph=>[...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(match=>match[1]).join('');
+ const title=[...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].find(match=>paragraphText(match[0]).includes('GIFT SETTLEMENT DEED IN FAVOUR OF'))?.[0];
+ assert(title);assert.match(paragraphText(title),/^GIFT SETTLEMENT DEED IN FAVOUR OF OTHERS\s*$/);
+ assert.doesNotMatch(title,/<w:(?:br|cr)\b/);
+ assert.equal(state.vendorSharesBySchedule.primary.primary,'100');
+ await writeFile(`tmp/gift/qa/voice-note-${version}.docx`,output);
+}
+console.log('PASS: Gift single-line title, blank signing day, omitted party/schedule shares and NALA extent across all four source revisions.');

@@ -7,7 +7,11 @@ export function isMinorParty(values: Record<string, string>, side: string): bool
   return values[side + 'PartyType'] === 'Minor' || (age !== '' && Number(age) < 18);
 }
 export function minorPartyErrors(values: Record<string, string>, side: string): string[] {
-  if ((values[side + 'PartyType'] || '').startsWith('Guardian') && (values[side + 'WardName'] || values[side + 'WardDob'])) return minorPartyErrors({ ...values, [side + 'PartyType']: 'Minor', [side + 'Name']: values[side + 'WardName'] || '', [side + 'Dob']: values[side + 'WardDob'] || '', [side + 'GuardianName']: values[side + 'Name'] || '', [side + 'GuardianDob']: values[side + 'Dob'] || '', [side + 'GuardianAadhaar']: values[side + 'Aadhaar'] || '' }, side);
+  if ((values[side + 'PartyType'] || '').startsWith('Guardian')) {
+    const errors = minorPartyErrors({ ...values, [side + 'PartyType']: 'Minor', [side + 'Name']: values[side + 'WardName'] || '', [side + 'Dob']: values[side + 'WardDob'] || '', [side + 'GuardianName']: values[side + 'Name'] || '', [side + 'GuardianDob']: values[side + 'Dob'] || '', [side + 'GuardianAadhaar']: values[side + 'Aadhaar'] || '' }, side);
+    if (!values[side + 'WardName']?.trim()) errors.unshift('Enter the represented minor’s full name.');
+    return errors;
+  }
   if (!isMinorParty(values, side)) return [];
   const get = (key: string) => values[side + key]?.trim() || '';
   const errors: string[] = [];
@@ -25,7 +29,11 @@ export function minorPartyErrors(values: Record<string, string>, side: string): 
   return errors;
 }
 export function minorGuardianRecital(values: Record<string, string>, side: string): string {
-  if ((values[side + 'PartyType'] || '').startsWith('Guardian') && values[side + 'WardName']) return 'acting as ' + (values[side + 'GuardianRelationship'] || 'guardian') + ' and guardian of minor ' + values[side + 'WardName'].toLocaleUpperCase('en-IN') + (values[side + 'WardDob'] ? ', DOB: ' + deedDate(values[side + 'WardDob']) : '');
+  if ((values[side + 'PartyType'] || '').startsWith('Guardian') && values[side + 'WardName']) {
+    let recital = 'acting as ' + (values[side + 'GuardianRelationship'] || 'guardian') + ' and guardian of minor ' + values[side + 'WardName'].toLocaleUpperCase('en-IN') + (values[side + 'WardDob'] ? ', DOB: ' + deedDate(values[side + 'WardDob']) : '');
+    if (side === 'executant' && values[side + 'CourtOrderNo']) recital += ', acting under permission of ' + (values[side + 'CourtName'] || '') + ', order ' + values[side + 'CourtOrderNo'] + ' dated ' + deedDate(values[side + 'CourtOrderDate'] || '');
+    return recital;
+  }
   if (!isMinorParty(values, side)) return '';
   const v = (key: string) => (values[side + key] || '').trim();
   const parts = ['a minor represented by ' + (v('GuardianRelationship') || 'guardian') + ': ' + v('GuardianName').toLocaleUpperCase('en-IN')];
