@@ -1,6 +1,7 @@
+import { ageFrom } from './party-age';
 import { PARTY_CAPACITY_OPTIONS } from './fields';
 import { IconButton } from './icon-button';
-import { extractAuthorityDocuments } from './authority-extraction';
+import { extractAuthorityDocuments, extractAuthorityIdentity } from './authority-extraction';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ExtractDialog, type ProgressStep } from './ui';
 import { FileDropZone } from './file-drop-zone';
@@ -55,7 +56,7 @@ const fields = [
 ];
 export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children, principalIds = [], onCapacityChange, onDeleteAttorney }: { principalIds?: string[]; onCapacityChange?: (id: string, value: string) => void; onDeleteAttorney?: (id: string) => void; children?: React.ReactNode; state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
   const authority = state.saleAuthority || emptySaleAuthority();
-  const latest = useRef({ authority, onChange, onApplyGpa }); latest.current = { authority, onChange, onApplyGpa };
+  const latest = useRef({ authority, onChange, onApplyGpa, onApplyPerson }); latest.current = { authority, onChange, onApplyGpa, onApplyPerson };
   const controllers = useRef(new Set<AbortController>());
   const mounted = useRef(true);
   const [progress, setProgress] = useState('');
@@ -74,7 +75,7 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     setDialog({ names: files.map(file => file.name), label: authorityUpload ? `${state.saleDocument?.toUpperCase()} authority document` : 'Attorney identity / supporting document', result: '' });
     const controller = new AbortController(); controllers.current.add(controller); setExtractionError(''); setExtracting(true); setProgress('Preparing authority documents…');
     try {
-      const result = await extractAuthorityDocuments(files, ids, controller.signal, setProgress);
+      const result = await (authorityUpload ? extractAuthorityDocuments : extractAuthorityIdentity)(files, ids, controller.signal, setProgress);
       const current = latest.current.authority;
       const retained = new Set([...(current.documents || []), ...current.attorneys.flatMap(attorney => attorney.documents || []), ...Object.values(current.personDocuments || {}).flat()].map(document => document.id));
       if (controller.signal.aborted || ids.some(id => !retained.has(id))) return;
@@ -86,6 +87,24 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
         setDialog(current => current && { ...current, result: 'Authority details, Principal executants and attorney records filled. Review the completed fields and representation links.' });
         setProgress('GPA/AGPA authority details and Principal executants filled. Attorney details and evidenced representation links filled automatically. Review the extracted source quotes and completed records.');
         return;
+      }
+      const target = updated.attorneys.find(attorney => attorney.documents?.some(document => ids.includes(document.id)));
+      const principalTarget = Object.entries(updated.personDocuments || {}).find(([, documents]) => documents.some(document => ids.includes(document.id)))?.[0];
+      if (result.people.length === 1 && target) {
+        const person = result.people[0];
+        const nameKey = (value: string) => value.toLocaleUpperCase('en-IN').replace(/\s+/g, ' ').trim();
+        if (target.values.Name && nameKey(target.values.Name) !== nameKey(person.values.Name)) throw new Error('The uploaded ID belongs to a different named person. Existing attorney details were retained.');
+        const conflicting = Object.entries(person.values).filter(([key, value]) => target.values[key] && target.values[key] !== value && key !== 'Name');
+        updated.attorneys = updated.attorneys.map(attorney => attorney.id === target.id ? { ...attorney, values: { ...person.values, ...Object.fromEntries(Object.entries(attorney.values).filter(([, value]) => !!value)) } } : attorney);
+        latest.current.onChange(updated);
+        setDialog(current => current && { ...current, result: conflicting.length ? 'Verified identity filled into empty fields. Existing conflicting values were retained; review the source details.' : 'Verified identity details filled for the selected attorney.' });
+        setProgress('Selected attorney identity details filled.'); return;
+      }
+      if (result.people.length === 1 && principalTarget) {
+        const error = latest.current.onApplyPerson(result.people[0], 'principal', principalTarget);
+        if (error) throw new Error(error);
+        setDialog(current => current && { ...current, result: 'Verified identity details filled for the selected principal.' });
+        setProgress('Selected principal identity details filled.'); return;
       }
       latest.current.onChange(updated);
       setDialog(current => current && { ...current, result: `Found ${result.people.length} people. Open the source review to select the role for these supporting details.` });
@@ -108,7 +127,7 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
   const attorneyCards = authority.attorneys.map((attorney) => { const index = order.indexOf(attorney.id); return <section className="panel party-record-card" key={attorney.id} aria-label={`Executant ${index + 1} Attorney`}><h2>Executant {index + 1} — Attorney</h2><label className="field party-type-selector"><span>Party type</span><select aria-label="Party type" value="attorney" disabled={extracting} onChange={event => onCapacityChange?.(attorney.id, event.target.value)}><option value="attorney">Attorney / Agent</option>{PARTY_CAPACITY_OPTIONS.filter(value => !value.startsWith("Attorney")).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
       <AuthorityUploads label={`Upload Attorney ${index + 1} identity / supporting documents`} documents={attorney.documents} onExtract={extract} onChange={documents => updateDocuments({ ...authority, attorneys: authority.attorneys.map(item => item.id === attorney.id ? { ...item, documents } : item) })} />
       {!!attorney.documents?.length && <button type="button" disabled={controllers.current.size > 0} onClick={() => void retry(attorney.documents || [])}>Extract details for Attorney {index + 1}</button>}
-      <div className="sale-authority-grid">{fields.map(([key, label]) => <label className="field" key={key}><span>{label}</span>{key === 'Relation' ? <select value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)}><option value="">Choose relation</option>{['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'].map(option => <option key={option}>{option}</option>)}</select> : <input type={key === 'Dob' ? 'date' : key === 'Age' ? 'number' : 'text'} inputMode={key === 'SharePercentage' ? 'decimal' : undefined} aria-invalid={key === 'SharePercentage' && !!attorney.values[key]?.trim() && vendeeShareCents(attorney.values[key]) === null} value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)} />}</label>)}</div>
+      <div className="sale-authority-grid">{fields.map(([key, label]) => <label className="field" key={key}><span>{label}</span>{key === 'Relation' ? <select value={attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)}><option value="">Choose relation</option>{['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'].map(option => <option key={option}>{option}</option>)}</select> : <input type={key === 'Dob' ? 'date' : key === 'Age' ? 'number' : 'text'} inputMode={key === 'SharePercentage' ? 'decimal' : undefined} aria-invalid={key === 'SharePercentage' && !!attorney.values[key]?.trim() && vendeeShareCents(attorney.values[key]) === null} readOnly={key === 'Age' && !!attorney.values.Dob} value={key === 'Age' && attorney.values.Dob ? ageFrom(attorney.values.Dob) : attorney.values[key] || ''} onChange={event => update(attorney.id, key, event.target.value)} />}</label>)}</div>
       <p>Represents these principals:</p>
       {principals.map((principal, principalIndex) => <label key={principal.id} style={{ display: 'block', marginBottom: 8 }}><input type="checkbox" checked={attorney.principalIds.includes(principal.id)} onChange={event => onChange({ ...authority, attorneys: authority.attorneys.map(item => item.id !== attorney.id ? item : { ...item, principalIds: event.target.checked ? [...item.principalIds, principal.id] : item.principalIds.filter(id => id !== principal.id) }) })} /> {principal.values.executantName || `Principal ${principalIndex + 1}`}</label>)}
       <IconButton label={`Remove Executant ${index + 1}`} onClick={() => onDeleteAttorney?.(attorney.id)} />

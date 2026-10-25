@@ -123,13 +123,21 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
   const C = side === 'executant' ? 'EXECUTANT' : 'CLAIMANT';
   const k = (n: string) => `${side}${n}`;
   return [
-    { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Firm / LLP', 'Society / Association', 'Company', 'Others / HUF', ...PARTY_CAPACITY_OPTIONS], span: 2,
+    { id: k('PartyType'), label: 'Party type', type: 'select', options: ['Individual', 'Minor', 'Firm / LLP', 'Society / Association', 'Company', 'Others / HUF', ...PARTY_CAPACITY_OPTIONS], span: 2,
       hint: 'Choose the legal capacity of this executant or claimant.' },
     { id: k('Name'), label: 'Full name', ph: `${C} NAME`, span: 2 },
     { id: k('Relation'), label: 'Relation', type: 'select', options: ['S/O', 'W/O', 'D/O', 'C/O', 'REP. BY'] },
     { id: k('RelativeName'), label: "Father's / relative's name", span: 2 },
-    { id: k('Age'), label: 'Age', ph: `${P} Age`, type: 'number', hint: 'Pre-filled from date of birth as of today; you may correct it manually.' },
+    { id: k('Age'), label: 'Age', ph: `${P} Age`, type: 'number', hint: 'Calculated from date of birth to today.' },
     { id: k('Dob'), label: 'Date of birth', ph: `${P} Dob`, type: 'date' },
+    { id: k('GuardianRelationship'), label: 'Guardian relationship to minor', type: 'select', options: ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Brother', 'Sister', 'Court-appointed Guardian', 'Other'], allowCustom: true },
+    ...['Name', 'Relation', 'RelativeName', 'Dob', 'Aadhaar', 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => ({ id: k('Guardian' + suffix), label: 'Guardian ' + (({ Name: 'full name', RelativeName: 'father’s / relative’s name', Dob: 'date of birth', Aadhaar: 'Aadhaar number', HNo: 'house no.', PinCode: 'PIN code' } as Record<string, string>)[suffix] || suffix), ...(suffix === 'Dob' ? { type: 'date' as const } : {}) })),
+    { id: k('WardName'), label: 'Represented minor’s full name' },
+    { id: k('WardDob'), label: 'Represented minor’s date of birth', type: 'date' },
+    { id: k('CourtOrderNo'), label: 'Court permission order / case number' },
+    { id: k('CourtName'), label: 'Court granting permission' },
+    { id: k('CourtOrderDate'), label: 'Court permission date', type: 'date' },
+    { id: k('CourtOrderPermitsExecution'), label: 'Court order permits this guardian to execute this deed for the minor', type: 'select', options: ['Yes', 'No'] },
     { id: k('Occupation'), label: 'Occupation', ph: `${P} Occupation` },
     { id: k('Aadhaar'), label: 'Aadhaar number', ph: `${P} Adhar Number` },
     { id: k('Pan'), label: 'PAN', ph: [`${P} Pan No.`, `${P} PAN`], hint: 'Required above ₹50 lakh', omitWhenEmpty: true },
@@ -154,7 +162,7 @@ export const PARTY_CAPACITY_OPTIONS = [
   'Attorney / Agent (ఏజెంట్)',
 ] as const;
 
-export type PartyType = 'Individual' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF' | typeof PARTY_CAPACITY_OPTIONS[number];
+export type PartyType = 'Individual' | 'Minor' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF' | typeof PARTY_CAPACITY_OPTIONS[number];
 
 /** An authorised signatory for a non-individual party, with each postal
  * component retained separately for registration use. */
@@ -391,6 +399,7 @@ export const GROUPS: Group[] = [
       { id: 'govtRate', label: 'Basic rate per Sq. Yard (₹)', ph: 'Market Value Per Sq.Yard', type: 'money' },
       { id: 'structValue', label: 'Structure valuation (₹)', type: 'money', hint: 'Depreciated; 0 for open land' },
       { id: 'consid', label: 'Sale consideration (₹)', ph: 'Market of Value Rs./-', type: 'money' },
+      { id: 'stampPaperMargin', label: 'First-page stamp-paper margin', type: 'select', options: ['Legacy', 'None', '100', '50', '20'], optionLabels: { Legacy: 'Current default (5.7 inches)', None: 'Normal page margin', '100': '₹100 stamp paper — 5.8 inches', '50': '₹50 stamp paper — 6 inches', '20': '₹20 stamp paper — 6 inches' } },
       { id: 'stampValue', label: 'Stamp paper value (₹)', ph: 'Stamp of Rs/-', type: 'money', hint: 'Read from the uploaded stamp paper or transaction note; left blank when missing.' },
     ],
   },
@@ -472,7 +481,7 @@ export const LINK_OPTIONS: LinkOption[] = [
       { id: 'nalaOrderNo', label: 'NALA order number', ph: 'Nala Order No' },
       { id: 'nalaProceedingDate', label: 'Proceeding date', ph: 'Nala Order Date', type: 'date' },
       { id: 'nalaExtent', label: 'Extent (Acre-Guntas)', hint: 'Original extent as printed in the NALA order.' },
-      { id: 'convertedExtentText', label: 'Extent (Sq. Yards)', hint: 'The Acre-Gunta extent converted to square yards.' },
+      { id: 'convertedExtentText', label: 'Extent (Sq. Yards)', derived: true, hint: 'Automatically converted: 00-02 means 0 acres and 2 guntas = 242 sq. yards.' },
     ],
   },
   {

@@ -148,7 +148,7 @@ describe('source-backed drafts', () => {
     expect(resolveDraft(draft).values['executant|primary|executantAge']).toBe(ageFrom('1990-01-02', todayISO()));
     expect(resolveDraft(draft).values['claimant|primary|claimantAge']).toBe(ageFrom('1995-03-04', todayISO()));
     draft = draftReducer(draft, { type: 'manual', key: 'executant|primary|executantAge', value: '29' });
-    expect(resolveDraft(draft).values['executant|primary|executantAge']).toBe('29');
+    expect(resolveDraft(draft).values['executant|primary|executantAge']).toBe(ageFrom('1990-01-02', todayISO()));
   });
   it('replacement clears omitted values and rejects old in-flight responses', () => {
     let draft = draftWith(source('a', [candidate('executantMobile','9876543210')]));

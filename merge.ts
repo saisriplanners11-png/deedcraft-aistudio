@@ -1,3 +1,5 @@
+import { minorGuardianRecital, minorPartyErrors } from './minor-parties';
+import { acreGuntasToSqYards } from './land-area';
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
 import { isMunicipalGift } from './municipal-gift';
 import { poaValues } from './poa-options';
@@ -9,7 +11,7 @@ import { flatStage, flatVariant } from './flat-options';
 
 import type { Rewrite, ScheduleMerge } from './docx';
 import { ALL_FIELDS, GROUPS, LINK_OPTIONS, ROOF_NATURE_OPTIONS, STRUCTURE_TYPE_OPTIONS, SCHEDULE_VARIANT } from './fields';
-import { deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
+import { withDerived, deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
 function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId: string): string {
@@ -25,9 +27,12 @@ function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId
 
 /** Values for every placeholder the template names. */
 export function mergeValues(state: AppState): Record<string, string> {
-  const f = state.form;
-  const out: Record<string, string> = {};
-  if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || ''); out.VILLAGE = f.village || ''; }
+  const f = withDerived(state.form);
+  const out: Record<string, string> = { 'Stamp Paper Margin': f.stampPaperMargin || 'Legacy' };
+  if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || '').toLocaleUpperCase('en-IN'); out.VILLAGE = (f.village || '').toLocaleUpperCase('en-IN'); }
+  const nalaArea = acreGuntasToSqYards(f.nalaExtent || '');
+  if (nalaArea !== null) out['NALA Converted Extent'] = String(nalaArea);
+  out['Minor Representation Complete'] = String(['executant', 'claimant'].filter(side => side !== 'claimant' || !isMunicipalGift(state)).every(side => partyRecords(state, side as 'executant' | 'claimant').every(record => !minorPartyErrors(record.values, side).length)));
   Object.assign(out, giftRelationshipValues(state), poaValues(state));
 
   // Straight field -> placeholder mappings declared in fields.ts.
@@ -168,6 +173,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     const rows = houseRows.filter(row => pattern.test(row.floorNo.trim()));
     out[label] = rows.length ? rows.reduce((sum, row) => sum + Number(row.builtUpAreaSqFt || 0), 0).toLocaleString('en-IN') : '';
   }
+  if (isMunicipalGift(state)) { out.Village = out.VILLAGE; out['Local Authority Type'] = out.ULB; }
   return out;
 }
 
@@ -264,7 +270,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
         const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
         const prefix = partyCapacityPrefix(record.values[side + 'PartyType']);
-        return { 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), 'Registration Name': partyDisplayName(record.values, side), 'Registration Address': isEntity(record.values, side) ? record.values[side + 'EntityAddress'] || '' : ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => record.values[side + suffix]?.trim()).filter(Boolean).join(', '), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
+        return { 'MINOR GUARDIAN RECITAL': minorGuardianRecital(record.values, side), 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), 'Registration Name': partyDisplayName(record.values, side), 'Registration Address': isEntity(record.values, side) ? record.values[side + 'EntityAddress'] || '' : ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => record.values[side + suffix]?.trim()).filter(Boolean).join(', '), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
       }),
     });
   }
@@ -272,7 +278,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     const principals = partyRecords(state, 'executant');
     const principalRecords = principals.map((record, index) => {
       const values = Object.fromEntries(Object.entries(record.values).filter(([key]) => key.startsWith('executant')).map(([key, value]) => [key.slice(9), value]));
-      return { 'PARTY CAPACITY PREFIX': partyCapacityPrefix(record.values.executantPartyType), ...authorityPartyValues(values, 'Principal'), 'Executant Share': ownershipShare(state, 'executant', index === 0 ? state.primaryExecutantId || 'primary' : record.id) };
+      return { 'MINOR GUARDIAN RECITAL': minorGuardianRecital(record.values, 'executant'), 'PARTY CAPACITY PREFIX': partyCapacityPrefix(record.values.executantPartyType), ...authorityPartyValues(values, 'Principal'), 'Executant Share': ownershipShare(state, 'executant', index === 0 ? state.primaryExecutantId || 'primary' : record.id) };
     });
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
@@ -378,6 +384,8 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     titleValues['Pattadar Pass Book No.'] = titleValues['Pattadar Pass Book No'];
     titleValues['Pass Book Khata No.'] = titleValues['Pass Book Khata No'];
     const nala = complete(['nala'], ['nalaOrderNo']);
+    const nalaExtent = acreGuntasToSqYards(titleLinkRecords.find(link => link.values.linkOption === 'nala' && link.values.nalaExtent)?.values.nalaExtent || record.values.nalaExtent || '');
+    if (nalaExtent !== null) values['NALA Converted Extent'] = String(nalaExtent);
     titleValues['Nala Order No'] = nala?.values.nalaOrderNo || '';
     titleValues['Nala Order No.'] = titleValues['Nala Order No'];
     titleValues['Nala Order Date'] = deedDate(nala?.values.nalaProceedingDate || '');

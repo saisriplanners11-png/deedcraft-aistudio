@@ -53,7 +53,7 @@ it('restores Municipal Gift without individual donee requirements or erasing reg
   const restored = JSON.parse(JSON.stringify(draft));
   const state = appStateFor(restored);
   expect(state.draft).toBe('Gift to Local Bodies');
-  expect(mergeValues(state).ULB).toBe('Municipal Council');
+  expect(mergeValues(state).ULB).toBe('MUNICIPAL COUNCIL');
   expect(mergeValues(state).VILLAGE).toBe('PROPERTY VILLAGE');
   expect(generationBlockers(state).filter(item => item.step === 7)).toEqual([]);
   const regular = appStateFor(draftReducer(restored, { type: 'instrument', instrumentId: 'gift', variantId: 'family-gift' }));

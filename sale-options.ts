@@ -34,7 +34,7 @@ export function authorityPartyValues(values: Record<string, string>, prefix: 'Pr
   const result: Record<string, string> = {};
   const suffixes: Record<string, string> = { Name: 'NAME', Age: 'Age', Dob: 'Dob', Occupation: 'Occupation', HNo: 'H.No.', Locality: 'Locality', Village: 'Village', Mandal: 'Mandal', District: 'District', State: 'State', PinCode: 'Pin Code', Aadhaar: 'Adhar Number', Mobile: 'Cell.No.', Pan: 'PAN' };
   for (const [field, tag] of Object.entries(suffixes)) result[`${prefix} ${tag}`] = field === 'Dob' ? deedDate(values[field] || '') : values[field] || '';
-  result[`${prefix} Age`] = values.Age || ageFrom(values.Dob || '');
+  result[`${prefix} Age`] = values.Dob ? ageFrom(values.Dob) : values.Age || '';
   result[`${prefix.toUpperCase()} RELATION NAME`] = [values.Relation, values.RelativeName].filter(Boolean).join(' ');
   return result;
 }

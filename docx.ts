@@ -1,3 +1,4 @@
+import { partyWording } from './party-wording';
 import { giftPartyWording } from './gift-wording';
 // Fills the Sale Deed template and re-zips it, so the generated file is a real
 // .docx carrying the template's own fonts, spacing, tables and annexures —
@@ -641,13 +642,18 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     if (repeat.partyRole && record['ENTITY RECITAL']) {
       const originalClosing = plainText(p).match(/\(Hereinafter[\s\S]*$/i)?.[0];
       const closing = index === repeat.records!.length - 1 ? originalClosing || (repeat.partyRole === 'executant' ? '(Hereinafter called the "VENDOR/S") of the ONE PART.' : '(Hereinafter called the "VENDEE/S") of the OTHER PART.') : '';
-      const recital = (repeat.records!.length > 1 ? (index + 1) + '. ' : '') + record['ENTITY RECITAL'] + (record['UNDIVIDED SHARE RECITAL'] ? ', ' + record['UNDIVIDED SHARE RECITAL'] : '') + (closing ? ', ' + closing : '.');
+      const recital = (repeat.records!.length > 1 ? (index + 1) + '. ' : '') + '<ENTITY RECITAL>' + (record['UNDIVIDED SHARE RECITAL'] ? ', ' + record['UNDIVIDED SHARE RECITAL'] : '') + (closing ? ', ' + closing : '.');
       const paragraph = replaceRunText(p, /[\s\S]+/, () => recital);
       return fillParagraph(paragraph, new Map([...values, ...Object.entries(record).map(([k, v]) => [norm(k), v] as [string, string])]), missing, rewrites.filter(rw => rw !== repeat));
     }
     let paragraph = repeat.partyRole && repeat.records!.length > 1 ? replaceRunText(p, repeat.find, match => `${index + 1}. ${match[0]}`) : p;
     if (record['PARTY CAPACITY PREFIX']) {
       paragraph = replaceRunText(paragraph, repeat.find, match => record['PARTY CAPACITY PREFIX'] + match[0]);
+    }
+    if (record['MINOR GUARDIAN RECITAL']) {
+      const recital = ', <MINOR GUARDIAN RECITAL>';
+      if (/\s*\(Hereinafter|\s+represented herein/i.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, /,?\s*\(Hereinafter|\s+represented herein/i, match => recital + ' ' + match[0].replace(/^,\s*/, ''));
+      else paragraph = replaceRunText(paragraph, /[\s\S]+/, match => match[0] + recital);
     }
     if (record['Executant Share'] && /<PRINCIPAL NAME>/i.test(plainText(paragraph)) && !/<Executant Share>/i.test(plainText(paragraph))) {
       paragraph = replaceRunText(paragraph, /<\s*Principal Pin Code\s*>/i, match => match[0] + ', holding an undivided share of <Executant Share> in the schedule property');
@@ -709,6 +715,7 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   p = replaceRunText(p, /\s+on\s+<Date>/gi, match =>
     values.get(norm('Date')) ? match[0] : '');
   if (!values.get(norm('District Registrar'))) p = replaceRunText(p, /\s+and\s+within the Registration District:\s*<District Registrar>/gi, () => '');
+  partyWording(plainText(p), Number(values.get(norm('Ownership Vendor Count')) || 1), Number(values.get(norm('Ownership Vendee Count')) || 1), (find, replacement) => { p = replaceRunText(p, find, match => match[0].replace(find, replacement)); }, Number(values.get(norm('Authority Attorney Count')) || values.get(norm('Ownership Vendee Count')) || 1));
   p = removeEmptyFields(p, values, missing);
   p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
@@ -1149,7 +1156,7 @@ function addPartySignatureLines(body: string, values: Map<string, string>, rewri
   const vendees = partyRewrite('claimant')?.records?.map(record => record['CLAIMANT NAME'] || '')
     || [values.get(norm('CLAIMANT NAME')) || ''];
   const heading = topLevelChildren(body).find(child =>
-    /SIGN\/S OF VENDOR\/S[\s\S]*SIGN\/S OF VENDEE\/S/i.test(plainText(body.slice(child.start, child.end)))
+    /SIGN(?:\/S|ATURES?) OF VENDOR(?:\/S|S)?[\s\S]*SIGN(?:\/S|ATURES?) OF VENDEE(?:\/S|S)?/i.test(plainText(body.slice(child.start, child.end)))
   );
   if (!heading) throw new Error('Template signature headings are missing; party signature lines could not be placed.');
   const lines = Array.from({ length: Math.max(vendors.length, vendees.length) }, (_, index) => {
@@ -1332,6 +1339,10 @@ function prepareNonHouseIdentifiers(block: string, variant: string, values: Reco
 
 /** Add a supplied landmark wherever a source schedule/valuation omits its slot. */
 function prepareLandmarkBlock(block: string, values: Record<string, string>): string {
+  if (values['NALA Converted Extent']) block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (!/^\s*All that\b/i.test(plainText(paragraph))) return paragraph;
+    return replaceRunText(paragraph, /[\s\S]+/, match => match[0] + ' NALA converted extent: ' + values['NALA Converted Extent'] + ' Sq. Yards.');
+  });
   const relation = values['Near / Adjacent']?.toLowerCase();
   const landmarkNumber = values['Landmark House No.'] ?? values['Near H.No.'];
   if (!['near', 'adjacent'].includes(relation) || !landmarkNumber?.trim()) return block;
@@ -1368,12 +1379,13 @@ function prepareLandmarkBlock(block: string, values: Record<string, string>): st
  * @param rewrites literal phrases to fix up after substitution
  */
 /** Apply the mandatory Sale-sized stamp area to every generated deed package. */
-export function ensureStampPaperSpace(xml: string): string {
+export function ensureStampPaperSpace(xml: string, selection = 'Legacy'): string {
+  const top = ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' } as Record<string, string>)[selection] || '8208';
   const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
   const stampSection = (section: string) => {
     if (/<w:pgMar\b/.test(section)) return section.replace(/<w:pgMar\b[^>]*\/>/, margin =>
-      /\bw:top="[^"]*"/.test(margin) ? margin.replace(/\bw:top="[^"]*"/, 'w:top="8208"') : margin.replace('/>', ' w:top="8208"/>'));
-    return section.replace('</w:sectPr>', '<w:pgMar w:top="8208" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>');
+      /\bw:top="[^"]*"/.test(margin) ? margin.replace(/\bw:top="[^"]*"/, `w:top="${top}"`) : margin.replace('/>', ` w:top="${top}"/>`));
+    return section.replace('</w:sectPr>', `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`);
   };
   if (sections.length >= 2) return xml.replace(sections[0], stampSection(sections[0]));
 
@@ -1473,8 +1485,8 @@ export async function validateGeneralPoaTemplate(bytes: Uint8Array, contract: Te
   return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
-/** Repeating table headers let Word paginate without splitting a person's photo/thumb spaces. */
-function agreementRegistrationForm(table: string, heading: string, rewrites: Rewrite[], startNewPage: boolean) {
+/** Each page owns a table and an adjacent signature block, rather than a footer. */
+function agreementRegistrationForm(table: string, heading: string, rewrites: Rewrite[], signatures: string, pageSection: string) {
   const rows = table.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
   const sample = rows[1];
   if (!sample) throw new Error('Section 32A has no person row.');
@@ -1488,6 +1500,18 @@ function agreementRegistrationForm(table: string, heading: string, rewrites: Rew
   const cell = (width: number, content: string) => `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>${content}</w:tc>`;
   const headingRow = `<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr><w:tc><w:tcPr><w:tcW w:w="9749" w:type="dxa"/><w:gridSpan w:val="3"/></w:tcPr>${keepWithNext(heading)}</w:tc></w:tr>`;
   const labels = `<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>${cell(2700, text('FINGER PRINT / THUMB'))}${cell(2700, text('PHOTO'))}${cell(4349, text('NAME AND ADDRESS'))}</w:tr>`;
+  const fontPoints = Number(font.match(/<w:sz\b[^>]*w:val="(\d+)"/)?.[1] || '28') / 2;
+  const lineCapacity = Math.max(12, Math.floor((4349 - 216) / (fontPoints * 10)));
+  const lines = (value: string) => {
+    let count = 1, used = 0;
+    for (const word of value.split(/\s+/)) {
+      const width = [...word].reduce((sum, char) => sum + (/[^\u0000-\u024f]/.test(char) ? 2 : 1), 0);
+      if (used && used + width + 1 > lineCapacity) { count++; used = 0; }
+      count += Math.max(0, Math.ceil(width / lineCapacity) - 1);
+      used = used ? used + width + 1 : width % lineCapacity || Math.min(width, lineCapacity);
+    }
+    return count;
+  };
   const people = (['executant', 'claimant'] as const).flatMap(side => {
     const records = rewrites.find(rewrite => rewrite.partyRole === side)?.records;
     if (!records?.length) throw new Error(`Add at least one ${side} for Section 32A.`);
@@ -1497,15 +1521,43 @@ function agreementRegistrationForm(table: string, heading: string, rewrites: Rew
       const name = values.get(norm('Registration Name')) || values.get(norm(prefix + ' Name')) || '';
       const relation = values.get(norm(prefix + ' Relation Name')) || '';
       const address = values.get(norm('Registration Address')) || values.get(norm(prefix + ' Address')) || '';
-      const identity = text([name, relation].filter(Boolean).join(', ')) + text(address ? `R/o ${address}` : '') + text(side === 'executant' ? 'EXECUTANT / PRINCIPAL' : 'CLAIMANT / ATTORNEY HOLDER');
-      return `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="2800" w:hRule="atLeast"/></w:trPr>${cell(2700, '<w:p/>')}${cell(2700, '<w:p/>')}${cell(4349, identity)}</w:tr>`;
+      const fields = [[name, relation].filter(Boolean).join(', '), address ? `R/o ${address}` : '', side === 'executant' ? 'EXECUTANT / PRINCIPAL' : 'CLAIMANT / ATTORNEY HOLDER'];
+      const identity = fields.map(text).join('');
+      return { xml: `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="2800" w:hRule="atLeast"/></w:trPr>${cell(2700, '<w:p/>')}${cell(2700, '<w:p/>')}${cell(4349, identity)}</w:tr>`, height: Math.max(2800, Math.ceil(fields.reduce((sum, field) => sum + lines(field), 0) * fontPoints * 22 + 640)) };
     });
-  }).join('');
+  });
   const properties = (table.match(/<w:tblPr\b[^>]*>[\s\S]*?<\/w:tblPr>/)?.[0] || '<w:tblPr/>')
     .replace(/<w:tblW\b[^>]*\/>/, '<w:tblW w:w="9749" w:type="dxa"/>')
     .replace(/<w:tblInd\b[^>]*\/>/, '<w:tblInd w:w="0" w:type="dxa"/>');
-  const pageBreak = startNewPage ? '<w:p><w:pPr><w:pageBreakBefore/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>' : '';
-  return `${pageBreak}<w:tbl>${properties}<w:tblGrid><w:gridCol w:w="2700"/><w:gridCol w:w="2700"/><w:gridCol w:w="4349"/></w:tblGrid>${headingRow}${labels}${people}</w:tbl>`;
+  const pageHeight = Number(pageSection.match(/<w:pgSz\b[^>]*\bw:h="(\d+)"/)?.[1] || '16834');
+  const margin = pageSection.match(/<w:pgMar\b[^>]*\/>/)?.[0] || '';
+  const rowBudget = pageHeight - Number(margin.match(/\bw:top="(\d+)"/)?.[1] || '1440') - Number(margin.match(/\bw:bottom="(\d+)"/)?.[1] || '1080') - 3500;
+  const pages: typeof people[] = [];
+  let current: typeof people = [], height = 0;
+  for (const person of people) {
+    if (person.height > rowBudget) throw new Error('A Section 32A address is too long to fit with its signature area on one page. Shorten the address before downloading.');
+    if (current.length && (height + person.height > rowBudget || current.length === 3)) { pages.push(current); current = []; height = 0; }
+    current.push(person); height += person.height;
+  }
+  if (current.length) pages.push(current);
+  const signatureParagraphs = signatures.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
+  const signatureText = signatureParagraphs.filter(paragraph => plainText(paragraph).trim());
+  const signatureBlock = signatureText.join('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="280" w:lineRule="exact"/></w:pPr></w:p>');
+  const gap = '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="360" w:lineRule="exact"/></w:pPr></w:p>';
+  const pageBreak = '<w:p><w:pPr><w:pageBreakBefore/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>';
+  return pages.map((page, index) => {
+    let block = `<w:tbl>${properties}<w:tblGrid><w:gridCol w:w="2700"/><w:gridCol w:w="2700"/><w:gridCol w:w="4349"/></w:tblGrid>${headingRow}${labels}${page.map(person => person.xml).join('')}</w:tbl>${gap}${signatureBlock}`;
+    const paragraphs = block.match(/<w:p(?:\s[^>]*)?\/>|<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
+    let position = 0;
+    block = block.replace(/<w:p(?:\s[^>]*)?\/>|<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+      paragraph = paragraph.replace(/<w:keepNext\b[^>]*\/>/g, '');
+      if (++position === paragraphs.length) return paragraph;
+      if (/^<w:p\s*\/>$/.test(paragraph)) return '<w:p><w:pPr><w:keepNext/></w:pPr></w:p>';
+      if (/<w:pStyle\b[^>]*\/>/.test(paragraph)) return paragraph.replace(/<w:pStyle\b[^>]*\/>/, tag => tag + '<w:keepNext/>');
+      return keepWithNext(paragraph);
+    });
+    return (index ? pageBreak : '') + block;
+  }).join('');
 }
 
 export async function fillAgreementSaleGpaDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
@@ -1594,8 +1646,8 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   const signatureStart = afterForm.findIndex(chunk => /SIGNATURES OF WITNESSES/i.test(plainText(chunk)));
   const signatureEnd = afterForm.findIndex((chunk, index) => index > signatureStart && /^1\.\s+2\.$/.test(plainText(chunk).trim()));
   if (signatureStart < 0 || signatureEnd < 0) throw new Error('Retain the Section 32A witness and executant signature area, including witness numbers 1 and 2.');
-  const signatureFooter = fill(afterForm.slice(signatureStart, signatureEnd + 1).join(''), values);
-  // Isolate the form's repeating footer from every preceding deed page, even
+  const signatureBlock = fill(afterForm.slice(signatureStart, signatureEnd + 1).join(''), values);
+  // Isolate the form pages from every preceding deed page, even
   // when a compatible replacement has removed the source's section boundary.
   if (!sectionStartsForm) {
     const previousSection = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)?.at(-1);
@@ -1603,7 +1655,8 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     const boundary = previousSection.replace(/<w:type\b[^>]*\/>/g, '').replace(/(<w:sectPr\b[^>]*>)/, '$1<w:type w:val="nextPage"/>');
     beforeForm.push(`<w:p><w:pPr>${boundary}</w:pPr></w:p>`);
   }
-  const form = agreementRegistrationForm(closingChunks[tableIndex], closingChunks[headingIndex], rewrites, false);
+  const formSection = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)?.at(-1) || '';
+  const form = agreementRegistrationForm(closingChunks[tableIndex], closingChunks[headingIndex], rewrites, signatureBlock, formSection);
   const closing = fill(beforeForm.join(''), values) + form + fill([...afterForm.slice(0, signatureStart), ...afterForm.slice(signatureEnd + 1)].join(''), values);
   // Catalogue spacers and printed page-number samples must not control dynamic pagination.
   let blanks = 0;
@@ -1633,33 +1686,8 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     if (plainText(chunk).trim() || /<w:(?:sectPr|tbl|drawing|pageBreakBefore)\b/.test(chunk)) { blanks = 0; return true; }
     return ++blanks <= 1;
   }).join('');
-  // Word repeats a section footer on every physical page, regardless of how
-  // many party rows or long addresses flow onto the next page.
-  const relationships = entries.find(entry => entry.name === 'word/_rels/document.xml.rels');
-  const contentTypes = entries.find(entry => entry.name === '[Content_Types].xml');
-  if (!relationships || !contentTypes) throw new Error('The Agreement is missing its Word package relationships.');
-  let footerNumber = 1;
-  while (entries.some(entry => entry.name === `word/footer${footerNumber}.xml`)) footerNumber++;
-  const footerName = `footer${footerNumber}.xml`;
-  let rels = new TextDecoder().decode(relationships.data);
-  let relationshipId = 'rIdSection32A';
-  while (rels.includes(`Id="${relationshipId}"`)) relationshipId += 'A';
-  const namespaces = xml.match(/<w:document\b([^>]*)>/)?.[1] || ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-  entries.push({ name: `word/${footerName}`, data: new TextEncoder().encode(`<?xml version="1.0" encoding="utf-8"?><w:ftr${namespaces}>${signatureFooter}</w:ftr>`) });
-  rels = rels.replace('</Relationships>', `<Relationship Id="${relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="${footerName}"/></Relationships>`);
-  relationships.data = new TextEncoder().encode(rels);
-  contentTypes.data = new TextEncoder().encode(new TextDecoder().decode(contentTypes.data).replace('</Types>', `<Override PartName="/word/${footerName}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`));
-  const finalSection = result.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)?.at(-1);
-  if (!finalSection) throw new Error('Section 32A page settings are missing.');
-  const headers = (finalSection.match(/<w:headerReference\b[^>]*\/>/g) || []).join('');
-  const footerReferences = ['default', 'first', 'even'].map(type => `<w:footerReference w:type="${type}" r:id="${relationshipId}"/>`).join('');
-  const formSection = finalSection.replace(/<w:(?:headerReference|footerReference)\b[^>]*\/>/g, '')
-    .replace(/<w:sectPr\b[^>]*>/, tag => tag + headers + footerReferences)
-    .replace(/<w:pgMar\b[^>]*\/>/, margin => margin.replace(/w:bottom="[^"]*"/, 'w:bottom="2200"').replace(/w:footer="[^"]*"/, 'w:footer="540"'));
-  const finalAt = result.lastIndexOf(finalSection);
-  result = result.slice(0, finalAt) + formSection + result.slice(finalAt + finalSection.length);
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end)));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -1878,7 +1906,7 @@ export async function fillSaleDeed(
     ),
   ];
 
-  xml = ensureStampPaperSpace(xml.slice(0, bodyStart) + body + xml.slice(bodyEnd));
+  xml = ensureStampPaperSpace(xml.slice(0, bodyStart) + body + xml.slice(bodyEnd), values['Stamp Paper Margin']);
   doc.data = new TextEncoder().encode(xml);
   for (const part of entries.filter(entry => /^word\/(?:header|footer)\d+\.xml$/.test(entry.name))) {
     const filled = new TextDecoder().decode(part.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, values_, missing, []));
@@ -2082,7 +2110,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => !values['Include Prepared By'] && /Prepared By:/i.test(plainText(paragraph)) ? '' : paragraph);
   const result = opening + selected + fill(closing, values);
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end)));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -2203,6 +2231,6 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       .replace(/<w:pgMar\b[^>]*\/>/, `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>`);
   });
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end)));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }

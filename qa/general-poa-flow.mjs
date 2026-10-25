@@ -10,9 +10,10 @@ assert.equal(validation.valid, true, validation.errors.join('\n'));
 const reference = await rt.readZip(bytes);
 await mkdir('tmp/general-poa-qa', { recursive: true });
 const variants = ['general-power-of-attorney', 'general-power-of-attorney-family'];
-const properties = ['plot', 'open', 'part', 'dismantled', 'house-finished', 'house-semi', 'flat-finished', 'flat-semi'];
+const properties = ['plot', 'open', 'part', 'dismantled', 'house-finished', 'house-semi', 'flat-finished', 'flat-semi', 'commercial-finished', 'commercial-semi'];
 const sample = (property, family = false) => {
-  const state = rt.sampleState('ordinary-' + property);
+  const state = rt.sampleState('ordinary-' + property.replace('commercial-', 'house-'));
+  if (property.startsWith('commercial-')) state.category = 'Commercial';
   state.deedType = 'GPA/Power of Attorney';
   state.draft = family ? 'General Power of Attorney Family' : 'General Power of Attorney';
   Object.assign(state.form, { poaRelationship: family ? 'son' : '', executionDate: '2026-10-24', consid: '765432', nearAdjacent: 'Adjacent', nearHNo: 'LANDMARK-99', landmarkHNo: 'LANDMARK-99', bearingHNo: 'SUBJECT-42', executantPan: 'ABCDE1234F', claimantPan: 'PQRST5678L', linkDocNo: 'TITLE-44', linkDocDate: '2026-10-01', linkDocType: 'Sale Deed', linkSro: 'TITLE SRO', govtRate: '5000' });
@@ -31,7 +32,7 @@ for (const property of properties) for (const variant of variants) for (const cu
   const text = await rt.docxToText(output);
   assert.match(text, /^GENERAL POWER OF ATTORNEY/);
   assert.match(text, new RegExp(`appoint my ${variant === variants[1] ? 'son' : 'friend'} SAMPLE PURCHASER as`));
-  assert.equal((text.match(/WHEREAS, I\/We have full confidence/g) || []).length, 1);
+  assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
   assert.match(text, /24-10-2026/); assert.match(text, /01-10-2026/); assert.match(text, /TITLE-44/);
   assert.match(text, /Rs.7,65,432/); assert.match(text, /ABCDE1234F/); assert.match(text, /PQRST5678L/);
   assert.doesNotMatch(text, /DD-MM-YYYY|<IF |<Friend|VENDOR\/S|VENDEE\/S|AGREEMENT OF SALE-CUM/);
@@ -56,7 +57,7 @@ state.additionalSchedules = [{ id: 'schedule-two', docNames: [], category: 'Open
 const { result } = await render(state, variants[1]);
 const output = new Uint8Array(await result.blob.arrayBuffer()), text = await rt.docxToText(output);
 assert.match(text, /appoint my son ATTORNEY ONE, daughter ATTORNEY TWO and nephew ATTORNEY THREE as/);
-assert.equal((text.match(/WHEREAS, I\/We have full confidence/g) || []).length, 1);
+assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
 assert.doesNotMatch(text, /VENDOR\/S|VENDEE\/S/);
 const form = text.slice(text.indexOf('PHOTOGRAPHS AND FINGERPRINTS'));
@@ -65,6 +66,9 @@ for (const person of ['SAMPLE VENDOR', 'PRINCIPAL TWO', 'ATTORNEY ONE', 'ATTORNE
 await writeFile('tmp/general-poa-qa/multiple-family.docx', output);
 state.additionalClaimants[1].values.poaRelationshipCustom = '';
 await assert.rejects(() => render(state, variants[1]), /family relationship/);
+state.draft = 'General Power of Attorney';
+const ordinary = await render(state, variants[0]);
+assert.match(await rt.docxToText(new Uint8Array(await ordinary.result.blob.arrayBuffer())), /appoint my friend ATTORNEY ONE, friend ATTORNEY TWO and friend ATTORNEY THREE as/);
 for (const removed of ['Friend/Relationship', 'Executant PAN', 'TO SELL AND CONVEY', 'TO RECEIVE', 'Registered Deed:']) {
   const damaged = await rt.readZip(bytes), document = damaged.find(entry => entry.name === 'word/document.xml');
   document.data = new TextEncoder().encode(new TextDecoder().decode(document.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => rt.replaceRunText(paragraph, new RegExp(removed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), () => 'REMOVED')));

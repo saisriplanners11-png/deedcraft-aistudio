@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { createGeminiMediaStore, withGeminiMedia } from '../gemini-media.mjs';
-import { createProxyHandler } from '../proxy.mjs';
+import { createProxyHandler, geminiRequest } from '../proxy.mjs';
 
 const bytes = Buffer.alloc(256 * 1024, 0xab);
 const input = (data = bytes, text = 'Extract the identity.', mimeType = 'image/png') => ({
@@ -41,6 +41,14 @@ function provider() {
 }
 const signal = () => new AbortController().signal;
 const quiet = () => {};
+
+test('Gemini identity transcription uses low thinking while other reads keep provider defaults', () => {
+  const base = { model: 'gemini-3.8-flash', max_tokens: 3000, messages: [{ role: 'user', content: 'ID image' }] };
+  const identity = geminiRequest({ ...base, system: 'Transcribe only the selected ID holder from the supplied source pixels.' });
+  assert.deepEqual(identity.generationConfig, { maxOutputTokens: 3000, thinkingConfig: { thinkingLevel: 'LOW' } });
+  const deed = geminiRequest({ ...base, system: 'Extract property schedule facts.' });
+  assert.deepEqual(deed.generationConfig, { maxOutputTokens: 3000 });
+});
 
 test('same source uploads once while all independent reads and tool definitions remain intact', async () => {
   const p = provider(), store = createGeminiMediaStore(p);

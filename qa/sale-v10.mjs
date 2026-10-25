@@ -18,7 +18,7 @@ for (const [id] of rt.saleMatrixCases) {
   else {
     assert.match(tail, id.startsWith('agpa') ? /A\.G\.P\.A\. HOLDER OF/ : /G\.P\.A\. HOLDER OF/, id);
     assert.match(tail, /SAMPLE VENDOR/, id);
-    assert(tail.indexOf('HOLDER OF') < tail.indexOf('SIGN/S OF VENDOR/S'), id);
+    assert(tail.indexOf('HOLDER OF') < tail.search(/SIGNATURES? OF VENDORS?/), id);
   }
   if (id.endsWith('-plot')) await writeFile(new URL(id + '.docx', out), output);
 }
@@ -55,7 +55,7 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) {
   const result = await rt.fillSaleDeed(rt.mergeValues(sample), schedules[0].variant, rt.rewritesFor(sample), schedules, replacementSource);
   const tail = (await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()))).split('DECLARATION').pop();
   if (mode === 'ordinary') assert.doesNotMatch(tail, /HOLDER OF/);
-  else { assert.match(tail, /HOLDER OF/); assert.match(tail, /SAMPLE VENDOR/); assert(tail.indexOf('HOLDER OF') < tail.indexOf('SIGN/S OF VENDOR/S')); }
+  else { assert.match(tail, /HOLDER OF/); assert.match(tail, /SAMPLE VENDOR/); assert(tail.indexOf('HOLDER OF') < tail.search(/SIGNATURES? OF VENDORS?/)); }
 }
 const incompleteEntries = await rt.readZip(bytes);
 const incompleteDoc = incompleteEntries.find(entry => entry.name === 'word/document.xml');

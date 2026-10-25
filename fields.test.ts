@@ -204,10 +204,10 @@ describe('field mapping', () => {
     expect(generationBlockers(invalid).map(item => item.label)).toContain('Structure Details');
   });
 
-  it('prefills an Aadhaar DOB age but keeps a typed correction', () => {
+  it('recalculates an Aadhaar DOB age even when a saved age exists', () => {
     const suggested = withDerived({ executantDob: '2000-01-02', executantAge: '' });
     expect(suggested.executantAge).toBe(ageFrom('2000-01-02', todayISO()));
-    expect(withDerived({ executantDob: '2000-01-02', executantAge: '31' }).executantAge).toBe('31');
+    expect(withDerived({ executantDob: '2000-01-02', executantAge: '31' }).executantAge).toBe(ageFrom('2000-01-02', todayISO()));
   });
 
   it('uses editable age and uppercase party identity values in the deed merge', () => {

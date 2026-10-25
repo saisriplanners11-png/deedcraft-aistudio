@@ -44,8 +44,9 @@ const geminiPart = part => {
   return null;
 };
 
-const geminiRequest = request => {
+export const geminiRequest = request => {
   const schema = request.output_config?.format?.schema;
+  const isIdentityRead = /Transcribe only the selected ID holder/.test(request.system || '');
   const functionDeclarations = (request.tools || []).map(tool => ({
     name: tool.name,
     description: tool.description,
@@ -59,6 +60,11 @@ const geminiRequest = request => {
     })),
     generationConfig: {
       maxOutputTokens: request.max_tokens,
+      // Aadhaar reads are short, schema-bound transcription, not legal
+      // reasoning. Gemini 3.8 Flash otherwise defaults to medium thinking,
+      // adding substantial latency and sometimes exhausting the output cap
+      // before it returns the requested structured fields.
+      ...(isIdentityRead ? { thinkingConfig: { thinkingLevel: 'LOW' } } : {}),
       ...(schema ? { responseMimeType: 'application/json', responseJsonSchema: schema } : {}),
     },
     ...(request.system ? { systemInstruction: { parts: [{ text: request.system }] } } : {}),

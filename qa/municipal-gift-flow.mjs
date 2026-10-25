@@ -22,7 +22,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   const text = await rt.docxToText(bytes);
   assert.equal(manifest.templateVersionId, 'gift-municipal-v1');
   assert.deepEqual(result.unmapped, []);
-  assert.match(text, /Municipal Council, MUNICIPAL VILLAGE/);
+  assert.match(text, /MUNICIPAL COUNCIL, MUNICIPAL VILLAGE/);
   assert.match(text, /Represented by its Commissioner/);
   assert.match(text, /public purpose free of any cost and consideration/);
   assert.match(text, /Sale Deed dated 02-01-2020/);

@@ -12,3 +12,9 @@ export function deedDate(value: string): string {
   if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return '';
   return `${day}-${month}-${year}`;
 }
+
+/** Accept complete Indian local or ISO source dates without inventing missing parts. */
+export function isoDate(value: string): string {
+  const local = deedDate(value);
+  return local ? local.slice(6) + '-' + local.slice(3, 5) + '-' + local.slice(0, 2) : '';
+}

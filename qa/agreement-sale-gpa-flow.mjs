@@ -10,24 +10,20 @@ assert(validation.valid, validation.errors.join(' '));
 const reference = await rt.readZip(bytes);
 await mkdir('tmp/agreement-sale-gpa-qa', { recursive: true });
 const xmlOf = entries => new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
-const checkSignatureFooter = entries => {
+const checkSignatureBlocks = entries => {
   const xml = xmlOf(entries);
-  const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
-  const final = sections.at(-1);
-  const id = final.match(/<w:footerReference w:type="default" r:id="([^"]+)"\/>/)?.[1];
-  assert(id, 'Section 32A has a repeating signature footer');
-  for (const section of sections.slice(0, -1)) assert(!section.includes(`r:id="${id}"`), 'Signature footer applies only to Section 32A');
-  for (const type of ['first', 'even']) assert(final.includes(`<w:footerReference w:type="${type}" r:id="${id}"/>`));
-  assert.match(final, /w:bottom="2200"/);
-  const rels = new TextDecoder().decode(entries.find(entry => entry.name === 'word/_rels/document.xml.rels').data);
-  const target = rels.match(new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`))?.[1];
-  assert(target);
-  const footer = new TextDecoder().decode(entries.find(entry => entry.name === `word/${target}`).data);
-  const text = [...footer.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map(match => match[1]).join('');
-  assert.match(text, /SIGNATURES OF WITNESSES/);
-  assert.match(text, /SIGNATURE\/S OF EXECUTANT\/S/);
-  assert.match(text, /1\.\s+2\./);
-  assert.doesNotMatch(xml, /SIGNATURES OF WITNESSES/, 'Do not leave a duplicate final-page signature block in the body');
+  assert.doesNotMatch(xml, /rIdSection32A/, 'Signature areas belong below tables, not in page footers');
+  const tables = [...xml.matchAll(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g)].filter(match => match[0].includes('FINGER PRINT'));
+  assert(tables.length, 'Section 32A has at least one page table');
+  for (const [index, table] of tables.entries()) {
+    const following = xml.slice(table.index + table[0].length, tables[index + 1]?.index ?? xml.length);
+    const text = [...following.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map(match => match[1]).join('');
+    assert.equal((text.match(/SIGNATURES OF WITNESSES/g) || []).length, 1);
+    assert.match(text, /SIGNATURES? OF EXECUTANTS?/);
+    assert.match(text, /1\.\s+2\./);
+    assert.match(following.slice(0, 350), /w:line="360"/, '18-point gap directly follows the table');
+    assert.match(table[0], /<w:cantSplit\/>/);
+  }
 };
 const customize = async edit => {
   const entries = await rt.readZip(bytes);
@@ -62,8 +58,8 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
     assert.equal((xml.match(/<w:tblHeader\/>/g) || []).length, 2);
     assert.equal((xml.match(/<w:trHeight w:val="2800"/g) || []).length, 2);
     assert.match(xml, /w:top="8208"/);
-    checkSignatureFooter(entries);
-    for (const entry of reference.filter(entry => !['word/document.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml'].includes(entry.name))) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
+    checkSignatureBlocks(entries);
+    for (const entry of reference.filter(entry => entry.name !== 'word/document.xml')) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
     if (source.kind === 'built-in') {
       assert.equal(artifact.manifest.templateVersionId, 'agreement-sale-gpa-v1');
       if (variant === 'with-possession') withXml = xml;
@@ -92,7 +88,7 @@ const expected = [...Array.from({ length: 7 }, (_, i) => `PRINCIPAL ${i + 1}`), 
 let previous = -1;
 for (const person of expected) { const position = form.indexOf(person); assert(position > previous, person); assert.equal(form.split(person).length - 1, 1); previous = position; }
 assert.match(form, /P-HOUSE-7/); assert.match(form, /A-HOUSE-4/);
-checkSignatureFooter(await rt.readZip(output));
+checkSignatureBlocks(await rt.readZip(output));
 await writeFile('tmp/agreement-sale-gpa-qa/many-parties.docx', output);
 assert.match(rt.deedFilename(state), /^Agreement-of-Sale-Cum-GPA-/);
 // All payment methods retain their own references and dates; unused source samples disappear.

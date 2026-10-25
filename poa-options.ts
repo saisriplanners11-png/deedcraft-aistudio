@@ -28,9 +28,12 @@ export function poaValues(state: AppState): Record<string, string> {
   if (state.deedType !== 'GPA/Power of Attorney') return {};
   const phrases = attorneysFor(state).map(record => `${isFamilyPoa(state) ? poaRelationship(record.values) || '________' : 'friend'} ${partyDisplayName(record.values, 'claimant') || '________'}`);
   const attorneys = phrases.length <= 2 ? phrases.join(' and ') : `${phrases.slice(0, -1).join(', ')} and ${phrases.at(-1)}`;
+  const manyPrincipals = partyRecords(state, 'executant').length > 1;
+  const manyAttorneys = attorneysFor(state).length > 1;
+  const subject = manyPrincipals ? 'We' : 'I', possessive = manyPrincipals ? 'our' : 'my', object = manyPrincipals ? 'us' : 'me';
   return {
     'Poa Relationship Complete': String(!poaRelationshipErrors(state).length),
     'Poa Attorney Appointment': attorneys,
-    'Poa Appointment Recital': `WHEREAS, I/We have full confidence and trust in the above-named Attorney Holder and therefore, I/We hereby nominate, constitute and appoint my ${attorneys} as my/our true and lawful GENERAL POWER OF ATTORNEY HOLDER, to act for me/us, in my/our name and on my/our behalf, in respect of the Schedule Property and to exercise the following powers:`,
+    'Poa Appointment Recital': `WHEREAS, ${subject} have full confidence and trust in the above-named Attorney ${manyAttorneys ? 'Holders' : 'Holder'} and therefore, ${subject} hereby nominate, constitute and appoint ${possessive} ${attorneys} as ${possessive} true and lawful GENERAL POWER OF ATTORNEY ${manyAttorneys ? 'HOLDERS' : 'HOLDER'}, to act for ${object}, in ${possessive} name and on ${possessive} behalf, in respect of the Schedule Property and to exercise the following powers:`,
   };
 }

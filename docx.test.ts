@@ -108,12 +108,12 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(initialState), 'IF OPEN PLOT', rewritesFor(initialState));
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const text = await docxToText(bytes);
-    expect(text.slice(0, text.indexOf('SIGN/S OF VENDOR/S'))).not.toMatch(/2026|Kailash|<[^>]+>|__________|undefined|NaN/);
-    expect(text.slice(text.indexOf('SIGN/S OF VENDOR/S'))).toContain('________________');
+    expect(text.slice(0, text.search(/SIGNATURES? OF VENDORS?/))).not.toMatch(/2026|Kailash|<[^>]+>|__________|undefined|NaN/);
+    expect(text.slice(text.search(/SIGNATURES? OF VENDORS?/))).toContain('________________');
     expect(text).toContain('THIS SALE DEED is made');
     expect(text).toContain('in the presence of the following witnesses.');
-    expect(text).toContain('1. THE VENDOR/S');
-    expect(text).toContain('8. THE VENDOR/S');
+    expect(text).toContain('1. THE Vendor');
+    expect(text).toContain('8. THE Vendor');
     const original = await readZip(new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url))));
     const generated = await readZip(bytes);
     for (const name of ['word/styles.xml','word/numbering.xml','word/footer1.xml']) {
@@ -201,7 +201,7 @@ describe('sale deed template merge', () => {
     const openText = await docxToText(new Uint8Array(await open.blob.arrayBuffer()));
     expect(houseText).toContain('house/building standing thereon');
     expect(houseText).not.toContain('IF VACANT PLOT');
-    expect(openText).toContain('1. THE VENDOR/S hereby sell/s');
+    expect(openText).toContain('1. THE Vendor hereby sells');
     expect(openText).not.toContain('house/building standing thereon');
     expect(openText).not.toContain('IF HOUSE');
   });
@@ -455,7 +455,7 @@ describe('sale deed template merge', () => {
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text.match(/9876543210/g)).toHaveLength(1);
-    expect(text).toMatch(/SECOND,[\s\S]*\(Hereinafter called the "VENDOR\/S"\)/);
+    expect(text).toMatch(/SECOND,[\s\S]*\(Hereinafter called the "VENDORS?"\)/);
     expect(text).not.toMatch(/SECOND,[\s\S]*Cell No:/);
   });
 
@@ -574,9 +574,9 @@ describe('sale deed template merge', () => {
     expect(result.blob.size).toBeGreaterThan(0);
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).toContain('DECLARATION');
-    expect(text).toContain('SIGN/S OF VENDOR/S');
+    expect(text).toMatch(/SIGNATURES? OF VENDORS?/);
     expect(text).toContain('WITNESSES:');
-    const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
+    const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures).toContain('________________\n________________');
     expect(signatures).not.toContain('VENDOR NAME');
     expect(signatures).not.toContain('PURCHASER NAME');
@@ -746,8 +746,8 @@ describe('sale deed template merge', () => {
     expect(opening).toContain('Holding Undivided Share of Schedule 1: 40%; Schedule 2: 75%');
     const partyLines = opening.split('\n');
     for (const [first, last, closing] of [
-      ['1. VENDOR ONE', '2. VENDOR TWO', '(Hereinafter called the "VENDOR/S") of the ONE PART.'],
-      ['1. PURCHASER ONE', '2. PURCHASER TWO', '(Hereinafter called the "VENDEE/S") of the OTHER PART.'],
+      ['1. VENDOR ONE', '2. VENDOR TWO', '(Hereinafter called the "VENDORS") of the ONE PART.'],
+      ['1. PURCHASER ONE', '2. PURCHASER TWO', '(Hereinafter called the "VENDEES") of the OTHER PART.'],
     ]) {
       const firstLine = partyLines.find(line => line.startsWith(first))!;
       const lastLine = partyLines.find(line => line.startsWith(last))!;
@@ -768,7 +768,7 @@ describe('sale deed template merge', () => {
     expect(second).toContain('(1) VENDOR ONE — 25%; (2) VENDOR TWO — 75%');
     expect(first).not.toContain('PURCHASER ONE — 25%');
     expect(second).not.toContain('PURCHASER ONE — 60%');
-    const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
+    const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(4);
     expect(signatures).not.toMatch(/\d+\. ________________/);
     expect(signatures).not.toContain('VENDOR ONE');
@@ -791,16 +791,16 @@ describe('sale deed template merge', () => {
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     expect(opening).toContain('ONLY VENDOR');
     expect(opening).not.toContain('1. ONLY VENDOR');
-    expect(opening).toContain('(Hereinafter called the "VENDOR/S") of the ONE PART.');
+    expect(opening).toContain('(Hereinafter called the "VENDOR") of the ONE PART.');
     expect(opening).toContain('1. FIRST BUYER');
     expect(opening).toContain('2. SECOND BUYER');
-    expect(opening.split('(Hereinafter called the "VENDEE/S") of the OTHER PART.')).toHaveLength(2);
+    expect(opening.split('(Hereinafter called the "VENDEES") of the OTHER PART.')).toHaveLength(2);
     expect(opening.split('\n').find(line => line.startsWith('1. FIRST BUYER'))).not.toContain('Hereinafter called');
-    expect(opening.split('\n').find(line => line.startsWith('2. SECOND BUYER'))).toContain('(Hereinafter called the "VENDEE/S") of the OTHER PART.');
+    expect(opening.split('\n').find(line => line.startsWith('2. SECOND BUYER'))).toContain('(Hereinafter called the "VENDEES") of the OTHER PART.');
     expect(text).toContain('(1) FIRST BUYER — 70%');
     expect(text).not.toContain('(2) SECOND BUYER —');
     expect(text).not.toContain('____%');
-    const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'));
+    const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures).toContain('________________');
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(3);
     expect(signatures).not.toMatch(/\d+\. ________________/);
@@ -824,7 +824,7 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     const lines = opening.split('\n');
-    for (const [prefix, role, part] of [['VENDOR', 'VENDOR/S', 'ONE'], ['BUYER', 'VENDEE/S', 'OTHER']]) {
+    for (const [prefix, role, part] of [['VENDOR', 'VENDORS', 'ONE'], ['BUYER', 'VENDEES', 'OTHER']]) {
       const partyLines = [1, 2, 3].map(index => lines.find(line => line.startsWith(`${index}. ${prefix} ${['ONE', 'TWO', 'THREE'][index - 1]}`))!);
       expect(partyLines.every(Boolean)).toBe(true);
       expect(partyLines[0]).not.toContain('Hereinafter called');
@@ -843,8 +843,8 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
-    expect(opening).toContain('(Hereinafter called the "VENDOR/S") of the ONE PART.');
-    expect(opening).toContain('(Hereinafter called the "VENDEE/S") of the OTHER PART.');
+    expect(opening).toContain('(Hereinafter called the "VENDOR") of the ONE PART.');
+    expect(opening).toContain('(Hereinafter called the "VENDEE") of the OTHER PART.');
     expect(opening).not.toContain('1. ONLY VENDOR');
     expect(opening).not.toContain('1. ONLY BUYER');
   });

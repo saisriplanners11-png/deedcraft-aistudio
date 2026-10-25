@@ -1,3 +1,4 @@
+import { isMinorParty } from './minor-parties';
 import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
 import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
@@ -213,7 +214,7 @@ function RecordFieldGroup({
   onDelete?: () => void;
   deleteLabel?: string;
 }) {
-  const groups = groupsForStep(step, category).map(group => ({ ...group, fields: group.fields.filter(f => (!hidePartyType || !f.id.endsWith('PartyType')) && (!omitConsideration || f.id !== 'consid')) })).flatMap(group => {
+  const groups = groupsForStep(step, category).map(group => ({ ...group, fields: group.fields.map(field => field.id === role + 'Age' && resolved.values[fieldKey(role, record, role + 'Dob')] ? { ...field, derived: true } : field).filter(f => (!hidePartyType || (!f.id.endsWith('PartyType') && !/(?:Guardian|Court|Ward)/.test(f.id))) && (!omitConsideration || f.id !== 'consid')) })).flatMap(group => {
     if ((role !== 'executant' && role !== 'claimant') || !hidePartyType) return [group];
     const isAddress = (id: string) => /(?:HNo|Locality|Village|Mandal|District|State|PinCode)$/.test(id);
     return [
@@ -363,10 +364,11 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
  * different record's — the same way LinkRecordCard scopes an upload to one row.
  */
 function PartyRecordCard({
-  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose, shareFields, onCapacityChange,
+  role, record, category, step, resolved, edit, label, onDelete, onUpload, busy, sources, draft, dispatch, upload, choose, shareFields, relationshipFields, onCapacityChange,
 }: {
   onCapacityChange?: (value: string) => void;
   shareFields?: React.ReactNode;
+  relationshipFields?: React.ReactNode;
   role: 'executant' | 'claimant'; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
   label?: string; onDelete?: () => void; onUpload: (files: File[]) => void; busy?: boolean; sources: Source[];
@@ -390,7 +392,7 @@ function PartyRecordCard({
       {rows.map((person, index) => {
         const ownSources = draft.sources.filter(s => s.assignment?.role === 'party-person' && s.assignment.record === person.id);
         const form = Object.fromEntries(PERSON_FIELDS.map(f => [f.id, resolved.values[fieldKey('party-person', person.id, f.id)] || (f.id === 'personRelation' ? 'S/O' : '')]));
-        const fields = (members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS).map(field => field.id === 'personDesignation' ? { ...field, type: 'select' as const, allowCustom: true, options: representativeDesignationOptions(partyType), hint: 'Choose a designation or type your own.' } : field);
+        const fields = (members ? PERSON_FIELDS.filter(f => ['personName', 'personRelation', 'personRelationName', 'personAadhaar', 'personDesignation', 'personMobile'].includes(f.id)) : PERSON_FIELDS).map(field => field.id === 'personDesignation' ? { ...field, type: 'select' as const, allowCustom: true, options: representativeDesignationOptions(partyType), hint: 'Choose a designation or type your own.' } : field.id === 'personAge' && form.personDob ? { ...field, derived: true } : field);
         return <div className="representative-card" key={person.id} data-person-id={person.id}>
           <div className="representative-heading"><b>{members ? 'Member' : 'Representative'} {index + 1}</b><IconButton label={`Delete ${members ? 'member' : 'representative'} ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
           <ScopedSectionUpload label={members ? 'member' : 'representative'} busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
@@ -408,6 +410,7 @@ function PartyRecordCard({
   return <PlacementRecord scope={role} id={record}><section className="panel party-record-card">
     <div className="party-card-heading"><span className="record-heading-icon">{entity ? <Building2 size={21} aria-hidden="true" /> : <UserRound size={21} aria-hidden="true" />}</span><div><h2>{label || (role === 'executant' ? 'Executant' : 'Claimant')}</h2><p>{(entity ? entityForm[role + 'EntityName'] : resolved.values[fieldKey(role, record, role + 'Name')]) || (role === 'executant' ? 'Party transferring the property rights' : 'Party receiving the property rights')}</p></div><span className="record-kind">{partyType}</span></div>
     <div className="party-type-selector"><FieldGroup group={{ step, title: 'Party type', fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType') }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => onCapacityChange ? onCapacityChange(value) : edit(role, record, id, value)} /></div>
+    {relationshipFields}
     {entity ? <>
       <Section title={society ? 'Society / association details' : partyType === 'Company' ? 'Company details' : 'Firm / entity details'}>
         <ScopedSectionUpload label="entity particulars" busy={busy} onUpload={files => upload(files, { role, record }, ('entity:' + role + ':' + partyType) as ExtractionProfile)} />
@@ -423,6 +426,11 @@ function PartyRecordCard({
       {society && personList('memberIds')}
     </> : <>
       <div className="party-identity-upload"><ScopedSectionUpload label="party identity" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} /></div>
+      {(isMinorParty(Object.fromEntries(Object.entries(resolved.values).filter(([key]) => key.startsWith(role + '|' + record + '|')).map(([key, value]) => [key.split('|')[2], value])), role) || partyType.startsWith('Guardian')) && <Section title="Minor / guardian representation">
+        <p>{partyType.startsWith('Guardian') ? 'The party particulars identify the guardian. Enter the represented minor and the guardian’s relationship below.' : 'The minor remains the party. Enter the guardian’s identity and relationship. Minor executants require court permission for this deed.'}</p>
+        {!partyType.startsWith('Guardian') && <ScopedSectionUpload label="guardian Aadhaar / ID" busy={busy} onUpload={files => upload(files, { role, record }, ('guardian:' + role) as ExtractionProfile)} />}
+        <FieldGroup group={{ step, title: role === 'executant' ? 'Guardian and court permission' : 'Guardian details', fields: ALL_FIELDS.filter(field => field.id.startsWith(role) && ((partyType.startsWith('Guardian') ? field.id === role + 'GuardianRelationship' || field.id.includes('Ward') : field.id.includes('Guardian')) || (role === 'executant' && field.id.includes('Court')))) }} form={Object.fromEntries(ALL_FIELDS.filter(field => field.id.startsWith(role)).map(field => [field.id, resolved.values[fieldKey(role, record, field.id)] || '']))} setField={(id, value) => edit(role, record, id, value)} />
+      </Section>}
       <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType afterField={id => id.endsWith('PinCode') ? shareFields : null} />
     </>}
     {onDelete && <IconButton label={`Delete ${label || role}`} onClick={onDelete} />}
@@ -617,7 +625,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:${agreementSaleGpa ? "section32a-signature-footer-v1:" : ""}stamp-space-policy-v1:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v1:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -1497,14 +1505,14 @@ export default function WizardApp() {
               const busySource = sourceBusyFor(role, record);
               return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
                 onCapacityChange={combined ? value => { if (!busySource) void changeCapacity(record, value); } : undefined}
-                shareFields={<>
-                  {generalPoa && role === 'claimant' && isFamilyPoa(state) && <div className="poa-relationship-fields">
-                    <label className="field"><span>Relationship to principal(s)</span><select required value={resolved.values[fieldKey(role, record, 'poaRelationship')] || ''} onChange={event => edit(role, record, 'poaRelationship', event.target.value)}>
+                relationshipFields={generalPoa && role === 'claimant' && isFamilyPoa(state) && <div className="poa-relationship-fields">
+                    <label className="field"><span>Relationship to principal(s)</span><select aria-label="Relationship to principal(s)" required value={resolved.values[fieldKey(role, record, 'poaRelationship')] || ''} onChange={event => edit(role, record, 'poaRelationship', event.target.value)}>
                       <option value="">Choose family relationship</option>{POA_RELATIONSHIPS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}<option value="other">Other family relationship</option>
                     </select></label>
-                    {resolved.values[fieldKey(role, record, 'poaRelationship')] === 'other' && <label className="field"><span>Family relationship wording</span><input required value={resolved.values[fieldKey(role, record, 'poaRelationshipCustom')] || ''} onChange={event => edit(role, record, 'poaRelationshipCustom', event.target.value)} /><small>Enter this attorney’s relationship to the listed principal(s).</small></label>}
+                    {resolved.values[fieldKey(role, record, 'poaRelationship')] === 'other' && <label className="field"><span>Family relationship wording</span><input aria-label="Family relationship wording" required value={resolved.values[fieldKey(role, record, 'poaRelationshipCustom')] || ''} onChange={event => edit(role, record, 'poaRelationshipCustom', event.target.value)} /><small>Enter this attorney’s relationship to the listed principal(s).</small></label>}
                     {!poaRelationship({ poaRelationship: resolved.values[fieldKey(role, record, 'poaRelationship')] || '', poaRelationshipCustom: resolved.values[fieldKey(role, record, 'poaRelationshipCustom')] || '' }) && <p role="status" className="notice">Choose this attorney’s family relationship before generating the GPA.</p>}
                   </div>}
+                shareFields={<>
                   <PartyShareFields role={role} record={record} parties={records} schedules={propertyRecords}
                     shares={(role === 'executant' ? draft.vendorSharesBySchedule : draft.vendeeSharesBySchedule) || {}} dispatch={dispatch} />
                 </>}
@@ -1536,6 +1544,7 @@ export default function WizardApp() {
         {step === 9 && <section className="panel download">
           <div className="finish-section-heading"><span className="finish-heading-icon"><Download size={22} aria-hidden="true" /></span><div><h2>Prepare your downloads</h2><p>Choose your template, then download the deed or property plan.</p></div><button type="button" className="quiet download-review-link" onClick={() => goto(8)}>Back to final review <ArrowRight size={14} aria-hidden="true" /></button></div>
           <p role="status"><strong>{generalPoa || agreementSaleGpa ? `${instrumentTitle} — ${state.draft}` : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift Deed' : 'Gift Settlement Deed') : saleDocumentLabel(state.saleDocument)}</strong> · {propertyRecords.map(record => `${record.category} ${record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''}`.trim()).join(' / ')}</p>
+          <FieldGroup group={{ step: 9, title: 'Page setup', fields: ALL_FIELDS.filter(field => field.id === 'stampPaperMargin') }} form={{ stampPaperMargin: state.form.stampPaperMargin || 'Legacy' }} setField={(id, value) => edit('property', 'transaction', id, value)} />
           <div className="template-picker" aria-label="Word template">
             <div className="template-picker-heading"><h3>1. Choose the Word template</h3><span>Applies to this draft</span></div>
             <div className="template-choices">

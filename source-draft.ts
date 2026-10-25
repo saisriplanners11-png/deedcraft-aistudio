@@ -1,3 +1,4 @@
+import { acreGuntasToSqYards } from './land-area';
 import { normalizeWorkflowStep } from './workflow-steps';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
@@ -281,7 +282,7 @@ export function resolveDraft(draft: Draft) {
       if (identities.length <= 1) aliases.set(key, identities[0] || 'primary');
     }
     for (const c of items) {
-      if (['consid','executionDate','stampValue'].includes(c.field)) { c.role = 'property'; c.record = 'transaction'; }
+      if (['consid','executionDate','stampValue','stampPaperMargin'].includes(c.field)) { c.role = 'property'; c.record = 'transaction'; }
       else if (role === 'unassigned' || !aliases.has(key)) { unassigned.push(c); continue; }
       else c.record = aliases.get(key)!;
       const field = fieldKey(c.role, c.record, c.field);
@@ -323,20 +324,23 @@ export function resolveDraft(draft: Draft) {
   }
   for (const key of Object.keys(values)) if (key.endsWith('|localAuthorityType')) values[key] = localAuthorityName(values[key]);
   // RecordFieldGroup renders resolveDraft() directly, before appStateFor()
-  // applies form derivations. Put the Aadhaar-DOB age suggestion here as well
+  // applies form derivations. Put the current Aadhaar-DOB age calculation here as well
   // so the Executant and Claimant inputs fill immediately after upload.
   for (const side of ['executant', 'claimant'] as const) {
     const dobSuffix = `|${side}Dob`;
     for (const [dobKey, dob] of Object.entries(values).filter(([key]) => key.startsWith(`${side}|`) && key.endsWith(dobSuffix))) {
       const [, record] = dobKey.split('|');
       const ageKey = fieldKey(side, record, `${side}Age`);
-      if (Object.prototype.hasOwnProperty.call(draft.manual, ageKey)) continue;
       values[ageKey] = ageFrom(dob, todayISO());
     }
   }
   for (const [key, dob] of Object.entries(values)) if (key.startsWith('party-person|') && key.endsWith('|personDob')) {
     const ageKey = key.replace(/personDob$/, 'personAge');
-    if (!(ageKey in draft.manual)) values[ageKey] = ageFrom(dob, todayISO());
+    values[ageKey] = ageFrom(dob, todayISO());
+  }
+  for (const [key, value] of Object.entries(values)) if (key.endsWith('|nalaExtent')) {
+    const converted = acreGuntasToSqYards(value);
+    if (converted !== null) values[key.replace(/nalaExtent$/, 'convertedExtentText')] = String(converted);
   }
   return { values, evidence, conflicts, unassigned, groups };
 }
@@ -384,7 +388,7 @@ export function appStateFor(draft: Draft): AppState {
   const form = { ...EMPTY_FORM, ...properties[0]?.values, ...primarySeller?.values, ...primaryBuyer?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
   if (!form.bltNo) form.bltNo = assessmentFor('primary', properties[0]?.values.category || '');
   const paymentRecords = forRole('payment');
-  const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
+  const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue', 'stampPaperMargin'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
   const unresolvedFields = Object.keys(conflicts).filter(key => {
     if (key in draft.manual) return false;
@@ -445,7 +449,7 @@ export function plansFor(draft: Draft, record: string): SourcePlan[] {
     const planCandidateIds = new Set(source.result?.candidates.filter(c => c.role === 'property' && c.record === p.record).map(c => `${source.id}:${source.revision}:${c.id}`));
     const related = Object.entries(resolved.evidence).filter(([key, values]) => key.startsWith('property|') && values.some(v => v.sourceId === source.id && (!planCandidateIds.size || planCandidateIds.has(v.id))));
     const records = [...new Set(related.map(([key]) => key.split('|')[1]).filter(r => r !== 'transaction'))];
-    const localRecords = new Set(source.result?.candidates.filter(c => c.role === 'property' && !['consid','executionDate','stampValue'].includes(c.field)).map(c => c.record));
+    const localRecords = new Set(source.result?.candidates.filter(c => c.role === 'property' && !['consid','executionDate','stampValue','stampPaperMargin'].includes(c.field)).map(c => c.record));
     return p.record.toLowerCase() === record || ((planCandidateIds.size > 0 || localRecords.size <= 1) && records.length === 1 && records[0] === record) || (records.length === 0 && p.record === 'primary' && record === 'primary');
   }));
   const supplied = candidates.filter(p => !p.linked);

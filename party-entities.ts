@@ -1,3 +1,4 @@
+import { ageFrom } from './party-age';
 import { deedDate } from './deed-format';
 import { partyEntityFields, type PartyPeople, type PartyType } from './fields';
 
@@ -54,7 +55,8 @@ export function entityRecital(values: Record<string, string>, side: PartySide, p
     const designation = p.designation.trim().replace(/[:\s]+$/, '');
     const text = [(designation ? designation + ': ' : '') + (p.name.toLocaleUpperCase('en-IN') || '____')];
     if (p.relationName) text.push([p.relation, p.relationName.toLocaleUpperCase('en-IN')].filter(Boolean).join(' '));
-    if (p.age) text.push('aged ' + p.age + ' years');
+    const age = p.dob ? ageFrom(p.dob) : p.age;
+    if (age) text.push('aged ' + age + ' years');
     if (p.dob) text.push('(DOB: ' + date(p.dob) + ')');
     const address = [p.hNo, p.locality, p.village, p.mandal, p.district, p.state, p.pinCode].filter(Boolean).join(', ');
     if (address) text.push('R/o ' + address);

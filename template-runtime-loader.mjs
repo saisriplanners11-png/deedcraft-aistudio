@@ -1,4 +1,5 @@
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -27,7 +28,20 @@ export async function buildTemplateRuntime() {
     const directory = join(root, '.runtime');
     await mkdir(directory, { recursive: true });
     const output = join(directory, 'template-runtime.mjs');
-    await writeFile(output, result.outputFiles[0].text);
+    // Validators and the development server may rebuild concurrently. Readers
+    // must see a complete module, never a file truncated by another writer.
+    const temporary = join(directory, `template-runtime-${randomUUID()}.tmp`);
+    try {
+      await writeFile(temporary, result.outputFiles[0].text);
+      for (let attempt = 0; ; attempt++) {
+        try { await rename(temporary, output); break; }
+        catch (error) {
+          // Windows briefly locks an ESM file while another process imports it.
+          if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 39) throw error;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+    } finally { await rm(temporary, { force: true }); }
     return output;
 }
 export function loadTemplateRuntime() {

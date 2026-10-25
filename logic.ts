@@ -1,3 +1,6 @@
+import { isMinorParty, minorPartyErrors } from './minor-parties';
+import { ageFrom, todayISO } from './party-age';
+import { acreGuntasToSqYards } from './land-area';
 import { isMunicipalGift } from './municipal-gift';
 import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
@@ -405,6 +408,10 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       const step = side === 'executant' ? 6 : 7;
       const entity = isEntity(values, side);
       const required = entity ? entityRequiredFields(side, values[side + 'PartyType'] as PartyType) : ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => side + suffix);
+      if (isMinorParty(values, side) || ((values[side + 'PartyType'] || '').startsWith('Guardian') && !!values[side + 'WardName'])) {
+        const occupationIndex = required.indexOf(side + 'Occupation'); if (occupationIndex >= 0) required.splice(occupationIndex, 1);
+        for (const [errorIndex, reason] of minorPartyErrors(values, side).entries()) missing.push({ id: side + '-' + id + '-minor-' + errorIndex, label: 'Minor ' + (index + 1) + ' / guardian', reason, source: 'Guardian ID and court permission where required.', step });
+      }
       if (Number(f.consid) >= 5000000) required.push(side + (entity ? 'EntityPan' : 'Pan'));
       required.forEach(field => {
         if (index === 0) add(field, 'Complete the active party particulars.', 'Party document or manual entry.', step);
@@ -505,29 +512,11 @@ export function generationBlockers(state: AppState): MissingDetail[] {
 
 export { deedDate } from './deed-format';
 
-/** Completed years between two ISO dates. Blank if the birth date is unusable. */
-export function ageFrom(dobISO: string, onISO?: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dobISO)) return '';
-  const dob = new Date(dobISO);
-  if (!onISO || !/^\d{4}-\d{2}-\d{2}$/.test(onISO)) return '';
-  const on = new Date(onISO);
-  if (Number.isNaN(dob.getTime()) || dob > on) return '';
-  let years = on.getFullYear() - dob.getFullYear();
-  const before =
-    on.getMonth() < dob.getMonth() || (on.getMonth() === dob.getMonth() && on.getDate() < dob.getDate());
-  if (before) years -= 1;
-  return years >= 0 && years < 130 ? String(years) : '';
-}
-
-/** Local calendar date, kept separate from ageFrom so date maths remains testable. */
-export function todayISO(now = new Date()): string {
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-}
+export { ageFrom, todayISO } from './party-age';
 
 /** Legal-party identity values are displayed and generated in deed-style capitals. */
 export function uppercasePartyIdentity(field: string, value: string): string {
-  return /^(?:(?:executant|claimant)(?:Name|RelativeName|EntityName)|person(?:Name|RelationName))$/.test(field)
+  return /^(?:(?:executant|claimant)(?:Name|RelativeName|EntityName|GuardianName|GuardianRelativeName)|person(?:Name|RelationName))$/.test(field)
     ? value.toLocaleUpperCase('en-IN')
     : value;
 }
@@ -535,8 +524,8 @@ export function uppercasePartyIdentity(field: string, value: string): string {
 /**
  * Values the form works out for itself.
  *
- * Age is pre-filled from a party's date of birth as of today, but a drafter's
- * correction always wins. Extent (Sq. Meters)
+ * A complete DOB owns age, recalculated as of today even for restored drafts.
+ * A manually entered age is used only without DOB. Extent (Sq. Meters)
  * follows Extent (Sq. Yards) the same way. A field with nothing to compute
  * from keeps whatever was typed into it.
  */
@@ -545,8 +534,10 @@ export function withDerived(form: Record<string, string>): Record<string, string
   for (const side of ['executant', 'claimant'] as const) {
     const ageKey = `${side}Age`;
     const age = ageFrom(out[`${side}Dob`] ?? '', todayISO());
-    if (out[`${side}Dob`] && !out[ageKey]) out[ageKey] = age;
+    if (out[`${side}Dob`]) out[ageKey] = age;
   }
+  const nala = acreGuntasToSqYards(out.nalaExtent || '');
+  if (nala !== null) out.convertedExtentText = String(nala);
   const sqYards = Number(out.extentSqYards);
   if (out.extentSqYards && Number.isFinite(sqYards)) {
     out.extentSqMeters = String(Math.round(sqYards * 0.836127 * 100) / 100);

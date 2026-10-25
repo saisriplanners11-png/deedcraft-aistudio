@@ -1,3 +1,4 @@
+import { isoDate } from './deed-format';
 import { PARTY_CAPACITY_OPTIONS } from './fields';
 import { appStateFor, resolveDraft, type Draft } from './source-draft';
 import { partyRecords } from './logic';
@@ -11,6 +12,7 @@ export function cleanAuthorityRead(raw: any, sourceName: string, page: number): 
   const notes: string[] = [];
   const values = (input: any, allowed: string[]) => Object.fromEntries(allowed.flatMap(key => {
     let value = typeof input?.[key] === 'string' ? input[key].trim() : '';
+    if (['Dob', 'documentDate'].includes(key) && value) value = isoDate(value);
     if (['Dob', 'documentDate'].includes(key) && value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) value = '';
     if (key === 'Aadhaar') { value = value.replace(/[\s-]/g, ''); if (value && !/^\d{12}$/.test(value)) value = ''; }
     if (key === 'Pan') { value = value.toUpperCase(); if (value && !/^[A-Z]{5}\d{4}[A-Z]$/.test(value)) value = ''; }

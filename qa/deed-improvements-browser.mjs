@@ -1,0 +1,41 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5197');
+  await page.getByRole('heading', { name: 'Saved deeds', exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { newDraft } = await import('/source-draft.ts');
+    const { saveDeed } = await import('/saved-deeds.ts');
+    const draft = newDraft(); draft.step = 7;
+    const data = { claimantPartyType: 'Minor', claimantName: 'MINOR QA', claimantDob: '2015-01-02', claimantGuardianRelationship: 'Mother', claimantGuardianName: 'GUARDIAN QA', claimantGuardianDob: '1980-01-02', claimantGuardianAadhaar: '123456789012' };
+    for (const [key, value] of Object.entries(data)) draft.manual['claimant|primary|' + key] = value;
+    draft.manual['property|primary|category'] = 'Vacant Plot';
+    await saveDeed({ id: draft.id, updatedAt: new Date().toISOString(), claimantNames: ['MINOR QA'], deedType: 'Sale', draft, sourceFiles: {}, planDrafts: {}, referencePlanDrafts: {}, selectedPlanSvgs: {}, extraPartyRecords: { executant: [], claimant: [] }, templateMode: 'built-in', customTemplate: null });
+  });
+  await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).first().click();
+  const relationship = page.getByLabel('Guardian relationship to minor', { exact: true });
+  await relationship.waitFor(); assert.equal(await relationship.inputValue(), 'Mother');
+  await relationship.fill('Grandmother');
+  const age = page.locator('input[readonly][type=number]').first();
+  assert.equal(await age.getAttribute('readonly'), '');
+  assert(Number(await age.inputValue()) >= 11);
+  await page.getByLabel(/^Date of birth/).fill('2012-01-02');
+  await page.waitForFunction(() => document.querySelector('input[readonly][type=number]')?.value === '14');
+  assert.equal(await page.getByLabel(/Guardian full name/).inputValue(), 'GUARDIAN QA');
+  assert.equal(await page.getByLabel(/Guardian Aadhaar number/).inputValue(), '123456789012');
+  await mkdir('tmp/improvements-ui', { recursive: true });
+  await page.screenshot({ path: 'tmp/improvements-ui/minor-guardian.png', fullPage: true });
+  await page.locator('.rail-step').nth(9).click();
+  const margin = page.getByLabel(/First-page stamp-paper margin/);
+  await margin.waitFor(); await margin.selectOption('100');
+  assert.equal(await margin.inputValue(), '100');
+  assert((await margin.locator('option').allTextContents()).some(text => text.includes('5.8 inches')));
+  assert((await margin.locator('option').allTextContents()).some(text => text.includes('₹50')));
+  await page.screenshot({ path: 'tmp/improvements-ui/margin-options.png', fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log('PASS: minor/guardian relationship and Aadhaar inputs, DOB-owned age updates, and download margin selections render without browser errors.');
+} finally { await browser.close(); }

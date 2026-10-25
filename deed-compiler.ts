@@ -37,6 +37,7 @@ export interface GenerationManifest {
 }
 
 export function compileDeed(snapshot: DraftSnapshot, templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): CompiledDeed {
+  if (snapshot.values['Minor Representation Complete'] === 'false') throw new Error('Complete minor guardian details and court permission for each minor executant before generating the deed.');
   const gate = releaseGate(snapshot.instrumentId, snapshot.variantId);
   if (!gate.ready || !gate.reference?.templateVersionId) throw new Error(gate.reasons.join(' '));
   if (snapshot.instrumentId === 'sale' && snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {

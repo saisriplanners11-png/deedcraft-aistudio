@@ -42,11 +42,11 @@ describe('entity parties and their people', () => {
     expect(draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(migrated)) }).partyPeople).toEqual(migrated.partyPeople);
     expect(appStateFor(migrated).partyPeopleByParty?.['claimant|extra'].representatives).toHaveLength(2);
   });
-  it('derives age from DOB and retains manual age correction', () => {
+  it('derives current age from DOB despite saved age', () => {
     const draft = newDraft(); draft.manual[fieldKey('party-person', 'rep', 'personDob')] = '1990-01-01';
     expect(Number(resolveDraft(draft).values[fieldKey('party-person', 'rep', 'personAge')])).toBeGreaterThan(30);
     draft.manual[fieldKey('party-person', 'rep', 'personAge')] = '35';
-    expect(resolveDraft(draft).values[fieldKey('party-person', 'rep', 'personAge')]).toBe('35');
+    expect(Number(resolveDraft(draft).values[fieldKey('party-person', 'rep', 'personAge')])).toBeGreaterThan(30);
   });
   it('uses active entity readiness and names, excluding inactive personal fields', () => {
     const state = stateFor('executant');
