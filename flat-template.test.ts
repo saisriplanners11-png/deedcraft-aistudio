@@ -65,8 +65,8 @@ describe('v6 full-deed compatibility', () => {
     const legacy = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
     const source: DeedTemplateSource | undefined = kind === 'legacy-custom' ? { kind: 'custom', name: 'legacy.docx', hash: 'qa', bytes: legacy, validation: await validateSaleDeedTemplate(legacy, 'legacy.docx') } : undefined;
     const { result, text } = await generate(state, source);
-    expect(text).toContain('Through Bank: Amount of Rs.1,00,000/- paid through bank by the Vendee/s, namely BANK BUYER, to the Vendor/s, namely BANK SELLER.');
-    expect(text).toContain('Through Bank: Amount of Rs.2,00,000/- paid through bank by the Vendee/s, namely QA BUYER, to the Vendor/s, namely QA SELLER.');
+    expect(text).toContain('Through Bank: Amount of Rs.1,00,000/- paid through bank by the Vendee, namely BANK BUYER, to the Vendor, namely BANK SELLER.');
+    expect(text).toContain('Through Bank: Amount of Rs.2,00,000/- paid through bank by the Vendee, namely QA BUYER, to the Vendor, namely QA SELLER.');
     expect(text.match(/Through Bank:/g)).toHaveLength(2);
     expect(text).not.toContain('Housing Loan:');
     expect(text).not.toContain('UPI/Online:');
@@ -85,12 +85,13 @@ describe('v6 full-deed compatibility', () => {
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     for (const name of ['1. QA SELLER', '2. SECOND SELLER', '1. QA BUYER', '2. SECOND BUYER', '3. THIRD BUYER']) expect(opening).toContain(name);
     expect(opening).toContain('Holding Undivided Share of 60%');
-    const signatures = text.slice(text.indexOf('SIGN/S OF VENDOR/S'), text.indexOf('WITNESSES:'));
+    expect(text).toContain('SIGNATURES OF VENDORS');
+    const signatures = text.slice(text.indexOf('SIGNATURES OF VENDORS'), text.indexOf('WITNESSES:'));
     expect(signatures.match(/________________/g)).toHaveLength(5);
     expect(signatures).not.toMatch(/\d+\./);
     const entries = await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     const xml = new TextDecoder().decode(entries.find(part => part.name === 'word/document.xml')!.data);
-    const cells = xml.slice(xml.indexOf('SIGN/S OF VENDOR/S'), xml.indexOf('WITNESSES:'));
+    const cells = xml.slice(xml.indexOf('SIGNATURES OF VENDORS'), xml.indexOf('WITNESSES:'));
     expect(cells).not.toContain('<w:numPr');
     if (process.env.FLAT_QA_DIR && kind === 'built-in') { await mkdir(process.env.FLAT_QA_DIR, { recursive: true }); await writeFile(`${process.env.FLAT_QA_DIR}/Multiple-Parties.docx`, new Uint8Array(await result.blob.arrayBuffer())); }
   });
@@ -108,8 +109,9 @@ describe('v6 full-deed compatibility', () => {
     expect(text).toContain('75 sq.fts');
     expect(text).not.toMatch(/<[^>]+>|700 Sq|2100 Sq|100 sq\.fts/);
     expect(text).toContain('North apartment'); expect(text).toContain('South flat');
-    expect(text.includes('DEV-55')).toBe(stage === 'Semi-Finished');
-    expect(text.includes('SUP-66')).toBe(stage === 'Semi-Finished');
+    // Supplied development/allotment references apply to both completion stages.
+    expect(text).toContain('DEV-55');
+    expect(text).toContain('SUP-66');
     expect(text.includes('Municipal No.Not Allotted')).toBe(stage === 'Semi-Finished');
     if (process.env.FLAT_QA_DIR) { await mkdir(process.env.FLAT_QA_DIR, { recursive: true }); await writeFile(`${process.env.FLAT_QA_DIR}/${stage}.docx`, new Uint8Array(await result.blob.arrayBuffer())); }
   });
@@ -175,7 +177,12 @@ describe('v6 full-deed compatibility', () => {
     const { result } = await generate(fixture('Semi-Finished'));
     const parts = await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     const xml = new TextDecoder().decode(parts.find(part => part.name === 'word/document.xml')!.data);
-    const clauses = (xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || []).filter(paragraph => /<w:numPr\b/.test(paragraph) && /The (?:vendor|vendee)\/s/.test(paragraph.replace(/<[^>]+>/g, '')));
+    const operativeStart = xml.indexOf('OPERATIVE CLAUSES');
+    const scheduleStart = xml.indexOf('SCHEDULE OF PROPERTY');
+    expect(operativeStart).toBeGreaterThan(-1);
+    expect(scheduleStart).toBeGreaterThan(operativeStart);
+    const operativeXml = xml.slice(operativeStart, scheduleStart);
+    const clauses = (operativeXml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || []).filter(paragraph => /<w:numPr\b/.test(paragraph) && /The (?:Vendor|Vendee)\b/i.test(paragraph.replace(/<[^>]+>/g, '')));
     expect(clauses).toHaveLength(15);
     const ids = [...new Set(clauses.map(paragraph => paragraph.match(/<w:numId w:val="(\d+)"/)?.[1]))];
     expect(ids).toHaveLength(1);

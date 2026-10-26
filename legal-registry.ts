@@ -32,6 +32,8 @@ export interface TemplateVersion {
 
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
+  id: 'ts-agreement-sale-gpa-2026-10-v2', instrumentId: 'agreement_of_sale', variantIds: DEED_DEFINITIONS.agreement_of_sale.variants.map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-26', version: '2.0.0', status: 'approved', templateVersionId: 'agreement-sale-gpa-v2', sourceDocument: 'AGREEMENT OF SALE CUM GPA (1).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
+}, {
   id: 'ts-general-poa-2026-10-v1', instrumentId: 'power_of_attorney', variantIds: ['general-power-of-attorney', 'general-power-of-attorney-family'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-24', version: '1.0.0', status: 'approved', templateVersionId: 'general-poa-v1', sourceDocument: 'G.P.A FOR CONSIDERATION.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
 }, {
   id: 'ts-agreement-sale-gpa-2026-10-v1', instrumentId: 'agreement_of_sale', variantIds: DEED_DEFINITIONS.agreement_of_sale.variants.map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-24', version: '1.0.0', status: 'approved', templateVersionId: 'agreement-sale-gpa-v1', sourceDocument: 'AGREEMENT OF SALE CUM GPA.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
@@ -49,6 +51,8 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'agreement-sale-gpa-v2', referenceId: 'ts-agreement-sale-gpa-2026-10-v2', instrumentId: 'agreement_of_sale', version: '2.0.0', asset: 'agreement-sale-gpa-template-v2.docx', sha256: 'ded0b46a86d88806947d76f03a4ca785a8c906ee58e8881f75ee45eaa32f99e5', immutable: true,
+}, {
   id: 'general-poa-v1', referenceId: 'ts-general-poa-2026-10-v1', instrumentId: 'power_of_attorney', version: '1.0.0', asset: 'general-poa-template-v1.docx', sha256: '5981ef17f8b5f0a7162226a1415bd30a71fd42f505214f31aa41b9d6de999a21', immutable: true,
 }, {
   id: 'agreement-sale-gpa-v1', referenceId: 'ts-agreement-sale-gpa-2026-10-v1', instrumentId: 'agreement_of_sale', version: '1.0.0', asset: 'agreement-sale-gpa-template-v1.docx', sha256: '599755d4942b9e4c7b7ae5ae747fd2a91a2c7e6360f651436972f1dec5a9e3c7', immutable: true,

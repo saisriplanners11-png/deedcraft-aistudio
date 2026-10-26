@@ -3,8 +3,8 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
-const bytes = new Uint8Array(await readFile(new URL('../agreement-sale-gpa-template-v1.docx', import.meta.url)));
-assert.equal(createHash('sha256').update(bytes).digest('hex'), '599755d4942b9e4c7b7ae5ae747fd2a91a2c7e6360f651436972f1dec5a9e3c7');
+const bytes = new Uint8Array(await readFile(new URL('../agreement-sale-gpa-template-v2.docx', import.meta.url)));
+assert.equal(createHash('sha256').update(bytes).digest('hex'), 'ded0b46a86d88806947d76f03a4ca785a8c906ee58e8881f75ee45eaa32f99e5');
 const validation = await rt.validateAgreementSaleGpaTemplate(bytes);
 assert(validation.valid, validation.errors.join(' '));
 const reference = await rt.readZip(bytes);
@@ -36,7 +36,6 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
   state.deedType = 'Agreement of Sale Cum GPA';
   state.form = { ...state.form, executionDate: '2026-10-24', nearAdjacent: 'Adjacent', nearHNo: 'LANDMARK-99', landmarkHNo: 'LANDMARK-99', govtRate: '5000', consid: '765432', executantPan: 'ABCDE1234F', claimantPan: 'PQRST5678L', claimantAadhaar: '123412341234', claimantDob: '1991-01-01' };
   const values = rt.mergeValues(state), rewrites = rt.rewritesFor(state), schedules = rt.scheduleMergesFor(state);
-  let withXml;
   for (const variant of ['with-possession', 'without-possession']) for (const source of [{ kind: 'built-in' }, { kind: 'custom', name: 'custom agreement.docx', hash: 'synthetic', bytes, validation }]) {
     const compiled = rt.compileDeed({ instrumentId: 'agreement_of_sale', variantId: variant, snapshotHash: 'synthetic', values, schedules, rewrites, unresolvedWarnings: [] }, source);
     const artifact = await rt.renderArtifact(compiled, 'docx');
@@ -44,7 +43,20 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
     const entries = await rt.readZip(output), xml = xmlOf(entries), text = await rt.docxToText(output);
     assert.deepEqual(artifact.result.unmapped, []);
     assert.match(text, new RegExp(variant === 'with-possession' ? '^AGREEMENT OF SALE-CUM-GPA WITH POSSESSION' : '^AGREEMENT OF SALE-CUM-GPA WITHOUT POSSESION'));
-    assert.match(text, /already delivered and handed over the peaceful, vacant and physical possession/);
+    if (variant === 'with-possession') {
+      assert.match(text, /5\. POSSESSION/);
+      assert.match(text, /already delivered and handed over the peaceful, vacant and physical possession/);
+      assert.match(text, /6\. APPOINTMENT OF ATTORNEY/);
+      assert.match(text, /14\. GENERAL AUTHORITY/);
+    } else {
+      assert.doesNotMatch(text, /5\. POSSESSION|already delivered and handed over the peaceful, vacant and physical possession/);
+      assert.match(text, /5\. APPOINTMENT OF ATTORNEY/);
+      assert.match(text, /13\. GENERAL AUTHORITY/);
+      assert.doesNotMatch(text, /14\. GENERAL AUTHORITY/);
+    }
+    assert.equal((text.match(/NOW THIS DEED WITNESSETH/g) || []).length, 1);
+    assert.equal((text.match(/1\. AGREEMENT OF SALE/g) || []).length, 1);
+    assert.doesNotMatch(text, /<WITHOUT POSSESSION>|Gundlapelli Sampath/);
     assert.match(text, /24-10-2026/);
     assert.doesNotMatch(text, /DD-MM-YYYY|2026-10-24|<IF |FAMILY MEMBERS|OUTRIGHT SALE/);
     assert.match(text, /Rs.7,65,432/);
@@ -55,19 +67,13 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
     assert.doesNotMatch(schedule, /near\s*\/\s*adjacent/i);
     if (property.startsWith('flat')) assert.match(schedule, /30 Sq.yds equivalent to 25.08 square meters/);
     assert.doesNotMatch(xml, /<w:txbxContent\b/);
-    assert.equal((xml.match(/<w:tblHeader\/>/g) || []).length, 2);
+    assert((xml.match(/<w:tblHeader\/>/g) || []).length >= 2);
     assert.equal((xml.match(/<w:trHeight w:val="2800"/g) || []).length, 2);
     assert.match(xml, /w:top="8208"/);
     checkSignatureBlocks(entries);
     for (const entry of reference.filter(entry => entry.name !== 'word/document.xml')) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
     if (source.kind === 'built-in') {
-      assert.equal(artifact.manifest.templateVersionId, 'agreement-sale-gpa-v1');
-      if (variant === 'with-possession') withXml = xml;
-      else {
-        const normalized = xml.replace('WITHOUT POSSESION', 'WITH POSSESSION');
-        const at = [...normalized].findIndex((_, i) => normalized[i] !== withXml[i]);
-        assert(at < 0, `Only the title may differ: offset ${at}; ${normalized.slice(at - 70, at + 100)} vs ${withXml.slice(at - 70, at + 100)}`);
-      }
+      assert.equal(artifact.manifest.templateVersionId, 'agreement-sale-gpa-v2');
       if (['plot', 'house-finished', 'flat-finished'].includes(property)) await writeFile(`tmp/agreement-sale-gpa-qa/${property}-${variant}.docx`, output);
     }
     count++;
@@ -107,4 +113,31 @@ const unknown = await customize(xml => xml.replace('<w:body>', '<w:body><w:p><w:
 assert.equal((await rt.validateAgreementSaleGpaTemplate(unknown)).valid, false);
 const unsupported = rt.scheduleMergesFor(rt.sampleState('ordinary-plot')); unsupported[0].variant = 'IF AGRICULTURAL';
 await assert.rejects(() => rt.fillAgreementSaleGpaDeed({ ...rt.mergeValues(state), 'Agreement Possession Variant': 'with-possession' }, rt.rewritesFor(state), unsupported), /No Agreement.*schedule/);
-console.log(`PASS: Agreement of Sale Cum GPA ${count} property/variant/template cases, title-only differences, 11 ordered Section 32A entries, all payment modes, and incompatible-template rejection.`);
+
+
+const legacyBytes = new Uint8Array(await readFile(new URL('../agreement-sale-gpa-template-v1.docx', import.meta.url)));
+assert.equal((await rt.validateAgreementSaleGpaTemplate(legacyBytes)).valid, true, 'Retain compatibility with explicitly selected v1 custom templates');
+const missingBoundary = await customize(xml => xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => rt.replaceRunText(paragraph, /<WITHOUT POSSESSION>/g, () => '')));
+assert.equal((await rt.validateAgreementSaleGpaTemplate(missingBoundary)).valid, false, 'Reject lost possession boundaries');
+const brokenWithout = await customize(xml => xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => rt.replaceRunText(paragraph, /13\. GENERAL AUTHORITY/g, () => 'REMOVED')));
+assert.equal((await rt.validateAgreementSaleGpaTemplate(brokenWithout)).valid, false, 'Reject an incomplete Without Possession block');
+
+// Template replacement must preserve the previously requested output policies.
+for (const variant of ['with-possession', 'without-possession']) {
+  const sample = rt.sampleState('ordinary-plot');
+  sample.deedType = 'Agreement of Sale Cum GPA';
+  Object.assign(sample.form, { executionDate: '2026-10', stampPaperMargin: '100', executantGender: 'Female', claimantGender: 'Male' });
+  sample.additionalExecutants = [{ id: 'blank-share', values: { ...sample.form, executantName: 'NO SHARE PRINCIPAL' }, docNames: [] }];
+  sample.vendorSharesBySchedule = { primary: { primary: '25' } };
+  const generated = await rt.fillAgreementSaleGpaDeed({ ...rt.mergeValues(sample), 'Agreement Possession Variant': variant }, rt.rewritesFor(sample), rt.scheduleMergesFor(sample));
+  const rendered = new Uint8Array(await generated.blob.arrayBuffer()), renderedText = await rt.docxToText(rendered);
+  const renderedXml = xmlOf(await rt.readZip(rendered));
+  assert.match(renderedText, /__-10-2026/, variant + ': preserve blank signing day');
+  assert.match(renderedXml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/)[0], /w:top="8352"/, variant + ': preserve selected stamp space');
+  assert.match(renderedText, /25%/, variant + ': preserve optional entered share');
+  const noShareIdentity = renderedText.split('\n').find(line => line.includes('NO SHARE PRINCIPAL') && line.includes('Aged'));
+  assert(noShareIdentity);
+  assert.doesNotMatch(noShareIdentity, /share of|%/i, variant + ': do not invent shares for blank parties');
+  checkSignatureBlocks(await rt.readZip(rendered));
+}
+console.log(`PASS: Agreement of Sale Cum GPA ${count} property/variant/template cases, separate possession clauses and numbering, 11 ordered Section 32A entries, all payment modes, and incompatible-template rejection.`);

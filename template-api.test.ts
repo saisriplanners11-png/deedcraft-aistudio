@@ -50,12 +50,14 @@ describe('shared template library API', { timeout: 30000 }, () => {
   it('seeds a public immutable version but protects drafts and management', async () => {
     const listing = await (await fetch(base)).json();
     expect(listing.active.sale).toBe('sale-deed-v10');
-    expect(listing.active.agreement_of_sale).toBe('agreement-sale-gpa-v1');
+    expect(listing.active.agreement_of_sale).toBe('agreement-sale-gpa-v2');
     expect(listing.active.power_of_attorney).toBe('general-poa-v1');
     const poa = Buffer.from(await (await fetch(base + '/versions/general-poa-v1/download')).arrayBuffer());
     expect(poa.equals(await readFile(new URL('./general-poa-template-v1.docx', import.meta.url)))).toBe(true);
-    const agreement = Buffer.from(await (await fetch(base + '/versions/agreement-sale-gpa-v1/download')).arrayBuffer());
-    expect(agreement.equals(await readFile(new URL('./agreement-sale-gpa-template-v1.docx', import.meta.url)))).toBe(true);
+    const agreement = Buffer.from(await (await fetch(base + '/versions/agreement-sale-gpa-v2/download')).arrayBuffer());
+    expect(agreement.equals(await readFile(new URL('./agreement-sale-gpa-template-v2.docx', import.meta.url)))).toBe(true);
+    const legacyAgreement = Buffer.from(await (await fetch(base + '/versions/agreement-sale-gpa-v1/download')).arrayBuffer());
+    expect(legacyAgreement.equals(await readFile(new URL('./agreement-sale-gpa-template-v1.docx', import.meta.url)))).toBe(true);
     expect(listing.versions[0].validation).toBeUndefined();
     expect((await fetch(base + '/versions/sale-deed-v10')).status).toBe(401);
     const bytes = Buffer.from(await (await fetch(base + '/versions/sale-deed-v10/download')).arrayBuffer());

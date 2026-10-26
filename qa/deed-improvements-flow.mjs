@@ -8,6 +8,7 @@ const instruments = [
   ['gift', 'gift-settlement-family', 'Gift', 'Gift Settlement Family'],
   ['gift', 'municipal-gift', 'Gift', 'Municipal Gift'],
   ['agreement_of_sale', 'agreement-of-sale-with-possession', 'Agreement of Sale Cum GPA', 'With Possession'],
+  ['agreement_of_sale', 'without-possession', 'Agreement of Sale Cum GPA', 'Without Possession'],
   ['power_of_attorney', 'general-power-of-attorney', 'GPA/Power of Attorney', 'General Power of Attorney'],
 ];
 let cases = 0;
@@ -23,7 +24,7 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const values = rt.mergeValues(state), schedules = rt.scheduleMergesFor(state), rewrites = rt.rewritesFor(state);
   // The renderer receives the selected variant explicitly, as the compiler does.
   values['Gift Variant'] = candidateVariant;
-  values['Agreement Possession Variant'] = 'with-possession';
+  values['Agreement Possession Variant'] = candidateVariant === 'without-possession' ? 'without-possession' : 'with-possession';
   values['Poa Variant'] = candidateVariant;
   const result = instrumentId === 'gift' ? await rt.fillGiftDeed(values, rewrites, schedules) : instrumentId === 'agreement_of_sale' ? await rt.fillAgreementSaleGpaDeed(values, rewrites, schedules) : instrumentId === 'power_of_attorney' ? await rt.fillGeneralPoaDeed(values, rewrites, schedules) : await rt.fillSaleDeed(values, schedules[0].variant, rewrites, schedules);
   const bytes = new Uint8Array(await result.blob.arrayBuffer()), entries = await rt.readZip(bytes);

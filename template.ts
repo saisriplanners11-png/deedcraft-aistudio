@@ -1,5 +1,6 @@
 import generalPoaTemplateUrl from './general-poa-template-v1.docx?url';
-import agreementSaleGpaTemplateUrl from './agreement-sale-gpa-template-v1.docx?url';
+import agreementSaleGpaTemplateUrl from './agreement-sale-gpa-template-v2.docx?url';
+import agreementSaleGpaTemplateV1Url from './agreement-sale-gpa-template-v1.docx?url';
 import municipalGiftTemplateUrl from './gift-municipal-template-v1.docx?url';
 import giftDeedTemplateUrl from './gift-deed-template-v4.docx?url';
 import giftDeedTemplateV3Url from './gift-deed-template-v3.docx?url';
@@ -36,7 +37,7 @@ export function loadSaleDeedTemplate(): Promise<Uint8Array> {
 /** Instrument-neutral loader. Unknown or unapproved assets fail closed. */
 export async function loadTemplate(templateVersionId: string): Promise<Uint8Array> {
   if (templateVersionId === 'general-poa-v1') { const response = await fetch(generalPoaTemplateUrl); if (!response.ok) throw new Error('Could not load the General Power of Attorney reference.'); return new Uint8Array(await response.arrayBuffer()); }
-  if (templateVersionId === 'agreement-sale-gpa-v1') { const response = await fetch(agreementSaleGpaTemplateUrl); if (!response.ok) throw new Error('Could not load the Agreement of Sale Cum GPA reference.'); return new Uint8Array(await response.arrayBuffer()); }
+  if (['agreement-sale-gpa-v1', 'agreement-sale-gpa-v2'].includes(templateVersionId)) { const response = await fetch(templateVersionId === 'agreement-sale-gpa-v1' ? agreementSaleGpaTemplateV1Url : agreementSaleGpaTemplateUrl); if (!response.ok) throw new Error('Could not load the Agreement of Sale Cum GPA reference.'); return new Uint8Array(await response.arrayBuffer()); }
   if (templateVersionId === 'gift-municipal-v1') { const response = await fetch(municipalGiftTemplateUrl); if (!response.ok) throw new Error('Could not load the Municipal Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
   if (['gift-deed-v1', 'gift-deed-v2', 'gift-deed-v3', 'gift-deed-v4'].includes(templateVersionId)) { const response = await fetch(templateVersionId === 'gift-deed-v1' ? giftDeedTemplateV1Url : templateVersionId === 'gift-deed-v2' ? giftDeedTemplateV2Url : templateVersionId === 'gift-deed-v3' ? giftDeedTemplateV3Url : giftDeedTemplateUrl); if (!response.ok) throw new Error('Could not load the Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
   const version = TEMPLATE_VERSIONS.find(item => item.id === templateVersionId);

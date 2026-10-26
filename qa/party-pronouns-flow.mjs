@@ -45,8 +45,10 @@ for (const mode of ['gpa', 'agpa']) {
 const agreement = rt.sampleState('ordinary-plot');
 Object.assign(agreement, { deedType: 'Agreement of Sale Cum GPA' });
 Object.assign(agreement.form, { executantGender: 'Female', claimantGender: 'Male' });
-const agreed = await rt.fillAgreementSaleGpaDeed({ ...rt.mergeValues(agreement), 'Agreement Possession Variant': 'with-possession' }, rt.rewritesFor(agreement), rt.scheduleMergesFor(agreement));
+for (const variant of ['with-possession', 'without-possession']) {
+const agreed = await rt.fillAgreementSaleGpaDeed({ ...rt.mergeValues(agreement), 'Agreement Possession Variant': variant }, rt.rewritesFor(agreement), rt.scheduleMergesFor(agreement));
 const agreementText = await rt.docxToText(new Uint8Array(await agreed.blob.arrayBuffer()));
 assert.match(agreementText, /her sole and absolute property/);
 assert.match(agreementText, /as her true and lawful/);
+}
 console.log('PASS: selected genders and plural pronouns in Sale/Gift deeds; distinct genders in repeated GPA identities and attorney powers.');

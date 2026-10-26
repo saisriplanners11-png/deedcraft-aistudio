@@ -1,0 +1,246 @@
+/* Telangana presentation only. Classic workspace styles and document typography stay independent. */
+.wizard-app.registration-workspace {
+  --dc-ink:#18232f; --dc-paper:#fff; --dc-ground:#f1f3f5; --dc-rule:#c9d0d8; --dc-rule-soft:#e7ebef;
+  --dc-gold:#174f87; --dc-gold-light:#a8c0d7; --dc-gold-bg:#edf4fa; --dc-muted:#4d5d6d; --dc-muted-soft:#526273; --dc-body:#334454;
+  --dc-green:#24643f; --dc-green-line:#a0c6ad; --dc-green-bg:#eef7f1; --dc-danger:#a12a2a; --dc-danger-bg:#fff1f1; --dc-danger-line:#dfb5b5;
+  --reg-blue:#143d73; --reg-link:#1b548b; --reg-section:#e7eff6; --reg-on-blue:#fff; --reg-on-action:#fff; --reg-control-border:#7e8d9c;
+  --reg-font:'Segoe UI',Roboto,Arial,sans-serif; --reg-focus:#006cb6;
+  --dc-hero:var(--reg-section); --dc-hero-text:var(--dc-ink); --dc-hero-muted:var(--dc-body); --dc-hero-rule:var(--dc-rule); --dc-hero-progress:var(--reg-link);
+  font:16px/1.5 var(--reg-font); background:var(--dc-ground); color:var(--dc-ink);
+}
+.wizard-app.registration-workspace[data-theme=dark] {
+  color-scheme:dark; --dc-ink:#edf2f7; --dc-paper:#1d2835; --dc-ground:#121b26; --dc-rule:#596a7d; --dc-rule-soft:#334458;
+  --dc-gold:#acd7ff; --dc-gold-light:#6588aa; --dc-gold-bg:#253e56; --dc-muted:#c0cddd; --dc-muted-soft:#b8c9dc; --dc-body:#d4dfeb;
+  --dc-green:#b5e2c6; --dc-green-line:#638c76; --dc-green-bg:#203e30; --dc-danger:#ffc0c0; --dc-danger-bg:#43282d; --dc-danger-line:#ba7b85;
+  --reg-link:#acd7ff; --reg-section:#2b4056; --reg-focus:#8ecbff; --reg-control-border:#6b8199;
+}
+.wizard-app.registration-workspace button { font-family:var(--reg-font); font-size:14px; letter-spacing:0; min-height:40px; border-radius:3px; padding:8px 14px; border-color:var(--dc-gold-light); }
+.wizard-app.registration-workspace :is(button,a,input,select,textarea,summary):focus-visible { outline:3px solid var(--reg-focus)!important; outline-offset:3px; }
+.wizard-app.registration-workspace button:hover { background:var(--dc-gold-bg); }
+.wizard-app.registration-workspace :is(button.primary,button.gold,button.hv1,.new-deed,.dashboard-cta) { background:var(--reg-blue); color:var(--reg-on-action); border-color:var(--reg-blue); }
+.wizard-app.registration-workspace button:disabled { opacity:.6; cursor:not-allowed; }
+.wizard-app.registration-workspace .app-top { position:relative; inset:auto; padding:16px 28px; min-height:86px; border:0; background:linear-gradient(to right,#143d73,#428ac7,#143d73); color:white; box-shadow:0 2px 4px #143d7326; }
+.wizard-app.registration-workspace .brand { color:white; border:0; font-family:var(--reg-font); }
+.wizard-app.registration-workspace .brand-name { font:600 25px/1.2 var(--reg-font); color:white; }
+.wizard-app.registration-workspace .brand-name small { color:white; font-size:11px; letter-spacing:.14em; margin-top:4px; }
+.wizard-app.registration-workspace .brand-mark { color:var(--reg-blue); background:white; border:1px solid #fff; border-radius:3px; }
+.wizard-app.registration-workspace .header-actions button { background:#fff; color:#143d73; border-color:white; min-height:40px; }
+.wizard-app.registration-workspace .header-actions .theme-toggle { min-width:40px; width:40px; padding:9px; }
+.wizard-app.registration-workspace .shell { display:block; max-width:1600px; margin:auto; min-height:calc(100vh - 86px); }
+.wizard-app.registration-workspace .stage { width:100%; max-width:none; min-width:0; margin:0; padding:16px 24px 32px; }
+.wizard-app.registration-workspace .registration-navigation { margin:0 24px; padding:0; border:1px solid var(--dc-rule); background:var(--dc-paper); }
+.registration-workspace .registration-nav-context { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:3px 12px; border-bottom:1px solid var(--dc-rule); }
+.registration-workspace .registration-nav-context>strong { font-size:16px; color:var(--dc-ink); }
+.registration-workspace .registration-nav-context>span { margin-left:auto; font-size:13px; color:var(--dc-body); }
+.wizard-app.registration-workspace .registration-nav-context button { display:flex; align-items:center; gap:6px; min-height:26px; border:0; color:var(--reg-link); background:transparent; padding:2px 6px; font-size:12px; }
+.registration-workspace .registration-steps { display:grid; grid-template-columns:repeat(var(--registration-step-count,11),minmax(0,1fr)); list-style:none; gap:3px; padding:5px; margin:0; }
+.registration-workspace .registration-steps li { min-width:0; }
+.wizard-app.registration-workspace .registration-steps button { position:relative; width:100%; height:100%; min-height:36px; display:flex; align-items:center; justify-content:center; gap:4px; padding:5px 9px 5px 5px; text-align:left; border:1px solid var(--dc-rule); background:var(--dc-ground); clip-path:polygon(0 0,calc(100% - 5px) 0,100% 50%,calc(100% - 5px) 100%,0 100%); }
+.registration-workspace .registration-steps strong { font-size:11.5px; font-weight:600; line-height:1.3; display:block; min-width:0; }
+.registration-workspace .registration-step-number { min-width:17px; height:17px; border:1px solid var(--dc-rule); display:grid; place-items:center; font-size:10px; background:var(--dc-paper); color:var(--dc-ink); border-radius:50%; }
+.registration-workspace .registration-step-state { display:flex; flex-shrink:0; }
+.wizard-app.registration-workspace .registration-steps small { display:flex; align-items:center; flex-wrap:wrap; gap:4px; font-size:11px; color:var(--dc-body); margin:5px 0 0; }
+.wizard-app.registration-workspace .registration-steps .complete { border-color:var(--dc-green-line); background:var(--dc-green-bg); }
+.wizard-app.registration-workspace .registration-steps .active { background:var(--reg-blue); color:white; border-color:var(--reg-blue); }
+.wizard-app.registration-workspace .registration-steps .active small { color:white; }
+.wizard-app.registration-workspace .registration-steps button:focus-visible { clip-path:none; }
+.registration-workspace .registration-mobile-navigation { display:none; }
+.wizard-app.registration-workspace .compact-step-header { border:1px solid var(--dc-rule); padding:0; margin-bottom:14px; background:var(--dc-paper); border-radius:0; }
+.wizard-app.registration-workspace .step-toolbar { padding:7px 14px; gap:12px; border-bottom:1px solid var(--dc-rule-soft); }
+.wizard-app.registration-workspace .stage-head { padding:12px 16px; margin:0; border:0; background:var(--reg-section); }
+.wizard-app.registration-workspace .stage-head h1 { font:600 23px/1.3 var(--reg-font); letter-spacing:0; }
+.wizard-app.registration-workspace .stage-head p { font-size:14px; margin:4px 0 0; color:var(--dc-body); }
+.wizard-app.registration-workspace .step-position { border:1px solid var(--dc-gold-light); color:var(--reg-link); background:var(--dc-paper); border-radius:3px; font:600 12px var(--reg-font); }
+.wizard-app.registration-workspace .panel { background:var(--dc-paper); border:1px solid var(--dc-rule); border-top:3px solid var(--reg-blue); padding:16px; border-radius:0; margin-bottom:14px; box-shadow:none; }
+.wizard-app.registration-workspace :is(.deed-section,.setup-card,.party-record-card,.property-schedule-card,.representative-card,.template-panel) { border-radius:0; box-shadow:none; border-color:var(--dc-rule)!important; }
+.wizard-app.registration-workspace .deed-section { border-top:1px solid var(--dc-rule)!important; }
+.wizard-app.registration-workspace .deed-section>div:first-child { background:var(--reg-section); padding:9px 14px!important; }
+.wizard-app.registration-workspace .deed-section h2 { font:600 17px/1.4 var(--reg-font)!important; color:var(--dc-ink); letter-spacing:0; }
+.wizard-app.registration-workspace .deed-section>div:last-child { padding:16px!important; }
+.wizard-app.registration-workspace .deed-field-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; gap:16px 22px!important; }
+.wizard-app.registration-workspace .deed-field { min-width:0; }
+.wizard-app.registration-workspace .deed-field>span:first-child>span:first-child { font:600 14px/1.4 var(--reg-font)!important; text-transform:none!important; letter-spacing:0!important; color:var(--dc-ink)!important; }
+.wizard-app.registration-workspace .deed-field :is(input,select,textarea), .wizard-app.registration-workspace :is(.setup-field,.schedule-type-control) :is(input,select) { width:100%; max-width:100%; min-width:0; min-height:40px; padding:7px 9px!important; border:1px solid var(--reg-control-border)!important; border-radius:3px; background:var(--dc-paper)!important; color:var(--dc-ink)!important; font:16px/1.4 var(--reg-font)!important; }
+.wizard-app.registration-workspace input[readonly] { background:var(--dc-ground)!important; }
+.wizard-app.registration-workspace .deed-field input[type=checkbox] { width:18px; min-height:18px; }
+.wizard-app.registration-workspace .document-upload { border:1px dashed var(--dc-gold-light); border-radius:0; background:var(--dc-paper); padding:14px 18px; margin-bottom:14px; box-shadow:none; }
+.wizard-app.registration-workspace .document-upload .upload-symbol { border-radius:3px; background:var(--dc-gold-bg); color:var(--reg-link); width:42px; height:42px; }
+.wizard-app.registration-workspace .upload-copy strong { font-size:15px; }
+.wizard-app.registration-workspace .upload-copy p { color:var(--dc-body); font-size:13px; margin:3px 0; }
+.wizard-app.registration-workspace .upload-copy small { font-size:12px; margin:0; color:var(--dc-body); }
+.wizard-app.registration-workspace .schedule-switcher { background:var(--dc-paper); border:1px solid var(--dc-rule); border-radius:0; padding:10px 14px; }
+.wizard-app.registration-workspace .schedule-switcher button { border-radius:3px; }
+.wizard-app.registration-workspace .workflow-section-heading { background:var(--reg-section); border-bottom:1px solid var(--dc-rule); padding:12px 16px; }
+.wizard-app.registration-workspace :is(.workflow-section-heading h2,.property-card-heading h2,.party-card-heading h2) { font:600 18px var(--reg-font); }
+.wizard-app.registration-workspace :is(.record-heading-icon,.workflow-section-number,.record-kind) { background:var(--dc-gold-bg); color:var(--reg-link); border-radius:3px; }
+.wizard-app.registration-workspace .setup-card { background:var(--dc-paper); border:1px solid var(--dc-rule); position:relative; }
+.wizard-app.registration-workspace .setup-card-content>.dc-icon-button[aria-label^="Delete property schedule"] { position:absolute; right:16px; top:12px; }
+.wizard-app.registration-workspace .deed-quick-choices>button { border-radius:3px; }
+.wizard-app.registration-workspace .navigation { position:static; padding:14px 0 0; margin-top:16px; border-top:1px solid var(--dc-rule); background:transparent; }
+.wizard-app.registration-workspace .navigation button { min-height:44px; }
+.registration-workspace .registration-location-label { display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:24px; margin-bottom:4px; }
+.registration-workspace .registration-location-label>label { font-size:14px; font-weight:600; color:var(--dc-ink); }
+.wizard-app.registration-workspace .registration-location-label>button { min-height:24px; font-size:11px; border:0; background:transparent; padding:0 2px; color:var(--reg-link); text-decoration:underline; text-underline-offset:3px; }
+.registration-workspace .registration-location-help { display:flex; flex-wrap:wrap; gap:4px 8px; font-size:12px; color:var(--dc-body); margin-top:5px; }
+.registration-workspace .registration-location-help>span { flex-basis:100%; }
+.wizard-app.registration-workspace .registration-location-help button { background:transparent; color:var(--reg-link); text-decoration:underline; text-underline-offset:3px; padding:2px 0; min-height:32px; font-size:12px; border:0; }
+.registration-workspace .registration-lookup-note { padding:10px 12px; background:var(--dc-gold-bg); border-left:3px solid var(--dc-gold); font-size:13px; }
+.wizard-app.registration-workspace .saved-deeds-dashboard { max-width:1552px; margin:auto; padding:24px; }
+.wizard-app.registration-workspace .saved-deeds-heading { border-bottom:2px solid var(--reg-blue); padding-bottom:16px; margin-bottom:14px; }
+.wizard-app.registration-workspace .saved-deeds-heading h1 { font:600 27px var(--reg-font); }
+.wizard-app.registration-workspace .library-context { background:var(--dc-paper); border:1px solid var(--dc-rule); border-radius:0; font-size:13px; }
+.wizard-app.registration-workspace .library-toolbar { background:var(--dc-paper); padding:12px; border:1px solid var(--dc-rule); border-bottom:0; margin:16px 0 0; border-radius:0; }
+.wizard-app.registration-workspace .library-toolbar input { font:16px var(--reg-font); }
+.registration-workspace .registration-deed-table { background:var(--dc-paper); border:1px solid var(--dc-rule); }
+.registration-workspace .registration-deed-table table { width:100%; border-collapse:collapse; font-size:14px; table-layout:fixed; }
+.registration-workspace .registration-deed-table th,.registration-workspace .registration-deed-table td { text-align:left; vertical-align:middle; padding:13px 12px; border-bottom:1px solid var(--dc-rule); overflow-wrap:anywhere; }
+.registration-workspace .registration-deed-table thead { background:var(--reg-section); }
+.registration-workspace .registration-deed-table th:first-child { width:21%; }
+.registration-workspace .registration-deed-table th:nth-child(4) { width:7%; }
+.registration-workspace .registration-deed-table th:last-child { width:19%; }
+.registration-workspace .registration-deed-table tbody tr:last-child>* { border-bottom:0; }
+.registration-workspace .registration-row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.wizard-app.registration-workspace .registration-row-actions button { display:flex; gap:6px; align-items:center; font-size:13px; min-height:40px; padding:8px 10px; }
+.wizard-app.registration-workspace .registration-deed-table small { color:var(--dc-body); font-size:12px; margin-top:4px; }
+.wizard-app.registration-workspace .library-empty { border:1px solid var(--dc-rule); border-radius:0; background:var(--dc-paper); box-shadow:none; }
+.wizard-app.registration-workspace :is(.documents-step,.setup-step,.workflow-step,.dashboard,.template-library) :is(h2,h3) { font-family:var(--reg-font); letter-spacing:0; }
+.wizard-app.registration-workspace :is(.document-picker,.document-add,.link-record,.property-context,.template-picker,.template-choices>label,.export-card,.download-outstanding,.review-group,.review-shortcut,.dashboard-section,.overview-card,.dashboard-readiness,.payment-summary-grid>div) { border-radius:0!important; box-shadow:none; }
+.wizard-app.registration-workspace .dashboard-hero { border:1px solid var(--dc-rule); border-top:3px solid var(--reg-blue); border-radius:0; padding:16px 20px; grid-template-columns:minmax(0,1fr) 110px; }
+.wizard-app.registration-workspace .dashboard-hero::before { content:none; }
+.wizard-app.registration-workspace .dashboard-hero h2 { font-size:22px; margin:5px 0; color:var(--dc-ink); }
+.wizard-app.registration-workspace .dashboard-hero p { font-size:14px; margin-bottom:10px; }
+.wizard-app.registration-workspace .progress-orbit { width:76px; height:76px; padding:4px; }
+.wizard-app.registration-workspace .dashboard-progress-number { width:68px; height:68px; padding-top:17px; font-size:25px; }
+.wizard-app.registration-workspace .dashboard-progress-number span { font-size:13px; }
+.wizard-app.registration-workspace .dashboard-progress { gap:6px; }
+.wizard-app.registration-workspace .dashboard-stats>div { border-radius:0; box-shadow:none; padding:12px 16px; }
+.wizard-app.registration-workspace .overview-card { min-height:72px; padding:12px; border:1px solid var(--dc-rule); }
+.wizard-app.registration-workspace .overview-card h3 { font-size:15px; }
+.wizard-app.registration-workspace :is(.dashboard-section-head,.party-card-heading,.property-card-heading,.document-card-heading,.payment-record-heading,.finish-section-heading) { border-color:var(--dc-rule); }
+.wizard-app.registration-workspace :is(.review-icon,.finish-heading-icon,.finish-banner-icon,.export-file-icon,.overview-step-number,.payment-record-number) { border-radius:3px; background:var(--dc-gold-bg); color:var(--reg-link); }
+.wizard-app.registration-workspace .finish-banner { background:var(--reg-section); border:1px solid var(--dc-rule); border-radius:0; padding:16px; margin-bottom:14px; }
+.wizard-app.registration-workspace .finish-banner h2 { font-size:21px; }
+.wizard-app.registration-workspace .export-card { padding:16px; gap:10px; }
+.wizard-app.registration-workspace .export-card h3 { font-size:17px; }
+.wizard-app.registration-workspace .template-library { max-width:1552px; padding:24px; }
+.wizard-app.registration-workspace .template-heading { border-bottom:2px solid var(--reg-blue); padding-bottom:14px; }
+.wizard-app.registration-workspace .template-heading h1 { font:600 26px var(--reg-font); }
+.wizard-app.registration-workspace .template-panel { padding:16px; margin:14px 0; background:var(--dc-paper); border:1px solid var(--dc-rule); }
+.wizard-app.registration-workspace .template-panel h2 { font:600 18px var(--reg-font); padding-bottom:10px; border-bottom:1px solid var(--dc-rule); }
+.wizard-app.registration-workspace :is(.template-library,.template-additional-fields) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=file]) { font-family:var(--reg-font); font-size:15px; min-height:38px; color:var(--dc-ink); background:var(--dc-paper); border:1px solid var(--reg-control-border); border-radius:3px; padding:6px 8px; }
+.wizard-app.registration-workspace :is(.field-configurator fieldset,.template-evidence,.field-context) { border-color:var(--dc-rule); border-radius:0; }
+.wizard-app.registration-workspace :is(.template-library,.template-additional-fields) select option { background:var(--dc-paper); color:var(--dc-ink); }
+@media (max-width:1099px) {
+  .registration-workspace .registration-steps { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .wizard-app.registration-workspace .deed-field-grid { grid-template-columns:repeat(2,minmax(0,1fr))!important; }
+  .wizard-app.registration-workspace .deed-field { grid-column:span 1!important; }
+  .registration-workspace .registration-deed-table table { table-layout:auto; }
+  .registration-workspace .registration-row-actions { flex-direction:column; }
+}
+/* A common registration-office laptop viewport is 1247 × 702. Keep its desktop grid. */
+@media (min-width:1100px) and (max-height:800px) {
+  .wizard-app.registration-workspace { font-size:13px; line-height:1.4; }
+  .wizard-app.registration-workspace button { min-height:32px; padding:6px 10px; font-size:12px; }
+  .wizard-app.registration-workspace .app-top { min-height:56px; padding:8px 24px; }
+  .wizard-app.registration-workspace .brand-mark { width:32px; height:32px; }
+  .wizard-app.registration-workspace .brand-name { font-size:20px; }
+  .wizard-app.registration-workspace .brand-name small { font-size:10px; margin-top:2px; }
+  .wizard-app.registration-workspace .registration-nav-context { padding:2px 12px; }
+  .wizard-app.registration-workspace .registration-nav-context button { min-height:24px; font-size:12px; }
+  .wizard-app.registration-workspace .registration-nav-context>strong { font-size:14px; }
+  .wizard-app.registration-workspace .registration-steps { padding:4px; gap:3px; }
+  .wizard-app.registration-workspace .registration-steps button { min-height:34px; padding:4px 7px 4px 4px; gap:3px; }
+  .wizard-app.registration-workspace .registration-steps strong { font-size:11.5px; }
+  .wizard-app.registration-workspace .registration-steps small { margin-top:2px; }
+  .wizard-app.registration-workspace .registration-step-number { min-width:17px; height:17px; font-size:10px; }
+  .wizard-app.registration-workspace .stage { padding-top:10px; }
+  .wizard-app.registration-workspace .compact-step-header { display:grid; grid-template-columns:minmax(0,1fr) auto; background:var(--reg-section); }
+  .wizard-app.registration-workspace .step-toolbar { grid-column:2; grid-row:1; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; gap:2px; padding:4px 12px; border:0; }
+  .wizard-app.registration-workspace .workspace-breadcrumb { font-size:11px; }
+  .wizard-app.registration-workspace .workspace-breadcrumb button { min-height:24px; font-size:11px; padding:2px 6px; }
+  .wizard-app.registration-workspace .stage-head { padding:8px 14px; }
+  .wizard-app.registration-workspace .stage-head { grid-column:1; grid-row:1; }
+  .wizard-app.registration-workspace .stage-head h1 { font-size:19px; }
+  .wizard-app.registration-workspace .stage-head p { font-size:13px; margin-top:2px; }
+  .wizard-app.registration-workspace .compact-step-header { margin-bottom:8px; }
+  .wizard-app.registration-workspace .form-tools { margin-bottom:8px; }
+  .wizard-app.registration-workspace .document-upload { padding:10px 14px; margin-bottom:10px; }
+  .wizard-app.registration-workspace .document-upload { padding:7px 12px; }
+  .wizard-app.registration-workspace .document-upload .upload-symbol { width:34px; height:34px; }
+  .wizard-app.registration-workspace .upload-copy strong { font-size:13px; }
+  .wizard-app.registration-workspace .upload-copy p,.wizard-app.registration-workspace .upload-copy small { font-size:12px; }
+  .wizard-app.registration-workspace .registration-lookup-note { max-width:none!important; margin:10px 0 0!important; padding:6px 10px; font-size:12px; }
+  .wizard-app.registration-workspace .panel { padding:12px; margin-bottom:10px; }
+  .wizard-app.registration-workspace .deed-section>div:first-child { padding:7px 12px!important; }
+  .wizard-app.registration-workspace .deed-section>div:last-child { padding:12px!important; }
+  .wizard-app.registration-workspace .deed-field-grid { gap:10px 18px!important; }
+  .wizard-app.registration-workspace .deed-field { gap:3px!important; }
+  .wizard-app.registration-workspace .deed-field>button[aria-pressed] { min-height:26px!important; padding:3px 6px!important; font-size:11px!important; }
+  .wizard-app.registration-workspace .deed-section h2 { font-size:15px!important; }
+  .wizard-app.registration-workspace .deed-field>span:first-child>span:first-child { font-size:12px!important; }
+  .wizard-app.registration-workspace .deed-field :is(input,select,textarea), .wizard-app.registration-workspace :is(.setup-field,.schedule-type-control) :is(input,select) { min-height:32px; font-size:13px!important; padding:5px 8px!important; }
+  .wizard-app.registration-workspace .registration-location-label { min-height:20px; margin-bottom:3px; }
+  .wizard-app.registration-workspace .registration-location-label>label { font-size:12px; }
+  .wizard-app.registration-workspace .registration-location-label>button { min-height:20px; font-size:10.5px; padding:0; }
+  .wizard-app.registration-workspace .registration-location-help { margin-top:2px; }
+  .wizard-app.registration-workspace .registration-deed-table :is(th,td) { padding:9px 10px; font-size:12px; }
+  .wizard-app.registration-workspace .saved-deeds-heading h1 { font-size:23px; }
+  .wizard-app.registration-workspace .navigation button { min-height:36px; }
+  .wizard-app.registration-workspace .dashboard-hero { padding:12px 16px; grid-template-columns:minmax(0,1fr) 100px; gap:14px; }
+  .wizard-app.registration-workspace .dashboard-hero h2 { font-size:19px; }
+  .wizard-app.registration-workspace .dashboard-hero p { font-size:12px; margin-bottom:8px; }
+  .wizard-app.registration-workspace .dashboard-stats { gap:10px; margin:10px 0; }
+  .wizard-app.registration-workspace .dashboard-stats strong { font-size:20px; }
+  .wizard-app.registration-workspace .overview-card { min-height:64px; padding:10px 12px; }
+  .wizard-app.registration-workspace .overview-card h3 { font-size:13px; }
+  .wizard-app.registration-workspace .dashboard-section h2 { font-size:15px; }
+  .wizard-app.registration-workspace :is(.document-card-heading h3,.property-card-heading h2,.party-card-heading h2,.finish-banner h2) { font-size:16px; }
+  .wizard-app.registration-workspace :is(.template-picker,.export-card,.review-group,.template-panel) { padding:12px; margin-bottom:10px; }
+  .wizard-app.registration-workspace .export-card h3 { font-size:15px; }
+  .wizard-app.registration-workspace .template-library { padding:16px 24px; font-size:13px; }
+  .wizard-app.registration-workspace .template-heading h1 { font-size:23px; }
+  .wizard-app.registration-workspace .template-panel h2 { font-size:16px; }
+  .wizard-app.registration-workspace :is(.template-library,.template-additional-fields) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=file]) { min-height:32px; font-size:13px; }
+  .wizard-app.registration-workspace .library-toolbar { padding:8px 10px; }
+  .wizard-app.registration-workspace .library-toolbar :is(input,select) { font-size:13px; min-height:32px; }
+  .wizard-app.registration-workspace .saved-deeds-dashboard { padding:16px 24px; }
+}
+@media (max-width:767px) {
+  .wizard-app.registration-workspace .app-top { padding:14px 16px; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .wizard-app.registration-workspace .header-actions { margin-left:auto; flex-wrap:wrap; }
+  .wizard-app.registration-workspace .header-actions button { min-height:44px; }
+  .wizard-app.registration-workspace .header-actions .theme-toggle { width:44px; min-width:44px; min-height:44px; }
+  .wizard-app.registration-workspace .dc-icon-button { min-width:44px; min-height:44px; }
+  .wizard-app.registration-workspace button { min-height:44px; }
+  .wizard-app.registration-workspace .registration-location-help button { min-height:44px; }
+  .wizard-app.registration-workspace .registration-location-label>button { min-height:44px; }
+  .wizard-app.registration-workspace .brand-name { font-size:21px; }
+  .wizard-app.registration-workspace .stage { padding:12px; }
+  .wizard-app.registration-workspace .registration-navigation { margin:0 12px; }
+  .registration-workspace .registration-nav-context>span { margin:0; }
+  .registration-workspace .registration-steps { display:none; }
+  .registration-workspace .registration-mobile-navigation { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; gap:6px; padding:6px; }
+  .registration-workspace .registration-mobile-navigation label { min-width:0; font-size:13px; display:block; }
+  .registration-workspace .registration-mobile-navigation select { width:100%; display:block; min-height:44px; margin:0; background:var(--dc-paper); border:1px solid var(--reg-control-border); font-size:14px; padding:6px; }
+  .wizard-app.registration-workspace .registration-mobile-navigation button { display:flex; align-items:center; justify-content:center; min-height:44px; padding:8px; }
+  .wizard-app.registration-workspace .deed-field-grid { grid-template-columns:minmax(0,1fr)!important; }
+  .wizard-app.registration-workspace .deed-field :is(input,select,textarea) { min-height:44px; }
+  .wizard-app.registration-workspace .document-upload { flex-wrap:wrap; padding:12px; }
+  .wizard-app.registration-workspace .document-upload button { width:100%; }
+  .wizard-app.registration-workspace .saved-deeds-dashboard { padding:16px 12px; }
+  .registration-workspace .registration-deed-table :is(table,thead,tbody,tr,th,td) { display:block; width:100%!important; }
+  .registration-workspace .registration-deed-table thead { position:absolute; clip-path:inset(50%); height:1px; width:1px!important; overflow:hidden; }
+  .registration-workspace .registration-deed-table tbody tr { padding:10px; border-bottom:2px solid var(--dc-rule); }
+  .registration-workspace .registration-deed-table tbody :is(th,td) { border:0; padding:5px; }
+  .registration-workspace .registration-deed-table [data-label]::before { content:attr(data-label) ': '; color:var(--dc-body); font-weight:400; font-size:12px; }
+  .registration-workspace .registration-row-actions { flex-direction:row; margin-top:6px; }
+  .wizard-app.registration-workspace .registration-row-actions button { min-height:44px; }
+  .wizard-app.registration-workspace .step-toolbar { flex-wrap:wrap; }
+  .wizard-app.registration-workspace .navigation { gap:8px; flex-wrap:wrap; }
+  .wizard-app.registration-workspace .dashboard-hero { grid-template-columns:minmax(0,1fr); }
+  .wizard-app.registration-workspace .template-library { padding:16px 12px; }
+  .wizard-app.registration-workspace :is(.template-library,.template-additional-fields) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=file]) { min-height:44px; font-size:16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .wizard-app.registration-workspace *, .wizard-app.registration-workspace *::before, .wizard-app.registration-workspace *::after { scroll-behavior:auto!important; transition:none!important; animation:none!important; }
+}

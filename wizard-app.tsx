@@ -64,6 +64,8 @@ import { DocumentUpload, ReviewIssues } from './workflow-ui';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
 import { deleteDeed, listSavedDeeds, saveDeed, type SavedDeed } from './saved-deeds';
+import type { WorkspacePresentation, FieldRenderer } from './workspace-presentation';
+import { EMPTY_LOOKUP } from './registration-location-state';
 
 // Raised from 4: Step 2 now lets a drafter add several document types (link
 // deed, house tax, title deed, NALA, permissions) at once, and each upload
@@ -201,12 +203,14 @@ function ScopedSectionUpload({ label, busy, onUpload }: { label: string; busy?: 
 /** The named passes a document goes through while it's being read, ticked off as each completes. */
 /** One role-scoped field group, bound to a specific record through the draft's manual-edit dispatch. */
 function RecordFieldGroup({
-  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType, omitConsideration, afterField,
+  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType, omitConsideration, afterField, groupsOverride, renderField,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
   label?: string;
   afterField?: (fieldId: string) => React.ReactNode;
+  groupsOverride?: import('./fields').Group[];
+  renderField?: FieldRenderer;
   fallbackValues?: Record<string, string>;
   hidePartyType?: boolean;
   omitConsideration?: boolean;
@@ -214,7 +218,7 @@ function RecordFieldGroup({
   onDelete?: () => void;
   deleteLabel?: string;
 }) {
-  const groups = groupsForStep(step, category).map(group => ({ ...group, fields: group.fields.map(field => field.id === role + 'Age' && resolved.values[fieldKey(role, record, role + 'Dob')] ? { ...field, derived: true } : field).filter(f => (!hidePartyType || (!f.id.endsWith('PartyType') && !/(?:Guardian|Court|Ward)/.test(f.id))) && (!omitConsideration || f.id !== 'consid')) })).flatMap(group => {
+  const groups = (groupsOverride || groupsForStep(step, category)).map(group => ({ ...group, fields: group.fields.map(field => field.id === role + 'Age' && resolved.values[fieldKey(role, record, role + 'Dob')] ? { ...field, derived: true } : field).filter(f => (!hidePartyType || (!f.id.endsWith('PartyType') && !/(?:Guardian|Court|Ward)/.test(f.id))) && (!omitConsideration || f.id !== 'consid')) })).flatMap(group => {
     if ((role !== 'executant' && role !== 'claimant') || !hidePartyType) return [group];
     const isAddress = (id: string) => /(?:HNo|Locality|Village|Mandal|District|State|PinCode)$/.test(id);
     return [
@@ -256,6 +260,7 @@ function RecordFieldGroup({
       <FieldGroup
         key={g.title}
         afterField={afterField}
+        renderField={renderField}
         group={label ? { ...g, title: `${g.title} — ${label}` } : g}
         form={form}
         setField={(id, v) => id === 'executionDate' ? edit('property', 'transaction', id, v) : edit(role, record, id, v)}
@@ -535,7 +540,7 @@ function ReviewQueue({ sources, record, edit }: { sources: Source[]; record: str
   </Section>;
 }
 
-export default function WizardApp() {
+export default function WizardApp({ presentation, layoutControl }: { presentation?: WorkspacePresentation; layoutControl?: React.ReactNode } = {}) {
   const [showFieldHelp, setShowFieldHelp] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return localStorage.getItem('deedcraft-theme') === 'dark' ? 'dark' : 'light'; }
@@ -596,7 +601,7 @@ export default function WizardApp() {
   const giftVersion = giftTemplateVersion(draft.variantId);
   const agreementSaleGpa = draft.instrumentId === 'agreement_of_sale';
   const generalPoa = isGeneralPoa(draft.instrumentId, draft.variantId);
-  const bundledVersion = generalPoa ? 'general-poa-v1' : agreementSaleGpa ? 'agreement-sale-gpa-v1' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v10';
+  const bundledVersion = generalPoa ? 'general-poa-v1' : agreementSaleGpa ? 'agreement-sale-gpa-v2' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v10';
   const instrumentTitle = draft.instrumentId === 'power_of_attorney' ? 'General Power of Attorney' : agreementSaleGpa ? 'Agreement of Sale Cum GPA' : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift' : 'Gift Settlement') : 'Sale Deed';
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
   // Every real edit goes through `dispatch`/`edit`, never this setter.
@@ -614,7 +619,7 @@ export default function WizardApp() {
   const authorityErrors = generalPoa ? [...poaRelationshipErrors(state), ...salePropertyErrors(state)] : agreementSaleGpa ? salePropertyErrors(state) : draft.instrumentId === 'gift' ? [...(!municipalGift && !giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state), ...(municipalGift ? scheduleRecords(state).flatMap(record => MUNICIPAL_GIFT_CATEGORIES.includes(record.category) ? [] : ['Municipal Gift supports open place, plot, dismantled house and part open place only.']) : [])] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
   const minorDownloadErrors = mergeValues(state)['Minor Representation Errors'] || '';
-  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v1') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v1') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa]);
+  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v1') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v2') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
     additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
@@ -671,7 +676,7 @@ export default function WizardApp() {
       const version = listing.versions.find(item => item.id === listing.active.sale);
       if (!version) throw new Error('No published Sale template is available.');
       setLatestTemplate(pinFor(version));
-      setDefaultTemplates(Object.fromEntries([['power_of_attorney', bundledTemplatePin('general-poa-v1')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v1')], ['gift', bundledTemplatePin('gift-deed-v4')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
+      setDefaultTemplates(Object.fromEntries([['power_of_attorney', bundledTemplatePin('general-poa-v1')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v2')], ['gift', bundledTemplatePin('gift-deed-v4')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
         const revision = listing.versions.find(item => item.id === id && item.instrumentId === instrument);
         return revision ? [[instrument, pinFor(revision)]] : [];
       })]));
@@ -692,7 +697,7 @@ export default function WizardApp() {
     }
   }, [loadingLibrary, defaultTemplates]);
   useEffect(() => {
-    const pin = generalPoa ? bundledTemplatePin('general-poa-v1') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v1') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
+    const pin = generalPoa ? bundledTemplatePin('general-poa-v1') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v2') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
     if (templateMode !== 'built-in' || !pin || (libraryTemplate && !templateIsEarlier(libraryTemplate, pin))) return;
     setLibraryTemplate(pin);
     setDownload(null);
@@ -919,11 +924,11 @@ export default function WizardApp() {
   const addPartyRecord = (role: 'executant' | 'claimant') => (files: File[]) => {
     // Persist even untouched blank cards so numbering and share checks use the
     // same parties as the UI, including after a draft is reopened.
-    if (!recordOptions(role).length) dispatch({ type: 'manual', key: fieldKey(role, 'primary', `${role}Name`), value: '' });
-    if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'manual', key: fieldKey(role, record, `${role}Name`), value: '' }); setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] })); return; }
+    if (!recordOptions(role).length) dispatch({ type: 'add-party', role, record: 'primary' });
+    if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'add-party', role, record }); setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] })); return; }
     for (const file of files) {
       const record = crypto.randomUUID();
-      dispatch({ type: 'manual', key: fieldKey(role, record, `${role}Name`), value: '' });
+      dispatch({ type: 'add-party', role, record });
       setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] }));
       // Extra people use the same identity-only profile as the primary card.  A
       // generic extraction here used to discard address/identity candidates
@@ -1175,7 +1180,7 @@ export default function WizardApp() {
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
-  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app${showFieldHelp ? ' show-field-help' : ''}`} data-theme={theme}>
+  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app${showFieldHelp ? ' show-field-help' : ''}${presentation ? ` ${presentation.name}` : ''}`} data-theme={theme}>
     <ExtractDialog
       open={!!activeUpload}
       label={activeUpload?.label || 'Document'}
@@ -1188,7 +1193,7 @@ export default function WizardApp() {
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
     <a className="skip-link" href="#workspace-main">Skip to content</a>
-    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
+    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions">{layoutControl}<button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
     {templateLibraryError && <p className="notice" role="alert">Shared template library: {templateLibraryError} <button onClick={() => void refreshPublishedTemplate()}>Retry</button></p>}
     {templatesView ? <TemplateLibrary onClose={() => setTemplatesView(false)} onPublished={() => void refreshPublishedTemplate()} /> : libraryView ? <main id="workspace-main" tabIndex={-1} className="saved-deeds-dashboard">
       <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
@@ -1197,14 +1202,14 @@ export default function WizardApp() {
       {savedDeeds.length > 0 && <GettingStartedGuide />}
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}
-      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed =>
+      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? presentation ? <presentation.Library deeds={visibleSavedDeeds} templateLabel={deed => { const status = savedTemplateStatus(deed, latestTemplate); return status.label + (status.earlier ? ' · Updating to current default' : ''); }} onOpen={openSaved} onRemove={deed => void removeSaved(deed)} /> : <div className="saved-deeds-list">{visibleSavedDeeds.map(deed =>
         <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
           <div><h2>{(partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ')) || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
           <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
         </article>)}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
     </main> : <div className="shell">
-      <div className="mobile-step-picker"><label htmlFor="mobile-step">Drafting workspace</label><select id="mobile-step" value={step} onChange={e => goto(Number(e.target.value))}><option value={-1}>Overview</option>{workflowSteps.map(s => <option key={s.id} value={s.id}>{workflowSteps.indexOf(s) + 1}. {s.label}</option>)}</select></div>
+      {presentation ? <presentation.Navigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={[...new Set([...notices.map(notice => notice.step), ...(Object.entries(draft.jurisdictionLookups || {}).some(([propertyId, lookup]) => lookup.needsReview?.some(field => !!resolved.values[fieldKey('property', propertyId, field)])) ? [2] : [])])]} title={deedDefinition.label} onNavigate={goto} /> : <><div className="mobile-step-picker"><label htmlFor="mobile-step">Drafting workspace</label><select id="mobile-step" value={step} onChange={e => goto(Number(e.target.value))}><option value={-1}>Overview</option>{workflowSteps.map(s => <option key={s.id} value={s.id}>{workflowSteps.indexOf(s) + 1}. {s.label}</option>)}</select></div>
       <nav className="rail" aria-label="Deed steps"><div className="rail-heading">YOUR WORKSPACE</div><div className="rail-draft-meta"><FileText size={20} aria-hidden="true" /><div><strong>{deedDefinition.label}</strong><span>{vm.doneIds.filter(id => id <= 8).length} of 9 drafting steps complete</span></div></div>
         <button className={`rail-overview${step === -1 ? ' active' : ''}`} aria-current={step === -1 ? 'page' : undefined} onClick={() => goto(-1)}><LayoutGrid size={18} aria-hidden="true" /> Overview</button>
         {[1, 2, 3, 4].map(phase => <div className="rail-phase" key={phase}>
@@ -1216,18 +1221,12 @@ export default function WizardApp() {
             </button>
           ))}
         </div>)}
-      </nav>
+      </nav></>}
 
       <main id="workspace-main" tabIndex={-1} className="stage">
         {storageError && <p className="notice" role="alert">{storageError}</p>}
         {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
         <header className="compact-step-header">
-          <div className="step-toolbar">
-            <div className="workspace-breadcrumb">{step >= 0 ? <><button type="button" className="quiet" onClick={() => goto(-1)}>Overview</button><span aria-hidden="true">/</span><span>{['', 'Setup & sources', draft.instrumentId === 'gift' ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][STEPS[step].phase]}</span></> : <span>Workspace / Overview</span>}</div>
-            <div className="step-toolbar-status">{!storageError && hasStarted && <span className="save-indicator" role="status">{saveStatus === 'saving' ? 'Saving deed…' : saveStatus === 'saved' ? 'Saved in this browser' : 'Deed not saved'}</span>}
-              {templateMode === 'built-in' && <details className="template-context"><summary><FileText size={13} aria-hidden="true" />Template</summary><div><strong>{generalPoa ? 'General Power of Attorney v1' : agreementSaleGpa ? 'Agreement of Sale Cum GPA v1' : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift v1' : 'Gift Settlement v4') : libraryTemplate?.name || 'Built-in Sale v10'}</strong><small>{generalPoa || agreementSaleGpa ? bundledVersion : draft.instrumentId === 'gift' ? giftVersion : libraryTemplate?.versionId || 'sale-deed-v10'}</small></div></details>}
-            </div>
-          </div>
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
         </header>
         {step >= 0 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
@@ -1296,14 +1295,6 @@ export default function WizardApp() {
           </section>
           <section className="setup-card" aria-labelledby="setup-deed-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">02</span><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
-            <div className="deed-quick-choices" role="group" aria-label="Common deed forms">
-              {[
-                { label: 'SALE', detail: 'Ordinary sale', instrument: 'sale' as const, variant: saleVariant('ordinary') },
-                { label: 'GPA', detail: 'Sale through GPA', instrument: 'sale' as const, variant: saleVariant('gpa') },
-                { label: 'AGPA', detail: 'Sale through AGPA', instrument: 'sale' as const, variant: saleVariant('agpa') },
-                { label: 'GIFT', detail: 'Gift settlement', instrument: 'gift' as const, variant: DEED_DEFINITIONS.gift.variants[0].id },
-              ].map(choice => <button key={choice.label} type="button" aria-pressed={draft.instrumentId === choice.instrument && draft.variantId === choice.variant} onClick={() => dispatch({ type: 'instrument', instrumentId: choice.instrument, variantId: choice.variant })}><span className="deed-choice-icon"><FileText size={19} aria-hidden="true" /></span><span><strong>{choice.label}</strong><small>{choice.detail}</small></span><CircleCheck className="deed-choice-check" size={18} aria-hidden="true" /></button>)}
-            </div>
             <div className="setup-card-content setup-fields">
               <PlacementSlot sectionId="setup-deed" anchorFieldId="instrumentId" position="before" />
               <label className="setup-field"><span>Deed type <span lang="te">దస్తావేజు రకం</span></span>
@@ -1408,7 +1399,7 @@ export default function WizardApp() {
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
           <ScopedSectionUpload label="Jurisdiction" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'jurisdiction')} />
           <SourceFeedback sources={draft.sources.filter(source => source.profile === 'jurisdiction' && source.assignment?.record === activePropertyId)} visibleFields={GROUPS.filter(group => group.step === 2).flatMap(group => group.fields.map(field => field.id))} />
-          <section className="panel"><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} /><RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} /></section>
+          <section className="panel"><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} />{presentation ? <presentation.Jurisdiction key={`${draft.id}:${activePropertyId}`} propertyId={activePropertyId} values={resolved.values} lookup={draft.jurisdictionLookups?.[activePropertyId] || EMPTY_LOOKUP} onLookupChange={value => dispatch({ type: 'jurisdiction-lookup', propertyId: activePropertyId, value })} onEdit={(field, value) => edit('property', activePropertyId, field, value)} renderFields={options => <RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} groupsOverride={options?.groups} renderField={options?.renderField} />} /> : <RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} />}</section>
         </LinkStageGate>}
 
         {step === 3 && <LinkStageGate status={linkStageStatus('step4')} loading="Extracting the property schedule from the property documents…">

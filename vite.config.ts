@@ -5,6 +5,12 @@ import { resolve } from 'node:path';
 import { createProxyHandler } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
 import { createTemplateApi } from './template-api.mjs';
+import { createRegistrationLookupApi } from './registration-lookup-api.mjs';
+
+function registrationLookups(): Plugin {
+  const handler = createRegistrationLookupApi();
+  return { name: 'registration-lookups', configureServer: server => void server.middlewares.use(handler), configurePreviewServer: server => void server.middlewares.use(handler) };
+}
 
 function templateLibraryApi(env: Record<string, string>): Plugin {
   let handler: ReturnType<typeof createTemplateApi>;
@@ -54,7 +60,7 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env)],
+    plugins: [react(), tailwindcss(), registrationLookups(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),

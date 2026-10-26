@@ -45,9 +45,9 @@ add(['Bank Name', 'Housing Loan Bank'], 'Payment Details / bank', ['payments.ban
 add(['Housing Loan Branch'], 'Payment Details / bank branch', ['payments.branch']);
 add(['Cheque No.', 'DD No.', 'Transaction ID', 'Utr/Reference No.'], 'Payment Details / method-specific reference', ['payments.refNo']);
 const report = [];
-for (const file of ['sale-deed-template-v10.docx', 'gift-deed-template-v4.docx', 'gift-municipal-template-v1.docx', 'agreement-sale-gpa-template-v1.docx', 'general-poa-template-v1.docx']) {
+for (const file of ['sale-deed-template-v10.docx', 'gift-deed-template-v4.docx', 'gift-municipal-template-v1.docx', 'agreement-sale-gpa-template-v1.docx', 'agreement-sale-gpa-template-v2.docx', 'general-poa-template-v1.docx']) {
  const text = await rt.docxToText(new Uint8Array(await readFile(new URL('../' + file, import.meta.url))));
- const tags = [...new Set([...text.matchAll(/<([^<>]+)>/g)].map(match => norm(match[1])))].filter(tag => !/^(?:if|end|for)\b/.test(tag));
+ const tags = [...new Set([...text.matchAll(/<([^<>]+)>/g)].map(match => norm(match[1])))].filter(tag => !/^(?:if|end|for)\b/.test(tag) && tag !== 'without possession');
  const rows = tags.sort().map(placeholder => {
   const field = fields.find(field => (Array.isArray(field.ph) ? field.ph : field.ph ? [field.ph] : []).some(tag => norm(tag) === placeholder));
   const binding = aliases.get(placeholder) || (field && { screen: field.screen, inputs: [field.id] });

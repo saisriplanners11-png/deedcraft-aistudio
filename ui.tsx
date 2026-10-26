@@ -216,9 +216,10 @@ const SOURCE_TAG: Record<DocKind, string> = {
 
 /** One titled group of fields. */
 export function FieldGroup({
-  group, form, setField, derived, conflicts, fieldSource, fieldEvidence, onAccept, onDismiss, onAcceptGroup, afterField,
+  group, form, setField, derived, conflicts, fieldSource, fieldEvidence, onAccept, onDismiss, onAcceptGroup, afterField, renderField,
 }: {
   afterField?: (fieldId: string) => React.ReactNode;
+  renderField?: import('./workspace-presentation').FieldRenderer;
   group: Group;
   form: Record<string, string>;
   setField: (id: string, v: string) => void;
@@ -255,7 +256,7 @@ export function FieldGroup({
       <div className="deed-field-grid" style={css(`display:grid;grid-template-columns:repeat(${group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
         {group.fields.map(f => (<React.Fragment key={f.id}>
           <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="before" />
-          <Input
+          {renderField?.(f, form[f.id] || '', value => setField(f.id, value)) ?? <Input
             key={f.id}
             field={f}
             value={form[f.id] || ''}
@@ -266,7 +267,7 @@ export function FieldGroup({
             onAccept={() => onAccept?.(f.id)}
             onDismiss={() => onDismiss?.(f.id)}
             onChange={v => setField(f.id, v)}
-          />
+          />}
           {afterField?.(f.id)}
           <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="after" />
         </React.Fragment>))}

@@ -52,21 +52,30 @@ export function createTemplateApi(options = {}) {
   }
   async function seedAgreementLibrary() {
     const current = await read();
-    if (current.versions.some(item => item.id === 'agreement-sale-gpa-v1')) return;
-    const bytes = await readFile(join(ROOT, 'agreement-sale-gpa-template-v1.docx'));
-    const runtime = await loadTemplateRuntime();
-    const validation = await runtime.validateAgreementSaleGpaTemplate(bytes);
-    if (!validation.valid) throw fail(503, 'Bundled Agreement of Sale Cum GPA template failed validation.');
-    const at = new Date().toISOString();
-    const version = { id: 'agreement-sale-gpa-v1', instrumentId: 'agreement_of_sale', filename: 'agreement-sale-gpa-template-v1.docx', hash: hash(bytes), sourceHash: hash(bytes), sourceDocument: 'AGREEMENT OF SALE CUM GPA.docx', createdAt: at, publishedAt: at, contractVersion: 'agreement-sale-gpa-fields-1', validation, samples: [] };
-    await atomic(version.id + '.docx', bytes);
-    current.versions.push(version);
-    current.active.agreement_of_sale ||= version.id;
-    current.history.push({ versionId: version.id, at, action: 'seed' });
+    const sources = [
+      { id: 'agreement-sale-gpa-v1', filename: 'agreement-sale-gpa-template-v1.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA.docx' },
+      { id: 'agreement-sale-gpa-v2', filename: 'agreement-sale-gpa-template-v2.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (1).docx' },
+    ];
+    let changed = false;
+    for (const source of sources) {
+      if (current.versions.some(item => item.id === source.id)) continue;
+      const bytes = await readFile(join(ROOT, source.filename));
+      const runtime = await loadTemplateRuntime();
+      const validation = await runtime.validateAgreementSaleGpaTemplate(bytes);
+      if (!validation.valid) throw fail(503, `Bundled Agreement of Sale Cum GPA template ${source.id} failed validation: ${validation.errors.join('; ')}`);
+      const at = new Date().toISOString();
+      const version = { ...source, instrumentId: 'agreement_of_sale', hash: hash(bytes), sourceHash: hash(bytes), createdAt: at, publishedAt: at, contractVersion: 'agreement-sale-gpa-fields-1', validation, samples: [] };
+      await atomic(version.id + '.docx', bytes);
+      current.versions.push(version);
+      current.history.push({ versionId: version.id, at, action: 'seed' });
+      changed = true;
+    }
+    if (!current.active.agreement_of_sale || current.active.agreement_of_sale === 'agreement-sale-gpa-v1') { current.active.agreement_of_sale = 'agreement-sale-gpa-v2'; changed = true; }
+    if (!changed) return;
     try { await save(current); }
     catch (error) {
       const latest = error.status === 409 ? await storage.read() : null;
-      if (!latest?.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
+      if (!latest?.versions.some(item => item.id === 'agreement-sale-gpa-v2')) throw error;
     }
   }
   async function seedGeneralPoaLibrary() {

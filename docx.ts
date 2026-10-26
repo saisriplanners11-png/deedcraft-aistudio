@@ -455,6 +455,7 @@ export async function inspectTemplateFields(bytes: Uint8Array, contract: Templat
     const doc = entries.find(entry => entry.name === 'word/document.xml');
     if (!doc) return { occurrences, unresolved: [], structureErrors };
     const xml = new TextDecoder().decode(doc.data);
+    if (plainText(xml).includes('AGREEMENT OF SALE-CUM-GPA')) known.add(norm('WITHOUT POSSESSION'));
     const variantUses = new Map<string, Set<string>>();
     const use = (text: string, variant: string) => { for (const tag of angleTags(text)) { const key = norm(tag); const set = variantUses.get(key) || new Set<string>(); set.add(variant); variantUses.set(key, set); } };
     try {
@@ -1448,6 +1449,28 @@ function agreementTemplateParts(xml: string) {
   return giftTemplateParts(normalized);
 }
 
+/** The revised source supplies separate operative blocks before the shared schedules. */
+function selectAgreementPossession(xml: string, variant: string): string {
+  const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
+  const body = xml.slice(start, end);
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  const texts = chunks.map(chunk => plainText(chunk).trim());
+  const markers = texts.flatMap((text, index) => text === '<WITHOUT POSSESSION>' ? [index] : []);
+  const openings = texts.flatMap((text, index) => /^NOW THIS DEED WITNESSETH/i.test(text) ? [index] : []);
+  if (!markers.length) {
+    if (openings.length !== 1) throw new Error('Retain the <WITHOUT POSSESSION> boundary between the two Agreement clause blocks.');
+    return xml; // Explicit older custom templates retain their original single-block wording.
+  }
+  const boundary = markers[0];
+  const schedule = texts.findIndex((text, index) => index > boundary && /^<IF /.test(text));
+  if (markers.length !== 1 || openings.length !== 2 || openings[0] >= boundary || openings[1] <= boundary || schedule <= openings[1]) throw new Error('Retain both complete possession clause blocks before the property schedules.');
+  const withBlock = chunks.slice(openings[0], boundary).join('');
+  const withoutBlock = chunks.slice(boundary + 1, schedule).join('');
+  if (!plainText(withBlock).includes('5. POSSESSION') || !plainText(withoutBlock).includes('5. APPOINTMENT OF ATTORNEY') || !plainText(withoutBlock).includes('13. GENERAL AUTHORITY') || plainText(withoutBlock).includes('5. POSSESSION')) throw new Error('Retain the separate With Possession and Without Possession clauses and numbering.');
+  const selected = variant === 'without-possession' ? withoutBlock : withBlock;
+  return xml.slice(0, start) + chunks.slice(0, openings[0]).join('') + selected + chunks.slice(schedule).join('') + xml.slice(end);
+}
+
 export async function validateAgreementSaleGpaTemplate(bytes: Uint8Array, contract: TemplateFieldContract = EMPTY_FIELD_CONTRACT): Promise<TemplateValidationResult> {
   const errors: string[] = [];
   let detectedPlaceholders: string[] = [];
@@ -1458,11 +1481,13 @@ export async function validateAgreementSaleGpaTemplate(bytes: Uint8Array, contra
     const xml = new TextDecoder().decode(document.data);
     const parts = agreementTemplateParts(xml);
     const openingText = parts.chunks.slice(0, parts.first).map(plainText);
+    selectAgreementPossession(xml, 'with-possession');
+    selectAgreementPossession(xml, 'without-possession');
     for (const side of ['Executant', 'Claimant']) {
       if (!openingText.some(text => new RegExp(`<\\s*${side} NAME\\s*>`, 'i').test(text) && new RegExp(`<\\s*${side} Age\\s*>`, 'i').test(text))) errors.push(`Retain the complete ${side} identity paragraph.`);
     }
     if (!openingText.some(text => /^Registered Deed:/i.test(text.trim())) || !openingText.some(text => /^NOW THIS DEED WITNESSETH/i.test(text.trim()))) errors.push('Retain the Agreement title-record boundaries.');
-    const approved = await readZip(await loadTemplate('agreement-sale-gpa-v1'));
+    const approved = await readZip(await loadTemplate(openingText.includes('<WITHOUT POSSESSION>') ? 'agreement-sale-gpa-v2' : 'agreement-sale-gpa-v1'));
     const reference = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
     detectedPlaceholders = angleTags(xml);
     const supported = new Set([...angleTags(reference), ...contract.fields.map(field => field.placeholder), 'Landmark House No.', 'Housing Loan Branch', 'UTR No.'].map(norm));
@@ -1602,12 +1627,13 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   if (generalPoa && !['general-power-of-attorney', 'general-power-of-attorney-family'].includes(values['Poa Variant'])) throw new Error('Choose a supported General Power of Attorney variant.');
   if (generalPoa && (values['Poa Relationship Complete'] !== 'true' || !values['Poa Attorney Appointment'])) throw new Error('Choose the family relationship to principal(s) for every attorney.');
   if (!generalPoa && !['with-possession', 'without-possession'].includes(values['Agreement Possession Variant'])) throw new Error('Choose With Possession or Without Possession.');
-  const bytes = source.kind === 'built-in' ? await loadTemplate(generalPoa ? 'general-poa-v1' : 'agreement-sale-gpa-v1') : await templateBytes(source);
+  const bytes = source.kind === 'built-in' ? await loadTemplate(generalPoa ? 'general-poa-v1' : 'agreement-sale-gpa-v2') : await templateBytes(source);
   const validation = await (generalPoa ? validateGeneralPoaTemplate : validateAgreementSaleGpaTemplate)(bytes, source.kind === 'built-in' ? undefined : source.fieldContract);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
-  const xml = new TextDecoder().decode(document.data);
+  let xml = new TextDecoder().decode(document.data);
+  if (!generalPoa) xml = selectAgreementPossession(xml, values['Agreement Possession Variant']);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const { chunks, first, tail, blocks } = agreementTemplateParts(xml);
   const missing = new Set<string>();
@@ -1700,13 +1726,19 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
       : keepWithNext(paragraph);
   };
   let result = topLevelChildren(combined).map(child => combined.slice(child.start, child.end)).map(chunk => {
-    if (!/^<w:p\b/.test(chunk)) { headingPending = false; return chunk; }
+    if (!/^<w:p\b/.test(chunk)) {
+      headingPending = false;
+      if (plainText(chunk).includes(AGREEMENT_32A_HEADING)) signing = false;
+      return chunk;
+    }
     const text = plainText(chunk).trim();
-    const heading = /^(?:SCHEDULE OF PROPERTY|ANNEXURE|DECLARATION|\d+\. [A-Z])/i.test(text);
+    const heading = /^(?:SCHEDULE OF PROPERTY|ANNEXURE|DECLARATION|\d+\. [A-Z])/i.test(text)
+      || (!generalPoa && /^STATEMENT OF MARKET VALUE/i.test(text));
     if (heading) headingPending = true;
     else if (text) headingPending = false;
     if (/^IN WITNESS/i.test(text)) signing = true;
     if (/^(?:Typed|Prepared) By:/i.test(text)) signing = false;
+    if (/<w:sectPr\b/.test(chunk)) signing = false;
     if (signing || headingPending) chunk = keepAgreementParagraph(chunk);
     if (/^All that\b/i.test(text) && !/<w:keepLines\b/.test(chunk)) chunk = chunk.replace(/<w:pPr\b[^>]*>/, tag => tag + '<w:keepLines/>');
     return chunk;
