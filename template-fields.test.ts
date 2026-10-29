@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { readZip, writeZip, inspectTemplateFields, validateSaleDeedTemplate, templateBindingCatalog, docxToText } from './docx';
 import { loadTemplateRuntime } from './template-runtime-loader.mjs';
@@ -12,6 +12,9 @@ import { DEED_DEFINITIONS } from './instruments';
 export const fieldFixture = (patch: Partial<TemplateField> = {}): TemplateField => ({ id: 'maintenance', placeholder: 'Maintenance Amount', label: 'Maintenance amount', help: '', type: 'currency', scope: 'transaction', required: true, options: [], sampleValue: '1000', extractionEnabled: true, extractionDescription: 'Current maintenance charge', evidenceContext: 'current', variants: [], ...patch });
 
 describe('configurable template fields', () => {
+  const originalFetch = globalThis.fetch;
+  beforeAll(() => { globalThis.fetch = async input => new Response(await readFile(new URL('./' + String(input).split('/').pop()!.split('?')[0], import.meta.url))); });
+  afterAll(() => { globalThis.fetch = originalFetch; });
   it('keeps proposals out until reviewed, retains manual overrides, and removes deleted evidence', () => {
     const field = fieldFixture(); const contract: TemplateFieldContract = { version: 1, fields: [field] };
     let draft = newDraft();

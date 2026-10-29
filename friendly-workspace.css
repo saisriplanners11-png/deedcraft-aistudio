@@ -26,7 +26,7 @@
 .wizard-app .screen-guide-help dd{font-size:12px;line-height:1.6;color:var(--dc-body);margin:0}
 .wizard-app .field-help-toggle{display:flex;align-items:center;gap:7px;flex-shrink:0;min-height:32px;font-size:12px;line-height:1.4;color:var(--dc-body);cursor:pointer}
 .wizard-app .field-help-toggle input{width:15px;height:15px;margin:0;accent-color:var(--dc-green)}
-.wizard-app:not(.show-field-help) .field-help{display:none}
+.wizard-app:not(.show-field-help) .field-help:not(.field-required-guidance){display:none}
 .wizard-app .field-help{font-size:11px!important;line-height:1.5!important;color:var(--dc-body)!important}
 .wizard-app .panel{padding:14px;margin-bottom:12px;border-radius:10px}
 .wizard-app :is(.setup-step,.documents-step,.workflow-step){gap:12px}

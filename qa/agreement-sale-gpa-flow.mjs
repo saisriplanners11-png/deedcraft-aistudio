@@ -3,8 +3,8 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
-const bytes = new Uint8Array(await readFile(new URL('../agreement-sale-gpa-template-v2.docx', import.meta.url)));
-assert.equal(createHash('sha256').update(bytes).digest('hex'), 'ded0b46a86d88806947d76f03a4ca785a8c906ee58e8881f75ee45eaa32f99e5');
+const bytes = new Uint8Array(await readFile(new URL('../agreement-sale-gpa-template-v4.docx', import.meta.url)));
+assert.equal(createHash('sha256').update(bytes).digest('hex'), '0a39e5635d04ba03b2db91d53f9c056eb9947db5d16188b0a94e4237c20b07e5');
 const validation = await rt.validateAgreementSaleGpaTemplate(bytes);
 assert(validation.valid, validation.errors.join(' '));
 const reference = await rt.readZip(bytes);
@@ -73,7 +73,7 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
     checkSignatureBlocks(entries);
     for (const entry of reference.filter(entry => entry.name !== 'word/document.xml')) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
     if (source.kind === 'built-in') {
-      assert.equal(artifact.manifest.templateVersionId, 'agreement-sale-gpa-v2');
+      assert.equal(artifact.manifest.templateVersionId, 'agreement-sale-gpa-v4');
       if (['plot', 'house-finished', 'flat-finished'].includes(property)) await writeFile(`tmp/agreement-sale-gpa-qa/${property}-${variant}.docx`, output);
     }
     count++;

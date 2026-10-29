@@ -22,5 +22,6 @@ export function giftPartyWording(text: string, donors: number, donees: number, a
   replace(/SIGN\/S OF THE Donors?/gi, donors > 1 ? 'SIGNATURES OF THE DONORS' : 'SIGNATURE OF THE DONOR');
   replace(/SIGN\/S OF THE Donees?/gi, donees > 1 ? 'SIGNATURES OF THE DONEES' : 'SIGNATURE OF THE DONEE');
   replace(/WITNESSES\/S/gi, 'WITNESSES');
+  replace(/I\/WE/gi, 'WE');
   return text;
 }

@@ -4,6 +4,8 @@ import type { TemplateFieldContract, TemplateFieldInspection } from './template-
 
 export interface TemplatePin { saleOpenings?: boolean; versionId: string; hash: string; name: string; bytes?: Uint8Array; fieldContract?: TemplateFieldContract; schemaHash?: string; packageHash?: string; contractVersion?: string }
 export interface LibraryRevision {
+  preservationVersion?: string;
+  samplesPreservationVersion?: string;
   id: string;
   instrumentId: InstrumentId;
   saleOpenings?: boolean;

@@ -1,4 +1,5 @@
 import { acreGuntasToSqYards } from './land-area';
+import { titleAmendmentKind } from './title-amendments';
 import { normalizeWorkflowStep } from './workflow-steps';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
@@ -401,10 +402,11 @@ export function appStateFor(draft: Draft): AppState {
       || records.find(record => record.values.linkOption === 'houseTax' && record.values.assessmentPtinNo)?.values.assessmentPtinNo
       || '';
   };
-  const registeredLinks = links.filter(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
+  const isTitleAmendment = (record: ValueRecord) => !!titleAmendmentKind(record.values);
+  const registeredLinks = links.filter(r => !isTitleAmendment(r) && (r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f]))));
   const supportingLinks = links.filter(r=>!registeredLinks.includes(r));
   const primaryLinks = linkRecordsBySchedule.primary || [];
-  const primaryRegisteredLink = primaryLinks.find(r => r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f])));
+  const primaryRegisteredLink = primaryLinks.find(r => registeredLinks.includes(r));
   const form = { ...EMPTY_FORM, ...properties[0]?.values, ...primarySeller?.values, ...primaryBuyer?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
   if (!form.bltNo) form.bltNo = assessmentFor('primary', properties[0]?.values.category || '');
   const paymentRecords = forRole('payment');

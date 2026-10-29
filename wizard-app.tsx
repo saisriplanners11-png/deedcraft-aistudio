@@ -1,4 +1,5 @@
 import { isMinorParty } from './minor-parties';
+import { titleAmendmentKind, titleAmendmentLabel } from './title-amendments';
 import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
 import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
@@ -23,7 +24,8 @@ import {
 } from './source-draft';
 import { acreGuntasToSqYards, extractUpload, extractTemplateFields, fileHash, type ExtractionProfile } from './upload-extraction';
 import {
-  validateGeneralPoaTemplate, validateAgreementSaleGpaTemplate, appendRegistrationPlans, BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, inspectTemplateFields,
+  validateDeedTemplate, appendRegistrationPlans, BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, MAX_CUSTOM_TEMPLATE_BYTES, saveBlob, scheduleText, inspectTemplateFields,
+  loadTitleAmendmentTemplates, titleAmendmentPreview,
   type DeedTemplateSource, type ScheduleMerge,
 } from './docx';
 import { loadTemplate } from './template';
@@ -203,7 +205,7 @@ function ScopedSectionUpload({ label, busy, onUpload }: { label: string; busy?: 
 /** The named passes a document goes through while it's being read, ticked off as each completes. */
 /** One role-scoped field group, bound to a specific record through the draft's manual-edit dispatch. */
 function RecordFieldGroup({
-  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType, omitConsideration, afterField, groupsOverride, renderField,
+  role, record, category, step, resolved, edit, label, onDelete, deleteLabel, fallbackValues, hidePartyType, omitConsideration, afterField, groupsOverride, renderField, requireIdentityRelation,
 }: {
   role: Role; record: string; category: string; step: number;
   resolved: ReturnType<typeof resolveDraft>; edit: (role: Role, record: string, field: string, value: string) => void;
@@ -213,12 +215,13 @@ function RecordFieldGroup({
   renderField?: FieldRenderer;
   fallbackValues?: Record<string, string>;
   hidePartyType?: boolean;
+  requireIdentityRelation?: boolean;
   omitConsideration?: boolean;
   /** When set, the first group renders a delete action for this whole record. */
   onDelete?: () => void;
   deleteLabel?: string;
 }) {
-  const groups = (groupsOverride || groupsForStep(step, category)).map(group => ({ ...group, fields: group.fields.map(field => field.id === role + 'Age' && resolved.values[fieldKey(role, record, role + 'Dob')] ? { ...field, derived: true } : field).filter(f => (!hidePartyType || (!f.id.endsWith('PartyType') && !/(?:Guardian|Court|Ward)/.test(f.id))) && (!omitConsideration || f.id !== 'consid')) })).flatMap(group => {
+  const groups = (groupsOverride || groupsForStep(step, category)).map(group => ({ ...group, fields: group.fields.map(field => field.id === role + 'Relation' && requireIdentityRelation ? { ...field, label: 'Relation (required)', required: true, hint: 'Choose this principal’s identity relation (S/O, W/O, D/O or C/O), then enter the father’s / relative’s name. Required before downloading the deed.' } : field.id === role + 'Age' && resolved.values[fieldKey(role, record, role + 'Dob')] ? { ...field, derived: true } : field).filter(f => (!hidePartyType || (!f.id.endsWith('PartyType') && !/(?:Guardian|Court|Ward)/.test(f.id))) && (!omitConsideration || f.id !== 'consid')) })).flatMap(group => {
     if ((role !== 'executant' && role !== 'claimant') || !hidePartyType) return [group];
     const isAddress = (id: string) => /(?:HNo|Locality|Village|Mandal|District|State|PinCode)$/.test(id);
     return [
@@ -237,10 +240,9 @@ function RecordFieldGroup({
   });
   if (!groups.length) return null;
   const form: Record<string, string> = {};
-  // Most executants and claimants are individuals related as S/o, and nearly
-  // every deed is registered in Telangana, so those pickers open on the
-  // common choice instead of forcing a click on every party/property.
-  const defaults: Record<string, string> = { [`${role}PartyType`]: 'Individual', [`${role}Relation`]: 'S/O', propState: 'Telangana' };
+  // Party relation must follow the same resolved record used by validation.
+  // In particular, imported GPA principals must never display an unsaved S/O.
+  const defaults: Record<string, string> = { [`${role}PartyType`]: 'Individual', propState: 'Telangana' };
   // Extent (Sq. Meters) follows Extent (Sq. Yards) live, the same way it
   // already does when typed by hand — regardless of whether the yard figure
   // arrived by typing or by AI extraction from an uploaded property record.
@@ -310,14 +312,28 @@ function LinkRecordCard({
   </section>;
 }
 
-function TitlePointCard({ option, record, form, onField, onUpload, sources, busy, onDelete }: {
+function TitlePointCard({ option, record, form, onField, onUpload, sources, busy, onDelete, instrument, variant, templateSource }: {
   option: (typeof LINK_OPTIONS)[number]; record: string; form: Record<string, string>;
   onField: (field: string, value: string) => void; onUpload: (files: File[]) => void;
   sources: Source[]; busy: boolean; onDelete?: () => void;
+  instrument: Draft['instrumentId']; variant: string; templateSource: DeedTemplateSource;
 }) {
   const visibleFields = option.fields.filter(field => !field.hidden);
-  return <section className="panel link-record" data-title-point={option.id}>
-    <div className="document-card-heading"><span className="document-card-icon"><FileText size={20} aria-hidden="true" /></span><div><h2>{option.id === 'linkDoc' ? 'Registered Deed' : option.id === 'permissions' ? 'House Permission' : option.label}</h2><p>Upload a source to fill the details, or enter them below.</p></div><span className="document-source-count">{sources.length ? `${sources.length} source${sources.length === 1 ? '' : 's'}` : 'Manual / upload'}</span></div>
+  const amendmentValues = { ...form, linkOption: option.id };
+  const kind = titleAmendmentKind(amendmentValues);
+  const [templates, setTemplates] = useState<Awaited<ReturnType<typeof loadTitleAmendmentTemplates>>>({});
+  const [previewError, setPreviewError] = useState('');
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+  const active = !!kind;
+  useEffect(() => {
+    let current = true;
+    setTemplates({}); setPreviewError(''); setPreviewLoaded(false);
+    if (active) void loadTitleAmendmentTemplates(instrument, variant, templateSource).then(value => { if (current) { setTemplates(value); setPreviewLoaded(true); } }).catch(error => { if (current) setPreviewError(error instanceof Error ? error.message : 'Could not load the selected Word recital.'); });
+    return () => { current = false; };
+  }, [active, instrument, variant, templateSource]);
+  const label = kind ? titleAmendmentLabel(kind) : option.id === 'linkDoc' ? 'Registered Deed' : option.id === 'permissions' ? 'House Permission' : option.label;
+  return <section className="panel link-record" data-title-point={option.id} data-title-amendment={kind}>
+    <div className="document-card-heading"><span className="document-card-icon"><FileText size={20} aria-hidden="true" /></span><div><h2>{label}</h2><p>Upload a source to fill the details, or enter them below.</p></div><span className="document-source-count">{sources.length ? `${sources.length} source${sources.length === 1 ? '' : 's'}` : 'Manual / upload'}</span></div>
     <DocumentUpload label={`Add ${option.id === 'linkDoc' ? 'a registered deed' : option.label.toLowerCase()}`} busy={busy} multiple={option.id === 'linkDoc' || option.id === 'landLayoutLrs'} onUpload={onUpload} />
     <SourceFeedback sources={sources} visibleFields={visibleFields.map(field => field.id)} />
     {option.id === 'landLayoutLrs' ? [
@@ -326,7 +342,13 @@ function TitlePointCard({ option, record, form, onField, onUpload, sources, busy
       ['LRS 2020 Application', 'lrsApplicationNo', 'lrsApplicationDate'],
       ['LRS Proceeding', 'lrsProceedingNo', 'lrsProceedingDate'],
     ].map(([title, ...ids]) => <FieldGroup key={title} group={{ placementSection: 'link-' + option.id, step: 1, title, note: '', fields: visibleFields.filter(field => ids.includes(field.id)) }} form={form} setField={onField} />)
-      : <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: option.label, note: option.note, fields: visibleFields }} form={form} setField={onField} />}
+      : <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: kind ? label + ' details' : option.label, note: kind ? 'Details of this amendment to the original link/title deed.' : option.note, fields: visibleFields }} form={form} setField={onField} />}
+    {kind && <div className="notice title-amendment-preview" aria-label="Applicable deed recital">
+      <strong role="status">{titleAmendmentLabel(kind)} recital selected</strong>
+      <p>This record’s document number, date, Sub-Registrar Office and SRO code fill this recital automatically.</p>
+      {previewError ? <p role="alert">{previewError}</p> : templates[kind] ? <p className="title-amendment-prose">{titleAmendmentPreview(templates[kind]!, amendmentValues, kind)}</p> : previewLoaded ? <p role="alert">The selected Word template has no {titleAmendmentLabel(kind)} recital. Use the current default or restore that paragraph to include this record.</p> : <p>Loading the selected Word recital…</p>}
+      {!(form.linkDocNo || form[kind + 'DeedNo']) && <p>Enter the document number to include this recital in the deed.</p>}
+    </div>}
     {onDelete && <IconButton label={`Delete ${option.label} details`} onClick={onDelete} />}
   </section>;
 }
@@ -382,7 +404,9 @@ function PartyRecordCard({
   upload: (files: File[], assignment: { role: Role; record: string }, profile: ExtractionProfile) => void;
   choose: (key: string, candidateId: string) => void;
 }) {
-  const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || (role === 'executant' && appStateFor(draft).saleDocument !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual')) as PartyType;
+  const state = appStateFor(draft);
+  const ownParty = partyRecords(state, role).find((party, index) => (index ? party.id : (role === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary') === record);
+  const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || (role === 'executant' && state.saleDocument !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual')) as PartyType;
   const entity = isEntity({ [role + 'PartyType']: partyType }, role);
   const people = peopleFor(draft, partyKey(role, record), resolved);
   const society = partyType === 'Society / Association' || partyType === 'Society / Trust';
@@ -435,7 +459,7 @@ function PartyRecordCard({
         {!partyType.startsWith('Guardian') && <ScopedSectionUpload label="guardian Aadhaar / ID" busy={busy} onUpload={files => upload(files, { role, record }, ('guardian:' + role) as ExtractionProfile)} />}
         <FieldGroup group={{ step, title: role === 'executant' ? 'Guardian and court permission' : 'Guardian details', fields: ALL_FIELDS.filter(field => field.id.startsWith(role) && ((partyType.startsWith('Guardian') ? field.id === role + 'GuardianRelationship' || field.id.includes('Ward') : field.id.includes('Guardian')) || (role === 'executant' && field.id.includes('Court')))) }} form={Object.fromEntries(ALL_FIELDS.filter(field => field.id.startsWith(role)).map(field => [field.id, resolved.values[fieldKey(role, record, field.id)] || '']))} setField={(id, value) => edit(role, record, id, value)} />
       </Section>}
-      <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType afterField={id => id.endsWith('PinCode') ? shareFields : null} />
+      <RecordFieldGroup role={role} record={record} category={category} step={step} resolved={resolved} edit={edit} hidePartyType fallbackValues={{ [role + 'Relation']: ownParty?.values[role + 'Relation'] || '' }} requireIdentityRelation={role === 'executant' && state.saleDocument !== 'ordinary'} afterField={id => id.endsWith('PinCode') ? shareFields : null} />
     </>}
     {onDelete && <IconButton label={`Delete ${label || role}`} onClick={onDelete} />}
   </section></PlacementRecord>;
@@ -601,7 +625,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const giftVersion = giftTemplateVersion(draft.variantId);
   const agreementSaleGpa = draft.instrumentId === 'agreement_of_sale';
   const generalPoa = isGeneralPoa(draft.instrumentId, draft.variantId);
-  const bundledVersion = generalPoa ? 'general-poa-v1' : agreementSaleGpa ? 'agreement-sale-gpa-v2' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v10';
+  const bundledVersion = generalPoa ? 'general-poa-v3' : agreementSaleGpa ? 'agreement-sale-gpa-v4' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v11';
   const instrumentTitle = draft.instrumentId === 'power_of_attorney' ? 'General Power of Attorney' : agreementSaleGpa ? 'Agreement of Sale Cum GPA' : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift' : 'Gift Settlement') : 'Sale Deed';
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
   // Every real edit goes through `dispatch`/`edit`, never this setter.
@@ -615,11 +639,11 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const displayedStep = workflowSteps.findIndex(item => item.id === step) + 1;
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
-  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v10'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
+  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v11'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
   const authorityErrors = generalPoa ? [...poaRelationshipErrors(state), ...salePropertyErrors(state)] : agreementSaleGpa ? salePropertyErrors(state) : draft.instrumentId === 'gift' ? [...(!municipalGift && !giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state), ...(municipalGift ? scheduleRecords(state).flatMap(record => MUNICIPAL_GIFT_CATEGORIES.includes(record.category) ? [] : ['Municipal Gift supports open place, plot, dismantled house and part open place only.']) : [])] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
   const minorDownloadErrors = mergeValues(state)['Minor Representation Errors'] || '';
-  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v1') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v2') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa]);
+  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v3') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v4') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
     additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
@@ -630,7 +654,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v1:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v10'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v1:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v11'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -676,7 +700,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       const version = listing.versions.find(item => item.id === listing.active.sale);
       if (!version) throw new Error('No published Sale template is available.');
       setLatestTemplate(pinFor(version));
-      setDefaultTemplates(Object.fromEntries([['power_of_attorney', bundledTemplatePin('general-poa-v1')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v2')], ['gift', bundledTemplatePin('gift-deed-v4')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
+      setDefaultTemplates(Object.fromEntries([['power_of_attorney', bundledTemplatePin('general-poa-v3')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v4')], ['gift', bundledTemplatePin('gift-deed-v6')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
         const revision = listing.versions.find(item => item.id === id && item.instrumentId === instrument);
         return revision ? [[instrument, pinFor(revision)]] : [];
       })]));
@@ -697,7 +721,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     }
   }, [loadingLibrary, defaultTemplates]);
   useEffect(() => {
-    const pin = generalPoa ? bundledTemplatePin('general-poa-v1') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v2') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
+    const pin = generalPoa ? bundledTemplatePin('general-poa-v3') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v4') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
     if (templateMode !== 'built-in' || !pin || (libraryTemplate && !templateIsEarlier(libraryTemplate, pin))) return;
     setLibraryTemplate(pin);
     setDownload(null);
@@ -1113,6 +1137,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     setValidatingTemplate(true); setDownload(null); setMessage('');
     try {
       if (file.size > MAX_CUSTOM_TEMPLATE_BYTES) {
+        if (customTemplate?.validation.valid) { setMessage('The replacement is larger than 20 MB. Your existing template and entered details are retained.'); return; }
         setCustomTemplate({
           kind: 'custom', name: file.name, hash: `oversized:${file.size}`, bytes: new Uint8Array(),
           validation: { valid: false, errors: ['The template is larger than 20 MB.'], detectedPlaceholders: [], omittedPlaceholders: [] },
@@ -1121,14 +1146,17 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       }
       const [buffer, hash] = await Promise.all([file.arrayBuffer(), fileHash(file)]);
       const bytes = new Uint8Array(buffer);
-      const inspection = await inspectTemplateFields(bytes, fieldContract);
-      const compatibleContract = { version: 1 as const, fields: fieldContract.fields.filter(field => inspection.occurrences.some(occurrence => fieldName(occurrence.placeholder) === fieldName(field.placeholder))) };
-      const validation = generalPoa ? await validateGeneralPoaTemplate(bytes, compatibleContract) : agreementSaleGpa ? await validateAgreementSaleGpaTemplate(bytes, compatibleContract) : draft.instrumentId === 'gift' ? await (municipalGift ? validateMunicipalGiftTemplate : validateGiftDeedTemplate)(bytes) : await validateSaleDeedTemplate(bytes, file.name, undefined, compatibleContract);
+      const compatibleContract = fieldContract;
+      const validation = await validateDeedTemplate(bytes, draft.instrumentId || 'sale', draft.variantId, file.name, compatibleContract);
       if (validationRevision !== templateValidationRevision.current) return;
+      if (!validation.valid && customTemplate?.validation.valid) {
+        setMessage(`The replacement was not applied. ${validation.errors.join(' ')} Your existing template and entered details are retained.`);
+        return;
+      }
       setCustomTemplate({ kind: 'custom', name: file.name, hash, bytes, validation, fieldContract: compatibleContract });
     } catch (error: any) {
       if (validationRevision !== templateValidationRevision.current) return;
-      setCustomTemplate(null);
+      if (!customTemplate?.validation.valid) setCustomTemplate(null);
       setMessage(`Template could not be checked: ${error?.message || 'Please choose another file.'}`);
     } finally {
       if (validationRevision === templateValidationRevision.current) {
@@ -1375,6 +1403,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                   }
                 };
                 return <TitlePointCard key={record} option={option} record={record} form={form}
+                  instrument={draft.instrumentId} variant={draft.variantId} templateSource={activeTemplateSource}
                   onField={(field, value) => { ensureRecord(); edit('link', record, field, value); }}
                   onUpload={files => { ensureRecord(); void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${option.id}` as ExtractionProfile); }}
                   sources={draft.sources.filter(source => source.assignment?.role === 'link' && (grouped ? related.includes(source.assignment.record) : source.assignment.record === record))}

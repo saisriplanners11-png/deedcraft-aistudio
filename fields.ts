@@ -15,6 +15,7 @@ export const localAuthorityName = (value: string): string => ({
 
 export type Field = {
   ariaLabel?: string;
+  required?: boolean;
   optionLabels?: Record<string, string>;
   id: string;
   label: string;
@@ -258,7 +259,7 @@ export const GROUPS: Group[] = [
     telugu: 'లింక్ దస్తావేజు వివరాలు',
     note: 'The prior registered document through which the vendor holds title. It is recited verbatim in the deed.',
     fields: [
-      { id: 'linkDocType', label: 'Document type', ph: 'Link Doc Type', span: 2, hint: 'e.g. Registered Sale Deed' },
+      { id: 'linkDocType', label: 'Document type', ph: 'Link Doc Type', span: 2, hint: 'e.g. Sale Deed, Rectification Deed or Supplemental Deed. Amendment recitals are selected automatically.' },
       { id: 'linkDocNo', label: 'Document number', ph: 'Link Doct.No.',
         hint: 'Registration/document number of the uploaded link deed itself — not an older deed recited inside it.' },
       { id: 'linkDocDate', label: 'Link deed execution date', ph: 'Link Doct.Date', type: 'date',
@@ -417,6 +418,16 @@ export type LinkOption = { id: string; label: string; telugu: string; note: stri
  * schedule via `supportingRecordRecital`-style recitals only where applicable.
  */
 export const LINK_OPTIONS: LinkOption[] = [
+  ...(['Rectification', 'Supplemental'] as const).map(kind => {
+    const prefix = kind.toLowerCase() + 'Deed';
+    return { id: prefix, label: kind + ' Deed', telugu: '', note: 'Enter this registered amendment to the link/title document separately for this property.', fields: [
+      { id: prefix + 'Type', label: 'Document type', ph: kind + ' Deed Type', hint: 'Registered ' + kind + ' Deed' },
+      { id: prefix + 'No', label: 'Document number', ph: kind + ' Deed No.' },
+      { id: prefix + 'Date', label: 'Execution date', ph: kind + ' Deed Date', type: 'date' as const },
+      { id: prefix + 'Sro', label: 'Sub-Registrar Office', ph: kind + ' Deed SRO' },
+      { id: prefix + 'SroCode', label: 'SRO code', ph: kind + ' Deed SRO Code' },
+    ] };
+  }),
   { id: 'landLayoutLrs', label: 'Vacant Land Tax / Approved Layout / LRS', telugu: '', note: 'Enter each available land-tax, layout and regularisation detail for this property.', fields: [
     { id: 'vltNo', label: 'V.L.T. number', ph: ['V.L.T No.', 'V.L.T. No.'] },
     { id: 'layoutFileNo', label: 'Approved layout file number', ph: 'Layout File No.' },
@@ -446,7 +457,7 @@ export const LINK_OPTIONS: LinkOption[] = [
     id: 'linkDoc', label: 'Link Document No.', telugu: 'రిజిస్టర్డ్ లింక్ దస్తావేజు',
     note: 'The prior registered document through which the vendor holds title. It is recited verbatim in the deed.',
     fields: [
-      { id: 'linkDocType', label: 'Document type', ph: 'Link Doc Type', span: 2, hint: 'e.g. Registered Sale Deed' },
+      { id: 'linkDocType', label: 'Document type', ph: 'Link Doc Type', span: 2, hint: 'e.g. Sale Deed, Rectification Deed or Supplemental Deed. Amendment recitals are selected automatically.' },
       { id: 'linkDocNo', label: 'Document number', ph: 'Link Doct.No.',
         hint: 'Registration/document number of the uploaded link deed itself — not an older deed recited inside it.' },
       { id: 'linkDocDate', label: 'Link deed execution date', ph: 'Link Doct.Date', type: 'date',
@@ -506,7 +517,7 @@ export const LINK_OPTIONS: LinkOption[] = [
     ],
   },
 ];
-export const TITLE_SECTION_IDS = ['linkDoc', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions'] as const;
+export const TITLE_SECTION_IDS = ['linkDoc', 'rectificationDeed', 'supplementalDeed', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions'] as const;
 
 /** Flat list of every field, in step order. De-duplicated: `linkDoc`'s core four are the same fields already in GROUPS. */
 export const ALL_FIELDS: Field[] = Object.values(

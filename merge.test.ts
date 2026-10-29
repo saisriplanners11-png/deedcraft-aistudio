@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, generationBlockers } from './logic';
-import { deedFilename, mergeValues } from './merge';
+import { deedFilename, mergeValues, scheduleMergesFor } from './merge';
+import { appStateFor, draftReducer, newDraft } from './source-draft';
 import { deedDate } from './deed-format';
+
+it('restores separate title amendments without turning them into the original title or a flat allotment agreement', () => {
+  let draft = newDraft();
+  const records = [
+    ['rect', { linkOption: 'linkDoc', linkDocType: 'Rectification Deed', linkDocNo: 'RECT-1', linkDocDate: '2021-02-03', linkSro: 'RECT SRO' }],
+    ['base', { linkOption: 'linkDoc', linkDocType: 'Sale Deed', linkDocNo: 'TITLE-1', linkDocDate: '2020-01-02', linkSro: 'TITLE SRO' }],
+    ['supp', { linkOption: 'supplementalDeed', supplementalDeedNo: 'SUPP-1', supplementalDeedDate: '2022-03-04', supplementalDeedSro: 'SUPP SRO' }],
+  ] as const;
+  for (const [record, values] of records) {
+    draft = draftReducer(draft, { type: 'link-property', record, propertyId: 'primary' });
+    for (const [key, value] of Object.entries(values)) draft = draftReducer(draft, { type: 'manual', key: `link|${record}|${key}`, value });
+  }
+  draft = draftReducer(draft, { type: 'manual', key: 'property|primary|supplementalDocNo', value: 'FLAT-ALLOTMENT' });
+  const restored = draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) });
+  const state = appStateFor(restored), schedule = scheduleMergesFor(state)[0];
+  expect(state.form.linkDocNo).toBe('TITLE-1');
+  expect(schedule.titleLinkRecords?.map(record => record['Link Doct.No.'])).toEqual(['TITLE-1']);
+  expect(schedule.amendmentRecords?.rectification[0]['Rectification Deed No.']).toBe('RECT-1');
+  expect(schedule.amendmentRecords?.rectification[0]['Rectification Deed Date']).toBe('03-02-2021');
+  expect(schedule.amendmentRecords?.supplemental[0]['Supplemental Deed SRO']).toBe('SUPP SRO');
+  expect(schedule.values['Supplemental Agreement No.']).toBe('FLAT-ALLOTMENT');
+  expect(restored.manual).toEqual(draft.manual);
+});
 
 describe('Printed deed date policy', () => {
   it('formats ISO and restored local dates as DD-MM-YYYY without changing day/month order', () => {

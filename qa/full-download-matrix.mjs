@@ -67,10 +67,10 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const category of propertyT
 }
 
 const giftRows = [];
-const giftTemplateBytes = new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx', import.meta.url)));
+const giftTemplateBytes = new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx', import.meta.url)));
 const giftValidation = await rt.validateGiftDeedTemplate(giftTemplateBytes);
 assert.equal(giftValidation.valid, true, giftValidation.errors.join('\n'));
-const giftSource = { kind: 'custom', name: 'Gift Settlement v4 QA', hash: 'matrix-v4', bytes: giftTemplateBytes, validation: giftValidation };
+const giftSource = { kind: 'custom', name: 'Gift Settlement v5 QA', hash: 'matrix-v4', bytes: giftTemplateBytes, validation: giftValidation };
 for (const variant of ['family-gift', 'non-family-gift', 'gift-to-trust-or-charity']) for (const category of propertyTypes) {
   const state = rt.sampleState(`ordinary-${category}`);
   state.deedType = 'Gift'; state.form = { ...state.form, ...saleFields('ONE'), giftRelationship: variant === 'family-gift' ? 'daughter' : 'friend', localAuthorityType: 'Municipal Council' };
@@ -117,7 +117,7 @@ for (const category of ['plot', 'open', 'part', 'dismantled']) {
   const variantId = 'municipal-gift';
   const compiled = rt.compileDeed({ instrumentId: 'gift', variantId, snapshotHash: `municipal-${category}`, values: rt.mergeValues(state), schedules: rt.scheduleMergesFor(state), rewrites: rt.rewritesFor(state), unresolvedWarnings: [] });
   const { result, manifest } = await rt.renderArtifact(compiled, 'docx');
-  assert.equal(manifest.templateVersionId, 'gift-municipal-v1');
+  assert.equal(manifest.templateVersionId, 'gift-municipal-v3');
   assert.deepEqual(result.unmapped, [], `Municipal Gift/${category}: no unresolved fields`);
   const bytes = new Uint8Array(await result.blob.arrayBuffer());
   const text = await rt.docxToText(bytes);

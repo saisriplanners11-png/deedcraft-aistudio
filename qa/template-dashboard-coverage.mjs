@@ -6,6 +6,8 @@ const norm = value => value.replace(/\s+/g, ' ').trim().toLowerCase();
 const fields = [...rt.GROUPS.flatMap(group => group.fields.map(field => ({ ...field, screen: group.title }))), ...rt.LINK_OPTIONS.flatMap(option => option.fields.map(field => ({ ...field, screen: 'Link Deed & Enclosures / ' + option.label })))].filter(field => !field.hidden);
 const aliases = new Map();
 const add = (tags, screen, inputs) => tags.forEach(tag => aliases.set(norm(tag), { screen, inputs }));
+add(['1'], 'Property Schedules / stilt floors', ['stiltFloors']);
+add(['5'], 'Property Schedules / upper floors', ['upperFloors']);
 add(['EXECUTANT RELATION NAME'], 'Executant Details', ['executantRelation', 'executantRelativeName']);
 add(['CLAIMANT RELATION NAME'], 'Claimant Details', ['claimantRelation', 'claimantRelativeName']);
 add(['Municipal House Nos.'], 'Property Schedules', ['bearingHNo']);
@@ -20,6 +22,7 @@ add(['Type of structure'], 'Property Schedules / Structure & Annexure I-A', ['co
 add(['Age of House'], 'Property Schedules / Structure details', ['structureDetails.rows.buildingAge']);
 add(['Plinth Area', 'Ground Floor Area', 'First Floor Area'], 'Property Schedules / Structure details', ['structureDetails.rows.floorNo', 'structureDetails.rows.builtUpAreaSqFt']);
 add(['Friend/Relationship'], 'Attorney details / Relationship to principal(s)', ['variantId', 'claimant.poaRelationship', 'claimant.poaRelationshipCustom']);
+add(['FAMILY MEMBER/OTHER THAN FAMILY MEMBER'], 'Deed setup / Gift category', ['variantId']);
 add(['Relationship'], 'Gift relationship', ['giftRelationship', 'giftRelationshipCustom']);
 add(['ULB'], 'Property Schedules / Municipal Gift recipient', ['localAuthorityType', 'village']);
 add(['Consideration in words'], 'Market Value / calculated from entered amount', ['consid']);
@@ -45,7 +48,7 @@ add(['Bank Name', 'Housing Loan Bank'], 'Payment Details / bank', ['payments.ban
 add(['Housing Loan Branch'], 'Payment Details / bank branch', ['payments.branch']);
 add(['Cheque No.', 'DD No.', 'Transaction ID', 'Utr/Reference No.'], 'Payment Details / method-specific reference', ['payments.refNo']);
 const report = [];
-for (const file of ['sale-deed-template-v10.docx', 'gift-deed-template-v4.docx', 'gift-municipal-template-v1.docx', 'agreement-sale-gpa-template-v1.docx', 'agreement-sale-gpa-template-v2.docx', 'general-poa-template-v1.docx']) {
+for (const file of ['gift-municipal-template-v3.docx', 'gift-deed-template-v6.docx', 'agreement-sale-gpa-template-v4.docx', 'general-poa-template-v3.docx', 'sale-deed-template-v11.docx', 'sale-deed-template-v10.docx', 'gift-deed-template-v5.docx', 'gift-municipal-template-v2.docx', 'agreement-sale-gpa-template-v1.docx', 'agreement-sale-gpa-template-v2.docx', 'general-poa-template-v1.docx', 'general-poa-template-v2.docx', 'agreement-sale-gpa-template-v3.docx']) {
  const text = await rt.docxToText(new Uint8Array(await readFile(new URL('../' + file, import.meta.url))));
  const tags = [...new Set([...text.matchAll(/<([^<>]+)>/g)].map(match => norm(match[1])))].filter(tag => !/^(?:if|end|for)\b/.test(tag) && tag !== 'without possession');
  const rows = tags.sort().map(placeholder => {
@@ -56,7 +59,7 @@ for (const file of ['sale-deed-template-v10.docx', 'gift-deed-template-v4.docx',
  });
  report.push({ file, count: rows.length, fields: rows });
 }
-for (const field of rt.ALL_FIELDS.filter(field => /^(?:development|supplemental)/.test(field.id))) {
+for (const field of rt.ALL_FIELDS.filter(field => /^(?:development|supplemental)/.test(field.id) && !/^supplementalDeed/.test(field.id))) {
  assert(rt.groupsForStep(3, 'Flat').some(group => group.title === 'Landowner–developer agreements' && group.fields.some(item => item.id === field.id)), `${field.id}: dedicated dashboard section`);
 }
 await mkdir('tmp/template-field-coverage', { recursive: true });

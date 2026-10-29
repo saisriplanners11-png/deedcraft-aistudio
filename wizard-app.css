@@ -51,6 +51,9 @@
 .wizard-app summary{cursor:pointer;font-weight:600;color:var(--dc-ink)}
 .wizard-app details[open]>summary{margin-bottom:14px}
 .wizard-app .notice{color:var(--dc-gold);background:var(--dc-gold-bg);padding:8px 10px;border:1px solid var(--dc-gold-light);font-size:12px}
+.wizard-app .title-amendment-preview{margin:12px 0;overflow-wrap:anywhere}
+.wizard-app .title-amendment-preview p{margin:8px 0 0}
+.wizard-app .title-amendment-prose{color:var(--dc-body);font-family:Georgia,serif;line-height:1.6}
 
 .wizard-app .link-option-tabs{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--dc-gold-light);margin-bottom:16px}
 .wizard-app .link-option-tabs button{border:0;border-right:1px solid var(--dc-gold-light);background:transparent;padding:9px 13px;font:600 11px 'IBM Plex Mono',monospace;color:var(--dc-body);cursor:pointer}

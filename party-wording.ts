@@ -46,7 +46,10 @@ export function partyWording(text: string, vendors: number, vendees: number, app
   change(/\bI are\b/gi, 'I am');
   change(/\bI has\b/gi, 'I have');
   change(/\bI are\b/gi, 'I am');
-  change(/\bSIGN\/S OF (?:Vendors?)\b/gi, vendors > 1 ? 'SIGNATURES OF VENDORS' : 'SIGNATURE OF VENDOR');
-  change(/\bSIGN\/S OF (?:Vendees?)\b/gi, vendees > 1 ? 'SIGNATURES OF VENDEES' : 'SIGNATURE OF VENDEE');
+  change(/\bSIGN\/S OF (?:THE )?(?:Vendors?)\b/gi, vendors > 1 ? 'SIGNATURES OF VENDORS' : 'SIGNATURE OF VENDOR');
+  change(/\bSIGN\/S OF (?:THE )?(?:Vendees?)\b/gi, vendees > 1 ? 'SIGNATURES OF VENDEES' : 'SIGNATURE OF VENDEE');
+  change(/\b(First Part(?:y|ies))\s+SIGN\/S\b/gi, '$1 ' + (vendors > 1 ? 'SIGNATURES' : 'SIGNATURE'));
+  change(/\b(Second Part(?:y|ies))\s+SIGN\/S\b/gi, '$1 ' + (vendees > 1 ? 'SIGNATURES' : 'SIGNATURE'));
+  change(/WITNESSES\/S/gi, 'WITNESSES');
   return text;
 }

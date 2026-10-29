@@ -131,6 +131,7 @@ export function Input({
       ) : field.type === 'select' ? (
         <select
           aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined}
+          required={field.required} aria-required={field.required || undefined} aria-invalid={field.required && !shown.trim() || undefined}
           disabled={readOnly}
           value={shown}
           onChange={e => onChange(e.target.value)}
@@ -200,7 +201,7 @@ export function Input({
           </span>
         </span>
       ) : help ? (
-        <span id={helpId} className="field-help">{help}</span>
+        <span id={helpId} className={`field-help${field.required && !shown.trim() ? ' field-required-guidance' : ''}`}>{help}</span>
       ) : null}
     </FieldContainer>
   );

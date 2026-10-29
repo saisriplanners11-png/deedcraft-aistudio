@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { docxToText, readZip, writeZip, scheduleText, type DeedTemplateSource } from './docx';
@@ -7,6 +7,9 @@ import { DEED_DEFINITIONS } from './instruments';
 import { loadLibraryBytes } from './template-library-client';
 
 describe('pinned library generation', () => {
+  const originalFetch = globalThis.fetch;
+  beforeAll(() => { globalThis.fetch = async input => new Response(await readFile(new URL('./' + String(input).split('/').pop()!.split('?')[0], import.meta.url))); });
+  afterAll(() => { globalThis.fetch = originalFetch; });
   it('retries failed downloads, rejects tampered bytes and reuses only verified cached bytes', async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]);
     const hash = createHash('sha256').update(bytes).digest('hex');

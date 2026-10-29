@@ -33,28 +33,38 @@ export function createTemplateApi(options = {}) {
   async function seedLibrary() {
     await storage.init();
     const previous = await storage.read();
-    if (previous && !['sale-deed-v6', 'sale-deed-v7', 'sale-deed-v8', 'sale-deed-v9'].includes(previous.active.sale)) return;
-    const bytes = await readFile(join(ROOT, 'sale-deed-template-v10.docx'));
-    const runtime = await loadTemplateRuntime();
-    const validation = await runtime.validateSaleDeedTemplate(bytes, 'sale-deed-template-v10.docx');
-    if (!validation.valid) throw fail(503, 'Bundled Sale template failed validation.');
-    const at = new Date().toISOString();
-    const version = { id: 'sale-deed-v10', instrumentId: 'sale', filename: 'sale-deed-template-v10.docx', hash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [], sourceDocument: 'SALE DEED-1610.docx', sourceHash: 'f0c4c0938fe50e3f15645effae5102a584e518e065a6b1bf5acd9a5fe9359fdf' };
-    await atomic(version.id + '.docx', bytes);
-    // Supabase associates the concurrency revision with the object returned by read().
-    const next = previous || {};
-    Object.assign(next, { active: { ...(next.active || {}), sale: version.id }, versions: [...(next.versions || []).filter(item => item.id !== version.id), version], history: [...(next.history || []), { versionId: version.id, at, action: 'seed' }] });
-    try { await save(next); }
+    const current = previous || { active: {}, versions: [], history: [] };
+    let changed = false;
+    for (const source of [
+      { id: 'sale-deed-v10', filename: 'sale-deed-template-v10.docx', sourceDocument: 'SALE DEED-1610.docx' },
+      { id: 'sale-deed-v11', filename: 'sale-deed-template-v11.docx', sourceDocument: 'SALE DEED (7).docx' },
+    ]) {
+      if (current.versions.some(item => item.id === source.id)) continue;
+      const bytes = await readFile(join(ROOT, source.filename));
+      const runtime = await loadTemplateRuntime();
+      const validation = await runtime.validateSaleDeedTemplate(bytes, source.filename);
+      if (!validation.valid) throw fail(503, `Bundled Sale ${source.id} failed validation: ${validation.errors.join('; ')}`);
+      const at = new Date().toISOString();
+      const version = { ...source, instrumentId: 'sale', hash: hash(bytes), sourceHash: hash(bytes), createdAt: at, contractVersion: CONTRACT, validation, publishedAt: at, samples: [] };
+      await atomic(version.id + '.docx', bytes);
+      current.versions.push(version); current.history.push({ versionId: version.id, at, action: 'seed' }); changed = true;
+    }
+    if (!current.active.sale || ['sale-deed-v6', 'sale-deed-v7', 'sale-deed-v8', 'sale-deed-v9', 'sale-deed-v10'].includes(current.active.sale)) { current.active.sale = 'sale-deed-v11'; changed = true; }
+    if (!changed) return;
+    try { await save(current); }
     catch (error) {
-      const current = error.status === 409 ? await storage.read() : null;
-      if (!current || current.active?.sale !== version.id || !current.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
+      const latest = error.status === 409 ? await storage.read() : null;
+      if (!latest?.versions.some(item => item.id === 'sale-deed-v11')) throw error;
     }
   }
+
   async function seedAgreementLibrary() {
     const current = await read();
     const sources = [
       { id: 'agreement-sale-gpa-v1', filename: 'agreement-sale-gpa-template-v1.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA.docx' },
       { id: 'agreement-sale-gpa-v2', filename: 'agreement-sale-gpa-template-v2.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (1).docx' },
+      { id: 'agreement-sale-gpa-v3', filename: 'agreement-sale-gpa-template-v3.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (2).docx' },
+      { id: 'agreement-sale-gpa-v4', filename: 'agreement-sale-gpa-template-v4.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (3).docx' },
     ];
     let changed = false;
     for (const source of sources) {
@@ -70,31 +80,40 @@ export function createTemplateApi(options = {}) {
       current.history.push({ versionId: version.id, at, action: 'seed' });
       changed = true;
     }
-    if (!current.active.agreement_of_sale || current.active.agreement_of_sale === 'agreement-sale-gpa-v1') { current.active.agreement_of_sale = 'agreement-sale-gpa-v2'; changed = true; }
+    if (!current.active.agreement_of_sale || ['agreement-sale-gpa-v1', 'agreement-sale-gpa-v2', 'agreement-sale-gpa-v3'].includes(current.active.agreement_of_sale)) { current.active.agreement_of_sale = 'agreement-sale-gpa-v4'; changed = true; }
     if (!changed) return;
     try { await save(current); }
     catch (error) {
       const latest = error.status === 409 ? await storage.read() : null;
-      if (!latest?.versions.some(item => item.id === 'agreement-sale-gpa-v2')) throw error;
+      if (!latest?.versions.some(item => item.id === 'agreement-sale-gpa-v4')) throw error;
     }
   }
   async function seedGeneralPoaLibrary() {
     const current = await read();
-    if (current.versions.some(item => item.id === 'general-poa-v1')) return;
-    const bytes = await readFile(join(ROOT, 'general-poa-template-v1.docx'));
-    const runtime = await loadTemplateRuntime();
-    const validation = await runtime.validateGeneralPoaTemplate(bytes);
-    if (!validation.valid) throw fail(503, 'Bundled General Power of Attorney template failed validation.');
-    const at = new Date().toISOString();
-    const version = { id: 'general-poa-v1', instrumentId: 'power_of_attorney', filename: 'general-poa-template-v1.docx', hash: hash(bytes), sourceHash: hash(bytes), sourceDocument: 'G.P.A FOR CONSIDERATION.docx', createdAt: at, publishedAt: at, contractVersion: 'general-poa-fields-1', validation, samples: [] };
-    await atomic(version.id + '.docx', bytes);
-    current.versions.push(version);
-    current.active.power_of_attorney ||= version.id;
-    current.history.push({ versionId: version.id, at, action: 'seed' });
+    let changed = false;
+    for (const source of [
+      { id: 'general-poa-v1', filename: 'general-poa-template-v1.docx', sourceDocument: 'G.P.A FOR CONSIDERATION.docx' },
+      { id: 'general-poa-v2', filename: 'general-poa-template-v2.docx', sourceDocument: 'G.P.A FOR CONSIDERATION (1).docx' },
+      { id: 'general-poa-v3', filename: 'general-poa-template-v3.docx', sourceDocument: 'G.P.A FOR CONSIDERATION (2).docx' },
+    ]) {
+      if (current.versions.some(item => item.id === source.id)) continue;
+      const bytes = await readFile(join(ROOT, source.filename));
+      const runtime = await loadTemplateRuntime();
+      const validation = await runtime.validateGeneralPoaTemplate(bytes);
+      if (!validation.valid) throw fail(503, `Bundled General Power of Attorney ${source.id} failed validation: ${validation.errors.join('; ')}`);
+      const at = new Date().toISOString();
+      const version = { ...source, instrumentId: 'power_of_attorney', hash: hash(bytes), sourceHash: hash(bytes), createdAt: at, publishedAt: at, contractVersion: 'general-poa-fields-1', validation, samples: [] };
+      await atomic(version.id + '.docx', bytes);
+      current.versions.push(version);
+      current.history.push({ versionId: version.id, at, action: 'seed' });
+      changed = true;
+    }
+    if (!current.active.power_of_attorney || ['general-poa-v1', 'general-poa-v2'].includes(current.active.power_of_attorney)) { current.active.power_of_attorney = 'general-poa-v3'; changed = true; }
+    if (!changed) return;
     try { await save(current); }
     catch (error) {
       const latest = error.status === 409 ? await storage.read() : null;
-      if (!latest?.versions.some(item => item.id === version.id && item.hash === version.hash)) throw error;
+      if (!latest?.versions.some(item => item.id === 'general-poa-v3')) throw error;
     }
   }
   let initialization;
@@ -152,11 +171,13 @@ export function createTemplateApi(options = {}) {
     version.schemaRevision ||= 0;
     version.contractVersion = CONTRACT;
     // Use the same vocabulary and structural checks as browser validation.
-    version.validation = await runtime.validateSaleDeedTemplate(bytes, version.filename, undefined, version.fieldContract);
+    version.validation = await runtime.validateDeedTemplate(bytes, version.instrumentId, version.variantId || '', version.filename, version.fieldContract);
+    version.preservationVersion = runtime.DEED_PRESERVATION_VERSION;
     version.expectedSampleCount = runtime.sampleCasesFor(version.fieldContract, version.validation).length;
     for (const field of version.fieldContract.fields) if (version.inspection.occurrences.some(item => item.placeholder.trim().toLowerCase() === field.placeholder.trim().toLowerCase() && !item.supported)) { version.validation.valid = false; version.validation.errors.push(`<${field.placeholder}> is in an unsupported Word location.`); }
     version.samples = [];
     delete version.samplesSchemaHash;
+    delete version.samplesPreservationVersion;
     if (!version.validation.valid || !generateSamples) return;
     const source = { kind: 'custom', name: version.filename, hash: version.hash, bytes, validation: version.validation, fieldContract: version.fieldContract };
     for (const [id, label] of runtime.sampleCasesFor(version.fieldContract, version.validation)) {
@@ -168,6 +189,7 @@ export function createTemplateApi(options = {}) {
       } catch (error) { version.samples.push({ id, label, error: error.message }); }
     }
     version.samplesSchemaHash = version.schemaHash;
+    version.samplesPreservationVersion = runtime.DEED_PRESERVATION_VERSION;
   }
 
   return async function templateApi(req, res, next) {
@@ -248,8 +270,7 @@ export function createTemplateApi(options = {}) {
         const parent = currentLibrary.versions.find(item => item.id === (url.searchParams.get('parentVersionId') || currentLibrary.active.sale));
         if (!parent?.publishedAt) throw fail(400, 'Choose a published parent template.');
         const runtime = await loadTemplateRuntime();
-        const inspection = await runtime.inspectTemplateFields(bytes);
-        version.fieldContract = { version: 1, fields: (parent.fieldContract?.fields || []).filter(field => inspection.occurrences.some(item => item.placeholder.trim().toLowerCase() === field.placeholder.trim().toLowerCase())).map(field => ({ ...field })) };
+        version.fieldContract = { version: 1, fields: (parent.fieldContract?.fields || []).map(field => ({ ...field })) };
         await validateAndSample(version, bytes);
         await serial(async () => {
           const data = await read();
@@ -334,8 +355,11 @@ export function createTemplateApi(options = {}) {
           const previousVersionId = current.active[item.instrumentId];
           if (input.expectedActive !== previousVersionId) throw fail(409, 'The active template changed. Refresh the library before publishing.');
           if (action === 'rollback' && !item.publishedAt) throw fail(400, 'Rollback requires a previously published version.');
+          const runtime = await loadTemplateRuntime();
+          const currentValidation = await runtime.validateDeedTemplate(await checkedBytes(item), item.instrumentId, item.variantId || '', item.filename, item.fieldContract);
+          if (!currentValidation.valid) throw fail(400, 'This template conflicts with current deed preservation rules: ' + currentValidation.errors.join(' '));
           if (action === 'publish') {
-            const runtime = await loadTemplateRuntime();
+            if (item.preservationVersion !== runtime.DEED_PRESERVATION_VERSION || item.samplesPreservationVersion !== runtime.DEED_PRESERVATION_VERSION) throw fail(400, 'Deed preservation rules changed. Validate this revision and review fresh samples before publishing.');
             if (item.fieldContract?.fields.length && (input.expectedSchemaRevision !== item.schemaRevision || input.expectedSchemaHash !== item.schemaHash)) throw fail(409, 'Field configuration changed. Refresh and review the current samples before publishing.');
             if (!item.validation.valid || item.contractVersion !== CONTRACT || item.samples.length !== runtime.sampleCasesFor(item.fieldContract, item.validation).length || item.samples.some(sample => sample.error) || item.samplesSchemaHash !== item.schemaHash) throw fail(400, 'Validation and every sample must succeed for the current field configuration before publishing.');
             if (input.reviewed !== true) throw fail(400, 'Confirm that sample wording and layout have been reviewed.');

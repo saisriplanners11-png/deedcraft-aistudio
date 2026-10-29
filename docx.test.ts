@@ -8,6 +8,7 @@ import { ALL_FIELDS, newStructureDetail } from './fields';
 import { initialState } from './logic';
 import { mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { newPayment } from './payments';
+import { loadSaleDeedTemplate } from './template';
 
 describe('empty Word text runs', () => {
   it('keeps self-closing text nodes well formed when replacing later text', () => {
@@ -23,6 +24,8 @@ describe('sale deed template merge', () => {
   beforeAll(async () => {
     const bytes = await readFile(new URL('./sale-deed-template.docx', import.meta.url));
     globalThis.fetch = async () => new Response(bytes);
+    await loadSaleDeedTemplate();
+    globalThis.fetch = async input => new Response(String(input).includes('sale-deed-template-v10') ? await readFile(new URL('./sale-deed-template-v10.docx', import.meta.url)) : bytes);
   });
 
   afterAll(() => { globalThis.fetch = originalFetch; });

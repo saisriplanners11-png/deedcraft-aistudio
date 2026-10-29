@@ -1,6 +1,9 @@
 import { partyWording } from './party-wording';
 import { partyPronouns } from './party-pronouns';
 import { giftPartyWording } from './gift-wording';
+import { regularGiftSourcePolicy } from './gift-template-policy';
+import { DEED_PRESERVATION_VERSION, preservationProfileFor, protectedSourceWording, type PreservationProfile } from './deed-preservation';
+import type { InstrumentId } from './instruments';
 // Fills the Sale Deed template and re-zips it, so the generated file is a real
 // .docx carrying the template's own fonts, spacing, tables and annexures —
 // not a rebuilt approximation of them.
@@ -16,6 +19,8 @@ import { giftPartyWording } from './gift-wording';
 //      The variant the property category selects is kept; the rest are removed.
 
 import { loadSaleDeedTemplate, loadTemplate } from './template';
+import { releaseGate } from './legal-registry';
+import { titleAmendmentValues, type TitleAmendmentKind } from './title-amendments';
 import { ALL_FIELDS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
 import { flatVariant } from './flat-options';
 import { loadLibraryBytes } from './template-library-client';
@@ -32,7 +37,9 @@ const STRUCTURAL_TAGS = new Set([...ALL_VARIANTS, 'IF HOUSE FINISHED', 'IF SALE 
 const CONDITION_ALIASES: Record<string, string> = { 'IF HOUSE FINISHED': 'IF HOUSE', 'IF FINISHED FLAT': 'IF FLAT FINISHED', 'IF SEMI FINISHED FLAT': 'IF FLAT SEMI FINISHED', 'IF DEMOLISHED HOUSE': 'IF DIMOLISHED HOUSE', 'IF VACANT PLOT': 'IF OPEN PLOT' };
 const conditionName = (value: string) => value.replace(/^<|>$/g, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
 const conditionTag = (value: string) => /^(?:IF|FOR|END)\b/i.test(value.trim());
+const AMENDMENT_TAGS = ['Rectification', 'Supplemental'].flatMap(kind => ['Type', 'No.', 'Date', 'SRO', 'SRO Code'].map(suffix => kind + ' Deed ' + suffix));
 const LEGACY_TEMPLATE_TAGS = new Set([
+  'Executant Share', 'Claimant Share',
   'Structure Type', 'Building Age', 'Total Built-up Area', 'Age of House', 'Floors', 'Nala Order No', 'P.T.I. No.', 'PAN',
   'Pass Book Khata No', 'Pattadar Pass Book No', 'Remitting Bank',
   'Utr/Reference No.', 'V.L.T. No.', 'Execution Date', 'Housing Loan Branch', 'Ground Floor Area', 'First Floor Area', 'Authority SRO', 'Authority SRO Code', 'Represented Principals', 'Attorney Share', 'Authority Book Number', 'Authority Holder Label', 'Authority Principal Names',
@@ -41,6 +48,7 @@ export const MAX_CUSTOM_TEMPLATE_BYTES = 20 * 1024 * 1024;
 
 export type TemplateValidationResult = {
   valid: boolean;
+  preservationVersion?: string;
   saleOpenings?: boolean;
   errors: string[];
   detectedPlaceholders: string[];
@@ -53,6 +61,49 @@ export type DeedTemplateSource =
   | { kind: 'custom'; name: string; hash: string; bytes: Uint8Array; validation: TemplateValidationResult; fieldContract?: TemplateFieldContract };
 
 export const BUILT_IN_TEMPLATE_SOURCE: DeedTemplateSource = { kind: 'built-in' };
+
+/** Preview the selected source's actual recital, using the download merge path. */
+export async function loadTitleAmendmentTemplates(instrument: InstrumentId, variant: string, source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<Partial<Record<TitleAmendmentKind, string>>> {
+  const version = source.kind === 'built-in' ? releaseGate(instrument, variant).reference?.templateVersionId : undefined;
+  if (source.kind === 'built-in' && !version) throw new Error('This deed requires an approved reference.');
+  const bytes = version ? await loadTemplate(version) : await templateBytes(source);
+  const validation = await validateDeedTemplate(bytes, instrument, variant, 'template.docx', source.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : source.fieldContract || EMPTY_FIELD_CONTRACT);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  const entries = await readZip(bytes), document = entries.find(entry => entry.name === 'word/document.xml')!;
+  const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), preservationProfileFor(instrument, variant));
+  const paragraphs = xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
+  return Object.fromEntries((['rectification', 'supplemental'] as const).flatMap(kind => {
+    const paragraph = paragraphs.find(p => new RegExp('^' + kind + ' Deed:', 'i').test(plainText(p).trim()));
+    return paragraph ? [[kind, replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '')]] : [];
+  }));
+}
+
+export function titleAmendmentPreview(paragraph: string, values: Record<string, string>, kind: TitleAmendmentKind): string {
+  const map = new Map(Object.entries(titleAmendmentValues(values, kind)).map(([key, value]) => [norm(key), value]));
+  return plainText(fillParagraph(paragraph, map, new Set(), [])).trim();
+}
+
+/** Shared browser/server replacement gate. Unknown instruments stay blocked. */
+export async function validateDeedTemplate(bytes: Uint8Array, instrument: InstrumentId, variant = '', filename = 'template.docx', contract: TemplateFieldContract = EMPTY_FIELD_CONTRACT): Promise<TemplateValidationResult> {
+  try {
+    if (!/\.docx$/i.test(filename) || !bytes.length || bytes.length > MAX_CUSTOM_TEMPLATE_BYTES) throw new Error('Choose a non-empty .docx template no larger than 20 MB.');
+    const profile = preservationProfileFor(instrument, variant);
+    if (contract.fields.length) {
+      const entries = await readZip(bytes);
+      const document = entries.find(entry => entry.name === 'word/document.xml');
+      const tags = new Set(angleTags(document ? new TextDecoder().decode(document.data) : '').map(norm));
+      const missing = contract.fields.filter(field => !tags.has(norm(field.placeholder)));
+      if (missing.length) throw new Error(`The replacement omits configured fields: ${missing.map(field => '<' + field.placeholder + '>').join(', ')}. Restore their placeholders; existing field definitions and saved values must be retained.`);
+    }
+    if (profile === 'sale') return validateSaleDeedTemplate(bytes, filename, undefined, contract);
+    if (profile === 'gift') return validateGiftDeedTemplate(bytes);
+    if (profile === 'municipal-gift') return validateMunicipalGiftTemplate(bytes);
+    if (profile === 'agreement_of_sale') return validateAgreementSaleGpaTemplate(bytes, contract);
+    return validateGeneralPoaTemplate(bytes, contract);
+  } catch (error) {
+    return { valid: false, preservationVersion: DEED_PRESERVATION_VERSION, errors: [error instanceof Error ? error.message : String(error)], detectedPlaceholders: [], omittedPlaceholders: [] };
+  }
+}
 
 export async function templateBytes(source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<Uint8Array> {
   if (source.kind === 'library') return loadLibraryBytes(source);
@@ -335,6 +386,113 @@ const angleTags = (xml: string) => [...new Set(
  * the bundled template's placeholder vocabulary. Validation is deliberately
  * local: customer templates are never sent to an extraction provider.
  */
+/** One policy entry point for every source, independent of cached validation. */
+function normalContinuationSection(section: string): string {
+  return section.replace(/(<w:pgMar\b[^>]*\bw:top=")(\d+)(")/g, (match, before, top, after) => Number(top) > 2160 ? before + '1080' + after : match);
+}
+
+/** Word revisions may split one identity at a section break. Repeat the whole
+ * identity, while retaining its section boundary once outside the repeat. */
+function joinSplitPartyRecitals(xml: string): string {
+  const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
+  if (start < 8 || end < start) return xml;
+  const body = xml.slice(start, end);
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  let scheduled = false;
+  for (let index = 0; index < chunks.length; index++) {
+    const text = plainText(chunks[index]);
+    if (/^\s*SCHEDULE OF PROPERTY\b/i.test(text)) scheduled = true;
+    if (scheduled || !/^<w:p\b/.test(chunks[index])) continue;
+    const identity = text.match(/^\s*<\s*(EXECUTANT|CLAIMANT|PRINCIPAL|ATTORNEY) NAME\s*>/i);
+    if (!identity) continue;
+    let joined = chunks[index], boundary = '', count = 0;
+    while (index + 1 < chunks.length && count++ < 4) {
+      const next = chunks[index + 1], nextText = plainText(next).trim();
+      const role = identity[1];
+      const fieldsContinue = new RegExp(`<\\s*${role} (?:State|Pin Code|Adhar Number|Cell\\.No\\.|PAN)\\s*>`, 'i').test(nextText)
+        && /^(?:State:|Pin Code:|Aadhaar No:|Cell No:|PAN:)/i.test(nextText);
+      const definitionContinues = /hereinafter[\s\S]*\bSECOND\s*$/i.test(plainText(joined)) && /^PARTY\/S\/ATTORNEY HOLDER\/S/i.test(nextText);
+      if (!/^<w:p\b/.test(next) || !(fieldsContinue || definitionContinues)) break;
+      const sections = (joined + next).match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
+      boundary += sections.map(section => `<w:p><w:pPr>${section}</w:pPr></w:p>`).join('');
+      joined = joined.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, '');
+      const runs = next.replace(/^<w:p(?:\s[^>]*)?>/, '').replace(/<\/w:p>$/, '').replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, '');
+      joined = joined.replace(/<\/w:p>$/, '<w:r><w:t xml:space="preserve"> </w:t></w:r>' + runs + '</w:p>');
+      chunks.splice(index + 1, 1);
+    }
+    chunks[index] = joined + boundary;
+  }
+  return xml.slice(0, start) + chunks.join('') + xml.slice(end);
+}
+
+function protectDeedTemplateSource(xml: string, profile: PreservationProfile): string {
+  xml = joinSplitPartyRecitals(xml);
+  if (profile === 'sale') xml = xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph);
+    const change = (find: RegExp, to: string) => { paragraph = replaceRunText(paragraph, find, () => to); };
+    // Recognized older source aliases cannot collapse independent facts.
+    if (/^THIS SALE DEED/i.test(text)) { change(/<State>/gi, '<Property State>'); change(/DD[-/.]?MM[-/.]?YYYY|<Date>/gi, '<Execution Date>'); }
+    if (/^<ATTORNEY NAME>/i.test(text) && /Power of Attorney Document No\./i.test(text)) {
+      if (!/<Represented Principals>/i.test(text)) change(/<ATTORNEY NAME>/i, '<ATTORNEY NAME> (representing <Represented Principals>)');
+      change(/<Sub Registrar>/gi, '<Authority SRO>');
+      change(/<Sub Registrar Code>/gi, '<Authority SRO Code>');
+      if (/General Power of Attorney Document No\.<G\.P\.A\.Doct\.No\.>,/i.test(text)) change(/<G\.P\.A\.Doct\.No\.>,/i, '<G.P.A.Doct.No.> in Book <Authority Book Number>,');
+    }
+    if (/jointly executed a Registered Development Agreement/i.test(text)) {
+      change(/<Sub Registrar>/gi, '<Development SRO>');
+      change(/<Sub Registrar Code>/gi, '<Development SRO Code>');
+    }
+    if (/was allotted to the share of the Vendor/i.test(text)) {
+      change(/<Link Doct\.No\.>/gi, '<Supplemental Agreement No.>');
+      change(/<Sub Registrar>/gi, '<Supplemental SRO>');
+      change(/<Sub Registrar Code>/gi, '<Supplemental SRO Code>');
+    }
+    if (/House Permission:|jointly executed a Registered Development Agreement/i.test(text)) {
+      change(/<1>/g, '<Stilt Floors>'); change(/<5>/g, '<Upper Floors>');
+    }
+    if (/^All that/i.test(text) && /Ground Floor:/.test(text)) {
+      change(/Ground Floor:\s*<\s*Plinth Area>/gi, 'Ground Floor: <Ground Floor Area>');
+      change(/First Floor:\s*<\s*Plinth Area>/gi, 'First Floor: <First Floor Area>');
+    }
+    return paragraph;
+  });
+  let inSchedule = false;
+  const identities = new Set<string>();
+  const protectedXml = xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const amendment = plainText(paragraph).trim().match(/^(Rectification|Supplemental) Deed:/i)?.[1];
+    if (amendment) {
+      const kind = amendment[0].toUpperCase() + amendment.slice(1).toLowerCase();
+      for (const [from, to] of [['Link Doc Type', kind + ' Deed Type'], ['Sub Registrar', kind + ' Deed SRO'], ['Sub Registrar Code', kind + ' Deed SRO Code']]) {
+        paragraph = replaceRunText(paragraph, new RegExp('<' + from + '>', 'gi'), () => '<' + to + '>');
+      }
+    }
+    const original = plainText(paragraph);
+    if (/^\s*SCHEDULE OF PROPERTY\b/i.test(original)) inSchedule = true;
+    const identity = !inSchedule && (original.match(/^\s*(?:\d+[.)]\s*)?<\s*(EXECUTANT|CLAIMANT|PRINCIPAL|ATTORNEY) NAME\s*>/i)
+      || /<\s*(?:EXECUTANT|CLAIMANT|PRINCIPAL|ATTORNEY) RELATION NAME\s*>/i.test(original) && original.match(/<\s*(EXECUTANT|CLAIMANT|PRINCIPAL|ATTORNEY) NAME\s*>/i));
+    const role = identity ? identity[1][0].toUpperCase() + identity[1].slice(1).toLowerCase() : undefined;
+    if (role) identities.add(role);
+    const result = protectedSourceWording(original, profile, inSchedule, role, (find, replacement) => {
+      paragraph = replaceRunText(paragraph, find, match => replacement.replace(/\$(\$|&|\d{1,2})/g, (_, token: string) => token === '$' ? '$' : token === '&' ? match[0] : match[Number(token)] || ''));
+    });
+    if (profile === 'sale' && /^THIS SALE DEED/i.test(original)) paragraph = replaceRunText(paragraph, /<Date>/gi, () => '<Execution Date>');
+    return original.trim() && !result.trim() && !/<w:(?:sectPr|drawing)\b/.test(paragraph) ? '' : paragraph;
+  });
+  for (const role of profile === 'municipal-gift' ? ['Executant'] : ['Executant', 'Claimant']) {
+    if (!identities.has(role)) throw new Error(`Retain the complete ${role} identity paragraph. A replacement template cannot remove saved party, guardian or representative details.`);
+  }
+  // Fixed examples in total-value rows must resolve to the entered document
+  // value. Per-unit rates and ordinary property measurements are independent.
+  let sectionIndex = 0;
+  return protectedXml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+    if (!/Total\s+Market\s+Value|Executant.?s\s+estimate\s+M\.?V\.?/i.test(plainText(row))) return row;
+    const cells = [...row.matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)];
+    const last = cells.at(-1);
+    if (!last || cells.length < 2 || /<[^<>]+>/.test(plainText(last[0])) || !/\d/.test(plainText(last[0]))) return row;
+    return row.slice(0, last.index) + last[0].replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /[\s\S]+/, () => ': Rs.<Market of Value Rs./->/-')) + row.slice(last.index! + last[0].length);
+  }).replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, section => sectionIndex++ === 0 ? section : normalContinuationSection(section));
+}
+
 export async function validateSaleDeedTemplate(
   bytes: Uint8Array,
   filename = 'template.docx',
@@ -342,7 +500,7 @@ export async function validateSaleDeedTemplate(
   fieldContract: TemplateFieldContract = EMPTY_FIELD_CONTRACT,
 ): Promise<TemplateValidationResult> {
   const errors: string[] = [];
-  const empty = { valid: false, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
+  const empty = { valid: false, errors, detectedPlaceholders: [], omittedPlaceholders: [], preservationVersion: DEED_PRESERVATION_VERSION };
   if (!/\.docx$/i.test(filename)) errors.push('Choose a Word document with a .docx extension.');
   if (!bytes.length) errors.push('The template file is empty.');
   if (bytes.length > MAX_CUSTOM_TEMPLATE_BYTES) errors.push('The template is larger than 20 MB.');
@@ -355,7 +513,7 @@ export async function validateSaleDeedTemplate(
     const document = entries.find(entry => entry.name === 'word/document.xml');
     if (!document) return empty;
 
-    const xml = new TextDecoder().decode(document.data);
+    const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'sale');
     const heading = plainText(xml).slice(0, 500).replace(/\s+/g, ' ');
     if (/^(?:\s*)(?:DEED OF )?GIFT(?: SETTLEMENT)?(?: DEED)?\b/i.test(heading)) {
       errors.push('This is a Gift template uploaded to the Sale library. Only Sale templates are currently supported. Select a Gift draft to use the Gift renderer; changing IF markers will not make this a Sale template.');
@@ -425,7 +583,7 @@ export async function validateSaleDeedTemplate(
     if (unknown.length) errors.push(`Unsupported placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map(tag => `<${tag}>`).join(', ')}.`);
     const detectedNames = new Set(detectedPlaceholders.map(norm));
     const omittedPlaceholders = supported.filter(tag => !detectedNames.has(norm(tag))).sort();
-    return { valid: errors.length === 0, saleOpenings: customTags.includes('IF SALE DEED WITH G.P.A') && customTags.includes('IF SALE DEED WITH A.G.P.A'), errors, detectedPlaceholders: detectedPlaceholders.sort(), omittedPlaceholders };
+    return { valid: errors.length === 0, preservationVersion: DEED_PRESERVATION_VERSION, saleOpenings: customTags.includes('IF SALE DEED WITH G.P.A') && customTags.includes('IF SALE DEED WITH A.G.P.A'), errors, detectedPlaceholders: detectedPlaceholders.sort(), omittedPlaceholders };
   } catch (error: any) {
     errors.push(error?.message || 'Template is not a readable Word document.');
     return empty;
@@ -698,6 +856,7 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   if (/Property Tax:/i.test(plainText(p))) {
     p = replaceRunText(p, /<Village>/gi, () => '<Local Body Name>');
   }
+  if (!values.get(norm('Authority Book Number'))) p = replaceRunText(p, /\s+in Book\s*<Authority Book Number>\s*,?/gi, () => ',');
   // The supplied template accidentally uses the housing-loan bank placeholder
   // twice. The second value is the separately collected loan branch.
   if (/Housing Loan:\s*Amount of Rs\./i.test(plainText(p))) {
@@ -753,6 +912,8 @@ function markConsiderationRows(xml: string): string {
 function removeOptionalTitleRecitals(body: string, values: Map<string, string>, variant: string): string {
   const has = (...names: string[]) => names.every(name => !!values.get(norm(name)));
   const optional: Array<{ test: RegExp; keep: () => boolean }> = [
+    { test: /^Rectification Deed:/i, keep: () => has('Rectification Deed No.') },
+    { test: /^Supplemental Deed:/i, keep: () => has('Supplemental Deed No.') },
     { test: /jointly executed a Registered Development Agreement/i, keep: () => has('Document No.') },
     { test: /was allotted to the share of the Vendor/i, keep: () => has('Supplemental Agreement No.') },
     { test: /Registered Deed:/i, keep: () => has('Link Doc Type', 'Link Doct.No.') },
@@ -780,6 +941,24 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>, 
     }
     return chunk;
   }).join('');
+}
+
+function amendmentRewrites(schedule: ScheduleMerge): Rewrite[] {
+  return (['rectification', 'supplemental'] as const).flatMap(kind => {
+    const records = schedule.amendmentRecords?.[kind];
+    return records?.length ? [{ find: new RegExp('^' + kind + ' Deed:', 'i'), replace: '', records }] : [];
+  });
+}
+
+function assertTitleAmendmentBindings(xml: string, schedules: ScheduleMerge[]): void {
+  const paragraphs = xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
+  for (const kind of ['rectification', 'supplemental'] as const) {
+    if (!schedules.some(schedule => schedule.amendmentRecords?.[kind].length)) continue;
+    const paragraph = paragraphs.find(p => new RegExp('^' + kind + ' Deed:', 'i').test(plainText(p).trim()));
+    const present = new Set(paragraph ? angleTags(paragraph).map(norm) : []);
+    const missing = Object.keys(titleAmendmentValues({}, kind)).filter(key => !present.has(norm(key)));
+    if (missing.length) throw new Error(`The selected Word template would omit ${kind} deed details. Restore its ${kind} recital and bindings (${missing.join(', ')}), or select the current default. Entered records are preserved.`);
+  }
 }
 /** Keep the property-appropriate operative clauses when a v2 template supplies both blocks. */
 function selectOperativeClauses(body: string, variant: string): string {
@@ -891,6 +1070,12 @@ function prepareTemplate(body: string): PreparedTemplate {
     titles[name] = join(start + 1, pay).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
       /^(?:1\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:/.test(plainText(paragraph).trim())
         ? replaceRunText(paragraph, /^(?:1\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:/, () => '1. FLOW OF TITLE & LINK DEED DETAILS:') : paragraph);
+    // The refreshed source places amendment prose in its common title block.
+    // Reuse those exact styled paragraphs in its standalone flat branches too.
+    const amendments = chunks.slice(flow + 1, payment).filter(chunk => /^(?:Rectification|Supplemental) Deed:/i.test(plainText(chunk).trim()));
+    if (amendments.length && !/(?:Rectification|Supplemental) Deed:/i.test(plainText(titles[name]))) {
+      titles[name] = titles[name].replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /^Registered Deed:/i.test(plainText(paragraph).trim()) ? paragraph + amendments.join('') : paragraph);
+    }
     // The supplemental agreement is independent of the registered title deed.
     titles[name] = titles[name].replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
       /was allotted to the share of the Vendor/i.test(plainText(paragraph))
@@ -914,6 +1099,30 @@ function prepareTemplate(body: string): PreparedTemplate {
     titles['IF FLAT FINISHED'] = finishedTitle.slice(0, insertion) + missingAgreements + finishedTitle.slice(insertion);
   }
   return { body: join(0, land) + Object.entries(schedules).map(([name, block]) => marker(name) + block).join('') + join(tail, chunks.length), titles, clauses };
+}
+
+/** Restore application-required flat records even when both source branches omit them. */
+async function preserveFlatAgreementRecitals(block: string, values: Map<string, string>, variant: string): Promise<string> {
+  if (!variant.startsWith('IF FLAT')) return block;
+  const required: [RegExp, string][] = [[/jointly executed a Registered Development Agreement/i, 'Document No.'], [/was allotted to the share of the Vendor/i, 'Supplemental Agreement No.']];
+  const missing = required.filter(([test, binding]) => values.get(norm(binding)) && !test.test(plainText(block)));
+  if (!missing.length) return block;
+  const approved = await readZip(await loadTemplate('sale-deed-v10'));
+  const xml = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
+  const body = xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>'));
+  const reference = prepareTemplate(body).titles['IF FLAT SEMI FINISHED'];
+  const candidates = reference?.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
+  const children = topLevelChildren(block);
+  const buyer = children.find(child => /WHEREAS[\s\S]*Vendee[\s\S]*after duly satisfying/i.test(plainText(block.slice(child.start, child.end))));
+  const style = buyer ? block.slice(buyer.start, buyer.end) : block.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/)?.[0];
+  if (!style) throw new Error('The replacement cannot safely restore the required flat agreement recitals. Retain a title recital paragraph.');
+  const restored = missing.map(([test]) => {
+    const source = candidates.find(paragraph => test.test(plainText(paragraph)));
+    if (!source) throw new Error('The approved flat agreement recital is unavailable.');
+    return paragraphLike(style, plainText(source));
+  }).join('');
+  const at = buyer?.start ?? block.length;
+  return block.slice(0, at) + restored + block.slice(at);
 }
 
 /** Template revisions supply wording, but cannot override party-count/share rules. */
@@ -953,7 +1162,7 @@ async function selectAuthorityDeclaration(body: string, values: Record<string, s
   if (start < 0 && end < 0) {
     if (!['gpa', 'agpa'].includes(values['Sale Document Mode'])) return body;
     // Older/replacement Word files cannot silently remove the approved declaration.
-    const approved = await readZip(await loadSaleDeedTemplate());
+    const approved = await readZip(await loadTemplate('sale-deed-v10'));
     const document = approved.find(entry => entry.name === 'word/document.xml');
     if (!document) throw new Error('The approved GPA/AGPA declaration is unavailable.');
     const xml = new TextDecoder().decode(document.data);
@@ -961,7 +1170,7 @@ async function selectAuthorityDeclaration(body: string, values: Record<string, s
     const approvedChunks = topLevelChildren(approvedBody).map(child => approvedBody.slice(child.start, child.end));
     const first = approvedChunks.findIndex(chunk => plainText(chunk).trim() === `<${AUTHORITY_DECLARATION_START}>`);
     const last = approvedChunks.findIndex(chunk => plainText(chunk).trim() === `<${AUTHORITY_DECLARATION_END}>`);
-    const signature = texts.findIndex((text, index) => /SIGN\/S OF VENDOR\/S/i.test(text) && texts.slice(0, index).some(value => /^DECLARATION$/i.test(value)));
+    const signature = texts.findIndex((text, index) => /SIGN\/S OF (?:THE )?VENDOR\/S/i.test(text) && texts.slice(0, index).some(value => /^DECLARATION$/i.test(value)));
     if (first < 0 || last <= first || signature < 0) throw new Error('This template cannot safely place the required GPA/AGPA declaration. Retain the declaration and vendor signature sections from the latest default.');
     chunks.splice(signature, 0, ...approvedChunks.slice(first + 1, last));
     return chunks.join('');
@@ -990,7 +1199,7 @@ async function selectSaleOpening(body: string, values: Record<string, string>): 
   let opening = chunks.slice(starts[selected] + 1, selected === 2 ? flow : starts[selected + 1]).join('');
   if (selected) {
     // A replacement draft must not turn confirmed authority identities into static text.
-    const approved = await readZip(await loadSaleDeedTemplate());
+    const approved = await readZip(await loadTemplate('sale-deed-v10'));
     const reference = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
     const referenceBody = reference.slice(reference.indexOf('<w:body>') + 8, reference.lastIndexOf('</w:body>'));
     const sections = topLevelChildren(referenceBody).map(child => referenceBody.slice(child.start, child.end));
@@ -1137,6 +1346,7 @@ export type ScheduleMerge = {
   /** Flow-of-title values and registered link deeds owned by this schedule. */
   titleValues?: Record<string, string>;
   titleLinkRecords?: Record<string, string>[];
+  amendmentRecords?: { rectification: Record<string, string>[]; supplemental: Record<string, string>[] };
   /** Source-backed recitals shown only when supporting files were uploaded. */
   supportingRecords?: string[];
   /** Repeatable Annexure I-A rows belonging only to this property schedule. */
@@ -1417,7 +1627,10 @@ export function ensureStampPaperSpace(xml: string, selection = 'Legacy'): string
       /\bw:top="[^"]*"/.test(margin) ? margin.replace(/\bw:top="[^"]*"/, `w:top="${top}"`) : margin.replace('/>', ` w:top="${top}"/>`));
     return section.replace('</w:sectPr>', `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`);
   };
-  if (sections.length >= 2) return xml.replace(sections[0], stampSection(sections[0]));
+  if (sections.length >= 2) {
+    let index = 0;
+    return xml.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, section => index++ === 0 ? stampSection(section) : normalContinuationSection(section));
+  }
 
   // A single-section replacement needs a separate opening section so the
   // continuation pages do not inherit the large stamp-paper margin.
@@ -1429,10 +1642,11 @@ export function ensureStampPaperSpace(xml: string, selection = 'Legacy'): string
   const boundary = [...paragraphs].reverse().find(child => /(?:of the OTHER PART|hereinafter[^\n]*(?:DONEE|CLAIMANT))/i.test(plainText(body.slice(child.start, child.end))))
     || paragraphs.find(child => plainText(body.slice(child.start, child.end)).trim());
   if (!boundary) throw new Error('Opening paragraph is missing; stamp-paper space could not be reserved.');
-  const continuation = sections[0] || '<w:sectPr><w:pgSz w:w="11920" w:h="16840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
+  const continuation = normalContinuationSection(sections[0] || '<w:sectPr><w:pgSz w:w="11920" w:h="16840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>');
   const opening = stampSection(continuation).replace(/<w:type\b[^>]*\/>/g, '').replace(/<w:(?:pgSz|pgMar)\b/, tag => '<w:type w:val="nextPage"/>' + tag);
   const sectionBreak = `<w:p><w:pPr>${opening}</w:pPr></w:p>`;
-  const rebuilt = body.slice(0, boundary.end) + sectionBreak + body.slice(boundary.end) + (sections.length ? '' : continuation);
+  const continuedBody = sections.length ? body.replace(sections[0], continuation) : body;
+  const rebuilt = continuedBody.slice(0, boundary.end) + sectionBreak + continuedBody.slice(boundary.end) + (sections.length ? '' : continuation);
   return xml.slice(0, start) + rebuilt + xml.slice(end);
 }
 
@@ -1478,7 +1692,7 @@ export async function validateAgreementSaleGpaTemplate(bytes: Uint8Array, contra
     const entries = await readZip(bytes, { maxEntries: 2000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
     const document = entries.find(entry => entry.name === 'word/document.xml');
     if (!document) throw new Error('Missing word/document.xml.');
-    const xml = new TextDecoder().decode(document.data);
+    const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'agreement_of_sale');
     const parts = agreementTemplateParts(xml);
     const openingText = parts.chunks.slice(0, parts.first).map(plainText);
     selectAgreementPossession(xml, 'with-possession');
@@ -1487,10 +1701,10 @@ export async function validateAgreementSaleGpaTemplate(bytes: Uint8Array, contra
       if (!openingText.some(text => new RegExp(`<\\s*${side} NAME\\s*>`, 'i').test(text) && new RegExp(`<\\s*${side} Age\\s*>`, 'i').test(text))) errors.push(`Retain the complete ${side} identity paragraph.`);
     }
     if (!openingText.some(text => /^Registered Deed:/i.test(text.trim())) || !openingText.some(text => /^NOW THIS DEED WITNESSETH/i.test(text.trim()))) errors.push('Retain the Agreement title-record boundaries.');
-    const approved = await readZip(await loadTemplate(openingText.includes('<WITHOUT POSSESSION>') ? 'agreement-sale-gpa-v2' : 'agreement-sale-gpa-v1'));
+    const approved = await readZip(await loadTemplate(openingText.includes('<WITHOUT POSSESSION>') ? 'agreement-sale-gpa-v3' : 'agreement-sale-gpa-v1'));
     const reference = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
     detectedPlaceholders = angleTags(xml);
-    const supported = new Set([...angleTags(reference), ...contract.fields.map(field => field.placeholder), 'Landmark House No.', 'Housing Loan Branch', 'UTR No.'].map(norm));
+    const supported = new Set([...AMENDMENT_TAGS, ...angleTags(reference), ...contract.fields.map(field => field.placeholder), 'Date', 'Executant Share', 'Claimant Share', 'Landmark House No.', 'Housing Loan Branch', 'UTR No.'].map(norm));
     const detected = new Set(detectedPlaceholders.map(norm));
     for (const tag of angleTags(reference)) if (!detected.has(norm(tag))) errors.push(`Retain the Agreement of Sale Cum GPA binding <${tag}>.`);
     for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Agreement of Sale Cum GPA placeholder <${tag}>.`);
@@ -1502,7 +1716,7 @@ export async function validateAgreementSaleGpaTemplate(bytes: Uint8Array, contra
       .find(chunk => /^<w:tbl\b/.test(chunk) && /FINGER PRINT/.test(plainText(chunk)));
     if (!form || (form.match(/<w:gridCol\b/g) || []).length !== 3) errors.push('Retain the three-column Section 32A form.');
   } catch (error) { errors.push((error instanceof Error ? error.message : String(error)).replace(/Gift/g, 'Agreement of Sale Cum GPA')); }
-  return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
+  return { valid: !errors.length, preservationVersion: DEED_PRESERVATION_VERSION, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
 export async function validateGeneralPoaTemplate(bytes: Uint8Array, contract: TemplateFieldContract = EMPTY_FIELD_CONTRACT): Promise<TemplateValidationResult> {
@@ -1512,7 +1726,7 @@ export async function validateGeneralPoaTemplate(bytes: Uint8Array, contract: Te
     const entries = await readZip(bytes, { maxEntries: 2000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
     const document = entries.find(entry => entry.name === 'word/document.xml');
     if (!document) throw new Error('Missing word/document.xml.');
-    const xml = new TextDecoder().decode(document.data);
+    const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'power_of_attorney');
     const text = plainText(xml);
     const { chunks, first } = agreementTemplateParts(xml);
     const opening = chunks.slice(0, first).map(plainText);
@@ -1520,11 +1734,11 @@ export async function validateGeneralPoaTemplate(bytes: Uint8Array, contract: Te
       if (!opening.some(paragraph => new RegExp(`<\\s*${side} NAME\\s*>`, 'i').test(paragraph) && new RegExp(`<\\s*${side} Age\\s*>`, 'i').test(paragraph))) errors.push(`Retain the complete ${side} identity paragraph.`);
     }
     if (!opening.some(paragraph => /<Friend\/Relationship>\s*<CLAIMANT NAME>/i.test(paragraph))) errors.push('Retain <Friend/Relationship> <CLAIMANT NAME> together in the appointment recital.');
-    const approved = await readZip(await loadTemplate('general-poa-v1'));
+    const approved = await readZip(await loadTemplate('general-poa-v2'));
     const reference = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
     detectedPlaceholders = angleTags(xml);
     const detected = new Set(detectedPlaceholders.map(norm));
-    const supported = new Set([...angleTags(reference), ...contract.fields.map(field => field.placeholder), 'Landmark House No.', 'Executant Address', 'Claimant Address'].map(norm));
+    const supported = new Set([...AMENDMENT_TAGS, ...angleTags(reference), ...contract.fields.map(field => field.placeholder), 'Date', 'Executant Share', 'Claimant Share', 'Landmark House No.', 'Executant Address', 'Claimant Address'].map(norm));
     for (const tag of angleTags(reference)) {
       const side = /^(Executant|Claimant) (?:H\.No\.|Locality|Village|Mandal|District|State|Pin Code)$/i.exec(tag.trim())?.[1];
       if (!detected.has(norm(tag)) && !(side && detected.has(norm(side + ' Address')))) errors.push(`Retain the GPA binding <${tag}> so saved details are not omitted.`);
@@ -1536,7 +1750,7 @@ export async function validateGeneralPoaTemplate(bytes: Uint8Array, contract: Te
     const form = chunks.find(chunk => /^<w:tbl\b/.test(chunk) && /FINGER PRINT/.test(plainText(chunk)));
     if (!form || (form.match(/<w:gridCol\b/g) || []).length !== 3) errors.push('Retain the three-column GPA Section 32A form.');
   } catch (error) { errors.push((error instanceof Error ? error.message : String(error)).replace(/Gift/g, 'GPA')); }
-  return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
+  return { valid: !errors.length, preservationVersion: DEED_PRESERVATION_VERSION, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
 /** Each page owns a table and an adjacent signature block, rather than a footer. */
@@ -1627,12 +1841,13 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   if (generalPoa && !['general-power-of-attorney', 'general-power-of-attorney-family'].includes(values['Poa Variant'])) throw new Error('Choose a supported General Power of Attorney variant.');
   if (generalPoa && (values['Poa Relationship Complete'] !== 'true' || !values['Poa Attorney Appointment'])) throw new Error('Choose the family relationship to principal(s) for every attorney.');
   if (!generalPoa && !['with-possession', 'without-possession'].includes(values['Agreement Possession Variant'])) throw new Error('Choose With Possession or Without Possession.');
-  const bytes = source.kind === 'built-in' ? await loadTemplate(generalPoa ? 'general-poa-v1' : 'agreement-sale-gpa-v2') : await templateBytes(source);
+  const bytes = source.kind === 'built-in' ? await loadTemplate(generalPoa ? 'general-poa-v3' : 'agreement-sale-gpa-v4') : await templateBytes(source);
   const validation = await (generalPoa ? validateGeneralPoaTemplate : validateAgreementSaleGpaTemplate)(bytes, source.kind === 'built-in' ? undefined : source.fieldContract);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
-  let xml = new TextDecoder().decode(document.data);
+  let xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), generalPoa ? 'power_of_attorney' : 'agreement_of_sale');
+  assertTitleAmendmentBindings(xml, schedules);
   if (!generalPoa) xml = selectAgreementPossession(xml, values['Agreement Possession Variant']);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const { chunks, first, tail, blocks } = agreementTemplateParts(xml);
@@ -1654,7 +1869,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   if (!titleStart || !titleEnd) throw new Error('Retain the Agreement title-record boundaries.');
   const titleBlock = opening.slice(titleStart.start, titleEnd.start);
   const titles = schedules.map(schedule => fill(removeOptionalTitleRecitals(titleBlock, map(schedule.titleValues || schedule.values), schedule.variant), schedule.titleValues || schedule.values,
-    schedule.titleLinkRecords?.length ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])).join('');
+    [...amendmentRewrites(schedule), ...(schedule.titleLinkRecords?.length ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])])).join('');
   opening = opening.slice(0, titleStart.start) + titles + opening.slice(titleEnd.start);
   if (generalPoa && !/<w:sectPr\b/.test(opening)) {
     const section = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/)?.[0];
@@ -1729,6 +1944,19 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     if (!/^<w:p\b/.test(chunk)) {
       headingPending = false;
       if (plainText(chunk).includes(AGREEMENT_32A_HEADING)) signing = false;
+      // The refreshed GPA puts the deed signatures and witness numbers in
+      // separate table rows. Keep that closing table together like the prose
+      // closing, without linking its last paragraph to the following form.
+      if (signing && /^<w:tbl\b/.test(chunk)) {
+        const paragraphs = [...chunk.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
+        let index = 0;
+        chunk = chunk.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+          ++index < paragraphs.length ? keepAgreementParagraph(paragraph) : paragraph.replace(/<w:keepNext\b[^>]*\/>/g, ''));
+        chunk = chunk.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => /<w:cantSplit\b/.test(row) ? row
+          : /<w:trPr(?:\s[^>]*)?>/.test(row) ? row.replace(/<w:trPr(?:\s[^>]*)?>/, tag => tag + '<w:cantSplit/>')
+          : row.replace(/<w:tr(?:\s[^>]*)?>/, tag => tag + '<w:trPr><w:cantSplit/></w:trPr>'));
+        signing = false;
+      }
       return chunk;
     }
     const text = plainText(chunk).trim();
@@ -1763,12 +1991,17 @@ export async function fillSaleDeed(
     throw new Error(`Custom template is not compatible: ${templateSource.validation.errors.join(' ')}`);
   }
   const bin = await templateBytes(templateSource);
+  if (templateSource.kind !== 'built-in') {
+    const checked = await validateSaleDeedTemplate(bin, 'template.docx', undefined, templateSource.fieldContract);
+    if (!checked.valid) throw new Error(checked.errors.join(' '));
+  }
   const entries = await readZip(bin);
 
   const doc = entries.find(e => e.name === 'word/document.xml');
   if (!doc) throw new Error('Template is missing word/document.xml.');
 
-  let xml = new TextDecoder().decode(doc.data);
+  let xml = protectDeedTemplateSource(new TextDecoder().decode(doc.data), 'sale');
+  assertTitleAmendmentBindings(xml, schedules);
   const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
@@ -1822,14 +2055,14 @@ export async function fillSaleDeed(
     }
     const tailIsMarker = sharedTail >= 0 && plainText(body.slice(children[sharedTail].start, children[sharedTail].end)).trim() === '<FOR ALL THE DOCUMENTS>';
     const tailStart = sharedTail >= 0 ? sharedTail + (tailIsMarker ? 1 : 0) : children.length;
-    const titleBlocks = selected.map((schedule, scheduleIndex) => {
+    const titleBlocks = (await Promise.all(selected.map(async (schedule, scheduleIndex) => {
       const titleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.titleValues || values)) titleValues.set(norm(key), value ?? '');
-      const titleRewrites: Rewrite[] = schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
+      const titleRewrites: Rewrite[] = [...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
         ? [{ find: /(?:\(a\)\s+)?Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
-        : [];
+        : [])];
       let block = removeOptionalTitleRecitals(
-        prepared.titles[schedule.variant] || children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''),
+        await preserveFlatAgreementRecitals(prepared.titles[schedule.variant] || children.slice(flowStart, flowEnd).map(child => body.slice(child.start, child.end)).join(''), titleValues, schedule.variant),
         titleValues,
         schedule.variant,
       );
@@ -1840,7 +2073,7 @@ export async function fillSaleDeed(
         return fillParagraph(paragraph, titleValues, missing, titleRewrites);
       });
       return block;
-    }).join('');
+    }))).join('');
     const clauseBlocks = selected.map((schedule, index) => {
       const block = prepared.clauses[schedule.variant];
       if (!block) return '';
@@ -1859,6 +2092,10 @@ export async function fillSaleDeed(
         : sharedTail >= 0 ? sharedTail : children.length;
       const scheduleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.values)) scheduleValues.set(norm(key), value ?? '');
+      if (schedule.variant.startsWith('IF FLAT')) {
+        const uds = Number((schedule.values.UDS || '').replace(/,/g, ''));
+        scheduleValues.set(norm('Extent in Sq.Meters'), Number.isFinite(uds) && uds > 0 ? (uds * 0.836127).toFixed(2) : '');
+      }
       const landmarkRelation = scheduleValues.get(norm('Near / Adjacent'))?.toLowerCase();
       let block = children.slice(start, stop).map(c => body.slice(c.start, c.end)).join('');
       block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(schedule.variant)
@@ -1920,7 +2157,7 @@ export async function fillSaleDeed(
     let signing = false;
     body = body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
       const text = plainText(paragraph).trim();
-      if (/SIGN\/S OF VENDOR\/S/.test(text)) signing = true;
+      if (/SIGN\/S OF (?:THE )?VENDOR\/S/.test(text)) signing = true;
       if (signing && /^2\.\s*$/.test(text)) { signing = false; return paragraph; }
       return signing ? keepWithNext(paragraph) : paragraph;
     });
@@ -1967,6 +2204,19 @@ export async function fillSaleDeed(
     ),
   ];
 
+  if (['gpa', 'agpa'].includes(values['Sale Document Mode']) || Number(values['Ownership Vendor Count']) + Number(values['Ownership Vendee Count']) > 2) {
+    const sections = body.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
+    const stamp = sections[0];
+    const first = rewrites.find(rewrite => rewrite.partyRole === 'executant')?.records?.[0];
+    const name = first?.['Registration Name'] || first?.['EXECUTANT NAME'];
+    if (stamp && name) {
+      const continued = body.replace(stamp, '');
+      const principal = topLevelChildren(continued).find(child => /^<w:p\b/.test(continued.slice(child.start, child.end)) && plainText(continued.slice(child.start, child.end)).toLocaleUpperCase('en-IN').includes(name.toLocaleUpperCase('en-IN')));
+      if (!principal) throw new Error('Cannot place the Sale continuation section after the first principal.');
+      body = continued.slice(0, principal.end) + `<w:p><w:pPr>${stamp}</w:pPr></w:p>` + continued.slice(principal.end)
+        + (sections.length === 1 ? normalContinuationSection(stamp) : '');
+    }
+  }
   xml = ensureStampPaperSpace(xml.slice(0, bodyStart) + body + xml.slice(bodyEnd), values['Stamp Paper Margin']);
   doc.data = new TextEncoder().encode(xml);
   for (const part of entries.filter(entry => /^word\/(?:header|footer)\d+\.xml$/.test(entry.name))) {
@@ -2069,6 +2319,19 @@ function giftParagraphWording(paragraph: string, donors: number, donees: number,
   return paragraph;
 }
 
+function enforceRegularGiftSourcePolicy(body: string): string {
+  let inSchedule = false;
+  return body.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph).trim();
+    if (/^<IF /i.test(text)) inSchedule = true;
+    if (/^<FOR ALL|^DECLARATION$|^The schedule property is not the assigned property\./i.test(text)) inSchedule = false;
+    const result = regularGiftSourcePolicy(plainText(paragraph), inSchedule, (find, replacement) => {
+      paragraph = replaceRunText(paragraph, find, () => replacement);
+    });
+    return text && !result.trim() && !/<w:(?:sectPr|drawing)\b/.test(paragraph) ? '' : paragraph;
+  });
+}
+
 /** Gift uses its supplied reference package, with application-owned relationship and agreement. */
 export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<TemplateValidationResult> {
   const errors: string[] = [];
@@ -2077,12 +2340,12 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
     const entries = await readZip(bytes, { maxEntries: 2000, maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 });
     const document = entries.find(entry => entry.name === 'word/document.xml');
     if (!document) throw new Error('Missing word/document.xml.');
-    const xml = new TextDecoder().decode(document.data);
+    const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'gift');
     const text = plainText(xml);
     detectedPlaceholders = angleTags(xml);
-    const approved = await readZip(await loadTemplate('gift-deed-v4'));
+    const approved = await readZip(await loadTemplate('gift-deed-v5'));
     const approvedDocument = approved.find(entry => entry.name === 'word/document.xml')!;
-    const supported = new Set([...angleTags(new TextDecoder().decode(approvedDocument.data)), ...GIFT_SCHEDULE_NAMES, 'Executant Address', 'Claimant Address', 'FOR ALL THE DOCUMENTS', 'Gift Relationship Recital', 'Landmark House No.', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT', 'Date'].map(norm));
+    const supported = new Set([...AMENDMENT_TAGS, ...angleTags(new TextDecoder().decode(approvedDocument.data)), ...GIFT_SCHEDULE_NAMES, 'Executant Address', 'Claimant Address', 'Executant Share', 'Claimant Share', 'NALA Converted Extent', 'FOR ALL THE DOCUMENTS', 'Gift Relationship Recital', 'FAMILY MEMBER/OTHER THAN FAMILY MEMBER', 'Date', 'Executant Share', 'Claimant Share', 'Landmark House No.', 'IF OPEN PLACE/VACANT PLOT/PART OPEN PLACE/DEMOLISHED HOUSE/ HOUSE', 'IF HOUSE FINISHED', 'IF SEMI FINISHED FLAT', 'IF FINISHED FLAT', 'Date'].map(norm));
     for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Gift placeholder <${tag}>. Keep the starter bindings so details are not silently discarded.`);
     if (!/GIFT SETTLEMENT/i.test(text) || !/without any monetary consideration/i.test(text)) errors.push('Choose the supplied Gift Settlement reference, not a Sale deed.');
     const detected = new Set(detectedPlaceholders.map(norm));
@@ -2095,8 +2358,9 @@ export async function validateGiftDeedTemplate(bytes: Uint8Array): Promise<Templ
     const sections = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g) || [];
     if (sections.length < 2 || !/w:top="8208"/.test(sections[0])) errors.push('Retain the Gift page sections, including the first-page stamp space.');
     giftTemplateParts(xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>')));
+    enforceRegularGiftSourcePolicy(xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>')));
   } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
-  return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
+  return { valid: !errors.length, preservationVersion: DEED_PRESERVATION_VERSION, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
 export async function validateMunicipalGiftTemplate(bytes: Uint8Array): Promise<TemplateValidationResult> {
@@ -2106,24 +2370,27 @@ export async function validateMunicipalGiftTemplate(bytes: Uint8Array): Promise<
     const entries = await readZip(bytes);
     const document = entries.find(entry => entry.name === 'word/document.xml');
     if (!document) throw new Error('Missing word/document.xml.');
-    const xml = new TextDecoder().decode(document.data);
+    const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'municipal-gift');
     const text = plainText(xml);
     detectedPlaceholders = angleTags(xml);
-    const approved = await readZip(await loadTemplate('gift-municipal-v1'));
+    const approved = await readZip(await loadTemplate('gift-municipal-v2'));
     const approvedXml = new TextDecoder().decode(approved.find(entry => entry.name === 'word/document.xml')!.data);
     const required = angleTags(approvedXml);
-    const detected = new Set(detectedPlaceholders.map(norm));
-    const supported = new Set([...required, 'Date', 'Landmark House No.'].map(norm));
-    for (const tag of required) if (!detected.has(norm(tag))) errors.push(`Retain the Municipal Gift binding <${tag}>.`);
-    for (const tag of detectedPlaceholders) if (!supported.has(norm(tag))) errors.push(`Unsupported Municipal Gift placeholder <${tag}>.`);
+    const bindingName = (tag: string) => conditionTag(tag) ? norm(CONDITION_ALIASES[conditionName(tag)] || conditionName(tag)) : norm(tag);
+    const detected = new Set(detectedPlaceholders.map(bindingName));
+    const supported = new Set([...AMENDMENT_TAGS, ...required, 'ULB', 'Date', 'Executant Share', 'Claimant Share', 'Landmark House No.'].map(bindingName));
+    if (/constitute under Hyderabad Municipal Corporation Act/i.test(text) && !/MUNICIPAL COUNCIL, SIRCILLA/i.test(text) && !detected.has(norm('ULB'))) errors.push('Retain the Municipal Gift binding <ULB>.');
+    for (const tag of required) if (!detected.has(bindingName(tag))) errors.push(`Retain the Municipal Gift binding <${tag}>.`);
+    for (const tag of detectedPlaceholders) if (!supported.has(bindingName(tag))) errors.push(`Unsupported Municipal Gift placeholder <${tag}>.`);
     // Municipal wording belongs to this source, independently of regular Gift protections.
-    for (const phrase of ['GIFT DEED', 'Represented by its Commissioner', 'public purpose free of any cost and consideration', 'the said purpose only', 'THIS INDENTURE', 'THE AFORESAID', 'SIGNATURE/S OF DONOR/S']) {
+    for (const phrase of ['GIFT DEED', 'Represented by its Commissioner', 'public purpose free of any cost and consideration', 'the said purpose only', 'THIS INDENTURE', 'THE AFORESAID']) {
       if (!text.includes(phrase)) errors.push(`Retain the Municipal Gift clause: ${phrase}.`);
     }
+    if (!/(?:SIGNATURE\/S OF DONOR\/S|SIGN\/S OF THE DONOR\/S)/i.test(text)) errors.push('Retain the Municipal Gift donor signature section.');
     giftTemplateParts(xml.slice(xml.indexOf('<w:body>') + 8, xml.lastIndexOf('</w:body>')), true);
     if ((xml.match(/<w:sectPr\b/g) || []).length < 2) errors.push('Retain the municipal stamp-space and continuation sections.');
   } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
-  return { valid: !errors.length, errors, detectedPlaceholders, omittedPlaceholders: [] };
+  return { valid: !errors.length, preservationVersion: DEED_PRESERVATION_VERSION, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
 async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource): Promise<MergeResult> {
@@ -2132,12 +2399,13 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
     if (!['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(schedule.variant)) throw new Error('The Municipal Gift reference supports open place, plot, dismantled house and part open place only.');
     if (!schedule.values.ULB?.trim() || !schedule.values.VILLAGE?.trim()) throw new Error('Complete the property ULB / municipality and village for each municipal schedule.');
   }
-  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId === 'gift-municipal-v1' ? await loadLibraryBytes(source) : await loadTemplate('gift-municipal-v1');
+  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId.startsWith('gift-municipal-') ? await loadLibraryBytes(source) : await loadTemplate('gift-municipal-v3');
   const validation = await validateMunicipalGiftTemplate(bytes);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
-  const xml = new TextDecoder().decode(document.data);
+  const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'municipal-gift');
+  assertTitleAmendmentBindings(xml, schedules);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const { chunks, first: firstIndex, tail, blocks } = giftTemplateParts(xml.slice(start, end), true);
   const missing = new Set<string>();
@@ -2149,6 +2417,13 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
     paragraph = replaceRunText(paragraph, /title holder\/s/gi, () => donors > 1 ? 'title holders' : 'title holder');
     paragraph = replaceRunText(paragraph, /his\/their/gi, () => donors > 1 ? 'their' : 'the Donor’s');
     paragraph = replaceRunText(paragraph, /SIGNATURE\/S OF DONORS?/gi, () => donors > 1 ? 'SIGNATURES OF DONORS' : 'SIGNATURE OF DONOR');
+    if (/^\s*SIGNATURES? OF (?:THE )?DONORS?\.?\s*$/i.test(plainText(paragraph))) {
+      // The new source pads this label with spaces; after grammatical expansion
+      // Word otherwise wraps the donor name onto a separate, left-aligned line.
+      const label = plainText(paragraph).trim();
+      paragraph = replaceRunText(paragraph, /[\s\S]+/, () => label).replace(/<w:ind\b[^>]*\/>/g, '').replace(/<w:jc\b[^>]*\/>/g, '');
+      paragraph = paragraph.replace(/<w:pPr\b[^>]*>/, tag => tag + '<w:jc w:val="right"/><w:keepNext/>');
+    }
     return fillParagraph(paragraph, new Map(Object.entries(record).map(([key, value]) => [norm(key), value ?? ''])), missing, edits);
   });
   const partyRewrites = rewrites.filter(rewrite => rewrite.partyRole).map(rewrite => ({ ...rewrite, finalSuffix: rewrite.partyRole === 'claimant' ? /\s*\(Hereinafter called the [\s\S]*$/i : rewrite.finalSuffix }));
@@ -2157,14 +2432,33 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   if (!donorParagraph) throw new Error('Municipal Gift donor identity paragraph is missing.');
   const claimantParagraph = replaceRunText(donorParagraph, /Executant/gi, match => match[0] === match[0].toUpperCase() ? 'CLAIMANT' : 'Claimant')
     .replace('</w:p>', '<w:r><w:t xml:space="preserve"> (Hereinafter called the &quot;DONEE/S&quot;) of the OTHER PART.</w:t></w:r></w:p>');
-  opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /<ULB>[\s\S]*Represented by its Commissioner/i.test(plainText(paragraph)) ? claimantParagraph : paragraph);
+  opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /Represented by its Commissioner/i.test(plainText(paragraph)) ? claimantParagraph : paragraph);
   // Repeat the source title recital for every linked deed, keeping its donor definition once.
   opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     if (!/Whereas the donor\/s.*title holder/i.test(plainText(paragraph))) return paragraph;
     const records = schedules.flatMap(schedule => schedule.titleLinkRecords?.length ? schedule.titleLinkRecords : [schedule.titleValues || schedule.values]);
     return records.map((record, index) => fill(index < records.length - 1 ? replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '') : paragraph, record)).join('');
   });
+  opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const kind = plainText(paragraph).trim().match(/^(Rectification|Supplemental) Deed:/i)?.[1].toLowerCase() as 'rectification' | 'supplemental' | undefined;
+    if (!kind) return paragraph;
+    const suffix = plainText(paragraph).match(/\s*\(Hereinafter called[\s\S]*$/i)?.[0] || '';
+    const prototype = suffix ? replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '') : paragraph;
+    return schedules.flatMap(schedule => schedule.amendmentRecords?.[kind] || []).map(record => fill(prototype, record)).join('')
+      + (suffix ? paragraphLike(paragraph, suffix.trim()) : '');
+  });
   opening = fill(opening, values, partyRewrites);
+  // The source puts its first section break after the recipient. Expanded
+  // title/amendment records before that point must use continuation margins.
+  const openingStamp = opening.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/)?.[0];
+  const firstDonor = partyRewrites.find(rewrite => rewrite.partyRole === 'executant')?.records?.[0];
+  const firstDonorName = firstDonor?.['Registration Name'] || firstDonor?.['EXECUTANT NAME'] || firstDonor?.['Executant Name'];
+  if (openingStamp && firstDonorName) {
+    opening = opening.replace(openingStamp, '');
+    const donor = topLevelChildren(opening).find(child => plainText(opening.slice(child.start, child.end)).toLocaleUpperCase('en-IN').includes(firstDonorName.toLocaleUpperCase('en-IN')));
+    if (!donor) throw new Error('Cannot place the Municipal Gift continuation section after the first donor.');
+    opening = opening.slice(0, donor.end) + `<w:p><w:pPr>${openingStamp}</w:pPr></w:p>` + opening.slice(donor.end);
+  }
   const selected = schedules.map((schedule, index) => {
     let block = prepareNonHouseIdentifiers(blocks.get(schedule.variant)!, schedule.variant, schedule.values);
     block = prepareLandmarkBlock(block, schedule.values, schedule.variant);
@@ -2176,7 +2470,9 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => !values['Include Prepared By'] && /Prepared By:/i.test(plainText(paragraph)) ? '' : paragraph);
   const result = opening + selected + fill(closing, values);
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin']));
+  let sectionIndex = 0;
+  const numbered = (xml.slice(0, start) + result + xml.slice(end)).replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, section => sectionIndex++ === 0 ? section : section.replace(/(<w:pgNumType\b[^>]*?)\s+w:start="[^"]*"/g, '$1'));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(numbered, values['Stamp Paper Margin']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -2184,14 +2480,15 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   if (values['Gift Variant'] === 'municipal-gift') return fillMunicipalGiftDeed(values, rewrites, schedules, source);
   if (!values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
   if (!schedules.length) throw new Error('Add a Gift property schedule.');
-  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v4') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v4');
+  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v6') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v6');
   const validation = await validateGiftDeedTemplate(bytes);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
-  let xml = new TextDecoder().decode(document.data);
+  let xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'gift');
+  assertTitleAmendmentBindings(xml, schedules);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
-  const body = xml.slice(start, end);
+  const body = enforceRegularGiftSourcePolicy(xml.slice(start, end));
   const { chunks, first, tail, blocks } = giftTemplateParts(body);
   const donors = Number(values['Ownership Vendor Count']) || 1, donees = Number(values['Ownership Vendee Count']) || 1;
   const missing = new Set<string>();
@@ -2205,7 +2502,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   const headingChunks = topLevelChildren(opening).map(child => opening.slice(child.start, child.end));
   const headingIndex = headingChunks.findIndex(chunk => /^GIFT SETTLEMENT DEED IN FAVOUR OF/i.test(plainText(chunk).trim()));
   if (headingIndex >= 0) {
-    const separateCategory = /^(?:FAMILY MEMBERS?|OTHER|OTHERS|TRUST OR CHARITY)$/i.test(plainText(headingChunks[headingIndex + 1] || '').trim());
+    const separateCategory = /^(?:FAMILY MEMBERS?|OTHER|OTHERS|TRUST OR CHARITY|<FAMILY MEMBER\/OTHER THAN FAMILY MEMBER>)$/i.test(plainText(headingChunks[headingIndex + 1] || '').trim());
     const category = values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY'
       : values['Gift Variant'] && values['Gift Variant'] !== 'family-gift' ? 'OTHERS' : donees > 1 ? 'FAMILY MEMBERS' : 'FAMILY MEMBER';
     let heading = replaceRunText(headingChunks[headingIndex], /[\s\S]+/, () => `GIFT SETTLEMENT DEED IN FAVOUR OF ${category}`);
@@ -2243,7 +2540,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     const block = opening.slice(titleStart.start, titleEnd.start);
     const titleBlocks = schedules.map(schedule => {
       const title = map(schedule.titleValues || values);
-      const titleRewrites: Rewrite[] = schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1 ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [];
+      const titleRewrites: Rewrite[] = [...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1 ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])];
       return fill(removeOptionalTitleRecitals(block, title, schedule.variant), schedule.titleValues || values, titleRewrites);
     }).join('');
     opening = opening.slice(0, titleStart.start) + titleBlocks + opening.slice(titleEnd.start);

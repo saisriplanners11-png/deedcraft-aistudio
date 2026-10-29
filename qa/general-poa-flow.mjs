@@ -3,8 +3,8 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
-const bytes = new Uint8Array(await readFile(new URL('../general-poa-template-v1.docx', import.meta.url)));
-assert.equal(createHash('sha256').update(bytes).digest('hex'), '5981ef17f8b5f0a7162226a1415bd30a71fd42f505214f31aa41b9d6de999a21');
+const bytes = new Uint8Array(await readFile(new URL('../general-poa-template-v3.docx', import.meta.url)));
+assert.equal(createHash('sha256').update(bytes).digest('hex'), '88cb8180abd6257a82a94888db4abda301012986fab37833110adb4c1965cb4c');
 const validation = await rt.validateGeneralPoaTemplate(bytes);
 assert.equal(validation.valid, true, validation.errors.join('\n'));
 const reference = await rt.readZip(bytes);
@@ -44,7 +44,7 @@ for (const property of properties) for (const variant of variants) for (const cu
   assert(form.indexOf('SAMPLE VENDOR') < form.indexOf('SAMPLE PURCHASER'));
   for (const entry of reference.filter(entry => !['word/document.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml'].includes(entry.name))) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
   if (!custom) {
-    assert.equal(manifest.templateVersionId, 'general-poa-v1');
+    assert.equal(manifest.templateVersionId, 'general-poa-v3');
     if (['plot', 'house-finished', 'flat-finished'].includes(property)) await writeFile(`tmp/general-poa-qa/${property}-${variant === variants[1] ? 'family' : 'friend'}.docx`, output);
   }
   count++;
@@ -56,6 +56,13 @@ state.additionalExecutants = [{ id: 'principal-two', docNames: [], values: { ...
 state.additionalSchedules = [{ id: 'schedule-two', docNames: [], category: 'Open Place', values: { ...state.form, village: 'SECOND VILLAGE' } }];
 const { result } = await render(state, variants[1]);
 const output = new Uint8Array(await result.blob.arrayBuffer()), text = await rt.docxToText(output);
+const outputEntries = await rt.readZip(output);
+const outputXml = new TextDecoder().decode(outputEntries.find(entry => entry.name === 'word/document.xml').data);
+const closingTable = [...outputXml.matchAll(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g)].map(match => match[0]).find(table => /EXECUTANTS/.test(table) && /WITNESSES/.test(table) && !/PHOTOGRAPHS/.test(table));
+assert(closingTable, 'retain the supplied deed signature and witness table');
+const closingParagraphs = [...closingTable.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => match[0]);
+assert(closingParagraphs.slice(0, -1).every(paragraph => /<w:keepNext\b/.test(paragraph)), 'keep witness numbers with their heading and deed signature');
+assert.doesNotMatch(closingParagraphs.at(-1), /<w:keepNext\b/, 'do not attach deed witnesses to the next Section 32A page');
 assert.match(text, /appoint my son ATTORNEY ONE, daughter ATTORNEY TWO and nephew ATTORNEY THREE as/);
 assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);

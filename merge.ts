@@ -4,6 +4,7 @@ import { acreGuntasToSqYards } from './land-area';
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
 import { isMunicipalGift } from './municipal-gift';
 import { poaValues } from './poa-options';
+import { titleAmendmentKind, titleAmendmentValues } from './title-amendments';
 import { giftRelationshipValues } from './gift-options';
 import { localAuthorityName } from './fields';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
@@ -355,11 +356,21 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const values = mergeValues(scheduleState);
     const titleValues = { ...values };
     const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
+    const amendmentKind = (item: typeof titleLinkRecords[number]) => titleAmendmentKind(item.values);
+    const amendmentRecords = { rectification: [] as Record<string, string>[], supplemental: [] as Record<string, string>[] };
+    for (const item of titleLinkRecords) {
+      const kind = amendmentKind(item);
+      if (!kind) continue;
+      const fields = titleAmendmentValues(item.values, kind);
+      if (!fields[(kind === 'rectification' ? 'Rectification' : 'Supplemental') + ' Deed No.']) continue;
+      amendmentRecords[kind].push({ ...mergeValues(scheduleState), ...fields });
+    }
     const registeredTitleLinks: Record<string, string>[] = [];
     const taxRecords = titleLinkRecords.filter(titleRecord => titleRecord.values.linkOption === 'houseTax'
       || (!titleRecord.values.linkOption && ['houseTaxReceiptNo', 'assessmentPtinNo', 'taxPaidDate', 'localBodyName']
         .some(key => !!titleRecord.values[key])));
     for (const titleRecord of titleLinkRecords) {
+      if (amendmentKind(titleRecord)) continue;
       const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
       if ((isMunicipalGift(state) && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key])) || (['linkDocNo', 'linkDocType'].every(key => !!titleRecord.values[key])
@@ -377,6 +388,10 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const mapped = (titleRecord?: typeof titleLinkRecords[number]) => titleRecord
       ? mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } }) : undefined;
     const registered = registeredTitleLinks[0];
+    for (const [kind, records] of Object.entries(amendmentRecords)) {
+      const label = kind === 'rectification' ? 'Rectification' : 'Supplemental';
+      for (const suffix of ['Type', 'No.', 'Date', 'SRO', 'SRO Code']) titleValues[label + ' Deed ' + suffix] = records[0]?.[label + ' Deed ' + suffix] || '';
+    }
     for (const name of ['Link Doc Type', 'Link Doct.No.', 'Link Doct.Date', 'Sub Registrar', 'Sub Registrar Code']) {
       titleValues[name] = registered?.[name] || '';
     }
@@ -439,7 +454,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }).filter(share => share.percentage !== '') : undefined;
-    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
+    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, amendmentRecords, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
   });
 }
 

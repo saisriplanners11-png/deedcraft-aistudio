@@ -20,7 +20,7 @@ describe('multi-instrument registry', () => {
     expect(releaseGate('gift', 'family-gift').ready).toBe(true);
     for (const variant of DEED_DEFINITIONS.gift.variants) expect(releaseGate('gift', variant.id).ready).toBe(true);
     expect(releaseGate('will').reasons[0]).toMatch(/approved legal reference/i);
-    expect(LEGAL_REFERENCES).toHaveLength(6);
+    expect(LEGAL_REFERENCES).toHaveLength(15);
   });
 
   it('persists instrument and definition version through source-backed projections', () => {
@@ -38,7 +38,7 @@ describe('generation safeguards', () => {
   it('allows compilation without professional approval but blocks unonboarded deeds', () => {
     const common = { variantId: DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'hash', values: {}, schedules: [], unresolvedWarnings: [] };
     expect(() => compileDeed({ ...common, instrumentId: 'sale' })).not.toThrow();
-    for (const variant of DEED_DEFINITIONS.gift.variants) expect(compileDeed({ ...common, instrumentId: 'gift', variantId: variant.id }).templateVersionId).toBe(variant.id === 'municipal-gift' ? 'gift-municipal-v1' : 'gift-deed-v4');
+    for (const variant of DEED_DEFINITIONS.gift.variants) expect(compileDeed({ ...common, instrumentId: 'gift', variantId: variant.id }).templateVersionId).toBe(variant.id === 'municipal-gift' ? 'gift-municipal-v3' : 'gift-deed-v6');
     expect(() => compileDeed({ ...common, instrumentId: 'will' })).toThrow(/approved legal reference/i);
   });
 });
@@ -50,5 +50,5 @@ it('keeps Agreement of Sale Cum GPA variant identifiers and both legacy names co
   expect(definition.label).toBe('Agreement of Sale Cum GPA');
   expect(definition.variants).toEqual([{ id: 'without-possession', label: 'Without Possession' }, { id: 'with-possession', label: 'With Possession' }]);
   for (const name of ['Agreement of Sale', 'Agreement of Sale Cum GPA']) expect(instrumentIdForLegacyType(name)).toBe('agreement_of_sale');
-  for (const variant of definition.variants) expect(compileDeed({ instrumentId: 'agreement_of_sale', variantId: variant.id, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] }).templateVersionId).toBe('agreement-sale-gpa-v2');
+  for (const variant of definition.variants) expect(compileDeed({ instrumentId: 'agreement_of_sale', variantId: variant.id, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] }).templateVersionId).toBe('agreement-sale-gpa-v4');
 });

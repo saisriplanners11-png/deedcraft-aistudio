@@ -6,6 +6,7 @@ import { bindTemplateFields, type TemplateFieldData } from './template-field-val
 import { readZip, writeZip } from './docx';
 import { sha256 } from './template-library-client';
 import { canonicalContract } from './template-fields';
+import { DEED_PRESERVATION_VERSION, preservationProfileFor } from './deed-preservation';
 
 export interface DraftSnapshot {
   instrumentId: InstrumentId;
@@ -24,6 +25,7 @@ export interface CompiledDeed {
   templateSource?: DeedTemplateSource;
 }
 export interface GenerationManifest {
+  preservationVersion?: string;
   instrumentId: InstrumentId;
   definitionVersion: string;
   templateVersionId: string;
@@ -40,6 +42,7 @@ export function compileDeed(snapshot: DraftSnapshot, templateSource: DeedTemplat
   if (snapshot.values['Minor Representation Complete'] === 'false') throw new Error(snapshot.values['Minor Representation Errors'] || 'Complete minor guardian details and court permission for each minor executant before generating the deed.');
   const gate = releaseGate(snapshot.instrumentId, snapshot.variantId);
   if (!gate.ready || !gate.reference?.templateVersionId) throw new Error(gate.reasons.join(' '));
+  preservationProfileFor(snapshot.instrumentId, snapshot.variantId);
   if (snapshot.instrumentId === 'sale' && snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {
     for (const tag of ['G.P.A.Doct.No.', 'G.P.A.Doct.Date', 'Authority SRO', 'Authority SRO Code']) if (!snapshot.values[tag]) throw new Error('Complete the sale authority details before generating the deed.');
   }
@@ -82,6 +85,7 @@ export async function renderArtifact(
   return {
     result,
     manifest: {
+      preservationVersion: DEED_PRESERVATION_VERSION,
       instrumentId: compiled.snapshot.instrumentId,
       definitionVersion: definitionFor(compiled.snapshot.instrumentId).version,
       templateVersionId: templateSource.kind === 'library' ? templateSource.versionId : templateSource.kind === 'custom' ? `custom:${templateSource.hash}` : compiled.templateVersionId,

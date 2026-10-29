@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {loadTemplateRuntime} from '../template-runtime-loader.mjs';
 const rt=await loadTemplateRuntime();
-const referenceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx',import.meta.url)));
+const referenceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx',import.meta.url)));
 const referenceEntries=await rt.readZip(referenceBytes);
 const referenceXml=new TextDecoder().decode(referenceEntries.find(entry=>entry.name==='word/document.xml').data);
 await mkdir('tmp/gift/qa',{recursive:true});
@@ -46,9 +46,9 @@ const state=rt.sampleState('multiple');state.deedType='Gift';state.form.giftRela
 const schedules=rt.scheduleMergesFor(state);
 const compiled=rt.compileDeed({instrumentId:'gift',variantId:'family-gift',snapshotHash:'synthetic',values:rt.mergeValues(state),schedules,rewrites:rt.rewritesFor(state),unresolvedWarnings:[]});
 const artifact=await rt.renderArtifact(compiled,'docx');
-assert.equal(artifact.manifest.templateVersionId,'gift-deed-v4');
+assert.equal(artifact.manifest.templateVersionId,'gift-deed-v6');
 assert.match(await rt.docxToText(new Uint8Array(await artifact.result.blob.arrayBuffer())),/WHEREAS the Donees are the son and daughter of the Donors/);
-const sourceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx',import.meta.url)));
+const sourceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx',import.meta.url)));
 const entries=await rt.readZip(sourceBytes);const document=entries.find(entry=>entry.name==='word/document.xml');
 document.data=new TextEncoder().encode(new TextDecoder().decode(document.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,paragraph=>{
  const changed=rt.replaceRunText(paragraph,/WHEREAS the Donee\/s is\/are the <Relationship> of the Donor\/s\./gi,()=> '');
@@ -67,7 +67,7 @@ const unknownEntries=await rt.readZip(sourceBytes);const unknownDoc=unknownEntri
 const unknownValidation=await rt.validateGiftDeedTemplate(await rt.writeZip(unknownEntries));assert.equal(unknownValidation.valid,false);assert(unknownValidation.errors.some(error=>/Unsupported Gift placeholder/.test(error)));
 console.log('PASS: unknown Gift bindings block replacement rather than silently dropping newly added details.');
 
-for(const version of ['v1','v2','v3','v4']) {
+for(const version of ['v1','v2','v3','v4','v5','v6']) {
  const templateBytes=new Uint8Array(await readFile(new URL(`../gift-deed-template-${version}.docx`,import.meta.url)));
  const validation=await rt.validateGiftDeedTemplate(templateBytes);assert.equal(validation.valid,true,validation.errors.join(' '));
  const custom={kind:'custom',name:`Gift ${version}.docx`,hash:`synthetic-${version}`,bytes:templateBytes,validation};
@@ -92,10 +92,10 @@ for(const [find,replacement,message] of [
  document.data=new TextEncoder().encode(new TextDecoder().decode(document.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>rt.replaceRunText(p,find,()=>replacement)).replace(find,replacement));
  const checked=await rt.validateGiftDeedTemplate(await rt.writeZip(entries));assert.equal(checked.valid,false);assert(checked.errors.some(error=>message.test(error)),checked.errors.join(' '));
 }
-console.log('PASS: all four Gift revisions and all three Gift variants preserve saved relationship/grammar; party identity, stamp-space and schedule damage is rejected.');
+console.log('PASS: all six Gift revisions and all three Gift variants preserve saved relationship/grammar; party identity, stamp-space and schedule damage is rejected.');
 
 // Voice-note corrections: retained data must not leak allocation prose into Gift.
-for (const version of ['v1','v2','v3','v4']) {
+for (const version of ['v1','v2','v3','v4','v5','v6']) {
  const state=rt.sampleState('ordinary-open');state.deedType='Gift';
  Object.assign(state.form,{giftRelationship:'friend',executionDate:'2026-10'});
  state.vendorSharesBySchedule={primary:{primary:'100'}};state.vendeeSharesBySchedule={primary:{primary:'100'}};
@@ -117,4 +117,4 @@ for (const version of ['v1','v2','v3','v4']) {
  assert.equal(state.vendorSharesBySchedule.primary.primary,'100');
  await writeFile(`tmp/gift/qa/voice-note-${version}.docx`,output);
 }
-console.log('PASS: Gift single-line title, blank signing day, omitted party/schedule shares and NALA extent across all four source revisions.');
+console.log('PASS: Gift single-line title, blank signing day, omitted party/schedule shares and NALA extent across all six source revisions.');

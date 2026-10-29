@@ -59,9 +59,9 @@ describe('Supabase template persistence', () => {
       const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}/api/templates`);
       expect(response.status).toBe(200);
       const listing = await response.json();
-      expect(listing.active.sale).toBe('sale-deed-v10');
+      expect(listing.active.sale).toBe('sale-deed-v11');
       expect(listing.versions.some((version: any) => version.id === prior.id && version.hash === prior.hash)).toBe(true);
-      expect((await storage.read()).active.sale).toBe('sale-deed-v10');
+      expect((await storage.read()).active.sale).toBe('sale-deed-v11');
       expect(fake.fetcher.mock.calls.some(([, init]: any) => init?.method === 'PATCH')).toBe(true);
     } finally { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
   }, 30000);
@@ -92,7 +92,7 @@ describe('Supabase template persistence', () => {
     await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
     const base = `http://127.0.0.1:${(server.address() as any).port}/api/templates`;
     try {
-      expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v10');
+      expect((await (await fetch(base)).json()).active.sale).toBe('sale-deed-v11');
       const login = await fetch(base + '/login', { method: 'POST', body: JSON.stringify({ password: 'test-password' }) });
       const cookie = login.headers.get('set-cookie')!.split(';')[0], csrf = (await login.json()).csrf;
       const headers = { Cookie: cookie, 'X-CSRF-Token': csrf };
@@ -113,7 +113,7 @@ describe('Supabase template persistence', () => {
       expect(trash.versions.some((item: any) => item.id === revision.id)).toBe(false);
       expect((await fetch(base + `/versions/${revision.id}/download`, { headers })).status).toBe(404);
       expect((await fetch(base + `/versions/${revision.id}/restore`, { method: 'POST', headers, body: '{}' })).status).toBe(200);
-      const publish = await fetch(base + `/versions/${revision.id}/publish`, { method: 'POST', headers, body: JSON.stringify({ expectedActive: 'sale-deed-v10', reviewed: true }) });
+      const publish = await fetch(base + `/versions/${revision.id}/publish`, { method: 'POST', headers, body: JSON.stringify({ expectedActive: 'sale-deed-v11', reviewed: true }) });
       expect(publish.status).toBe(200);
       api = createTemplateApi({ ...options, production: true, password: 'test-password' });
       expect((await (await fetch(base)).json()).active.sale).toBe(revision.id);

@@ -12,7 +12,7 @@ for (const mode of ['ordinary','gpa','agpa','gift']) for (const property of prop
   state.form = { ...state.form, executionDate: '2026-10-22', giftRelationship: 'daughter', consid: '765432', govtRate: '5000', extentSqYards: '200', nearAdjacent: relation, nearHNo: subject ? 'SUBJECT-42' : 'LANDMARK-99', landmarkHNo: 'LANDMARK-99' };
   const values = rt.mergeValues(state), schedules = rt.scheduleMergesFor(state);
   assert.equal(values['Market of Value Rs./-'], '7,65,432');
-  const filename = mode === 'gift' ? 'gift-deed-template-v4.docx' : 'sale-deed-template-v10.docx';
+  const filename = mode === 'gift' ? 'gift-deed-template-v6.docx' : 'sale-deed-template-v11.docx';
   const bytes = new Uint8Array(await readFile(new URL(`../${filename}`, import.meta.url)));
   const validation = mode === 'gift' ? await rt.validateGiftDeedTemplate(bytes) : await rt.validateSaleDeedTemplate(bytes);
   assert(validation.valid, validation.errors.join(' '));
@@ -57,7 +57,7 @@ assert.match(agriculturalText.split('STATEMENT OF MARKET VALUE')[0], /near house
 assert.doesNotMatch(agriculturalText.split('STATEMENT OF MARKET VALUE')[1], /near\s+house/i);
 
 // Replacement templates may already contain a fixed landmark row in Annexure I-A.
-const giftSource = new Uint8Array(await readFile(new URL('../gift-deed-template-v4.docx', import.meta.url)));
+const giftSource = new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx', import.meta.url)));
 const giftEntries = await rt.readZip(giftSource), giftDocument = giftEntries.find(entry => entry.name === 'word/document.xml');
 giftDocument.data = new TextEncoder().encode(new TextDecoder().decode(giftDocument.data).replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => table.includes('Annual Rental Value') ? table.replace('</w:tbl>', '<w:tr><w:tc><w:p><w:r><w:t>near house No.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>FIXED-LANDMARK-999</w:t></w:r></w:p></w:tc></w:tr></w:tbl>') : table));
 const customGiftBytes = await rt.writeZip(giftEntries);
