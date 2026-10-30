@@ -72,6 +72,25 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
 }
 console.log('PASS: Municipal Gift full claimant identities, four land schedules with calculated square metres, multiple recipients/properties and independent linked titles; source package formatting preserved.');
 
+for (const version of ['v1', 'v2', 'v3']) for (const entity of [false, true]) for (const mixed of [false, true]) {
+ const bytes = new Uint8Array(await readFile(new URL(`../gift-municipal-template-${version}.docx`, import.meta.url)));
+ const state = stateFor('ordinary-plot');
+ Object.assign(state.form, entity ? { claimantPartyType: 'Firm / LLP', claimantEntityName: 'THE MUNICIPAL COUNCIL, SIRCILLA', claimantName: 'INACTIVE PERSONAL NAME' } : { claimantName: 'THE MUNICIPAL COUNCIL, SIRCILLA' });
+ state.additionalClaimants = mixed ? [{ id: 'other', docNames: [], values: { ...state.form, claimantPartyType: 'Individual', claimantName: 'OTHER RECIPIENT', claimantRelativeName: 'OTHER PARENT' } }] : [];
+ const before = JSON.stringify(state);
+ const source = { kind: 'custom', name: version, bytes, hash: '', validation: await rt.validateMunicipalGiftTemplate(bytes) };
+ const result = await rt.fillGiftDeed({ ...rt.mergeValues(state), 'Gift Variant': 'municipal-gift' }, rt.rewritesFor(state), rt.scheduleMergesFor(state), source);
+ const text = await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+ assert.match(text, /THE MUNICIPAL COUNCIL, SIRCILLA, constitute under Hyderabad Municipal Corporation Act 1965\. Represented by its Commissioner/);
+ assert.match(text, /include its successors in office and permitted assigns, of the OTHER PART/);
+ assert.equal((text.match(/Represented by its Commissioner/g) || []).length, 1);
+ if (mixed) { assert.match(text, /OTHER RECIPIENT/); assert.match(text, /OTHER PARENT/); }
+ assert.doesNotMatch(text, /INACTIVE PERSONAL NAME|<[^<>]+>/);
+ assert.equal(JSON.stringify(state), before);
+ if (version === 'v3' && entity) await writeFile('tmp/municipal-gift/qa/council-recipient.docx', new Uint8Array(await result.blob.arrayBuffer()));
+}
+console.log('PASS: 12 single/mixed council/entity/historical-source cases retain entered council name and fixed definition; mixed recipients and saved facts stay independent.');
+
 for (const version of ['v1', 'v2', 'v3']) {
  const bytes = new Uint8Array(await readFile(new URL(`../gift-municipal-template-${version}.docx`, import.meta.url)));
  const validation = await rt.validateMunicipalGiftTemplate(bytes);

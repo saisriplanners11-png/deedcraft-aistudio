@@ -1,4 +1,5 @@
 import { partyWording } from './party-wording';
+import { municipalCouncilRecital } from './municipal-gift';
 import { partyPronouns } from './party-pronouns';
 import { giftPartyWording } from './gift-wording';
 import { regularGiftSourcePolicy } from './gift-template-policy';
@@ -799,6 +800,9 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   // Apply structural recitals first, then merge placeholders into their own runs.
   const repeat = rewrites.find(rw => rw.records && rw.find.test(plainText(p)) && (!rw.when || rw.when(p)));
   if (repeat) return repeat.records!.map((record, index) => {
+    if (repeat.partyRole === 'claimant' && record['MUNICIPAL COUNCIL RECITAL']) {
+      return replaceRunText(p, /[\s\S]+/, () => (repeat.records!.length > 1 ? `${index + 1}. ` : '') + record['MUNICIPAL COUNCIL RECITAL']);
+    }
     if (repeat.partyRole && record['ENTITY RECITAL']) {
       const originalClosing = plainText(p).match(/\(Hereinafter[\s\S]*$/i)?.[0];
       const closing = index === repeat.records!.length - 1 ? originalClosing || (repeat.partyRole === 'executant' ? '(Hereinafter called the "VENDOR/S") of the ONE PART.' : '(Hereinafter called the "VENDEE/S") of the OTHER PART.') : '';
@@ -2426,7 +2430,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
     }
     return fillParagraph(paragraph, new Map(Object.entries(record).map(([key, value]) => [norm(key), value ?? ''])), missing, edits);
   });
-  const partyRewrites = rewrites.filter(rewrite => rewrite.partyRole).map(rewrite => ({ ...rewrite, finalSuffix: rewrite.partyRole === 'claimant' ? /\s*\(Hereinafter called the [\s\S]*$/i : rewrite.finalSuffix }));
+  const partyRewrites = rewrites.filter(rewrite => rewrite.partyRole).map(rewrite => ({ ...rewrite, records: rewrite.partyRole === 'claimant' ? rewrite.records?.map(record => ({ ...record, 'MUNICIPAL COUNCIL RECITAL': municipalCouncilRecital(record['Registration Name'] || record['CLAIMANT NAME'] || '') })) : rewrite.records, finalSuffix: rewrite.partyRole === 'claimant' ? /\s*\(Hereinafter called the [\s\S]*$/i : rewrite.finalSuffix }));
   let opening = chunks.slice(0, firstIndex).join('');
   const donorParagraph = (opening.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || []).find(paragraph => /<EXECUTANT NAME>/i.test(plainText(paragraph)));
   if (!donorParagraph) throw new Error('Municipal Gift donor identity paragraph is missing.');

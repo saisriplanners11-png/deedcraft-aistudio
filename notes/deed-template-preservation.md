@@ -46,6 +46,8 @@ Word preview verification also enforces normal continuation margins after the fi
 
 ## Typed amendment request, 29-10-2026
 
+Council-only recipient exception confirmed 30-10-2026: MUN-02 now prints the entered Municipal Council name followed by the supplied fixed Act 1965, Commissioner and DONEE definition. Recognition uses each active recipient name, including an entity's name, never ULB/village or inactive personal fields. Non-council identities and all saved records remain unchanged. Policy version 2026-10-30.1 invalidates stale generation metadata; immutable Word sources stay untouched.
+
 Master rule SRC-04 and policy 2026-10-29.1 implement the supplied voice-note request: a typed Rectification Deed/Supplemental Deed in an ordinary Link Document card uses that same record for the matching recital. A shared classifier/value resolver is used by the form preview, restored-source projection and download merge. The live preview reads the actual selected Word paragraph and uses the download formatter. Typing does not move cards, change field/record IDs or clear facts/evidence. Missing amendment numbers omit clauses; missing source paragraphs or registration bindings block generation with an actionable error even with cached valid metadata. Original titles and flat allotment records remain separate. `qa/title-amendment-flow.mjs` checks matching previews/downloads and omissions across nine supported variants; browser checks cover focus, edits, switching and save/reload.
 
 ## Principal relation dashboard correction, 29-10-2026
