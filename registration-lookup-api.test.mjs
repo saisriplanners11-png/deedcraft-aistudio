@@ -52,7 +52,7 @@ describe('public registration lookup adapter', () => {
   });
   it('does not cache failed requests and keeps private upstream details out of errors', async () => {
     const fetchImpl = vi.fn().mockRejectedValueOnce(new Error('private upstream trace')).mockResolvedValueOnce(response({ message: 'success', mandalDetails: [] }));
-    const handler = createRegistrationLookupApi({ fetchImpl });
+    const handler = createRegistrationLookupApi({ fetchImpl, mandalSnapshot: null });
     const path = '/api/registration/lookups?kind=mandals&district=16_1';
     const first = await call(handler, path);
     expect(first.statusCode).toBe(502); expect(first.body.error).toContain('manually'); expect(first.body.error).not.toContain('private');
@@ -60,7 +60,7 @@ describe('public registration lookup adapter', () => {
   });
   it('rejects invalid parameters, methods and malformed upstream responses', async () => {
     const fetchImpl = vi.fn(async () => response({ message: 'success', mandalDetails: 'invalid' }));
-    const handler = createRegistrationLookupApi({ fetchImpl });
+    const handler = createRegistrationLookupApi({ fetchImpl, mandalSnapshot: null });
     for (const path of ['?kind=mandals&district=https://other.test', '?kind=villages&district=16_1&mandal=../', '?kind=localities&district=16_1&village=x', '?kind=jurisdiction&sro=1234%26token=x']) expect((await call(handler, '/api/registration/lookups' + path)).statusCode).toBe(400);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect((await call(handler, '/api/registration/lookups?kind=districts', 'POST')).statusCode).toBe(405);
@@ -69,7 +69,30 @@ describe('public registration lookup adapter', () => {
   });
   it('times out an unavailable service and returns an actionable manual-entry fallback', async () => {
     const fetchImpl = vi.fn((_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason))));
-    const result = await call(createRegistrationLookupApi({ fetchImpl, timeoutMs: 5 }), '/api/registration/lookups?kind=mandals&district=16_1');
+    const result = await call(createRegistrationLookupApi({ fetchImpl, timeoutMs: 5, mandalSnapshot: null }), '/api/registration/lookups?kind=mandals&district=16_1');
     expect(result.statusCode).toBe(502); expect(result.body.error).toContain('Retry or enter the details manually');
   });
+});
+
+
+it('keeps Rajanna Sircilla mandals selectable during an upstream outage', async () => {
+  const fetchImpl = vi.fn().mockRejectedValue(new Error('Temporary network failure'));
+  const result = await call(createRegistrationLookupApi({ fetchImpl }), '/api/registration/lookups?kind=mandals&district=20_3');
+  expect(result.statusCode).toBe(200);
+  expect(result.body.cached).toBe(true);
+  expect(result.body.options).toHaveLength(13);
+  expect(result.body.options).toContainEqual({ code: '08', label: 'SIRSILLA' });
+  expect(result.body.options).toContainEqual({ code: '11', label: 'VEMULAWADA' });
+});
+
+it('retains a successful village list when the next refresh fails, scoped to its own parent', async () => {
+  let time = 0;
+  const fetchImpl = vi.fn().mockResolvedValueOnce(response({ message: 'success', villageDetails: [{ code: '2008001', name: 'SOURCE VILLAGE' }] })).mockRejectedValue(new Error('offline'));
+  const handler = createRegistrationLookupApi({ fetchImpl, now: () => time });
+  const path = '/api/registration/lookups?kind=villages&district=20_3&mandal=08';
+  expect((await call(handler, path)).statusCode).toBe(200);
+  time = 600001;
+  const retained = await call(handler, path);
+  expect(retained.body).toEqual({ options: [{ code: '2008001', label: 'SOURCE VILLAGE' }], cached: true });
+  expect((await call(handler, path.replace('mandal=08', 'mandal=11'))).statusCode).toBe(502);
 });

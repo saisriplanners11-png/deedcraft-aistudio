@@ -117,6 +117,8 @@ Detailed implementation records: [replacement preservation](notes/deed-template-
 
 ## Change history
 
+30-10-2026 clarification of COM-13 and SAL-02: the SRO directory’s combined name/code label is for dashboard inputs only. Generated documents retain the selected draft template’s existing SRO name/code placeholders, wording and punctuation. Reverted the newly appended bracketed jurisdiction code; separate GPA/title/amendment/agreement code bindings remain intact. This restores template fidelity without changing immutable sources or the preservation version.
+
 | Date | Authorization | Effect |
 | --- | --- | --- |
 | 30-10-2026 | User supplied the 26-10 voice note and highlighted Municipal Gift definition, then explicitly selected “Municipal Council recipients only”. | Amended MUN-02: retain the entered council name and append the supplied fixed Act/Commissioner/DONEE wording for council recipients only. Other recipients retain existing identities. Advanced runtime policy to 2026-10-30.1; immutable sources and saved data remain intact. |

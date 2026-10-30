@@ -1,4 +1,5 @@
 import React from 'react';
+import { displaySro, isSroField, SRO_OFFICES, sroLabel } from './sro-directory';
 import { PlacementSlot } from './template-placement-context';
 import { sectionForGroup } from './template-placement';
 import { flatStage } from './flat-options';
@@ -126,7 +127,9 @@ export function Input({
         ) : null}
         {sourceDocument ? <span style={css(`font-size:9px;color:${C.mutedSoft};max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`)} title={sourceDocument}>{sourceDocument}</span> : null}
       </span>
-      {field.type === 'select' && field.allowCustom ? (
+      {isSroField(field.id) ? (
+        <><input aria-label={field.ariaLabel || field.label} aria-describedby={help && !conflict ? helpId : undefined} list={suggestionsId} value={displaySro(shown)} readOnly={readOnly} placeholder="Type SRO name or code" onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{SRO_OFFICES.map(office => <option key={sroLabel(office)} value={sroLabel(office)} />)}</datalist></>
+      ) : field.type === 'select' && field.allowCustom ? (
         <><input aria-label={field.ariaLabel} aria-describedby={help && !conflict ? helpId : undefined} readOnly={readOnly} list={suggestionsId} value={shown} onChange={e => onChange(e.target.value)} /><datalist id={suggestionsId}>{field.options?.map(o => <option key={o} value={o} />)}</datalist></>
       ) : field.type === 'select' ? (
         <select

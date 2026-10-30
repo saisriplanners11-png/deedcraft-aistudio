@@ -1,0 +1,562 @@
+[
+  {
+    "name": "ADILABAD",
+    "code": "1906"
+  },
+  {
+    "name": "ASIFABAD",
+    "code": "1901"
+  },
+  {
+    "name": "BHAINSA",
+    "code": "1902"
+  },
+  {
+    "name": "BOATH",
+    "code": "1903"
+  },
+  {
+    "name": "KAHANAPUR",
+    "code": "1908"
+  },
+  {
+    "name": "LUXETTIPET",
+    "code": "1907"
+  },
+  {
+    "name": "MANCHERIAL",
+    "code": "1904"
+  },
+  {
+    "name": "NIRMAL",
+    "code": "1905"
+  },
+  {
+    "name": "AZAMPURA",
+    "code": "1601"
+  },
+  {
+    "name": "BANJARA HILLS",
+    "code": "1604"
+  },
+  {
+    "name": "BOWENPALLY",
+    "code": "1609"
+  },
+  {
+    "name": "CHARMINAR",
+    "code": "1608"
+  },
+  {
+    "name": "CHIKKADPALLY",
+    "code": "1602"
+  },
+  {
+    "name": "DOODHBOWLI",
+    "code": "1603"
+  },
+  {
+    "name": "GOLCONDA",
+    "code": "1610"
+  },
+  {
+    "name": "HYDERABAD R.O",
+    "code": "1607"
+  },
+  {
+    "name": "MAREDPALLY",
+    "code": "1605"
+  },
+  {
+    "name": "SECUNDERABAD",
+    "code": "1606"
+  },
+  {
+    "name": "S R NAGAR",
+    "code": "1611"
+  },
+  {
+    "name": "BHEEMDEVARPALLE",
+    "code": "2001"
+  },
+  {
+    "name": "GANGADHARA",
+    "code": "2002"
+  },
+  {
+    "name": "HUSNABAD",
+    "code": "2003"
+  },
+  {
+    "name": "HUZURBAD",
+    "code": "2004"
+  },
+  {
+    "name": "JAGTIAL",
+    "code": "2005"
+  },
+  {
+    "name": "KARIMNAGAR (O.B)",
+    "code": "2013"
+  },
+  {
+    "name": "KARIMNAGAR RURAL",
+    "code": "2014"
+  },
+  {
+    "name": "KORUTLA",
+    "code": "2015"
+  },
+  {
+    "name": "MALLIAL",
+    "code": "2006"
+  },
+  {
+    "name": "MANTHANI",
+    "code": "2007"
+  },
+  {
+    "name": "METPALLY",
+    "code": "2008"
+  },
+  {
+    "name": "PEDDAPALLY",
+    "code": "2009"
+  },
+  {
+    "name": "SIRCILLA",
+    "code": "2010"
+  },
+  {
+    "name": "SULTANABAD",
+    "code": "2011"
+  },
+  {
+    "name": "VEMULAWADA",
+    "code": "2012"
+  },
+  {
+    "name": "BHADRACHALAM",
+    "code": "2201"
+  },
+  {
+    "name": "BURGAMPAHAD",
+    "code": "2202"
+  },
+  {
+    "name": "KALLURU",
+    "code": "2210"
+  },
+  {
+    "name": "KHAMMAM (R.O)",
+    "code": "2208"
+  },
+  {
+    "name": "KHAMMAM RURAL",
+    "code": "2211"
+  },
+  {
+    "name": "KOTHAGUDEM",
+    "code": "2203"
+  },
+  {
+    "name": "KUSUMANCHI",
+    "code": "2205"
+  },
+  {
+    "name": "MADHIRA",
+    "code": "2204"
+  },
+  {
+    "name": "SATHUPALLY",
+    "code": "2206"
+  },
+  {
+    "name": "WYRA",
+    "code": "2209"
+  },
+  {
+    "name": "YELLANDU",
+    "code": "2207"
+  },
+  {
+    "name": "ACHAMPET",
+    "code": "1401"
+  },
+  {
+    "name": "ALAMPUR",
+    "code": "1402"
+  },
+  {
+    "name": "ATMAKUR",
+    "code": "1403"
+  },
+  {
+    "name": "FAROOQNAGAR",
+    "code": "1415"
+  },
+  {
+    "name": "GADWAL",
+    "code": "1404"
+  },
+  {
+    "name": "JADCHERLA",
+    "code": "1405"
+  },
+  {
+    "name": "KALWAKURTHY",
+    "code": "1408"
+  },
+  {
+    "name": "KODANGAL",
+    "code": "1406"
+  },
+  {
+    "name": "KOLLAPUR",
+    "code": "1407"
+  },
+  {
+    "name": "MAHABUBNAGAR (R.O)",
+    "code": "1413"
+  },
+  {
+    "name": "MAKTAL",
+    "code": "1414"
+  },
+  {
+    "name": "NAGARKURNOOL",
+    "code": "1409"
+  },
+  {
+    "name": "NARAYANPET",
+    "code": "1410"
+  },
+  {
+    "name": "SHADNAGAR",
+    "code": "1410"
+  },
+  {
+    "name": "WANAPARTHY",
+    "code": "1412"
+  },
+  {
+    "name": "DUBBAK",
+    "code": "1701"
+  },
+  {
+    "name": "GAJWEL",
+    "code": "1702"
+  },
+  {
+    "name": "JOGIPET",
+    "code": "1703"
+  },
+  {
+    "name": "MEDAK",
+    "code": "1704"
+  },
+  {
+    "name": "NARAYANAKHED",
+    "code": "1705"
+  },
+  {
+    "name": "NARSAPOOR",
+    "code": "1706"
+  },
+  {
+    "name": "RAMAYAMPET",
+    "code": "1707"
+  },
+  {
+    "name": "SADASIVPET",
+    "code": "1708"
+  },
+  {
+    "name": "SANGAREDDY (R.O)",
+    "code": "1711"
+  },
+  {
+    "name": "SIDDIPET",
+    "code": "1709"
+  },
+  {
+    "name": "SIDDIPET RURAL",
+    "code": "1712"
+  },
+  {
+    "name": "TOOPRAN",
+    "code": "1713"
+  },
+  {
+    "name": "ZAHEERABAD",
+    "code": "1710"
+  },
+  {
+    "name": "BHONGIRI",
+    "code": "2301"
+  },
+  {
+    "name": "BIBINAGAR",
+    "code": "2315"
+  },
+  {
+    "name": "CHANDUR",
+    "code": "2314"
+  },
+  {
+    "name": "CHOUTUPPAL",
+    "code": "2313"
+  },
+  {
+    "name": "DEVARKONDA",
+    "code": "2302"
+  },
+  {
+    "name": "HUZURNAGAR",
+    "code": "2303"
+  },
+  {
+    "name": "KODAD",
+    "code": "2304"
+  },
+  {
+    "name": "MIRYALAGUDA",
+    "code": "2305"
+  },
+  {
+    "name": "MOTHKUR",
+    "code": "2306"
+  },
+  {
+    "name": "NAKREKAL",
+    "code": "2312"
+  },
+  {
+    "name": "NALGONDA (O.B)",
+    "code": "2311"
+  },
+  {
+    "name": "NIDAMANOOR",
+    "code": "2307"
+  },
+  {
+    "name": "RAMANNAPET",
+    "code": "2308"
+  },
+  {
+    "name": "SURYAPET",
+    "code": "2309"
+  },
+  {
+    "name": "YADAGIRIGUTTA",
+    "code": "2310"
+  },
+  {
+    "name": "ARMOOR",
+    "code": "1801"
+  },
+  {
+    "name": "BANSWADA",
+    "code": "1802"
+  },
+  {
+    "name": "BHEEMGAL",
+    "code": "1803"
+  },
+  {
+    "name": "BICHUKUNDA",
+    "code": "1804"
+  },
+  {
+    "name": "BODHAN",
+    "code": "1805"
+  },
+  {
+    "name": "DOMAKONDA",
+    "code": "1806"
+  },
+  {
+    "name": "KAMAREDDY",
+    "code": "1807"
+  },
+  {
+    "name": "NIZAMABAD (R.O)",
+    "code": "1809"
+  },
+  {
+    "name": "NIZAMABAD RURAL",
+    "code": "1810"
+  },
+  {
+    "name": "YELLAREDDY",
+    "code": "1808"
+  },
+  {
+    "name": "ABDULLAPUR",
+    "code": "1531"
+  },
+  {
+    "name": "BALANAGAR",
+    "code": "1523"
+  },
+  {
+    "name": "CHAMPAPET",
+    "code": "1514"
+  },
+  {
+    "name": "CHEVELLA",
+    "code": "1501"
+  },
+  {
+    "name": "GANDIPET",
+    "code": "1525"
+  },
+  {
+    "name": "GHATKESAR",
+    "code": "1517"
+  },
+  {
+    "name": "HAYATHNAGAR",
+    "code": "1502"
+  },
+  {
+    "name": "IBRAHIMPATNAM",
+    "code": "1503"
+  },
+  {
+    "name": "KAPRA",
+    "code": "1526"
+  },
+  {
+    "name": "KEESARA",
+    "code": "1530"
+  },
+  {
+    "name": "KUKATPALLY",
+    "code": "1511"
+  },
+  {
+    "name": "L.B.NAGAR",
+    "code": "1527"
+  },
+  {
+    "name": "MAHESWARAM",
+    "code": "1519"
+  },
+  {
+    "name": "MALKAJGIRI",
+    "code": "1512"
+  },
+  {
+    "name": "MEDCHAL",
+    "code": "1504"
+  },
+  {
+    "name": "NARAPALLI",
+    "code": "1529"
+  },
+  {
+    "name": "PARIGI",
+    "code": "1505"
+  },
+  {
+    "name": "PEDDA AMBERPET",
+    "code": "1515"
+  },
+  {
+    "name": "QUTHBULLAPUR",
+    "code": "1521"
+  },
+  {
+    "name": "RANGAREDDY (R.O)",
+    "code": "1510"
+  },
+  {
+    "name": "SAROORNAGAR",
+    "code": "1513"
+  },
+  {
+    "name": "SERLINGAMPALLY",
+    "code": "1522"
+  },
+  {
+    "name": "SHAMIRPET",
+    "code": "1516"
+  },
+  {
+    "name": "SHAMSHABAD",
+    "code": "1520"
+  },
+  {
+    "name": "SHANKARPALLY",
+    "code": "1524"
+  },
+  {
+    "name": "TANDUR",
+    "code": "1506"
+  },
+  {
+    "name": "UPPAL",
+    "code": "1507"
+  },
+  {
+    "name": "VALLABHNAGAR",
+    "code": "1508"
+  },
+  {
+    "name": "VANASTHALIPURAM",
+    "code": "1528"
+  },
+  {
+    "name": "VIKARABAD",
+    "code": "1509"
+  },
+  {
+    "name": "CHERIAL",
+    "code": "2101"
+  },
+  {
+    "name": "GHANPUR",
+    "code": "2102"
+  },
+  {
+    "name": "JANGAON",
+    "code": "2103"
+  },
+  {
+    "name": "KODAKANDLA",
+    "code": "2104"
+  },
+  {
+    "name": "MAHABUBABAD",
+    "code": "2105"
+  },
+  {
+    "name": "MULUGU",
+    "code": "2106"
+  },
+  {
+    "name": "NARSAMPET",
+    "code": "2107"
+  },
+  {
+    "name": "PARKAL",
+    "code": "2108"
+  },
+  {
+    "name": "WARANGAL FORT",
+    "code": "2112"
+  },
+  {
+    "name": "WARANGAL (R.O)",
+    "code": "2111"
+  },
+  {
+    "name": "WARANGAL (RURAL)",
+    "code": "2110"
+  },
+  {
+    "name": "WARDHANNAPET",
+    "code": "2109"
+  }
+]

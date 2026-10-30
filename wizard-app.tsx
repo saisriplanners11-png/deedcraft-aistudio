@@ -1,4 +1,5 @@
 import { isMinorParty } from './minor-parties';
+import { findSro, isSroField, sroFieldPair } from './sro-directory';
 import { titleAmendmentKind, titleAmendmentLabel } from './title-amendments';
 import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
 import { IconButton } from './icon-button';
@@ -750,6 +751,16 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const visibleSavedDeeds = savedDeeds.filter(deed => [deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
+    if (isSroField(field)) {
+      const office = findSro(value);
+      if (office) {
+        const pair = sroFieldPair(field);
+        dispatch({ type: 'manual', key: fieldKey(role, record, pair.name), value: office.name });
+        dispatch({ type: 'manual', key: fieldKey(role, record, pair.code), value: office.code });
+        setDownload(null);
+        return;
+      }
+    }
     value = uppercasePartyIdentity(field, value);
     if (field === 'consid') {
       const consideration = Number(value);

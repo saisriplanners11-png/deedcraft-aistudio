@@ -463,7 +463,7 @@ export const LINK_OPTIONS: LinkOption[] = [
       { id: 'linkDocDate', label: 'Link deed execution date', ph: 'Link Doct.Date', type: 'date',
         hint: 'The date this document was executed, shown in its opening recital on the first page — not the SRO registration/presentation date.' },
       { id: 'linkSro', label: 'Sub-Registrar Office', ph: ['Sub Registrar', 'Sub-Registrar'], span: 2 },
-      { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Filled in automatically from the Sub-Registrar Office entered in the Jurisdiction step; only type over it if this document names a different SRO code.' },
+      { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Type this document’s SRO name or code and choose its matching office. The name and code are filled together for this record.' },
     ],
   },
   {

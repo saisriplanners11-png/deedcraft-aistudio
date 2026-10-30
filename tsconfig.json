@@ -8,7 +8,8 @@
     "strict": false,
     "noEmit": true,
     "skipLibCheck": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true
   },
   "include": ["*.ts", "*.tsx", "reference-plan/src/**/*.ts", "reference-plan/src/**/*.tsx", "exact-reference-plan/src/**/*.ts", "exact-reference-plan/src/**/*.tsx", "guided-reference-plan/src/**/*.ts", "guided-reference-plan/src/**/*.tsx"]
 }

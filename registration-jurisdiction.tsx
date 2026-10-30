@@ -5,7 +5,7 @@ import { Input } from './ui';
 import { changeLocation, matchingOption, LOCATION_FIELDS, type LocationField, type LookupOption, type JurisdictionLookupState } from './registration-location-state';
 import type { JurisdictionPresentationProps } from './workspace-presentation';
 
-type LookupResult = { options: LookupOption[]; ulbs?: LookupOption[]; localBodies?: LookupOption[] };
+type LookupResult = { options: LookupOption[]; ulbs?: LookupOption[]; localBodies?: LookupOption[]; cached?: boolean };
 const EMPTY: LookupOption[] = [];
 function useLookup(query: Record<string, string> | null) {
   const key = query ? new URLSearchParams(query).toString() : '';
@@ -17,7 +17,15 @@ function useLookup(query: Record<string, string> | null) {
     setResult({ key });
     void (async () => {
       try {
-        const response = await fetch(`/api/registration/lookups?${key}`, { signal: controller.signal });
+        let response: Response | undefined;
+        // A brief connection failure should not require reselecting the district.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            response = await fetch(`/api/registration/lookups?${key}`, { signal: controller.signal });
+            if (response.status < 500 || attempt === 1) break;
+          } catch (error) { if (controller.signal.aborted || attempt === 1) throw error; }
+        }
+        if (!response) throw new Error('Location lookup failed.');
         const data = await response.json();
         if (!response.ok || !Array.isArray(data.options)) throw new Error(data.error || 'Location lookup failed.');
         if (!controller.signal.aborted) setResult({ key, data });
@@ -38,13 +46,13 @@ function LocationControl({ field, value, state, control, onSelect, onManual, onU
   const id = useId(); const manual = state.manual?.includes(field.id as LocationField);
   const selected = matchingOption(control.options, value, field.id as LocationField, state);
   const review = value && state.needsReview?.includes(field.id as LocationField);
-  const hasHelp = !!control.error || !!(!manual && value && !selected) || !!review;
+  const hasHelp = !!control.error || !!(!manual && control.data?.cached) || !!(!manual && value && !selected) || !!review;
   return <div className="deed-field registration-location-control">
     <div className="registration-location-label"><label htmlFor={id}>{field.label}</label><button type="button" aria-label={`${manual ? 'Use registration list for' : 'Enter manually for'} ${field.label}`} onClick={() => manual ? onUseList() : onManual(value)}>{manual ? 'Use list' : 'Enter manually'}</button></div>
     {manual ? <input id={id} value={value} aria-describedby={hasHelp ? `${id}-help` : undefined} onChange={event => onManual(event.target.value)} /> : <select id={id} value={selected?.code || ''} aria-busy={control.loading} aria-describedby={hasHelp ? `${id}-help` : undefined} disabled={!control.enabled || control.loading} onChange={event => onSelect(control.options.find(option => option.code === event.target.value))}>
       <option value="">{value && !selected ? `Saved / extracted: ${value}` : control.loading ? 'Loading records…' : control.enabled ? 'Select' : `Select ${control.parent} first`}</option>{control.options.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
     </select>}
-    {hasHelp && <div id={`${id}-help`} className="registration-location-help">{control.error && <span role="alert">{control.error} <button type="button" aria-label={`Retry ${field.label} lookup`} onClick={control.retry}>Retry</button></span>}{!manual && value && !selected && <span>{review ? 'Parent location changed. Confirm this retained value or choose a new option.' : 'Retained from your deed. Choose a matching record or keep it as a manual entry.'}</span>}
+    {hasHelp && <div id={`${id}-help`} className="registration-location-help">{!manual && control.data?.cached && <span>Using a previously verified registration list. <button type="button" aria-label={`Refresh ${field.label} lookup`} onClick={control.retry}>Refresh</button></span>}{control.error && <span role="alert">{control.error} <button type="button" aria-label={`Retry ${field.label} lookup`} onClick={control.retry}>Retry</button></span>}{!manual && value && !selected && <span>{review ? 'Parent location changed. Confirm this retained value or choose a new option.' : 'Retained from your deed. Choose a matching record or keep it as a manual entry.'}</span>}
       {review && <button type="button" aria-label={`Keep retained ${field.label}`} onClick={onConfirm}>Keep retained value</button>}
     </div>}
   </div>;
@@ -84,6 +92,7 @@ export function RegistrationJurisdiction({ propertyId, values, lookup, onLookupC
   }
   return <>{renderFields({ groups: registrationJurisdictionGroups, renderField: (field, value) => {
     if (field.id === 'registrationWard' || field.id === 'registrationBlock') return <Input field={field} value={(field.id === 'registrationWard' ? locality?.ward : locality?.block) || ''} onChange={() => {}} />;
+    if (field.id === 'sro') return <Input field={field} value={value} onChange={text => { onLookupChange(changeLocation(lookup, 'sro', undefined, true)); onEdit('sro', text); }} />;
     if (!LOCATION_FIELDS.includes(field.id as LocationField)) return undefined;
     const id = field.id as LocationField;
     return <LocationControl field={field} value={value} state={lookup} control={controls[id]} onSelect={option => {

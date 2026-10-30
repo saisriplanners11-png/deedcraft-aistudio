@@ -1,4 +1,6 @@
 import { ageFrom } from './party-age';
+import { Input } from './ui';
+import { findSro } from './sro-directory';
 import { PARTY_CAPACITY_OPTIONS } from './fields';
 import { IconButton } from './icon-button';
 import { extractAuthorityDocuments, extractAuthorityIdentity } from './authority-extraction';
@@ -156,7 +158,7 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
       ['documentNo', 'Authority document number'], ['bookNumber', 'Authority book number'], ['documentDate', 'Authority document date'],
       ['sro', 'Authority Sub-Registrar Office'], ['sroCode', 'Authority SRO code'],
       ...(state.saleDocument === 'agpa' ? [['adjustedAmount', 'AGPA adjusted stamp-duty amount (₹)']] : []),
-    ] as [keyof SaleAuthority, string][]).map(([key, label]) => <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : key === 'adjustedAmount' ? 'number' : 'text'} min={key === 'adjustedAmount' ? 0 : undefined} value={(authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: event.target.value })} /></label>)}</div>
+    ] as [keyof SaleAuthority, string][]).map(([key, label]) => key === 'sro' || key === 'sroCode' ? <Input key={key} field={{ id: key, label }} value={(authority[key] as string) || ''} onChange={value => { const office = findSro(value); onChange(office ? { ...authority, sro: office.name, sroCode: office.code } : { ...authority, [key]: value }); }} /> : <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : key === 'adjustedAmount' ? 'number' : 'text'} min={key === 'adjustedAmount' ? 0 : undefined} value={(authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: event.target.value })} /></label>)}</div>
   </section>
   {order.map(id => {
     const attorney = attorneyCards.find(card => card.key === id);

@@ -1,4 +1,7 @@
 import { DISTRICTS } from './registration-districts.mjs';
+import { readFileSync } from 'node:fs';
+
+const MANDALS = JSON.parse(readFileSync(new URL('./registration-mandals.json', import.meta.url), 'utf8'));
 
 const BASE = 'https://registration.telangana.gov.in/PDE/';
 const PATH = '/api/registration/lookups';
@@ -47,8 +50,9 @@ export function normalizeLookup(kind, data) {
   };
 }
 /** Fixed public location endpoints only; no cookies, uploads, identities or arbitrary URLs. */
-export function createRegistrationLookupApi({ fetchImpl = fetch, now = Date.now, timeoutMs = 15000 } = {}) {
+export function createRegistrationLookupApi({ fetchImpl = fetch, now = Date.now, timeoutMs = 15000, mandalSnapshot = MANDALS } = {}) {
   const cache = new Map();
+  const lastSuccessful = new Map();
   return async (req, res, next) => {
     const url = new URL(req.url || '/', 'http://localhost');
     if (url.pathname !== PATH) return next?.();
@@ -68,7 +72,10 @@ export function createRegistrationLookupApi({ fetchImpl = fetch, now = Date.now,
           if (!response.ok) throw new Error('Registration service returned an error');
           const text = await response.text();
           if (text.length > 5_000_000) throw new Error('Lookup response too large');
-          return normalizeLookup(kind, JSON.parse(text));
+          const data = normalizeLookup(kind, JSON.parse(text));
+          if (lastSuccessful.size >= 500) lastSuccessful.delete(lastSuccessful.keys().next().value);
+          lastSuccessful.set(key, data);
+          return data;
         })();
         entry = { promise, expires: now() + TTL };
         if (cache.size >= 500) cache.delete(cache.keys().next().value);
@@ -77,6 +84,10 @@ export function createRegistrationLookupApi({ fetchImpl = fetch, now = Date.now,
       }
       return send(200, await entry.promise);
     } catch {
+      const retained = lastSuccessful.get(key);
+      if (retained) return send(200, { ...retained, cached: true });
+      const options = kind === 'mandals' && mandalSnapshot?.districts?.[url.searchParams.get('district')];
+      if (options?.length) return send(200, { options, cached: true, capturedAt: mandalSnapshot.capturedAt });
       return send(502, { error: 'Telangana registration records are unavailable. Retry or enter the details manually.' });
     }
   };

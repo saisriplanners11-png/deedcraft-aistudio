@@ -1,0 +1,2484 @@
+{
+  "capturedAt": "2026-10-30T11:09:29.612Z",
+  "source": "https://registration.telangana.gov.in/PDE/MandalDetails.htm",
+  "districts": {
+    "19_1": [
+      {
+        "code": "01",
+        "label": "ADILABAD (RURAL)"
+      },
+      {
+        "code": "02",
+        "label": "ADILABAD (URBAN)"
+      },
+      {
+        "code": "03",
+        "label": "BAZARHATHNOOR"
+      },
+      {
+        "code": "04",
+        "label": "BELA"
+      },
+      {
+        "code": "05",
+        "label": "BHEEMPUR"
+      },
+      {
+        "code": "21",
+        "label": "BHORAJ"
+      },
+      {
+        "code": "06",
+        "label": "BOATH"
+      },
+      {
+        "code": "07",
+        "label": "GADIGUDA"
+      },
+      {
+        "code": "08",
+        "label": "GUDIHATNOOR"
+      },
+      {
+        "code": "09",
+        "label": "ICHODA"
+      },
+      {
+        "code": "10",
+        "label": "INDERAVELLY"
+      },
+      {
+        "code": "11",
+        "label": "JAINAD"
+      },
+      {
+        "code": "12",
+        "label": "MAVALA"
+      },
+      {
+        "code": "13",
+        "label": "NARNOOR"
+      },
+      {
+        "code": "14",
+        "label": "NERADIGONDA"
+      },
+      {
+        "code": "20",
+        "label": "SATHNALA"
+      },
+      {
+        "code": "15",
+        "label": "SIRIKONDA"
+      },
+      {
+        "code": "19",
+        "label": "SONALA"
+      },
+      {
+        "code": "16",
+        "label": "TALAMADUGU"
+      },
+      {
+        "code": "17",
+        "label": "TAMSI"
+      },
+      {
+        "code": "18",
+        "label": "UTNUR"
+      }
+    ],
+    "22_2": [
+      {
+        "code": "01",
+        "label": "ALLAPALLI"
+      },
+      {
+        "code": "02",
+        "label": "ANNAPUREDDYPALLI"
+      },
+      {
+        "code": "03",
+        "label": "ASWAPURAM"
+      },
+      {
+        "code": "04",
+        "label": "ASWARAOPETA"
+      },
+      {
+        "code": "05",
+        "label": "BHADRACHALAM"
+      },
+      {
+        "code": "06",
+        "label": "BURGAMPADU"
+      },
+      {
+        "code": "07",
+        "label": "CHANDRUGONDA"
+      },
+      {
+        "code": "08",
+        "label": "CHERLA"
+      },
+      {
+        "code": "09",
+        "label": "CHUNCHUPALLY"
+      },
+      {
+        "code": "10",
+        "label": "DAMMAPETA"
+      },
+      {
+        "code": "11",
+        "label": "DUMMAGUDEM"
+      },
+      {
+        "code": "12",
+        "label": "GUNDALA"
+      },
+      {
+        "code": "13",
+        "label": "JULURPAD"
+      },
+      {
+        "code": "14",
+        "label": "KARAKAGUDEM"
+      },
+      {
+        "code": "15",
+        "label": "KOTHAGUDEM"
+      },
+      {
+        "code": "16",
+        "label": "LAXMIDEVIPALLY"
+      },
+      {
+        "code": "17",
+        "label": "MANUGURU"
+      },
+      {
+        "code": "18",
+        "label": "MULAKALAPALLE"
+      },
+      {
+        "code": "19",
+        "label": "PALWANCHA"
+      },
+      {
+        "code": "20",
+        "label": "PINAPAKA"
+      },
+      {
+        "code": "21",
+        "label": "SUJATHANAGAR"
+      },
+      {
+        "code": "22",
+        "label": "TEKULAPALLE"
+      },
+      {
+        "code": "23",
+        "label": "YELLANDU"
+      }
+    ],
+    "16_1": [
+      {
+        "code": "00",
+        "label": "HYDERABAD"
+      }
+    ],
+    "21_1": [
+      {
+        "code": "01",
+        "label": "ATMAKUR"
+      },
+      {
+        "code": "19",
+        "label": "BHEEMADEVARPALLE"
+      },
+      {
+        "code": "17",
+        "label": "DAMERA"
+      },
+      {
+        "code": "02",
+        "label": "DHARMASAGAR"
+      },
+      {
+        "code": "03",
+        "label": "ELKATHURTHI"
+      },
+      {
+        "code": "04",
+        "label": "HANAMKONDA"
+      },
+      {
+        "code": "05",
+        "label": "HASANPARTHY"
+      },
+      {
+        "code": "06",
+        "label": "INAVOLU"
+      },
+      {
+        "code": "07",
+        "label": "KAMALAPUR"
+      },
+      {
+        "code": "08",
+        "label": "KHAZIPET"
+      },
+      {
+        "code": "16",
+        "label": "NADIKUDA"
+      },
+      {
+        "code": "10",
+        "label": "PARKAL"
+      },
+      {
+        "code": "14",
+        "label": "SHAYAMPET"
+      },
+      {
+        "code": "18",
+        "label": "VELAIR"
+      }
+    ],
+    "21_3": [
+      {
+        "code": "01",
+        "label": "BACHANNAPETA"
+      },
+      {
+        "code": "02",
+        "label": "CHILPUR"
+      },
+      {
+        "code": "03",
+        "label": "DEVARUPPULA"
+      },
+      {
+        "code": "04",
+        "label": "GHANPUR(STN)"
+      },
+      {
+        "code": "06",
+        "label": "JANGAON"
+      },
+      {
+        "code": "07",
+        "label": "KODAKANDLA"
+      },
+      {
+        "code": "08",
+        "label": "LINGALA GHANPUR"
+      },
+      {
+        "code": "09",
+        "label": "NARMETTA"
+      },
+      {
+        "code": "10",
+        "label": "PALAKURTHI"
+      },
+      {
+        "code": "11",
+        "label": "RAGHUNATHA PALLE"
+      },
+      {
+        "code": "12",
+        "label": "THARIGOPPULA"
+      },
+      {
+        "code": "13",
+        "label": "ZAFFERGADH"
+      }
+    ],
+    "21_4": [
+      {
+        "code": "01",
+        "label": "BHUPALPALLY"
+      },
+      {
+        "code": "02",
+        "label": "CHITYAL"
+      },
+      {
+        "code": "04",
+        "label": "GHANAPUR MULUG"
+      },
+      {
+        "code": "07",
+        "label": "KATARAM"
+      },
+      {
+        "code": "18",
+        "label": "KOTHAPALLYGORI"
+      },
+      {
+        "code": "08",
+        "label": "MAHADEVPUR"
+      },
+      {
+        "code": "09",
+        "label": "MALHARRAO"
+      },
+      {
+        "code": "11",
+        "label": "MOGULLAPALLY"
+      },
+      {
+        "code": "13",
+        "label": "MUTHARAM MAHADEVPUR"
+      },
+      {
+        "code": "14",
+        "label": "PALIMELA"
+      },
+      {
+        "code": "15",
+        "label": "REGONDA"
+      },
+      {
+        "code": "17",
+        "label": "TEKUMATLA"
+      }
+    ],
+    "20_2": [
+      {
+        "code": "01",
+        "label": "BEERPUR"
+      },
+      {
+        "code": "19",
+        "label": "BHEEMARAM"
+      },
+      {
+        "code": "02",
+        "label": "BUGGARAM"
+      },
+      {
+        "code": "03",
+        "label": "DHARMAPURI"
+      },
+      {
+        "code": "04",
+        "label": "GOLLAPALLE"
+      },
+      {
+        "code": "05",
+        "label": "IBRAHIMPATNAM"
+      },
+      {
+        "code": "06",
+        "label": "JAGTIAL"
+      },
+      {
+        "code": "07",
+        "label": "JAGTIAL RURAL"
+      },
+      {
+        "code": "08",
+        "label": "KODIMIAL"
+      },
+      {
+        "code": "09",
+        "label": "KORATLA"
+      },
+      {
+        "code": "10",
+        "label": "KOTHLAPUR"
+      },
+      {
+        "code": "11",
+        "label": "MALLAPUR"
+      },
+      {
+        "code": "12",
+        "label": "MALLIAL"
+      },
+      {
+        "code": "13",
+        "label": "MEDIPALLE"
+      },
+      {
+        "code": "14",
+        "label": "METPALLE"
+      },
+      {
+        "code": "15",
+        "label": "PEGADAPALLE"
+      },
+      {
+        "code": "16",
+        "label": "RAIKAL"
+      },
+      {
+        "code": "17",
+        "label": "SARANGAPUR"
+      },
+      {
+        "code": "18",
+        "label": "VELGATOOR"
+      }
+    ],
+    "14_2": [
+      {
+        "code": "01",
+        "label": "ALAMPUR"
+      },
+      {
+        "code": "02",
+        "label": "DHAROOR"
+      },
+      {
+        "code": "03",
+        "label": "GADWAL"
+      },
+      {
+        "code": "04",
+        "label": "GHATTU"
+      },
+      {
+        "code": "05",
+        "label": "IEEJA"
+      },
+      {
+        "code": "06",
+        "label": "ITIKYALA"
+      },
+      {
+        "code": "07",
+        "label": "KALOOR TIMMANADODDI"
+      },
+      {
+        "code": "08",
+        "label": "MALDAKAL"
+      },
+      {
+        "code": "09",
+        "label": "MANOPAD"
+      },
+      {
+        "code": "10",
+        "label": "RAJOLI"
+      },
+      {
+        "code": "11",
+        "label": "UNDAVELLY"
+      },
+      {
+        "code": "12",
+        "label": "WADDEPALLE"
+      },
+      {
+        "code": "13",
+        "label": "YERRAVALLI"
+      }
+    ],
+    "20_1": [
+      {
+        "code": "01",
+        "label": "CHIGURUMAMIDI"
+      },
+      {
+        "code": "02",
+        "label": "CHOPPADANDI"
+      },
+      {
+        "code": "03",
+        "label": "ELLANDAKUNTA"
+      },
+      {
+        "code": "04",
+        "label": "GANGADHARA"
+      },
+      {
+        "code": "05",
+        "label": "GANNERUVARAM"
+      },
+      {
+        "code": "06",
+        "label": "HUZURABAD"
+      },
+      {
+        "code": "07",
+        "label": "JAMMIKUNTA"
+      },
+      {
+        "code": "08",
+        "label": "KARIMNAGAR"
+      },
+      {
+        "code": "09",
+        "label": "KARIMNAGAR RURAL"
+      },
+      {
+        "code": "10",
+        "label": "KOTHAPALLI"
+      },
+      {
+        "code": "11",
+        "label": "MANAKONDUR"
+      },
+      {
+        "code": "12",
+        "label": "RAMADUGU"
+      },
+      {
+        "code": "13",
+        "label": "SHANKARAPATNAM"
+      },
+      {
+        "code": "14",
+        "label": "THIMMAPUR"
+      },
+      {
+        "code": "15",
+        "label": "V.SAIDAPUR"
+      },
+      {
+        "code": "16",
+        "label": "VEENAVANKA"
+      }
+    ],
+    "18_2": [
+      {
+        "code": "01",
+        "label": "BANSWADA"
+      },
+      {
+        "code": "02",
+        "label": "BHIKNOOR"
+      },
+      {
+        "code": "03",
+        "label": "BIBIPET"
+      },
+      {
+        "code": "04",
+        "label": "BICHKUNDA"
+      },
+      {
+        "code": "05",
+        "label": "BIRKUR"
+      },
+      {
+        "code": "06",
+        "label": "DOMAKONDA"
+      },
+      {
+        "code": "24",
+        "label": "DONGLI"
+      },
+      {
+        "code": "07",
+        "label": "GANDHARI"
+      },
+      {
+        "code": "08",
+        "label": "JUKKAL"
+      },
+      {
+        "code": "09",
+        "label": "KAMAREDDY"
+      },
+      {
+        "code": "10",
+        "label": "LINGAMPET"
+      },
+      {
+        "code": "11",
+        "label": "MACHAREDDY"
+      },
+      {
+        "code": "12",
+        "label": "MADNOOR"
+      },
+      {
+        "code": "25",
+        "label": "MOHAMMADNAGAR"
+      },
+      {
+        "code": "13",
+        "label": "NAGIREDDYPET"
+      },
+      {
+        "code": "14",
+        "label": "NASRULLABAD"
+      },
+      {
+        "code": "15",
+        "label": "NIZAMSAGAR"
+      },
+      {
+        "code": "23",
+        "label": "PALVANCHA"
+      },
+      {
+        "code": "16",
+        "label": "PEDDA KODAPGAL"
+      },
+      {
+        "code": "17",
+        "label": "PITLAM"
+      },
+      {
+        "code": "18",
+        "label": "RAJAMPET"
+      },
+      {
+        "code": "19",
+        "label": "RAMAREDDY"
+      },
+      {
+        "code": "20",
+        "label": "SADASIVANAGAR"
+      },
+      {
+        "code": "21",
+        "label": "TADWAI"
+      },
+      {
+        "code": "22",
+        "label": "YELLAREDDY"
+      }
+    ],
+    "22_1": [
+      {
+        "code": "01",
+        "label": "BONAKAL"
+      },
+      {
+        "code": "02",
+        "label": "CHINTHAKANI"
+      },
+      {
+        "code": "03",
+        "label": "ENKURU"
+      },
+      {
+        "code": "04",
+        "label": "KALLURU"
+      },
+      {
+        "code": "05",
+        "label": "KAMEPALLE"
+      },
+      {
+        "code": "06",
+        "label": "KHAMMAM RURAL"
+      },
+      {
+        "code": "07",
+        "label": "KHAMMAM URBAN"
+      },
+      {
+        "code": "08",
+        "label": "KONIJERLA"
+      },
+      {
+        "code": "09",
+        "label": "KUSUMANCHI"
+      },
+      {
+        "code": "10",
+        "label": "MADHIRA"
+      },
+      {
+        "code": "11",
+        "label": "MUDIGONDA"
+      },
+      {
+        "code": "12",
+        "label": "NELAKONDAPALLE"
+      },
+      {
+        "code": "13",
+        "label": "PENUBALLI"
+      },
+      {
+        "code": "14",
+        "label": "RAGHUNADHAPALEM"
+      },
+      {
+        "code": "15",
+        "label": "SATHUPALLE"
+      },
+      {
+        "code": "16",
+        "label": "SINGARENI"
+      },
+      {
+        "code": "17",
+        "label": "THALLADA"
+      },
+      {
+        "code": "18",
+        "label": "THIRUMALAYAPALEM"
+      },
+      {
+        "code": "19",
+        "label": "VEMSOOR"
+      },
+      {
+        "code": "20",
+        "label": "WYRA"
+      },
+      {
+        "code": "21",
+        "label": "YERRUPALEM"
+      }
+    ],
+    "19_4": [
+      {
+        "code": "01",
+        "label": "ASIFABAD"
+      },
+      {
+        "code": "02",
+        "label": "BEJJUR"
+      },
+      {
+        "code": "03",
+        "label": "CHINTALA MANEPALLY"
+      },
+      {
+        "code": "04",
+        "label": "DAHEGAON"
+      },
+      {
+        "code": "05",
+        "label": "JAINOOR"
+      },
+      {
+        "code": "06",
+        "label": "KAGAZ NAGAR"
+      },
+      {
+        "code": "07",
+        "label": "KERAMERI"
+      },
+      {
+        "code": "08",
+        "label": "KOUTHALA"
+      },
+      {
+        "code": "09",
+        "label": "LINGAPUR"
+      },
+      {
+        "code": "10",
+        "label": "PENCHIKALPET"
+      },
+      {
+        "code": "11",
+        "label": "REBBANA"
+      },
+      {
+        "code": "12",
+        "label": "SIRPUR (T)"
+      },
+      {
+        "code": "13",
+        "label": "SIRPUR (U)"
+      },
+      {
+        "code": "14",
+        "label": "TIRYANI"
+      },
+      {
+        "code": "15",
+        "label": "WANKDI"
+      }
+    ],
+    "14_1": [
+      {
+        "code": "01",
+        "label": "ADDAKAL"
+      },
+      {
+        "code": "02",
+        "label": "BALANGAR"
+      },
+      {
+        "code": "03",
+        "label": "BHOOTHPUR"
+      },
+      {
+        "code": "04",
+        "label": "CHINNA CHINTHA KUNTA"
+      },
+      {
+        "code": "06",
+        "label": "DEVARKADARA"
+      },
+      {
+        "code": "08",
+        "label": "GANDEED"
+      },
+      {
+        "code": "09",
+        "label": "HANWADA"
+      },
+      {
+        "code": "10",
+        "label": "JADCHERLA"
+      },
+      {
+        "code": "11",
+        "label": "KOILKONDA"
+      },
+      {
+        "code": "27",
+        "label": "KOUKUNTLA"
+      },
+      {
+        "code": "16",
+        "label": "MAHABUBANAGAR (URBAN)"
+      },
+      {
+        "code": "17",
+        "label": "MAHABUBNAGAR RURAL"
+      },
+      {
+        "code": "20",
+        "label": "MIDJIL"
+      },
+      {
+        "code": "26",
+        "label": "MOHAMMADABAD"
+      },
+      {
+        "code": "21",
+        "label": "MOOSAPET"
+      },
+      {
+        "code": "24",
+        "label": "NAWABPET"
+      },
+      {
+        "code": "25",
+        "label": "RAJAPUR"
+      }
+    ],
+    "21_5": [
+      {
+        "code": "01",
+        "label": "BAYYARAM"
+      },
+      {
+        "code": "02",
+        "label": "CHINNAGUDUR"
+      },
+      {
+        "code": "03",
+        "label": "DANTHALAPALLE"
+      },
+      {
+        "code": "04",
+        "label": "DORNAKAL"
+      },
+      {
+        "code": "05",
+        "label": "GANGARAM"
+      },
+      {
+        "code": "06",
+        "label": "GARLA"
+      },
+      {
+        "code": "07",
+        "label": "GUDUR"
+      },
+      {
+        "code": "18",
+        "label": "INUGURTHY"
+      },
+      {
+        "code": "08",
+        "label": "KESAMUDRAM"
+      },
+      {
+        "code": "09",
+        "label": "KOTHAGUDA"
+      },
+      {
+        "code": "10",
+        "label": "KURAVI"
+      },
+      {
+        "code": "11",
+        "label": "MAHABUBABAD"
+      },
+      {
+        "code": "12",
+        "label": "MARIPEDA"
+      },
+      {
+        "code": "13",
+        "label": "NARSIMHULAPET"
+      },
+      {
+        "code": "14",
+        "label": "NELLIKUDUR"
+      },
+      {
+        "code": "15",
+        "label": "PEDDAVANGARA"
+      },
+      {
+        "code": "17",
+        "label": "SEEROLE"
+      },
+      {
+        "code": "16",
+        "label": "THORRUR"
+      }
+    ],
+    "17_1": [
+      {
+        "code": "01",
+        "label": "ALLADURG"
+      },
+      {
+        "code": "02",
+        "label": "CHEGUNTA"
+      },
+      {
+        "code": "03",
+        "label": "CHILIPCHED"
+      },
+      {
+        "code": "04",
+        "label": "HAVELI GHANPUR"
+      },
+      {
+        "code": "05",
+        "label": "KOWDIPALLE"
+      },
+      {
+        "code": "06",
+        "label": "KULCHARAM"
+      },
+      {
+        "code": "07",
+        "label": "MANOHARABAD"
+      },
+      {
+        "code": "21",
+        "label": "MASAIPET"
+      },
+      {
+        "code": "08",
+        "label": "MEDAK"
+      },
+      {
+        "code": "09",
+        "label": "NARSAPUR"
+      },
+      {
+        "code": "10",
+        "label": "NARSINGI"
+      },
+      {
+        "code": "11",
+        "label": "NIZAMPET"
+      },
+      {
+        "code": "12",
+        "label": "PAPANNAPET"
+      },
+      {
+        "code": "13",
+        "label": "RAMAYAMPET"
+      },
+      {
+        "code": "14",
+        "label": "REGODE"
+      },
+      {
+        "code": "15",
+        "label": "SHANKARAMPET(A)"
+      },
+      {
+        "code": "16",
+        "label": "SHANKARAMPET(R)"
+      },
+      {
+        "code": "17",
+        "label": "SHIVAMPET"
+      },
+      {
+        "code": "18",
+        "label": "TEKMAL"
+      },
+      {
+        "code": "19",
+        "label": "TOOPRAN"
+      },
+      {
+        "code": "20",
+        "label": "YELDURTHY"
+      }
+    ],
+    "19_3": [
+      {
+        "code": "01",
+        "label": "BELLAMPALLE"
+      },
+      {
+        "code": "02",
+        "label": "BHEEMARAM"
+      },
+      {
+        "code": "03",
+        "label": "BHEEMINI"
+      },
+      {
+        "code": "04",
+        "label": "CHENNUR"
+      },
+      {
+        "code": "05",
+        "label": "DANDEPALLE"
+      },
+      {
+        "code": "06",
+        "label": "HAJIPUR"
+      },
+      {
+        "code": "07",
+        "label": "JAIPUR"
+      },
+      {
+        "code": "08",
+        "label": "JANNARAM"
+      },
+      {
+        "code": "09",
+        "label": "KANNEPALLI"
+      },
+      {
+        "code": "10",
+        "label": "KASIPET"
+      },
+      {
+        "code": "11",
+        "label": "KOTAPALLE"
+      },
+      {
+        "code": "12",
+        "label": "LUXETTIPET"
+      },
+      {
+        "code": "13",
+        "label": "MANCHERIAL"
+      },
+      {
+        "code": "14",
+        "label": "MANDAMARRI"
+      },
+      {
+        "code": "15",
+        "label": "NASPUR"
+      },
+      {
+        "code": "16",
+        "label": "NENNEL"
+      },
+      {
+        "code": "17",
+        "label": "TANDUR"
+      },
+      {
+        "code": "18",
+        "label": "VEMANPALLE"
+      }
+    ],
+    "15_2": [
+      {
+        "code": "01",
+        "label": "ALWAL"
+      },
+      {
+        "code": "02",
+        "label": "BACHUPALLY"
+      },
+      {
+        "code": "03",
+        "label": "BALANAGAR"
+      },
+      {
+        "code": "04",
+        "label": "DUNDIGAL GANDIMAISAMMA"
+      },
+      {
+        "code": "05",
+        "label": "GHATKESAR"
+      },
+      {
+        "code": "06",
+        "label": "KAPRA"
+      },
+      {
+        "code": "07",
+        "label": "KEESARA"
+      },
+      {
+        "code": "08",
+        "label": "KUKATPALLY"
+      },
+      {
+        "code": "09",
+        "label": "MALKAJGIRI"
+      },
+      {
+        "code": "10",
+        "label": "MEDCHAL"
+      },
+      {
+        "code": "11",
+        "label": "MEDIPALLY"
+      },
+      {
+        "code": "15",
+        "label": "MOODUCHINTALAPALLE"
+      },
+      {
+        "code": "12",
+        "label": "QUTHBULLAPUR"
+      },
+      {
+        "code": "13",
+        "label": "SHAMIRPET"
+      },
+      {
+        "code": "14",
+        "label": "UPPAL"
+      }
+    ],
+    "21_6": [
+      {
+        "code": "03",
+        "label": "ETURNAGARAM"
+      },
+      {
+        "code": "05",
+        "label": "GOVINDARAOPET"
+      },
+      {
+        "code": "06",
+        "label": "KANNAIGUDEM"
+      },
+      {
+        "code": "21",
+        "label": "MALLAMPALLY"
+      },
+      {
+        "code": "10",
+        "label": "MANGAPET"
+      },
+      {
+        "code": "12",
+        "label": "MULUG"
+      },
+      {
+        "code": "16",
+        "label": "TADVAI (SAMMAKKA SARAKKA)"
+      },
+      {
+        "code": "18",
+        "label": "VENKATAPUR"
+      },
+      {
+        "code": "19",
+        "label": "VENKATAPURAM"
+      },
+      {
+        "code": "20",
+        "label": "WAZEED"
+      }
+    ],
+    "14_3": [
+      {
+        "code": "01",
+        "label": "ACHAMPET"
+      },
+      {
+        "code": "02",
+        "label": "AMRABAD"
+      },
+      {
+        "code": "03",
+        "label": "BALMOOR"
+      },
+      {
+        "code": "04",
+        "label": "BIJINAPALLY"
+      },
+      {
+        "code": "05",
+        "label": "CHARAKONDA"
+      },
+      {
+        "code": "06",
+        "label": "KALWAKURTHY"
+      },
+      {
+        "code": "07",
+        "label": "KODAIR"
+      },
+      {
+        "code": "08",
+        "label": "KOLLAPUR"
+      },
+      {
+        "code": "09",
+        "label": "LINGAL"
+      },
+      {
+        "code": "10",
+        "label": "NAGARKURNOOL"
+      },
+      {
+        "code": "11",
+        "label": "PADARA"
+      },
+      {
+        "code": "12",
+        "label": "PEDDAKOTHAPALLE"
+      },
+      {
+        "code": "13",
+        "label": "PENTLAVELLI"
+      },
+      {
+        "code": "14",
+        "label": "TADOOR"
+      },
+      {
+        "code": "15",
+        "label": "TELKAPALLY"
+      },
+      {
+        "code": "16",
+        "label": "THIMMAJILPET"
+      },
+      {
+        "code": "17",
+        "label": "UPPUNUNTHALA"
+      },
+      {
+        "code": "18",
+        "label": "URKONDA"
+      },
+      {
+        "code": "19",
+        "label": "VANGOOR"
+      },
+      {
+        "code": "20",
+        "label": "VELDANDA"
+      }
+    ],
+    "23_1": [
+      {
+        "code": "01",
+        "label": "ADAVIDEVULAPALLY"
+      },
+      {
+        "code": "02",
+        "label": "ANUMULA"
+      },
+      {
+        "code": "03",
+        "label": "CHANDAMPETA"
+      },
+      {
+        "code": "04",
+        "label": "CHANDUR"
+      },
+      {
+        "code": "05",
+        "label": "CHINTHA PALLE"
+      },
+      {
+        "code": "06",
+        "label": "CHITYAL"
+      },
+      {
+        "code": "07",
+        "label": "DAMERCHERLA"
+      },
+      {
+        "code": "08",
+        "label": "DEVARAKONDA"
+      },
+      {
+        "code": "33",
+        "label": "GATTUPPAL"
+      },
+      {
+        "code": "32",
+        "label": "GUDIPALLY"
+      },
+      {
+        "code": "09",
+        "label": "GUNDLA PALLE"
+      },
+      {
+        "code": "10",
+        "label": "GURRAMPODE"
+      },
+      {
+        "code": "11",
+        "label": "KANGAL"
+      },
+      {
+        "code": "12",
+        "label": "KATTANGUR"
+      },
+      {
+        "code": "13",
+        "label": "KETHEPALLY"
+      },
+      {
+        "code": "14",
+        "label": "KONDA MALLEPALLY"
+      },
+      {
+        "code": "15",
+        "label": "MADUGULAPALLY"
+      },
+      {
+        "code": "16",
+        "label": "MARRI GUDA"
+      },
+      {
+        "code": "17",
+        "label": "MIRYALAGUDA"
+      },
+      {
+        "code": "18",
+        "label": "MUNUGODE"
+      },
+      {
+        "code": "19",
+        "label": "NAKREKAL"
+      },
+      {
+        "code": "20",
+        "label": "NALGONDA"
+      },
+      {
+        "code": "21",
+        "label": "NAMPALLY"
+      },
+      {
+        "code": "22",
+        "label": "NARKETPALLE"
+      },
+      {
+        "code": "23",
+        "label": "NEREDUGOMMU"
+      },
+      {
+        "code": "24",
+        "label": "NIDAMANUR"
+      },
+      {
+        "code": "25",
+        "label": "PEDA ADISHARLA PALLI"
+      },
+      {
+        "code": "26",
+        "label": "PEDDAVOORA"
+      },
+      {
+        "code": "27",
+        "label": "SHALIGOURARAM"
+      },
+      {
+        "code": "28",
+        "label": "TIPPARTHY"
+      },
+      {
+        "code": "29",
+        "label": "TIRUMALAGIRI (SAGAR)"
+      },
+      {
+        "code": "30",
+        "label": "TRIPURARAM"
+      },
+      {
+        "code": "31",
+        "label": "VEMULAPALLY"
+      }
+    ],
+    "19_2": [
+      {
+        "code": "01",
+        "label": "BASAR"
+      },
+      {
+        "code": "02",
+        "label": "BHAINSA"
+      },
+      {
+        "code": "03",
+        "label": "DASTURABAD"
+      },
+      {
+        "code": "04",
+        "label": "DILAWARPUR"
+      },
+      {
+        "code": "05",
+        "label": "KADDAM"
+      },
+      {
+        "code": "06",
+        "label": "KHANAPUR"
+      },
+      {
+        "code": "07",
+        "label": "KUBEER"
+      },
+      {
+        "code": "08",
+        "label": "KUNTALA"
+      },
+      {
+        "code": "09",
+        "label": "LAXMANCHANDA"
+      },
+      {
+        "code": "10",
+        "label": "LOKESHWARAM"
+      },
+      {
+        "code": "11",
+        "label": "MAMADA"
+      },
+      {
+        "code": "12",
+        "label": "MUDHOLE"
+      },
+      {
+        "code": "13",
+        "label": "NARSAPUR (G)"
+      },
+      {
+        "code": "14",
+        "label": "NIRMAL"
+      },
+      {
+        "code": "15",
+        "label": "NIRMAL RURAL"
+      },
+      {
+        "code": "16",
+        "label": "PEMBI"
+      },
+      {
+        "code": "17",
+        "label": "SARANGAPUR"
+      },
+      {
+        "code": "18",
+        "label": "SOAN"
+      },
+      {
+        "code": "19",
+        "label": "TANUR"
+      }
+    ],
+    "14_5": [
+      {
+        "code": "05",
+        "label": "DAMARAGIDDA"
+      },
+      {
+        "code": "07",
+        "label": "DHANWADA"
+      },
+      {
+        "code": "28",
+        "label": "GUNDUMAL"
+      },
+      {
+        "code": "12",
+        "label": "KOSGI"
+      },
+      {
+        "code": "29",
+        "label": "KOTHAPLLE"
+      },
+      {
+        "code": "13",
+        "label": "KRISHNA"
+      },
+      {
+        "code": "14",
+        "label": "MADDUR"
+      },
+      {
+        "code": "15",
+        "label": "MAGANOOR"
+      },
+      {
+        "code": "18",
+        "label": "MAKTHAL"
+      },
+      {
+        "code": "19",
+        "label": "MARIKAL"
+      },
+      {
+        "code": "22",
+        "label": "NARAYANPET"
+      },
+      {
+        "code": "23",
+        "label": "NARWA"
+      },
+      {
+        "code": "26",
+        "label": "UTKOOR"
+      }
+    ],
+    "18_1": [
+      {
+        "code": "31",
+        "label": "ALOOR"
+      },
+      {
+        "code": "01",
+        "label": "ARMOOR"
+      },
+      {
+        "code": "02",
+        "label": "BALKONDA"
+      },
+      {
+        "code": "03",
+        "label": "BHEEMGAL"
+      },
+      {
+        "code": "04",
+        "label": "BODHAN"
+      },
+      {
+        "code": "29",
+        "label": "CHANDUR"
+      },
+      {
+        "code": "05",
+        "label": "DHARPALLY"
+      },
+      {
+        "code": "06",
+        "label": "DICHPALLY"
+      },
+      {
+        "code": "32",
+        "label": "DONKESHWAR"
+      },
+      {
+        "code": "07",
+        "label": "INDALWAI"
+      },
+      {
+        "code": "08",
+        "label": "JAKRANPALLE"
+      },
+      {
+        "code": "09",
+        "label": "KAMMARPALLY"
+      },
+      {
+        "code": "10",
+        "label": "KOTAGIRI"
+      },
+      {
+        "code": "11",
+        "label": "MAKLOOR"
+      },
+      {
+        "code": "12",
+        "label": "MENDORA"
+      },
+      {
+        "code": "13",
+        "label": "MORTHAD"
+      },
+      {
+        "code": "28",
+        "label": "MOSRA"
+      },
+      {
+        "code": "14",
+        "label": "MUGPAL"
+      },
+      {
+        "code": "15",
+        "label": "MUPKAL"
+      },
+      {
+        "code": "16",
+        "label": "NANDIPET"
+      },
+      {
+        "code": "17",
+        "label": "NAVIPET"
+      },
+      {
+        "code": "18",
+        "label": "NIZAMABAD NORTH"
+      },
+      {
+        "code": "19",
+        "label": "NIZAMABAD RURAL"
+      },
+      {
+        "code": "20",
+        "label": "NIZAMABAD SOUTH"
+      },
+      {
+        "code": "30",
+        "label": "POTHANGAL"
+      },
+      {
+        "code": "21",
+        "label": "RENJAL"
+      },
+      {
+        "code": "22",
+        "label": "RUDRUR"
+      },
+      {
+        "code": "33",
+        "label": "SALOORA"
+      },
+      {
+        "code": "23",
+        "label": "SIRKONDA"
+      },
+      {
+        "code": "24",
+        "label": "VAILPOOR"
+      },
+      {
+        "code": "25",
+        "label": "VARNI"
+      },
+      {
+        "code": "26",
+        "label": "YEDAPALLY"
+      },
+      {
+        "code": "27",
+        "label": "YERGATLA"
+      }
+    ],
+    "20_4": [
+      {
+        "code": "01",
+        "label": "ANTHERGAON"
+      },
+      {
+        "code": "02",
+        "label": "DHARMARAM"
+      },
+      {
+        "code": "03",
+        "label": "ELIGAID"
+      },
+      {
+        "code": "04",
+        "label": "JULAPALLE"
+      },
+      {
+        "code": "05",
+        "label": "KAMANPUR"
+      },
+      {
+        "code": "06",
+        "label": "MANTHANI"
+      },
+      {
+        "code": "07",
+        "label": "MUTHARAM MANTHANI"
+      },
+      {
+        "code": "08",
+        "label": "ODELA"
+      },
+      {
+        "code": "09",
+        "label": "PALAKURTHY"
+      },
+      {
+        "code": "10",
+        "label": "PEDDAPALLE"
+      },
+      {
+        "code": "11",
+        "label": "RAMAGIRI"
+      },
+      {
+        "code": "12",
+        "label": "RAMAGUNDAM"
+      },
+      {
+        "code": "13",
+        "label": "SRIRAMPUR"
+      },
+      {
+        "code": "14",
+        "label": "SULTANABAD"
+      }
+    ],
+    "20_3": [
+      {
+        "code": "01",
+        "label": "BOINPALLE"
+      },
+      {
+        "code": "02",
+        "label": "CHANDURTHI"
+      },
+      {
+        "code": "03",
+        "label": "GAMBHIRAOPET"
+      },
+      {
+        "code": "04",
+        "label": "ILLANTHAKUNTA"
+      },
+      {
+        "code": "05",
+        "label": "KONARAOPETA"
+      },
+      {
+        "code": "06",
+        "label": "MUSTABAD"
+      },
+      {
+        "code": "07",
+        "label": "RUDRANGI"
+      },
+      {
+        "code": "08",
+        "label": "SIRSILLA"
+      },
+      {
+        "code": "09",
+        "label": "THANGALLAPALLI"
+      },
+      {
+        "code": "10",
+        "label": "VEERNAPALLI"
+      },
+      {
+        "code": "11",
+        "label": "VEMULAWADA"
+      },
+      {
+        "code": "12",
+        "label": "VEMULAWADA RURAL"
+      },
+      {
+        "code": "13",
+        "label": "YELLA REDDI PETA"
+      }
+    ],
+    "15_1": [
+      {
+        "code": "01",
+        "label": "ABDULLAPURMET"
+      },
+      {
+        "code": "02",
+        "label": "AMANGAL"
+      },
+      {
+        "code": "03",
+        "label": "BALAPUR"
+      },
+      {
+        "code": "04",
+        "label": "CHEVELLA"
+      },
+      {
+        "code": "05",
+        "label": "CHOWDERGUDEM"
+      },
+      {
+        "code": "06",
+        "label": "FAROOQNAGAR"
+      },
+      {
+        "code": "07",
+        "label": "GANDIPET"
+      },
+      {
+        "code": "08",
+        "label": "HAYATHNAGAR"
+      },
+      {
+        "code": "09",
+        "label": "IBRAHIMPATNAM"
+      },
+      {
+        "code": "10",
+        "label": "KADTHAL"
+      },
+      {
+        "code": "11",
+        "label": "KANDUKUR"
+      },
+      {
+        "code": "12",
+        "label": "KESHAMPETA"
+      },
+      {
+        "code": "13",
+        "label": "KONDURG"
+      },
+      {
+        "code": "14",
+        "label": "KOTHUR"
+      },
+      {
+        "code": "15",
+        "label": "MADGUL"
+      },
+      {
+        "code": "16",
+        "label": "MAHESHWARAM"
+      },
+      {
+        "code": "17",
+        "label": "MANCHAL"
+      },
+      {
+        "code": "18",
+        "label": "MOINABAD"
+      },
+      {
+        "code": "19",
+        "label": "NANDIGAMA"
+      },
+      {
+        "code": "20",
+        "label": "RAJENDRANAGAR"
+      },
+      {
+        "code": "21",
+        "label": "SAROORNAGAR"
+      },
+      {
+        "code": "22",
+        "label": "SHABAD"
+      },
+      {
+        "code": "23",
+        "label": "SHAMSHABAD"
+      },
+      {
+        "code": "24",
+        "label": "SHANKARPALLE"
+      },
+      {
+        "code": "25",
+        "label": "SRILINGAMPALLE"
+      },
+      {
+        "code": "26",
+        "label": "TALAKONDAPALLY"
+      },
+      {
+        "code": "27",
+        "label": "YACHARAM"
+      }
+    ],
+    "17_3": [
+      {
+        "code": "24",
+        "label": "AKBARPET-BHOOMPALLY"
+      },
+      {
+        "code": "01",
+        "label": "AKKANNAPET"
+      },
+      {
+        "code": "02",
+        "label": "BEJJANKI"
+      },
+      {
+        "code": "03",
+        "label": "CHERIYAL"
+      },
+      {
+        "code": "04",
+        "label": "CHINNAKODUR"
+      },
+      {
+        "code": "05",
+        "label": "DOULTABAD"
+      },
+      {
+        "code": "06",
+        "label": "DUBBAK"
+      },
+      {
+        "code": "07",
+        "label": "GAJWEL"
+      },
+      {
+        "code": "08",
+        "label": "HUSNABAD"
+      },
+      {
+        "code": "09",
+        "label": "JAGDEVPUR"
+      },
+      {
+        "code": "10",
+        "label": "KOHEDA"
+      },
+      {
+        "code": "11",
+        "label": "KOMURAVELLI"
+      },
+      {
+        "code": "12",
+        "label": "KONDAPAK"
+      },
+      {
+        "code": "29",
+        "label": "KUKUNOORPALLY"
+      },
+      {
+        "code": "13",
+        "label": "MADDUR"
+      },
+      {
+        "code": "14",
+        "label": "MARKOOK"
+      },
+      {
+        "code": "15",
+        "label": "MIRDODDI"
+      },
+      {
+        "code": "16",
+        "label": "MULUGU"
+      },
+      {
+        "code": "17",
+        "label": "NANGANOOR"
+      },
+      {
+        "code": "23",
+        "label": "NARAYANRAOPET"
+      },
+      {
+        "code": "18",
+        "label": "RAIPOLE"
+      },
+      {
+        "code": "19",
+        "label": "SIDDIPET (URBAN)"
+      },
+      {
+        "code": "20",
+        "label": "SIDDIPET RURAL"
+      },
+      {
+        "code": "21",
+        "label": "THOGUTA"
+      },
+      {
+        "code": "22",
+        "label": "WARGAL"
+      }
+    ],
+    "17_2": [
+      {
+        "code": "01",
+        "label": "AMEENPUR"
+      },
+      {
+        "code": "02",
+        "label": "ANDOLE"
+      },
+      {
+        "code": "27",
+        "label": "CHOWTAKUR"
+      },
+      {
+        "code": "03",
+        "label": "GUMMADIDALA"
+      },
+      {
+        "code": "04",
+        "label": "HATHNOOR"
+      },
+      {
+        "code": "05",
+        "label": "JHARASANGAM"
+      },
+      {
+        "code": "06",
+        "label": "JINNARAM"
+      },
+      {
+        "code": "07",
+        "label": "KALHER"
+      },
+      {
+        "code": "08",
+        "label": "KANDI"
+      },
+      {
+        "code": "09",
+        "label": "KANGTI"
+      },
+      {
+        "code": "10",
+        "label": "KOHIR"
+      },
+      {
+        "code": "11",
+        "label": "KONDAPUR"
+      },
+      {
+        "code": "12",
+        "label": "MANOOR"
+      },
+      {
+        "code": "13",
+        "label": "MOGUDAMPALLY"
+      },
+      {
+        "code": "14",
+        "label": "MUNIPALLY"
+      },
+      {
+        "code": "15",
+        "label": "NAGALGIDDA"
+      },
+      {
+        "code": "16",
+        "label": "NARAYANKHED"
+      },
+      {
+        "code": "17",
+        "label": "NYALKAL"
+      },
+      {
+        "code": "18",
+        "label": "PATANCHERU"
+      },
+      {
+        "code": "19",
+        "label": "PULKAL"
+      },
+      {
+        "code": "20",
+        "label": "RAIKODE"
+      },
+      {
+        "code": "21",
+        "label": "RAMACHANDRAPURAM"
+      },
+      {
+        "code": "22",
+        "label": "SADASIVPET"
+      },
+      {
+        "code": "23",
+        "label": "SANGAREDDY"
+      },
+      {
+        "code": "24",
+        "label": "SIRGAPOOR"
+      },
+      {
+        "code": "25",
+        "label": "VATPALLY"
+      },
+      {
+        "code": "26",
+        "label": "ZAHIRABAD"
+      }
+    ],
+    "23_2": [
+      {
+        "code": "01",
+        "label": "ANANTHAGIRI"
+      },
+      {
+        "code": "02",
+        "label": "ATHMAKUR (S)"
+      },
+      {
+        "code": "03",
+        "label": "CHILKUR"
+      },
+      {
+        "code": "04",
+        "label": "CHINTHALAPALEM (MALLAREDDYGUDEM)"
+      },
+      {
+        "code": "05",
+        "label": "CHIVVEMLA"
+      },
+      {
+        "code": "06",
+        "label": "GARIDE PALLE"
+      },
+      {
+        "code": "07",
+        "label": "HUZURNAGAR"
+      },
+      {
+        "code": "08",
+        "label": "JAJIREDDY GUDEM"
+      },
+      {
+        "code": "09",
+        "label": "KODAD"
+      },
+      {
+        "code": "10",
+        "label": "MADDIRALA"
+      },
+      {
+        "code": "11",
+        "label": "MATTAMPALLE"
+      },
+      {
+        "code": "12",
+        "label": "MELLACHERUVU"
+      },
+      {
+        "code": "13",
+        "label": "MOTHEY"
+      },
+      {
+        "code": "14",
+        "label": "MUNAGALA"
+      },
+      {
+        "code": "15",
+        "label": "NADIGUDEM"
+      },
+      {
+        "code": "16",
+        "label": "NAGARAM"
+      },
+      {
+        "code": "17",
+        "label": "NEREDUCHERLA"
+      },
+      {
+        "code": "18",
+        "label": "NOOTHANAKAL"
+      },
+      {
+        "code": "19",
+        "label": "PALAKEEDU"
+      },
+      {
+        "code": "20",
+        "label": "PENPAHAD"
+      },
+      {
+        "code": "21",
+        "label": "SURYAPET"
+      },
+      {
+        "code": "22",
+        "label": "THIRUMALAGIRI"
+      },
+      {
+        "code": "23",
+        "label": "THUNGATHURTHY"
+      }
+    ],
+    "15_3": [
+      {
+        "code": "01",
+        "label": "BANTWARAM"
+      },
+      {
+        "code": "02",
+        "label": "BASHEERABAD"
+      },
+      {
+        "code": "03",
+        "label": "BOMRASPET"
+      },
+      {
+        "code": "19",
+        "label": "CHOWDAPUR"
+      },
+      {
+        "code": "04",
+        "label": "DHARUR"
+      },
+      {
+        "code": "05",
+        "label": "DOMA"
+      },
+      {
+        "code": "06",
+        "label": "DOULATABAD"
+      },
+      {
+        "code": "20",
+        "label": "DUDYAL"
+      },
+      {
+        "code": "07",
+        "label": "KODANGAL"
+      },
+      {
+        "code": "08",
+        "label": "KOTEPALLY"
+      },
+      {
+        "code": "09",
+        "label": "KULKACHARLA"
+      },
+      {
+        "code": "10",
+        "label": "MARPALLE"
+      },
+      {
+        "code": "11",
+        "label": "MOMINPET"
+      },
+      {
+        "code": "12",
+        "label": "NAWABPET"
+      },
+      {
+        "code": "13",
+        "label": "PARGI"
+      },
+      {
+        "code": "14",
+        "label": "PEDDEMUL"
+      },
+      {
+        "code": "15",
+        "label": "PUDUR"
+      },
+      {
+        "code": "16",
+        "label": "TANDUR"
+      },
+      {
+        "code": "17",
+        "label": "VIKARABAD"
+      },
+      {
+        "code": "18",
+        "label": "YELAL"
+      }
+    ],
+    "21_2": [
+      {
+        "code": "02",
+        "label": "CHENNARAOPET"
+      },
+      {
+        "code": "04",
+        "label": "DUGGONDI"
+      },
+      {
+        "code": "05",
+        "label": "GEESUGONDA"
+      },
+      {
+        "code": "06",
+        "label": "KHANAPUR"
+      },
+      {
+        "code": "09",
+        "label": "KHILA WARANGAL"
+      },
+      {
+        "code": "07",
+        "label": "NALLABELLY"
+      },
+      {
+        "code": "08",
+        "label": "NARSAMPET"
+      },
+      {
+        "code": "16",
+        "label": "NEKKONDA"
+      },
+      {
+        "code": "17",
+        "label": "PARVATHAGIRI"
+      },
+      {
+        "code": "12",
+        "label": "RAIPARTHY"
+      },
+      {
+        "code": "13",
+        "label": "SANGEM"
+      },
+      {
+        "code": "11",
+        "label": "WARANGAL"
+      },
+      {
+        "code": "15",
+        "label": "WARDHANNAPET"
+      }
+    ],
+    "14_4": [
+      {
+        "code": "01",
+        "label": "AMARCHINTHA"
+      },
+      {
+        "code": "02",
+        "label": "ATMAKUR"
+      },
+      {
+        "code": "03",
+        "label": "CHINNAMBAVI"
+      },
+      {
+        "code": "04",
+        "label": "GHANPUR"
+      },
+      {
+        "code": "05",
+        "label": "GOPALPET"
+      },
+      {
+        "code": "06",
+        "label": "KOTHAKOTA"
+      },
+      {
+        "code": "07",
+        "label": "MADANAPUR"
+      },
+      {
+        "code": "08",
+        "label": "PANGAL"
+      },
+      {
+        "code": "09",
+        "label": "PEBBAIR"
+      },
+      {
+        "code": "10",
+        "label": "PEDDAMANDADI"
+      },
+      {
+        "code": "11",
+        "label": "REVALLY"
+      },
+      {
+        "code": "12",
+        "label": "SRIRANGAPUR"
+      },
+      {
+        "code": "13",
+        "label": "WANAPARTHY"
+      },
+      {
+        "code": "14",
+        "label": "WEEPANAGANDLA"
+      },
+      {
+        "code": "15",
+        "label": "YEDULA"
+      }
+    ],
+    "23_3": [
+      {
+        "code": "01",
+        "label": "ADDAGUDUR"
+      },
+      {
+        "code": "02",
+        "label": "ALAIR"
+      },
+      {
+        "code": "03",
+        "label": "ATHMAKUR(M)"
+      },
+      {
+        "code": "04",
+        "label": "B.POCHAMPALLY"
+      },
+      {
+        "code": "05",
+        "label": "BHONGIR"
+      },
+      {
+        "code": "06",
+        "label": "BIBINAGAR"
+      },
+      {
+        "code": "07",
+        "label": "BOMMALARAMARAM"
+      },
+      {
+        "code": "08",
+        "label": "CHOUTUPPAL"
+      },
+      {
+        "code": "17",
+        "label": "GUNDALA"
+      },
+      {
+        "code": "09",
+        "label": "MOTAKONDUR"
+      },
+      {
+        "code": "10",
+        "label": "MOTHKUR"
+      },
+      {
+        "code": "11",
+        "label": "NARAYANAPOOR"
+      },
+      {
+        "code": "12",
+        "label": "RAJAPET"
+      },
+      {
+        "code": "13",
+        "label": "RAMANNAPETA"
+      },
+      {
+        "code": "14",
+        "label": "THURKAPALLY"
+      },
+      {
+        "code": "15",
+        "label": "VALIGONDA"
+      },
+      {
+        "code": "16",
+        "label": "YADAGIRIGUTTA"
+      }
+    ]
+  }
+}
