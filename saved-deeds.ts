@@ -1,3 +1,4 @@
+import type { PlanDocument as GuidedPlanDocument } from './guided-reference-plan/src/types';
 import type { Draft } from './source-draft';
 import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
@@ -14,6 +15,8 @@ export type SavedDeed = {
   draft: Draft;
   sourceFiles: Record<string, File[]>;
   planDrafts: Record<string, PlanDocument>;
+  guidedPlanDrafts?: Record<string, GuidedPlanDocument>;
+  guidedPlanSelectedSvgs?: Record<string, string>;
   exactPlanDrafts?: Record<string, ExactPlanDocument>;
   exactPlanSelectedSvgs?: Record<string, string>;
   referencePlanDrafts: Record<string, ReferencePlanDocument>;

@@ -1389,7 +1389,7 @@ function addPartySignatureLines(body: string, values: Map<string, string>, rewri
   const vendees = partyRewrite('claimant')?.records?.map(record => record['CLAIMANT NAME'] || '')
     || [values.get(norm('CLAIMANT NAME')) || ''];
   const heading = topLevelChildren(body).find(child =>
-    /SIGN(?:\/S|ATURES?) OF VENDOR(?:\/S|S)?[\s\S]*SIGN(?:\/S|ATURES?) OF VENDEE(?:\/S|S)?/i.test(plainText(body.slice(child.start, child.end)))
+    /SIGN(?:\/S|ATURES?)\s+OF\s+(?:THE\s+)?VENDOR(?:\/S|S)?[\s\S]*SIGN(?:\/S|ATURES?)\s+OF\s+(?:THE\s+)?VENDEE(?:\/S|S)?/i.test(plainText(body.slice(child.start, child.end)))
   );
   if (!heading) throw new Error('Template signature headings are missing; party signature lines could not be placed.');
   const lines = Array.from({ length: Math.max(vendors.length, vendees.length) }, (_, index) => {

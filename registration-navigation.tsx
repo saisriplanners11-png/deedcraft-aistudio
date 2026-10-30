@@ -2,7 +2,7 @@ import React from 'react';
 import { Check, AlertCircle, LayoutGrid, ArrowLeft, ArrowRight } from 'lucide-react';
 import type { WorkflowNavigationProps } from './workspace-presentation';
 
-const shortLabels = ['Setup', 'Documents', 'Jurisdiction', 'Property', 'Value', 'Payments', 'Executants', 'Claimants', 'Reverify', 'Generate', 'Plan'];
+const shortLabels = ['Setup', 'Documents', 'Jurisdiction', 'Property', 'Value', 'Payments', 'Executants', 'Claimants', 'Reverify', 'Generate', 'Plan', 'New Plan'];
 
 export function RegistrationNavigation({ steps, current, completed, attention, title, onNavigate }: WorkflowNavigationProps) {
   const index = steps.findIndex(step => step.id === current);
@@ -11,7 +11,7 @@ export function RegistrationNavigation({ steps, current, completed, attention, t
     <ol className="registration-steps" style={{ '--registration-step-count': steps.length } as React.CSSProperties}>{steps.map((step, position) => {
       const needsReview = attention.includes(step.id); const done = completed.includes(step.id) && !needsReview;
       const status = needsReview ? 'Needs review' : done ? 'Complete' : 'To complete';
-      return <li key={step.id}><button type="button" className={`${current === step.id ? 'active ' : ''}${done ? 'complete' : ''}`} aria-label={`${position + 1} ${step.label} — ${status}${step.id === 10 ? ' — Optional' : ''}`} title={`${step.label} · ${status}${step.id === 10 ? ' · Optional' : ''}`} aria-current={current === step.id ? 'step' : undefined} onClick={() => onNavigate(step.id)}>
+      return <li key={step.id}><button type="button" className={`${current === step.id ? 'active ' : ''}${done ? 'complete' : ''}`} aria-label={`${position + 1} ${step.label} — ${status}${step.id >= 10 ? ' — Optional' : ''}`} title={`${step.label} · ${status}${step.id >= 10 ? ' · Optional' : ''}`} aria-current={current === step.id ? 'step' : undefined} onClick={() => onNavigate(step.id)}>
         <span className="registration-step-number" aria-hidden="true">{position + 1}</span><strong aria-hidden="true">{shortLabels[step.id] || step.label}</strong><span className="registration-step-state" aria-hidden="true">{needsReview ? <AlertCircle size={11} /> : done ? <Check size={11} /> : null}</span>
       </button></li>;
     })}</ol>

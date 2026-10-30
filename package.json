@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs && node qa/sale-v10.mjs && node qa/gift-deed-flow.mjs && node qa/municipal-gift-flow.mjs && node qa/gift-preservation-flow.mjs && node qa/deed-preservation-flow.mjs && node qa/authority-template-refresh-flow.mjs && node qa/master-template-refresh-flow.mjs && node qa/title-amendment-flow.mjs && node qa/agreement-sale-gpa-flow.mjs && node qa/general-poa-flow.mjs && node qa/output-format-flow.mjs && node qa/template-dashboard-coverage.mjs && node qa/flat-agreement-flow.mjs && node qa/authority-download-flow.mjs && node qa/deed-improvements-flow.mjs && node qa/party-pronouns-flow.mjs && vitest run title-amendments.test.ts authority-extraction.test.ts deed-improvements.test.ts poa-options.test.ts docx.test.ts merge.test.ts gift-options.test.ts instruments.test.ts file-drop-zone.test.ts source-draft.test.ts template-version-status.test.ts draft-preservation.test.ts workflow-steps.test.ts authority-import.test.ts payments.test.ts registration-lookup-api.test.mjs registration-location-state.test.ts party-upload-record.test.ts",
+    "build": "vite build && node build-template-runtime.mjs && node qa/share-clause-flow.mjs && node qa/sale-v10.mjs && node qa/gift-deed-flow.mjs && node qa/municipal-gift-flow.mjs && node qa/gift-preservation-flow.mjs && node qa/deed-preservation-flow.mjs && node qa/authority-template-refresh-flow.mjs && node qa/master-template-refresh-flow.mjs && node qa/title-amendment-flow.mjs && node qa/agreement-sale-gpa-flow.mjs && node qa/general-poa-flow.mjs && node qa/output-format-flow.mjs && node qa/template-dashboard-coverage.mjs && node qa/flat-agreement-flow.mjs && node qa/authority-download-flow.mjs && node qa/deed-improvements-flow.mjs && node qa/party-pronouns-flow.mjs && vitest run guided-plan-export.test.ts guided-reference-integration.test.ts exact-reference-integration.test.ts title-amendments.test.ts authority-extraction.test.ts deed-improvements.test.ts poa-options.test.ts docx.test.ts merge.test.ts gift-options.test.ts instruments.test.ts file-drop-zone.test.ts source-draft.test.ts template-version-status.test.ts draft-preservation.test.ts workflow-steps.test.ts authority-import.test.ts payments.test.ts registration-lookup-api.test.mjs registration-location-state.test.ts party-upload-record.test.ts",
     "preview": "vite preview",
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -22,6 +22,7 @@
     "test:e2e": "node qa/section-upload-flow.mjs",
     "test:plan-e2e": "node qa/property-plan-flow.mjs",
     "test:exact-plan-e2e": "node qa/exact-reference-flow.mjs",
+    "test:guided-plan": "vitest run guided-reference-integration.test.ts guided-plan-export.test.ts --maxWorkers=1",
     "benchmark": "node benchmark-runner.mjs benchmarks/manifest.json benchmarks/report.json",
     "test:entity-e2e": "node qa/entity-party-flow.mjs",
     "test:flat-e2e": "node qa/flat-template-flow.mjs",

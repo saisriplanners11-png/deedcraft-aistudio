@@ -39,7 +39,7 @@ describe('source-backed drafts', () => {
   });
   it('opens saved legacy plan steps in the retained editor without changing deed facts', () => {
     for (const step of [10, 11, 12]) {
-      const saved = { ...newDraft(), step, manual: { 'property|primary|surveyNo': '123/A' } };
+      const saved = { ...newDraft(), workflowVersion: undefined, step, manual: { 'property|primary|surveyNo': '123/A' } };
       const restored = draftReducer(newDraft(), { type: 'load', draft: saved });
       expect(restored.step).toBe(10);
       expect(restored.manual).toEqual(saved.manual);

@@ -15,7 +15,7 @@ try {
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.getByRole('button', { name: 'Create your first deed' }).click();
   await page.locator('.rail-step').first().waitFor();
-  assert.equal(await page.locator('.rail-step').count(), 11);
+  assert.equal(await page.locator('.rail-step').count(), 12);
   const go = async index => page.locator('.rail-step').nth(index).click();
   await go(0);
   await page.getByLabel('What is this property?').selectOption('Residential');
@@ -34,15 +34,17 @@ try {
   await page.locator('iframe[title="Property Plan — Exact Reference"]').waitFor();
   assert.equal(await page.locator('iframe[title="Property Plan Generator"]').count(), 0);
   await page.frameLocator('iframe[title="Property Plan — Exact Reference"]').locator('#input-survey-no').waitFor();
+  await page.getByRole('button', { name: /Continue.*New Generator/ }).click();
+  await page.frameLocator('iframe[title="Property Plan — New Generator"]').locator('#input-survey-no').waitFor();
   assert.equal(await page.locator('.navigation .primary').count(), 0);
   await page.setViewportSize({ width: 375, height: 812 });
-  assert.equal(await page.locator('#mobile-step option').count(), 12);
+  assert.equal(await page.locator('#mobile-step option').count(), 13);
   await page.locator('#mobile-step').selectOption('1');
   assert.equal(await page.getByLabel('What is this property?').count(), 0);
   await mkdir(new URL('../tmp/workflow-cleanup/', import.meta.url), { recursive: true });
   await page.screenshot({ path: new URL('../tmp/workflow-cleanup/documents-mobile.png', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('PASS: property type reused, change link, 11-step desktop/mobile navigation, retained exact-reference iframe.');
+  console.log('PASS: property type reused, change link, 12-step desktop/mobile navigation, retained and added plan editors.');
 } finally {
   await browser.close();
 }

@@ -16,7 +16,7 @@ const guides = [
 ];
 
 export function ScreenGuide({ step, gift = false, municipal = false, showFieldHelp, onFieldHelpChange }: { step: number; gift?: boolean; municipal?: boolean; showFieldHelp: boolean; onFieldHelpChange: (show: boolean) => void }) {
-  const guide = guides[step];
+  const guide = guides[step === 11 ? 10 : step];
   if (!guide) return null;
   const title = step === 6 && gift ? 'Add the people giving the property' : step === 7 && gift ? 'Add the people receiving the gift' : guide.title;
   const intro = step === 6 && gift ? 'Enter each donor separately. Check their identity, address and any organisation representatives.' : guide.intro;

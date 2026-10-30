@@ -6,6 +6,16 @@ const bytes = new Uint8Array(await readFile(new URL('../sale-deed-template-v10.d
 const validation = await rt.validateSaleDeedTemplate(bytes);
 assert(validation.valid, validation.errors.join('\n'));
 const source = { kind: 'custom', name: 'Sale v10', hash: '', bytes, validation };
+// Replacement drafts may retain THE in both signature captions.
+const signatureEntries = await rt.readZip(bytes);
+const signatureDocument = signatureEntries.find(entry => entry.name === 'word/document.xml');
+signatureDocument.data = new TextEncoder().encode(rt.replaceRunText(new TextDecoder().decode(signatureDocument.data), /SIGN(?:\/S|ATURES?) OF (?:THE )?(VENDOR|VENDEE)(?:\/S|S)?/gi, match => match[0].replace(/ OF (?:THE )?/i, ' OF THE ')));
+const signatureSource = { ...source, bytes: await rt.writeZip(signatureEntries) };
+for (const mode of ['ordinary', 'gpa', 'agpa']) {
+  const output = await rt.renderSample(mode + '-plot', signatureSource);
+  const text = await rt.docxToText(output);
+  assert.match(text, /_{16}/, `${mode}: signature writing lines must survive headings containing THE`);
+}
 const out = new URL('../tmp/v10-qa/', import.meta.url);
 await mkdir(out, { recursive: true });
 for (const [id] of rt.saleMatrixCases) {

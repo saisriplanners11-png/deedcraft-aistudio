@@ -46,6 +46,9 @@ import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
 import { PaymentCard, AddPayment } from './paymentui';
+import { GuidedReferenceStep } from './guided-reference-step';
+import { guidedPlanFromDraft } from './guided-reference-integration';
+import type { PlanDocument as GuidedPlanDocument } from './guided-reference-plan/src/types';
 import { ExactReferenceStep } from './exact-reference-step';
 import { exactPlanFromDraft } from './exact-reference-integration';
 import type { PlanDocument as ExactPlanDocument } from './exact-reference-plan/src/types';
@@ -606,6 +609,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
+  const [guidedPlanDrafts, setGuidedPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
+  const [guidedPlanSelectedSvgs, setGuidedPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [exactPlanDrafts, setExactPlanDrafts] = useState<Record<string, ExactPlanDocument>>({});
   const [exactPlanSelectedSvgs, setExactPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
@@ -658,7 +663,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
-    || !!Object.keys(exactPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(exactPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
     id: draft.id,
@@ -667,7 +672,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
-    planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
+    planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
     templateMode, customTemplate, libraryTemplate: (generalPoa || agreementSaleGpa || draft.instrumentId === 'gift') && templateMode === 'built-in' ? bundledTemplatePin(bundledVersion) : libraryTemplate, generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
@@ -693,7 +698,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
   async function refreshPublishedTemplate() {
     try {
       const listing = await listTemplates();
@@ -991,7 +996,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPendingReviews([]); setExactPlanDrafts({}); setExactPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
+    setPendingReviews([]); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setExactPlanDrafts({}); setExactPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
     setLibraryTemplate(null); setGenerationManifest(null);
@@ -1038,6 +1043,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     setSourceFiles(deed.sourceFiles || {});
     setPlanDrafts(deed.planDrafts || {});
     setReferencePlanDrafts(deed.referencePlanDrafts || {});
+    setGuidedPlanDrafts(deed.guidedPlanDrafts || {});
+    setGuidedPlanSelectedSvgs(deed.guidedPlanSelectedSvgs || {});
     setExactPlanDrafts(deed.exactPlanDrafts || {});
     setExactPlanSelectedSvgs(deed.exactPlanSelectedSvgs || {});
     setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
@@ -1622,6 +1629,22 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               setDownload(null);
             }}
             onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setExactPlanSelectedSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
+        </section>}
+
+        {step === 11 && <section className="panel reference-plan-step">
+          <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
+          <GuidedReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId}
+            seed={guidedPlanFromDraft(state, activePropertyId)} doc={guidedPlanDrafts[activePropertyId]}
+            selected={!!guidedPlanSelectedSvgs[activePropertyId] && guidedPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]}
+            onChange={doc => {
+              setGuidedPlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
+              if (guidedPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]) {
+                setSelectedPlanSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
+              }
+              setGuidedPlanSelectedSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
+              setDownload(null);
+            }}
+            onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setGuidedPlanSelectedSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
         </section>}
 
         </div>}

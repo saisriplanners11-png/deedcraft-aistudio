@@ -44,6 +44,8 @@ export type Source = {
 import { saleDocumentForVariant, type SaleAuthority } from './sale-options';
 
 export type Draft = {
+  /** Distinguishes the added plan step from legacy removed plan-step IDs. */
+  workflowVersion?: 2;
   /** Optional lookup metadata; canonical names remain in the existing property fields. */
   jurisdictionLookups?: Record<string, JurisdictionLookupState>;
   saleAuthority?: SaleAuthority;
@@ -71,7 +73,7 @@ export type Draft = {
   templateFieldReviews?: Record<string, 'accepted' | 'rejected'>;
 };
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const newDraft = (): Draft => ({ id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
+export const newDraft = (): Draft => ({ workflowVersion: 2, id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'jurisdiction-lookup'; propertyId: string; value: JurisdictionLookupState }
   | { type: 'add-party'; role: 'executant' | 'claimant'; record: string }
@@ -104,10 +106,11 @@ export type Action =
 
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
-  // All three former plan steps now open the retained exact-reference editor.
+  // Legacy removed plan steps reopen in the original editor; v2 keeps the added step.
   if (action.type === 'load') {
-    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step > 10 ? 10 : action.draft.step);
-    return migratePartyPeople(step === action.draft.step ? action.draft : { ...action.draft, step });
+    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step > 10 && action.draft.workflowVersion !== 2 ? 10 : action.draft.step);
+    return migratePartyPeople(step === action.draft.step && action.draft.workflowVersion === 2
+      ? action.draft : { ...action.draft, step, workflowVersion: 2 });
   }
   if (action.type === 'step') return { ...draft, step: normalizeWorkflowStep(draft.instrumentId, action.step) };
   let next = draft;

@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* Keep imported editor controls inside the host iframe on narrow screens. */
+@media screen and (max-width: 620px) {
+  .guided-plan-workspace > header > div {
+    height: auto;
+    padding: 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .guided-plan-workspace > header > div > div {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .guided-plan-workspace > header > div > div:first-child { width: 100%; }
+  .guided-plan-workspace > header h1 { font-size: 14px; }
+  .guided-plan-workspace > main { padding: 12px; min-width: 0; }
+  .guided-plan-workspace :is(input, select, textarea) { min-width: 0; max-width: 100%; }
+  .guided-plan-workspace .grid > * { min-width: 0; }
+  .guided-plan-workspace main .flex:not(#printable-plan-document, #printable-plan-document *) {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  .guided-plan-workspace main .flex > :not(#printable-plan-document, #printable-plan-document *) {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0.32in !important;
+  }
+
+  html, body {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Reset all parent wrappers so they don't constrain width to 1280px desktop */
+  #root,
+  #root > div,
+  main,
+  .space-y-6,
+  .print-canvas-wrapper {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    float: none !important;
+  }
+
+  /* Hide app navigation, buttons, edit toolbars during print */
+  header, nav, aside, button, .print\:hidden {
+    display: none !important;
+  }
+
+  /* Main A4 Deed document frame with outer solid line of double-border */
+  #printable-plan-document {
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    border: 3.5px solid #000000 !important;
+    padding: 3.5px !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    /* Exactly extend A4 document down to 0.32in from bottom edge of sheet: 297mm - 0.65in */
+    height: calc(297mm - 0.65in) !important;
+    min-height: calc(297mm - 0.65in) !important;
+    max-height: calc(297mm - 0.65in) !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    color: #000000 !important;
+    background-color: #ffffff !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Inner line of the legal double border */
+  .plan-double-border-inner {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    border: 1.2px solid #000000 !important;
+    padding: 8px 12px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    flex: 1 1 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #printable-plan-document * {
+    color: #000000 !important;
+    border-color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+
