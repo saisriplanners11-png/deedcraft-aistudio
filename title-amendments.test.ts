@@ -13,7 +13,7 @@ it('routes typed amendment names while leaving normal titles and flat-allotment 
 
 it('uses the active link card values and never the original title, flat agreement or another record', () => {
   const input = { linkOption: 'linkDoc', linkDocType: 'Rectification Deed', linkDocNo: 'CURRENT-42', linkDocDate: '2024-03-04', linkSro: 'OWN OFFICE', linkSroCode: 'OWN-CODE', rectificationDeedNo: 'OLDER-HIDDEN', rectificationDeedSro: 'OLDER OFFICE', supplementalDocNo: 'FLAT-ONLY', sro: 'PROPERTY OFFICE' };
-  expect(titleAmendmentValues(input, 'rectification')).toEqual({ 'Rectification Deed Type': 'Rectification Deed', 'Rectification Deed No.': 'CURRENT-42', 'Rectification Deed Date': '04-03-2024', 'Rectification Deed SRO': 'OWN OFFICE', 'Rectification Deed SRO Code': 'OWN-CODE' });
+  expect(titleAmendmentValues(input, 'rectification')).toEqual({ 'Rectification Deed Type': 'Rectification Deed', 'Rectification Deed No.': 'CURRENT-42', 'Rectification Deed Date': '04-03-2024', 'Rectification Deed SRO': 'Own Office', 'Rectification Deed SRO Code': 'OWN-CODE' });
   expect(input.rectificationDeedNo).toBe('OLDER-HIDDEN');
   expect(titleAmendmentValues({ linkDocType: 'Supplemental Deed', supplementalDocNo: 'FLAT-ONLY', sro: 'PROPERTY OFFICE' }, 'supplemental')['Supplemental Deed No.']).toBe('');
 });

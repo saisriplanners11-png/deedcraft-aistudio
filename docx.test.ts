@@ -182,8 +182,8 @@ describe('sale deed template merge', () => {
     const state = { ...initialState, category: 'Vacant Plot', form: { ...initialState.form, nearAdjacent: 'Adjacent', nearHNo: '10-1-36/1' } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), scheduleMergesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text.toLowerCase()).toContain('situated adjacent house no.10-1-36/1');
-    expect(text.toLowerCase()).not.toContain('situated near/adjacent h.no.10-1-36/1');
+    expect(text.toLowerCase()).toContain('situated adjacent h.no. 10-1-36/1');
+    expect(text.toLowerCase()).not.toContain('situated near/adjacent h.no. 10-1-36/1');
   });
 
   it('writes consideration words in parentheses in both sale recitals', async () => {
@@ -512,6 +512,18 @@ describe('sale deed template merge', () => {
       expect(text).toContain('Assessment No. PTIN-77');
       expect(text.includes('Assessment No. PTIN-77 (Part).')).toBe(category === 'Part open place');
     }
+  });
+
+  it('prints every Part open place H.No./PTIN pair in row order', async () => {
+    const state = {
+      ...initialState,
+      category: 'Part open place',
+      form: { ...initialState.form, housePtinPairs: '[{"id":"one","houseNo":"6-1-142","ptin":"PTIN-142"},{"id":"two","houseNo":"6-1-143","ptin":"PTIN-143"}]' },
+    };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(text).toContain('Assessment No. PTIN-142 (H.No. 6-1-142); PTIN-143 (H.No. 6-1-143) (Part).');
+    expect(text).toContain('6-1-142, 6-1-143');
   });
 
   it('renders a separate Flat schedule with apartment and unit boundaries', async () => {

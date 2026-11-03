@@ -3,7 +3,8 @@ import { titleAmendmentKind } from './title-amendments';
 import { normalizeWorkflowStep } from './workflow-steps';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
-import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
+import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_PTIN_PAIR_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
+import { mergePropertyHousePtinPairValues } from './property-house-ptin';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
@@ -226,7 +227,7 @@ function removeRecord(draft: Draft, role: Role, record: string): Draft {
 export type Evidence = Candidate & { sourceId: string; sourceName: string; sourceRevision: number };
 const exact = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 /** Facts that describe a moment in time, not an identity — never trusted from a historical read. */
-const CURRENT_STATE_ONLY = /Age$|Mobile$|Occupation$|^govtRate$|^consid$|^executionDate$|^stampValue$/;
+const CURRENT_STATE_ONLY = /Age$|Mobile$|Occupation$|^consid$|^executionDate$|^stampValue$/;
 
 /** A projection, never an incremental merge: deleting evidence deletes its values. */
 export function resolveDraft(draft: Draft) {
@@ -259,7 +260,7 @@ export function resolveDraft(draft: Draft) {
         c.field = c.field.replace(/^(executant|claimant)/, 'party');
       }
       // The link deed's own age/mobile/occupation and its own consideration,
-      // stamp value, rate and execution date describe THAT transaction, not
+      // stamp value and execution date describe THAT transaction, not
       // today's — even once a drafter confirms its buyer as today's seller,
       // those specific facts must still be re-supplied from a current source.
       if (CURRENT_STATE_ONLY.test(c.field)) c.historical = true;
@@ -313,6 +314,14 @@ export function resolveDraft(draft: Draft) {
     // Historical mutable facts may support title, but must not become current facts.
     const usable = candidates.filter(c => !c.historical || !CURRENT_STATE_ONLY.test(c.field));
     if (!usable.length) continue;
+    if (field === 'housePtinPairs') {
+      const mergedPairs = mergePropertyHousePtinPairValues(usable.map(candidate => candidate.value));
+      if (mergedPairs !== null) {
+        values[key] = mergedPairs;
+        evidence[key] = usable;
+        continue;
+      }
+    }
     const selected = usable.find(c => c.id === draft.choices[key]);
     if (selected) { values[key] = uppercasePartyIdentity(field, selected.value); evidence[key] = [selected]; continue; }
     const byValue = new Map<string, Evidence[]>();
@@ -336,7 +345,7 @@ export function resolveDraft(draft: Draft) {
   }
   for (const [key, value] of Object.entries(draft.manual)) {
     values[key] = uppercasePartyIdentity(key.split('|')[2], value);
-    if (groups[key]?.some(c => exact(c.value) !== exact(value))) conflicts[key] = groups[key];
+    if (key.split('|')[2] !== 'housePtinPairs' && groups[key]?.some(c => exact(c.value) !== exact(value))) conflicts[key] = groups[key];
   }
   for (const key of Object.keys(values)) if (key.endsWith('|localAuthorityType')) values[key] = localAuthorityName(values[key]);
   for (const [key, value] of Object.entries(values)) if (key.startsWith('property|') && key.endsWith('|extentSqYards')) {
@@ -398,7 +407,7 @@ export function appStateFor(draft: Draft): AppState {
   const linkRecordsBySchedule: Record<string, ValueRecord[]> = {};
   for (const link of links) (linkRecordsBySchedule[linkScheduleId(link)] ??= []).push(link);
   const assessmentFor = (scheduleId: string, category: string) => {
-    if (!HOUSE_CATEGORIES.includes(category)) return '';
+    if (!HOUSE_PTIN_PAIR_CATEGORIES.includes(category)) return '';
     const records = linkRecordsBySchedule[scheduleId] || [];
     return records.find(record => record.values.linkOption === 'houseTax' && record.values.bltNo)?.values.bltNo
       || records.find(record => record.values.linkOption === 'assessment' && record.values.bltNo)?.values.bltNo

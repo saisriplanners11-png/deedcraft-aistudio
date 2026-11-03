@@ -32,6 +32,11 @@ add(['G.P.A.Doct.No.', 'A.G.P.A.Doct.No.'], 'Executant Details / Sale authority'
 add(['G.P.A.Doct.Date', 'A.G.P.A.Doct.Date'], 'Executant Details / Sale authority', ['saleAuthority.documentDate']);
 add(['Authority SRO'], 'Executant Details / Sale authority', ['saleAuthority.sro']);
 add(['Authority SRO Code'], 'Executant Details / Sale authority', ['saleAuthority.sroCode']);
+add(['Sub Registrar Code'], 'Link Deed & Enclosures / Link document', ['linkSro', 'linkSroCode']);
+add(['Rectification Deed SRO Code'], 'Link Deed & Enclosures / Rectification Deed', ['rectificationDeedSro', 'rectificationDeedSroCode']);
+add(['Supplemental Deed SRO Code'], 'Link Deed & Enclosures / Supplemental Deed', ['supplementalDeedSro', 'supplementalDeedSroCode']);
+add(['Development SRO Code'], 'Property Schedules / Landowner–developer agreements', ['developmentSro', 'developmentSroCode']);
+add(['Supplemental SRO Code'], 'Property Schedules / Landowner–developer agreements', ['supplementalSro', 'supplementalSroCode']);
 add(['Authority Book Number'], 'Executant Details / Sale authority', ['saleAuthority.bookNumber']);
 add(['Adjusted Amount'], 'Executant Details / AGPA authority', ['saleAuthority.adjustedAmount']);
 add(['Authority Holder Label'], 'Deed setup / selected Sale form', ['variantId']);
@@ -59,7 +64,7 @@ for (const file of ['gift-municipal-template-v3.docx', 'gift-deed-template-v6.do
  });
  report.push({ file, count: rows.length, fields: rows });
 }
-for (const field of rt.ALL_FIELDS.filter(field => /^(?:development|supplemental)/.test(field.id) && !/^supplementalDeed/.test(field.id))) {
+for (const field of rt.ALL_FIELDS.filter(field => !field.hidden && /^(?:development|supplemental)/.test(field.id) && !/^supplementalDeed/.test(field.id))) {
  assert(rt.groupsForStep(3, 'Flat').some(group => group.title === 'Landowner–developer agreements' && group.fields.some(item => item.id === field.id)), `${field.id}: dedicated dashboard section`);
 }
 await mkdir('tmp/template-field-coverage', { recursive: true });

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 // Synthetic evidence keeps the integration test independent of external APIs.
 const out = fileURLToPath(new URL('../tmp/upload-first-qa/', import.meta.url));
 await mkdir(out,{recursive:true});
-const property = {propState:'Telangana',district:'Karimnagar',mandal:'Sircilla',village:'Sircilla',locality:'Ganeshnagar',pinCode:'505301',sro:'Sircilla',districtRegistrar:'Karimnagar',plotNo:'16',nearHNo:'10-1-36/1',surveyNo:'795/B&D',extentValue:'157.22',extentSqYards:'157.22',extentSqMeters:'132.06',unit:'Sq. Yards',category:'Part open place',boundaryNorth:'North neighbour',boundarySouth:"21' Road",boundaryEast:'East neighbour',boundaryWest:'West neighbour'};
+const property = {propState:'Telangana',district:'Karimnagar',mandal:'Sircilla',village:'Sircilla',locality:'Ganeshnagar',pinCode:'505301',sro:'Sircilla',districtRegistrar:'Karimnagar',plotNo:'16',nearHNo:'10-1-36/1',surveyNo:'795/B&D',extentValue:'157.22',extentSqYards:'157.22',extentSqMeters:'132.06',unit:'Sq. Yards',category:'Part open place',housePtinPairs:JSON.stringify([{houseNo:'6-1-142',ptin:'PTIN-142'},{houseNo:'6-1-143',ptin:'PTIN-143'}]),boundaryNorth:'North neighbour',boundarySouth:"21' Road",boundaryEast:'East neighbour',boundaryWest:'West neighbour',govtRate:'1000',structValue:'0'};
 const own = {
   DEED:{linkDocType:'Sale Deed',linkDocNo:'1263/2016',linkDocDate:'2016-02-27',linkSro:'Sircilla',linkRegisteredVolume:'1',linkPriorOwner:'Historical Vendor',linkNature:'Sale Deed'},
   PASSBOOK:{titleDeedNo:'PPB42',khataNo:'60770',pattadarName:'Recorded Holder',revenueMandal:'Sircilla'},
@@ -49,7 +49,7 @@ try {
     return p.getByRole('button',{name:label,exact:false}).click();
   };
   const idle=async()=>{ await p.waitForFunction(()=>!document.querySelector('.document-upload[aria-busy="true"]')); const close=p.getByRole('button',{name:'Close',exact:true}); if(await close.isVisible()) await close.click(); };
-  const value=label=>p.getByLabel(label,{exact:false}).inputValue();
+  const value=label=>label==='Full name' ? p.getByLabel(/^Full name/i).inputValue() : p.getByLabel(label,{exact:false}).inputValue();
   await p.goto(process.env.BASE_URL||'http://127.0.0.1:5173');
   await p.getByRole('button',{name:/New deed/}).first().click();
   await step('01 Deed setup');
@@ -59,15 +59,35 @@ try {
   const types=[['DEED','Link Document No. రిజిస్టర్డ్ లింక్ దస్తావేజు'],['PASSBOOK','Title Deed No. పట్టాదారు పాస్ పుస్తకం'],['NALA','Nala Order No. నాలా ఉత్తర్వు'],['PERMISSION','Permissions / Approved details అనుమతులు']];
   for(const [,title] of types) await step(title); await step('Continue with 4 documents');
   for(const [key,title] of types) await p.locator('.link-record').filter({has:p.getByRole('heading',{name:key==='DEED'?'Registered Deed':key==='PERMISSION'?'House Permission':english(title),exact:false})}).locator('input[type=file]').setInputFiles(payload(key));
-  await idle(); assert.equal(await p.locator('.source').count(),4);
+  // Accepted extraction rows now appear as populated form fields; `.source` is
+  // reserved for uncertain review candidates, so assert the extracted values.
+  await idle();
   assert.equal(await value('Document number'),'1263/2016'); assert.equal(await value('Document type'),'Sale Deed');
   assert.equal(await value('Title deed number'),'PPB42'); assert.equal(await value('NALA order number'),'NALA42');
   await step('03 Jurisdiction');
-  await p.locator('input[type=file]').first().setInputFiles(payload('DEED'));
   await expect(p.getByLabel('Mandal',{exact:false})).toHaveValue('Sircilla', { timeout: 30000 });
+  await expect(p.getByLabel('Village',{exact:false})).toHaveValue('Sircilla');
+  await expect(p.getByLabel('Sub-Registrar Office',{exact:false})).toHaveValue('Sircilla [2010]');
   await step('04 Property Schedules');
-  await p.locator('input[type=file]').first().setInputFiles(payload('DEED'));
-  await expect(p.getByLabel('Survey no(s).',{exact:true})).toHaveValue('795/B&D', { timeout: 30000 });
+  await expect(p.getByLabel('Survey no(s).',{exact:false})).toHaveValue('795/B&D', { timeout: 30000 });
+  await expect(p.getByLabel('Locality',{exact:false})).toHaveValue('Ganeshnagar');
+  await expect(p.getByLabel('North',{exact:false})).toHaveValue('North neighbour');
+  await expect(p.getByLabel('South',{exact:false})).toHaveValue("21' Road");
+  await expect(p.getByLabel('East',{exact:false})).toHaveValue('East neighbour');
+  await expect(p.getByLabel('West',{exact:false})).toHaveValue('West neighbour');
+  await expect(p.getByLabel('H.No. for PTIN pair 1')).toHaveValue('6-1-142');
+  await expect(p.getByLabel('PTIN for H.No. 1')).toHaveValue('PTIN-142');
+  await expect(p.getByLabel('H.No. for PTIN pair 2')).toHaveValue('6-1-143');
+  await expect(p.getByLabel('PTIN for H.No. 2')).toHaveValue('PTIN-143');
+  await p.getByRole('button',{name:'+ Add H.No./PTIN pair'}).click();
+  await expect(p.getByLabel('PTIN for H.No. 1')).toHaveValue('PTIN-142');
+  await expect(p.getByLabel('PTIN for H.No. 2')).toHaveValue('PTIN-143');
+  await p.getByLabel('H.No. for PTIN pair 3').fill('6-1-144');
+  await p.getByLabel('PTIN for H.No. 3').fill('PTIN-144');
+  await expect(p.getByLabel('PTIN for H.No. 1')).toHaveValue('PTIN-142');
+  await step('05 Market Value');
+  await expect(p.getByLabel('Basic rate per Sq. Yard (₹)',{exact:false})).toHaveValue('1,000');
+  await expect(p.getByLabel('Structure valuation (₹)',{exact:false})).toHaveValue('0');
   await step('10 Generate Deed'); assert.equal(await p.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true}).isEnabled(),true);
   const incompleteDownload=p.waitForEvent('download'); await step('Download Word 2007 deed (.docx)');
   await (await incompleteDownload).saveAs(out+'incomplete-flow.docx');
@@ -75,8 +95,8 @@ try {
   for(const [name,key] of [['07 Executant Details','SELLER'],['08 Claimant Details','BUYER']]) {
     await step(name); assert.equal(await value('Full name'),''); await p.locator('input[type=file]').first().setInputFiles(payload(key)); await idle(); assert.equal(await value('Full name'),key==='SELLER'?'CURRENT SELLER':'CURRENT BUYER');
   }
-  await step('05 Market Value'); await p.getByLabel('Basic rate per Sq. Yard (₹)',{exact:true}).fill('1000'); await p.getByLabel('Sale consideration (₹)',{exact:true}).fill('100000'); await p.getByLabel('Stamp paper value (₹)',{exact:false}).fill('100');
-  await expect(p.getByLabel('Calculated market value (extent × basic rate)', { exact: true })).toHaveValue('1,57,220');
+  await step('05 Market Value'); await p.getByLabel('Basic rate per Sq. Yard (₹)',{exact:false}).fill('1000'); await p.getByLabel('Sale consideration (₹)',{exact:false}).fill('100000'); await p.getByLabel('Stamp paper value (₹)',{exact:false}).fill('100');
+  await expect(p.getByLabel('Calculated market value (extent × basic rate)', { exact: false })).toHaveValue('1,57,220');
   await step('06 Payment Details'); await step('+ Cheque');
   const amount=p.getByLabel('Amount (₹)',{exact:true}); await amount.fill('100001'); assert.equal(await amount.inputValue(),'1,00,000');
   await p.locator('input[type=file]').first().setInputFiles({name:'cheque.txt',mimeType:'text/plain',buffer:Buffer.from('CHEQUE fixture')});
@@ -91,5 +111,5 @@ try {
   assert.equal(await p.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true}).isEnabled(),true);
   const download=p.waitForEvent('download'); await step('Download Word 2007 deed (.docx)'); await (await download).saveAs(out+'verified-flow.docx');
   assert.deepEqual(errors,[]);
-  console.log('PASS: four Phase 1 uploads, separate current parties, market calculation, overage rejection, editable extracted payer/payee, incomplete draft downloads and successful Word generation.');
+  console.log('PASS: one Link Document upload fills jurisdiction, property schedule, boundaries, market value and multiple Part open place H.No./PTIN pairs; adding a pair preserves earlier values and does not require another upload.');
 } finally {await browser.close();}

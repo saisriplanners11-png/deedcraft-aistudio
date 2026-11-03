@@ -1,4 +1,5 @@
 import { deedDate } from './deed-format';
+import { normalizePropertyPlaceName } from './place-names';
 
 export type TitleAmendmentKind = 'rectification' | 'supplemental';
 export const titleAmendmentLabel = (kind: TitleAmendmentKind) => kind === 'rectification' ? 'Rectification Deed' : 'Supplemental Deed';
@@ -24,7 +25,7 @@ export function titleAmendmentValues(values: Record<string, string>, kind: Title
     [label + ' Type']: own('Type', 'linkDocType') || label,
     [label + ' No.']: own('No', 'linkDocNo'),
     [label + ' Date']: deedDate(own('Date', 'linkDocDate')),
-    [label + ' SRO']: own('Sro', 'linkSro'),
+    [label + ' SRO']: normalizePropertyPlaceName(kind + 'DeedSro', own('Sro', 'linkSro')),
     [label + ' SRO Code']: own('SroCode', 'linkSroCode'),
   };
 }

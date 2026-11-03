@@ -35,8 +35,8 @@ for (const mode of ['ordinary','gpa','agpa','gift']) for (const property of prop
     const schedule = text.slice(start);
     const valuationAt = schedule.search(/STATEMENT OF MARKET VALUE|ANNEXURE/);
     assert(valuationAt >= 0, context);
-    assert.match(schedule.slice(0, valuationAt), new RegExp(`${relation} house No\.\\s*LANDMARK-99`, 'i'), context);
-    if (['plot', 'open'].includes(property)) assert.match(schedule.slice(valuationAt), new RegExp(`${relation} house No\.[\\s:]*LANDMARK-99`, 'i'), context);
+    assert.match(schedule.slice(0, valuationAt), new RegExp(`${relation} H[.]No[.]\\s+LANDMARK-99`, 'i'), context);
+    if (['plot', 'open'].includes(property)) assert.match(schedule.slice(valuationAt), new RegExp(`${relation} H[.]No[.][\\s:]*LANDMARK-99`, 'i'), context);
     else assert.doesNotMatch(schedule.slice(valuationAt), /(?:near|adjacent)\s+(?:house\s*no\.?|h\.?no\.?)/i, context);
     assert.doesNotMatch(schedule, /near\s*\/\s*adjacent/i, context);
     if (subject) assert.match(schedule, /SUBJECT-42/, context);
@@ -53,7 +53,7 @@ Object.assign(agricultural.form, { nearAdjacent: 'Near', nearHNo: 'AGRI-LANDMARK
 const agriculturalSchedules = rt.scheduleMergesFor(agricultural);
 const agriculturalOutput = await rt.fillSaleDeed(rt.mergeValues(agricultural), agriculturalSchedules[0].variant, rt.rewritesFor(agricultural), agriculturalSchedules);
 const agriculturalText = await rt.docxToText(new Uint8Array(await agriculturalOutput.blob.arrayBuffer()));
-assert.match(agriculturalText.split('STATEMENT OF MARKET VALUE')[0], /near house No\.AGRI-LANDMARK-77/i);
+assert.match(agriculturalText.split('STATEMENT OF MARKET VALUE')[0], /near H[.]No[.]\s+AGRI-LANDMARK-77/i);
 assert.doesNotMatch(agriculturalText.split('STATEMENT OF MARKET VALUE')[1], /near\s+house/i);
 
 // Replacement templates may already contain a fixed landmark row in Annexure I-A.

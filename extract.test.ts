@@ -11,11 +11,10 @@ describe('link deed extraction mapping', () => {
     expect(profileFields('phase1:houseTax')).toEqual(expect.arrayContaining(['houseTaxReceiptNo', 'bltNo', 'localBodyName', 'taxPaidDate']));
     expect(profileFields('phase1:houseTax')).not.toContain('vltNo');
   });
-  it('limits a Phase 1 link deed to its title, jurisdiction and property-schedule facts', () => {
+  it('limits a Phase 1 link deed to its title, jurisdiction, schedule and valuation facts', () => {
     const fields = profileFields('phase1:linkDoc');
     expect(fields).toEqual(expect.arrayContaining(['linkDocNo', 'district', 'surveyNo', 'boundaryNorth', 'extentSqYards']));
-    expect(fields).not.toContain('govtRate');
-    expect(fields).not.toContain('structValue');
+    expect(fields).toEqual(expect.arrayContaining(['govtRate', 'structValue']));
     expect(fields).not.toContain('executantAadhaar');
     expect(fields).not.toContain('claimantAadhaar');
   });
@@ -57,8 +56,14 @@ describe('link deed extraction mapping', () => {
 
   it('targets an explicitly labelled property PTIN from a link deed', () => {
     expect(TARGETS['link-deed']).toContain('bltNo');
+    expect(TARGETS['link-deed']).toContain('housePtinPairs');
     expect(profileFields('phase1:linkDoc')).toContain('bltNo');
+    expect(profileFields('phase1:linkDoc')).toContain('housePtinPairs');
     expect((schemaForIds(['bltNo'], 'link-deed').properties as Record<string, { description: string }>).bltNo.description).toContain('PTIN');
+    const pairDescription = (schemaForIds(['housePtinPairs'], 'link-deed').properties as Record<string, { description: string }>).housePtinPairs.description;
+    expect(pairDescription).toContain('compact JSON array');
+    expect(pairDescription).toContain('association');
+    expect(EXTRACTION_PROMPTS['link-deed']).toContain('all subject-property H.No./PTIN pairs');
   });
 
   it('applies deed/category classification in regular uploads without overwriting choices', () => {

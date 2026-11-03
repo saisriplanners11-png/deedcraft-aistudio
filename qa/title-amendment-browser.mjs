@@ -46,10 +46,14 @@ try {
   const preview = card.locator('[aria-label="Applicable deed recital"]');
   await card.locator('.title-amendment-prose').waitFor();
   assert.match(await preview.innerText(), /Rectification Deed recital selected/);
-  for (const value of ['AMEND-44', '04-03-2024', 'OWN OFFICE', 'OWN-CODE']) assert((await preview.innerText()).includes(value), value);
+  for (const value of ['AMEND-44', '04-03-2024', 'Own Office', 'OWN-CODE']) assert((await preview.innerText()).includes(value), value);
   assert.doesNotMatch(await preview.innerText(), /BASE-11|BASE OFFICE|BASE-CODE/);
-  await card.getByRole('textbox', { name: /^SRO code/ }).fill('UPDATED-CODE');
-  assert((await preview.innerText()).includes('UPDATED-CODE'));
+  const combinedSro = card.locator('input[placeholder="Type SRO name or code"]');
+  assert.equal(await combinedSro.count(), 1, 'amendment record has one combined SRO selector');
+  assert.equal(await card.getByRole('textbox', { name: /^SRO code/ }).count(), 0, 'enclosure code has no separate visible field');
+  await combinedSro.fill('SHADNAGAR [1410]');
+  assert((await preview.innerText()).includes('Shadnagar'));
+  assert((await preview.innerText()).includes('1410'));
   await type.fill('Supplemental Deed');
   assert(await type.evaluate(element => document.activeElement === element));
   assert.match(await preview.innerText(), /Supplemental Deed recital selected/);
@@ -62,21 +66,21 @@ try {
   await card.locator('.title-amendment-prose').waitFor();
   await page.waitForFunction(async () => {
     const { listSavedDeeds } = await import('/saved-deeds.ts');
-    return (await listSavedDeeds()).some(deed => deed.draft.manual['link|typed|linkDocType'] === 'Rectification Deed' && deed.draft.manual['link|typed|linkSroCode'] === 'UPDATED-CODE');
+    return (await listSavedDeeds()).some(deed => deed.draft.manual['link|typed|linkDocType'] === 'Rectification Deed' && deed.draft.manual['link|typed|linkSro'] === 'SHADNAGAR' && deed.draft.manual['link|typed|linkSroCode'] === '1410');
   });
   await mkdir('tmp/title-amendment-qa', { recursive: true });
   await card.screenshot({ path: 'tmp/title-amendment-qa/desktop-card.png' });
   await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).first().click();
   await card.locator('.title-amendment-prose').waitFor();
   assert.equal(await type.inputValue(), 'Rectification Deed');
-  assert.equal(await card.getByRole('textbox', { name: /^SRO code/ }).inputValue(), 'UPDATED-CODE');
+  assert.equal(await combinedSro.inputValue(), 'Shadnagar [1410]');
   await page.setViewportSize({ width: 390, height: 844 });
   await type.focus();
   assert(await type.isVisible());
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await card.screenshot({ path: 'tmp/title-amendment-qa/mobile-card.png' });
   assert.deepEqual(errors, []);
-  console.log('PASS: typed amendment recital preview, own field updates, preserved focus, type switching, separate base title, save/reload and mobile layout.');
+  console.log('PASS: typed amendment recital preview, combined SRO selection with separate saved fields, preserved focus, type switching, separate base title, save/reload and mobile layout.');
 } finally {
   if (browser) await browser.close();
   server.kill();

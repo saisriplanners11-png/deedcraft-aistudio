@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
+import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, profileFields, requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
 import { appStateFor, newDraft, type Candidate, type SourceResult } from './source-draft';
 
 const api = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce:false, step2Gate: undefined as Promise<void> | undefined }));
@@ -22,7 +22,7 @@ vi.mock('./claude', () => ({
           api.truncateOnce = false;
           return { stop_reason: 'max_tokens', content: [] };
         }
-        const values: Record<string,string> = { linkDocNo: '1263/2016', linkDocType: 'Sale Deed', linkDocDate: '2016-02-27', mandal: 'Sircilla', plotNo: '16', extentSqYards: '157.22' };
+        const values: Record<string,string> = { linkDocNo: '1263/2016', linkDocType: 'Sale Deed', linkDocDate: '2016-02-27', sro: 'SIRCILLA SRO', district: 'RAJANNA SIRCILLA', mandal: 'SIRCILLA', village: 'KOTHAPETA', locality: 'LAKSHMI NAGAR', plotNo: '16', extentSqYards: '157.22', boundaryNorth: 'ROAD', boundarySouth: 'PLOT 15', boundaryEast: 'PLOT 17', boundaryWest: 'OPEN LAND', govtRate: '1200', structValue: '0' };
         input = { candidates: fields.filter((f: string) => values[f]).map((field: string) => ({ field, value: values[field], role: field.startsWith('link') ? 'link' : 'property', record: 'primary', page: 1, quote: values[field], region: 'Source label', historical: false, handwritten: false })), plan: null, notes: [] };
       }
       return { stop_reason: 'end_turn', content: [{ type: 'tool_use', name: 'record_transcription', input }] };
@@ -52,6 +52,23 @@ describe('shared document section extraction', () => {
     expect(candidate).toMatchObject({ value: '1263/2016', page: 2 });
   });
 
+  it('normalizes property place names to Title Case while retaining source quotations', () => {
+    for (const [field, value, expected] of [
+      ['locality', 'LAKSHMI NAGAR', 'Lakshmi Nagar'],
+      ['village', 'KOTHAPETA', 'Kothapeta'],
+      ['mandal', 'SIRCILLA', 'Sircilla'],
+      ['sro', 'BANJARA HILLS', 'Banjara Hills'],
+      ['localBodyName', 'GRAM PANCHAYAT KOTHAPETA', 'Gram Panchayat Kothapeta'],
+      ['permissionAuthorityName', 'GHMC CIRCLE 4', 'GHMC Circle 4'],
+    ] as const) {
+      const quote = `Source: ${value}`;
+      const candidate = cleanCandidate({ field, value, role: 'property', record: 'primary', quote, region: 'Schedule', historical: false, handwritten: false }, 1, 0);
+      expect(candidate).toMatchObject({ value: expected, quote });
+    }
+    const boundary = cleanCandidate({ field: 'boundaryNorth', value: 'SIRCILLA ROAD', role: 'property', record: 'primary', quote: 'SIRCILLA ROAD', region: 'Schedule', historical: false, handwritten: false }, 1, 1);
+    expect(boundary?.value).toBe('SIRCILLA ROAD');
+  });
+
   it('uses independent original-image confirmation for every Step 2 upload type', () => {
     for (const profile of ['phase1:houseTax', 'phase1:titleDeed', 'phase1:nala', 'phase1:permissions'] as const) {
       expect(requiresFullVisualConfirmation(profile)).toBe(true);
@@ -70,7 +87,7 @@ describe('shared document section extraction', () => {
   });
   it('recovers a transient provider failure without losing the document details',async()=>{
     const sections=sectionFields('phase1:linkDoc');
-    const scheduleFieldCount=sections.filter(s=>s.id==='step3'||s.id==='step4').reduce((n,s)=>n+s.fields.length,0);
+    const scheduleFieldCount=sections.filter(s=>['step3','step4','step5'].includes(s.id)).reduce((n,s)=>n+s.fields.length,0);
     const expectedChunks=1+Math.ceil(scheduleFieldCount/10);
     api.transientOnce=true;
     const result=await extractSections(pages(3),[],new AbortController().signal,()=>{},undefined,'phase1:linkDoc');
@@ -78,6 +95,20 @@ describe('shared document section extraction', () => {
     // succeeds; every other chunk is unaffected — one extra call overall.
     expect(api.calls.filter(c=>c.tools[0].input_schema.properties.candidates)).toHaveLength(expectedChunks+1);
     expect(result.candidates.find(c=>c.field==='linkDocNo')).toMatchObject({value:'1263/2016',status:'accepted'});
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'govtRate', value: '1200', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'structValue', value: '0', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'sro', value: 'Sircilla SRO', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'locality', value: 'Lakshmi Nagar', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'village', value: 'Kothapeta', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'mandal', value: 'Sircilla', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'boundaryNorth', value: 'ROAD', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'boundarySouth', value: 'PLOT 15', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'boundaryEast', value: 'PLOT 17', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'boundaryWest', value: 'OPEN LAND', role: 'property', status: 'accepted' }),
+    ]));
+    expect(profileFields('phase1:linkDoc')).toEqual(expect.arrayContaining(['govtRate', 'structValue']));
+    expect(profileFields('phase1:linkDoc')).not.toEqual(expect.arrayContaining(['consid', 'stampValue', 'stampPaperMargin']));
     expect(result.notes).toContain('No native schedule heading was found; examined pages 3 visually.');
   });
   it('accepts serialized, singleton and page-keyed evidence responses without discarding source text', () => {
@@ -153,14 +184,26 @@ describe('shared document section extraction', () => {
     expect(result.notes).toContain('No native schedule heading was found; examined pages 3 visually.');
   });
 
+  it('reads jurisdiction, schedule and valuation from a short link deed when its schedule is on page 1', async () => {
+    const result = await extractSections(pages(1), [], new AbortController().signal, () => {}, undefined, 'phase1:linkDoc');
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'linkDocNo', value: '1263/2016', role: 'link', status: 'accepted' }),
+      expect.objectContaining({ field: 'mandal', value: 'Sircilla', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'boundaryNorth', value: 'ROAD', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'govtRate', value: '1200', role: 'property', status: 'accepted' }),
+      expect.objectContaining({ field: 'structValue', value: '0', role: 'property', status: 'accepted' }),
+    ]));
+    expect(result.notes).toContain('No native schedule heading was found; examined pages 1 visually.');
+  });
+
   it('keeps Phase 1 property projection on the existing primary property across all document cards', () => {
     const c = (field:string,value:string): Candidate=>({id:field,field,value,role:'property',record:'primary',page:1,quote:value,region:'Schedule',historical:false,handwritten:false,status:'accepted'});
     const draft={...newDraft(),manual:{'property|primary|category':'Part open place'},sources:[
-      {id:'deed',revision:0,name:'deed.pdf',hash:'deed',status:'done' as const,assignment:{role:'link' as const,record:'deed'},result:{candidates:[c('plotNo','16')],plans:[],notes:[]}},
+      {id:'deed',revision:0,name:'deed.pdf',hash:'deed',status:'done' as const,assignment:{role:'link' as const,record:'deed'},result:{candidates:[c('plotNo','16'),c('boundaryNorth','North neighbour'),c('govtRate','1200'),c('structValue','0')],plans:[],notes:[]}},
       {id:'nala',revision:0,name:'nala.jpg',hash:'nala',status:'done' as const,assignment:{role:'link' as const,record:'nala'},result:{candidates:[c('mandal','Sircilla')],plans:[],notes:[]}},
     ]};
     const state=appStateFor(draft);
-    expect(state.form).toMatchObject({plotNo:'16',mandal:'Sircilla'});
+    expect(state.form).toMatchObject({plotNo:'16',boundaryNorth:'North neighbour',govtRate:'1200',structValue:'0',mandal:'Sircilla'});
     expect(state.additionalSchedules).toEqual([]);
     expect(state.category).toBe('Part open place');
   });
@@ -205,7 +248,7 @@ describe('shared document section extraction', () => {
       expect(sectionFields(profile)).toHaveLength(1);
       expect(sectionFields(profile)[0].id).toBe('step2');
     }
-    expect(sectionFields('phase1:linkDoc').map(section => section.id)).toEqual(['step2', 'step3', 'step4']);
+    expect(sectionFields('phase1:linkDoc').map(section => section.id)).toEqual(['step2', 'step3', 'step4', 'step5']);
   });
 
   it('creates an identity extraction worker for Aadhaar/party uploads', () => {
@@ -229,6 +272,38 @@ describe('shared document section extraction', () => {
     expect(sections[0].fields).not.toContain('linkDocNo');
     expect(sections[0].fields).not.toContain('consid');
     expect(sections[0].fields).not.toContain('executantName');
+    expect(profileFields('flat-agreements')).toEqual(expect.arrayContaining(['developmentDocNo', 'developmentDocDate', 'developmentSro', 'developmentSroCode', 'supplementalDocNo', 'supplementalSro', 'supplementalSroCode', 'stiltFloors', 'upperFloors']));
+  });
+
+  it('offers link uploads every jurisdiction, schedule, boundary and market-value field without old transaction values', () => {
+    const fields = profileFields('phase1:linkDoc');
+    expect(fields).toEqual(expect.arrayContaining(['sro', 'district', 'mandal', 'village', 'locality', 'boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest', 'govtRate', 'structValue']));
+    expect(fields).not.toEqual(expect.arrayContaining(['consid', 'stampValue', 'stampPaperMargin']));
+  });
+
+  it('projects one Step 2 Link Document upload into its link record and the same property schedule', () => {
+    const candidates = [
+      ['linkDocNo', '1263/2016', 'link'], ['linkDocType', 'Sale Deed', 'link'], ['linkSro', 'SIRCILLA SRO', 'link'],
+      ['sro', 'SIRCILLA SRO', 'property'], ['district', 'RAJANNA SIRCILLA', 'property'], ['mandal', 'SIRCILLA', 'property'],
+      ['village', 'SIRCILLA', 'property'], ['locality', 'GANESHNAGAR', 'property'], ['plotNo', '16', 'property'],
+      ['surveyNo', '795/B&D', 'property'], ['extentSqYards', '157.22', 'property'], ['boundaryNorth', 'NORTH ROAD', 'property'],
+      ['boundarySouth', '21 Road', 'property'], ['boundaryEast', 'PLOT 17', 'property'], ['boundaryWest', 'OPEN LAND', 'property'],
+      ['govtRate', '1200', 'property'], ['structValue', '0', 'property'],
+    ].map(([field, value, role], index) => {
+      const candidate = cleanCandidate({ field, value, role, record: 'primary', quote: `${field}: ${value}`, region: 'Link deed', handwritten: false, historical: false }, 1, index);
+      expect(candidate).not.toBeNull();
+      return { ...candidate!, status: 'accepted' as const };
+    });
+    const draft = {
+      ...newDraft(),
+      sources: [{ id: 'one-link-deed', revision: 0, name: 'link.docx', hash: 'link', status: 'done' as const, profile: 'phase1:linkDoc',
+        assignment: { role: 'link' as const, record: 'title-primary', propertyRecord: 'primary' },
+        result: { candidates, plans: [], notes: [] } }],
+    };
+    const state = appStateFor(draft);
+    expect(state.linkRecordsBySchedule.primary[0].values).toMatchObject({ linkDocNo: '1263/2016', linkDocType: 'Sale Deed', linkSro: 'Sircilla SRO' });
+    expect(state.form).toMatchObject({ sro: 'Sircilla SRO', district: 'RAJANNA SIRCILLA', mandal: 'Sircilla', village: 'Sircilla', locality: 'Ganeshnagar', plotNo: '16', surveyNo: '795/B&D', extentSqYards: '157.22', boundaryNorth: 'NORTH ROAD', boundarySouth: '21 Road', boundaryEast: 'PLOT 17', boundaryWest: 'OPEN LAND', govtRate: '1200', structValue: '0' });
+    expect(state.additionalSchedules).toEqual([]);
   });
 
   it('tolerates typography and case while preserving identifier and extent differences', () => {

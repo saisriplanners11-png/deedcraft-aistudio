@@ -9,12 +9,12 @@ await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' });
 const categories = ['Vacant Plot', 'Open Place', 'Residential', 'Flat', 'Demolished', 'Commercial', 'Agricultural land', 'Part open place'];
 const titleValues = {
-  linkDoc: { 'Document type': 'Sale Deed', 'Document number': 'LINK-101', 'Link deed execution date': '2020-05-14', 'Sub-Registrar Office': 'LINK SRO', 'SRO code': 'LS1' },
+  linkDoc: { 'Document type': 'Sale Deed', 'Document number': 'LINK-101', 'Link deed execution date': '2020-05-14', 'Sub-Registrar Office': 'Adilabad [1906]' },
   landLayoutLrs: { 'V.L.T. number': 'VLT-101', 'Approved layout file number': 'LAY-101', 'LRS 2020 application number': 'LRS-APP-101', 'Application date': '2023-08-23', 'LRS proceeding number': 'LRS-PROC-101', 'Proceeding date': '2024-09-24' },
   titleDeed: { 'Title deed number': 'TITLE-101', 'Khata number': 'KHATA-101' },
   nala: { 'NALA order number': 'NALA-101', 'Proceeding date': '2021-06-20' },
-  houseTax: { 'House tax receipt number': 'RECEIPT-101', 'Assessment / PTIN number': 'ASSESS-101', 'Local body': 'TEST MUNICIPALITY', 'Tax paid date': '2025-07-21' },
-  permissions: { 'Permission number': 'PERMIT-101', 'Permission date': '2022-07-22', 'Issuing local authority': 'TEST MUNICIPALITY' },
+  houseTax: { 'House tax receipt number': 'RECEIPT-101', 'Assessment / PTIN number': 'ASSESS-101', 'Local body': 'Test Municipality', 'Tax paid date': '2025-07-21' },
+  permissions: { 'Permission number': 'PERMIT-101', 'Permission date': '2022-07-22', 'Issuing local authority': 'Test Municipality' },
 };
 
 async function scenario(name, category, { titles = false, extraLink = false, parties = false, executantCount = parties ? 2 : 1, claimantCount = parties ? 2 : 1, floors = false, second = false, incomplete = false, noLink = false, partialTitles = false } = {}) {
@@ -63,11 +63,11 @@ async function scenario(name, category, { titles = false, extraLink = false, par
     await fill(page, 'Sub-Registrar Office', `SRO-${suffix}`);
     await fill(page, 'District', `DISTRICT-${suffix}`);
     await fill(page, 'Mandal', `MANDAL-${suffix}`);
-    await fill(page, 'Village', `VILLAGE-${suffix}`);
+    await fill(page, 'Village', `Village-${suffix}`);
     await fill(page, 'Deed execution date', '2026-10-22');
   };
   const fillProperty = async (suffix, propertyCategory = category) => {
-    for (const [label, value] of Object.entries({ 'Plot number': `PLOT-${suffix}`, 'Extent (Sq. Yards)': '100.33', 'Survey no(s).': `SURVEY-${suffix}`, 'Locality': `LOCALITY-${suffix}`, 'PIN code': '505301', North: `NORTH-${suffix}`, South: `SOUTH-${suffix}`, East: `EAST-${suffix}`, West: `WEST-${suffix}` })) await fill(page, label, value);
+    for (const [label, value] of Object.entries({ 'Plot number': `PLOT-${suffix}`, 'Extent (Sq. Yards)': '100.33', 'Survey no(s).': `SURVEY-${suffix}`, 'Locality': `Locality-${suffix}`, 'PIN code': '505301', North: `NORTH-${suffix}`, South: `SOUTH-${suffix}`, East: `EAST-${suffix}`, West: `WEST-${suffix}` })) await fill(page, label, value);
     if (!['Residential', 'Commercial', 'Flat'].includes(propertyCategory)) {
       if (['Demolished', 'Part open place'].includes(propertyCategory)) await fill(page, 'Subject property H.No.', `SUBJECT-${suffix}`);
       else { await fill(page, 'Landmark relation', 'Near'); await fill(page, 'Near / adjacent H.No.', `ADJACENT-${suffix}`); }
@@ -110,7 +110,7 @@ async function scenario(name, category, { titles = false, extraLink = false, par
       await page.getByRole('button', { name: 'Link Document No.', exact: true }).click();
       await page.getByRole('button', { name: 'Continue with 1 document', exact: true }).click();
       const secondDeed = page.locator('[data-title-point="linkDoc"]').nth(1);
-      for (const [label, value] of Object.entries({ 'Document type': 'Gift Deed', 'Document number': 'LINK-102', 'Link deed execution date': '2022-02-12', 'Sub-Registrar Office': 'GIFT SRO', 'SRO code': 'GS2' })) await fill(secondDeed, label, value);
+      for (const [label, value] of Object.entries({ 'Document type': 'Gift Deed', 'Document number': 'LINK-102', 'Link deed execution date': '2022-02-12', 'Sub-Registrar Office': 'Banjara Hills [1604]' })) await fill(secondDeed, label, value);
     }
     if (!titles && !noLink && !incomplete) {
       for (const [label, value] of Object.entries(titleValues.linkDoc)) await fill(title('linkDoc'), label, value);
@@ -118,12 +118,12 @@ async function scenario(name, category, { titles = false, extraLink = false, par
     if (partialTitles) {
       await fill(title('nala'), 'NALA order number', 'NALA-PARTIAL');
       await fill(title('houseTax'), 'House tax receipt number', 'RECEIPT-PARTIAL');
-      await fill(title('houseTax'), 'Local body', 'PARTIAL MUNICIPALITY');
+      await fill(title('houseTax'), 'Local body', 'Partial Municipality');
       await fill(title('houseTax'), 'Assessment / PTIN number', 'PTIN-PARTIAL');
       await fill(title('permissions'), 'Permission number', 'PERMIT-INCOMPLETE');
     }
     await step(3); await fillJurisdiction('101');
-    if (titles) { await step(2); assert.equal(await title('linkDoc').getByLabel('Sub-Registrar Office', { exact: true }).inputValue(), 'LINK SRO'); }
+    if (titles) { await step(2); assert.equal(await title('linkDoc').getByLabel('Sub-Registrar Office', { exact: true }).inputValue(), 'Adilabad [1906]'); assert.equal(await title('linkDoc').getByLabel('SRO code', { exact: true }).count(), 0); }
     await step(4); await fillProperty('101');
     if (partialTitles) assert.equal(await page.getByLabel('PTIN number', { exact: true }).inputValue(), 'PTIN-PARTIAL');
     if (second) {

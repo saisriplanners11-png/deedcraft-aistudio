@@ -49,9 +49,10 @@ for (const [instrument, variant, deedType, draft, mode, version, file] of cases)
     assert.match(text, /TITLE-ONE/); assert.match(text, /TITLE-TWO/);
     if (amendments) {
       for (const suffix of ['ONE', 'TWO']) {
+        const placeSuffix = suffix[0] + suffix.slice(1).toLowerCase();
         for (const marker of ['RECT-' + suffix, 'RECT-LEGACY-' + suffix, 'SUPP-' + suffix]) assert.equal(text.split(marker).length - 1, 1, variant + ': ' + marker);
         const rect = text.slice(text.indexOf('Rectification Deed:')); assert.match(rect, /03-02-2021/);
-        for (const marker of ['RECT OFFICE ' + suffix, 'SUPP OFFICE ' + suffix, 'LEGACY RECT OFFICE ' + suffix]) assert(text.includes(marker), variant + ': ' + marker);
+        for (const marker of ['Rect Office ' + placeSuffix, 'Supp Office ' + placeSuffix, 'Legacy Rect Office ' + placeSuffix]) assert(text.includes(marker), variant + ': ' + marker);
       }
       assert.equal((text.match(/Rectification Deed:/g) || []).length, 4);
       assert.equal((text.match(/Supplemental Deed:/g) || []).length, 2);

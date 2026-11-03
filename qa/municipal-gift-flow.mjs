@@ -9,7 +9,7 @@ await mkdir('tmp/municipal-gift/qa', { recursive: true });
 function stateFor(id) {
   const state = rt.sampleState(id);
   state.deedType = 'Gift'; state.draft = 'Municipal Gift';
-  state.form = { ...state.form, localAuthorityType: 'Municipal Council', village: 'MUNICIPAL VILLAGE', giftRelationship: '', executantPan: 'ABCDE1234F' };
+  state.form = { ...state.form, localAuthorityType: 'Municipal Council', village: 'MUNICIPAL VILLAGE', nearAdjacent: 'Near', giftRelationship: '', executantPan: 'ABCDE1234F' };
   state.linkRecordsBySchedule = { primary: [{ id: 'title-primary', docNames: [], values: { linkDocType: 'Sale Deed', linkDocNo: 'TITLE-111', linkDocDate: '2020-01-02', linkSro: 'TITLE OFFICE', linkSroCode: '111' } }] };
   return state;
 }
@@ -26,7 +26,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   assert.doesNotMatch(text, /Represented by its Commissioner|constitute under Hyderabad Municipal Corporation Act/);
   assert.match(text, /public purpose free of any cost and consideration/);
   assert.match(text, /Sale Deed dated 02-01-2020/);
-  assert.match(text, /TITLE-111/); assert.match(text, /TITLE OFFICE \(111\)/);
+  assert.match(text, /TITLE-111/); assert.match(text, /Title Office \(111\)/);
   assert.match(text, /13-10-2026/); assert.match(text, /ABCDE1234F/);
   assert.doesNotMatch(text, /natural love|Relationship|STATEMENT OF MARKET VALUE|ANNEXURE|FAMILY MEMBER|DD-MM-YYYY|Donor\/s|has\/have|is\/are/);
   assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 1);
@@ -53,7 +53,7 @@ for (const title of ['TITLE-111', 'TITLE-222', 'TITLE-333', 'SECOND-SURVEY']) as
 assert.equal((text.match(/Hereinafter called the .Donor/g) || []).length, 1);
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
 state.additionalSchedules[0].values.village = 'OTHER VILLAGE';
-assert.match(await rt.docxToText(new Uint8Array(await (await render(state)).blob.arrayBuffer())), /OTHER VILLAGE/);
+assert.match(await rt.docxToText(new Uint8Array(await (await render(state)).blob.arrayBuffer())), /Other Village/);
 await assert.rejects(() => render(stateFor('ordinary-flat-finished')), /supports open place/);
 const missingUlb = stateFor('ordinary-plot'); missingUlb.form.localAuthorityType = '';
 await assert.rejects(() => render(missingUlb), /property ULB/);

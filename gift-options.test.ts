@@ -53,8 +53,8 @@ it('restores Municipal Gift with editable claimant requirements without erasing 
   const restored = JSON.parse(JSON.stringify(draft));
   const state = appStateFor(restored);
   expect(state.draft).toBe('Gift to Local Bodies');
-  expect(mergeValues(state).ULB).toBe('MUNICIPAL COUNCIL');
-  expect(mergeValues(state).VILLAGE).toBe('PROPERTY VILLAGE');
+  expect(mergeValues(state).ULB).toBe('Municipal Council');
+  expect(mergeValues(state).VILLAGE).toBe('Property Village');
   expect(generationBlockers(state).some(item => item.step === 7)).toBe(true);
   const regular = appStateFor(draftReducer(restored, { type: 'instrument', instrumentId: 'gift', variantId: 'family-gift' }));
   expect(regular.form.claimantName).toBe('ORIGINAL DONEE');

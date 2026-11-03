@@ -77,7 +77,7 @@ const party = (side: 'executant' | 'claimant') =>
   ALL_FIELDS.filter(f => f.id.startsWith(side) && !f.id.endsWith('Age')).map(f => f.id);
 
 const JURISDICTION = ['district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'propState'];
-const PROPERTY = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters', 'flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards'];
+const PROPERTY = ['plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'surveyNo', 'extentValue', 'extentSqYards', 'extentSqMeters', 'flatStage', 'flatNo', 'flatFloorNo', 'apartmentName', 'superBuiltUpAreaSqFt', 'udsSqYards', 'housePtinPairs'];
 const BOUNDARIES = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest', 'flatBoundaryNorth', 'flatBoundarySouth', 'flatBoundaryEast', 'flatBoundaryWest'];
 const STRUCTURE = ['bltNo'];
 const UTILITIES = ['taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
@@ -120,7 +120,8 @@ function describe(f: Field, kind: DocKind): string {
   }
   if (f.id === 'linkDocNo') bits.push('Read the registration/document number assigned to this uploaded deed, including its year. Do not return an earlier title deed number mentioned in the recitals.');
   if (f.id === 'linkDocDate') bits.push('Read the date on which this uploaded deed was executed from its opening execution sentence. Do not use a presentation, registration, stamp-paper or digital-signature date.');
-  if (f.id === 'bltNo') bits.push('Copy only the identifier explicitly labelled PTIN, P.T.I. No., Property Tax Identification No., Property Tax ID or Assessment No. for the SUBJECT property. Never use a demand number, receipt number, survey number, house number or tax amount.');
+  if (f.id === 'bltNo') bits.push('Prioritize the identifier explicitly labelled PTIN, P.T.I. No., Property Tax Identification No. or Property Tax ID for the SUBJECT property. If no PTIN is present, use the explicitly labelled Assessment Number. If both are present, return the PTIN. Never use a demand number, receipt number, survey number, house number or tax amount.');
+  if (f.id === 'housePtinPairs') bits.push('Return the values as a compact JSON array string such as [{"houseNo":"6-1-142","ptin":"PTIN-1"},{"houseNo":"6-1-143","ptin":"PTIN-2"}]. Include every explicitly printed subject-property house number and PTIN. Pair them only when the source layout, labels or wording supports that association; otherwise return separate rows with houseNo or ptin blank instead of guessing. Never use a demand number, receipt number, survey number or tax amount as PTIN.');
   if (/RelationName$/.test(f.id)) {
     bits.push('Return the relationship label together with the related person name, for example "S/O Rajender". A bare S/O, W/O or D/O is not a usable value.');
   }
@@ -260,7 +261,7 @@ Rules you must follow:
 
 export const EXTRACTION_PROMPTS: Record<DocKind, string> = {
   'link-deed':
-    'This registered deed is being used as the link/title document for a new sale deed. A registered sale deed is a valid link deed for a later transaction, so do not reject it merely because it is itself a sale deed. Transcribe its particulars, including the link deed execution date shown in the opening recital on the first page (not the SRO registration/presentation date), the property it describes, its jurisdiction, extent, boundaries and valuation. For nearHNo, inspect the complete schedule/property description and return a value only when it explicitly identifies a nearby, adjacent or neighbouring H.No./door number as a landmark. Return the house number alone in nearHNo and return nearAdjacent as Near or Adjacent only when that relationship is explicitly printed. Never copy the subject property house number into nearHNo. Do not extract party identity details here; those are read from the dedicated executant and claimant uploads.',
+    'This registered deed is being used as the link/title document for a new sale deed. A registered sale deed is a valid link deed for a later transaction, so do not reject it merely because it is itself a sale deed. Transcribe its particulars, including the link deed execution date shown in the opening recital on the first page (not the SRO registration/presentation date), the property it describes, its jurisdiction, extent, boundaries and valuation. For nearHNo, inspect the complete schedule/property description and return a value only when it explicitly identifies a nearby, adjacent or neighbouring H.No./door number as a landmark. Return the house number alone in nearHNo and return nearAdjacent as Near or Adjacent only when that relationship is explicitly printed. Never copy the subject property house number into nearHNo. Extract all subject-property H.No./PTIN pairs into housePtinPairs; preserve every value and leave ambiguous associations unpaired. Do not extract party identity details here; those are read from the dedicated executant and claimant uploads.',
   'executant-id':
     'These are identity documents for the executant (vendor / first party) of a sale deed. Transcribe the party particulars. When an Aadhaar card or letter is shown, read its printed 12-digit Aadhaar number; do not substitute its VID or enrolment number.',
   'claimant-id':

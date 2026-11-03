@@ -1,8 +1,9 @@
 import offices from './sro-directory.json';
+import { titleCasePlaceName } from './place-names';
 
 // Lookup data only, transcribed from the user's S.R.O CODES.xlsx (30-10-2026).
 export const SRO_OFFICES = offices;
-export const sroLabel = (office: { name: string; code: string }) => `${office.name} [${office.code}]`;
+export const sroLabel = (office: { name: string; code: string }) => `${titleCasePlaceName(office.name)} [${office.code}]`;
 const normalized = (value: string) => value.trim().replace(/\s+/g, ' ').toUpperCase();
 export function findSro(value: string) {
   const key = normalized(value);
@@ -15,3 +16,18 @@ export function sroFieldPair(id: string) {
   return { name, code: name + 'Code' };
 }
 export const displaySro = (value: string) => { const office = findSro(value); return office ? sroLabel(office) : value; };
+
+/** Resolve one combined selector value into the existing separate name/code fields. */
+export function resolveSroSelection(id: string, value: string) {
+  if (!isSroField(id) || /Code$/i.test(id)) return null;
+  const pair = sroFieldPair(id);
+  const office = findSro(value);
+  if (office) return { nameField: pair.name, name: office.name, codeField: pair.code, code: office.code };
+  const customPair = value.trim().match(/^(.*?)\s*\[([^\]]+)\]$/);
+  return {
+    nameField: pair.name,
+    name: titleCasePlaceName(customPair?.[1] ?? value),
+    codeField: pair.code,
+    code: customPair?.[2].trim() ?? '',
+  };
+}

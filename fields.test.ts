@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_FIELDS, GROUPS, groupsForStep, LINK_OPTIONS, newStructureDetail, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, TITLE_SECTION_IDS } from './fields';
+import { ALL_FIELDS, GROUPS, groupsForStep, HOUSE_PTIN_PAIR_CATEGORIES, LINK_OPTIONS, newStructureDetail, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, TITLE_SECTION_IDS } from './fields';
 import { ageFrom, buildViewModel, generationBlockers, initialState, todayISO, vendeeShareCents, withDerived, type AppState } from './logic';
 import { newPayment } from './payments';
 import { mergeValues, propertyForm, rewritesFor } from './merge';
@@ -73,6 +73,22 @@ describe('field mapping', () => {
     const vlt = property.fields.find(field => field.id === 'assessmentPtinNo');
     expect(vlt?.only).toEqual(['Vacant Plot', 'Open Place']);
     expect(vlt?.ph).toBe('V.L.T No.');
+  });
+
+  it('provides repeatable subject H.No./PTIN rows for Part open place without mixing V.L.T.', () => {
+    expect(HOUSE_PTIN_PAIR_CATEGORIES).toContain('Part open place');
+    const ptin = GROUPS.flatMap(group => group.fields).find(field => field.id === 'bltNo');
+    const pairRows = ALL_FIELDS.find(field => field.id === 'housePtinPairs');
+    expect(ptin?.only).toContain('Part open place');
+    expect(pairRows?.hidden).toBe(true);
+    expect(pairRows?.hint).toContain('houseNo');
+    const partOpenGroups = groupsForStep(3, 'Part open place');
+    expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).not.toContain('bltNo');
+    expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).not.toContain('bearingHNo');
+    expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).toContain('nearHNo');
+    expect(partOpenGroups.flatMap(group => group.fields).find(field => field.id === 'nearHNo')?.label).toBe('Subject property H.No.');
+    expect(groupsForStep(3, 'Open Place').flatMap(group => group.fields.map(field => field.id))).not.toContain('bltNo');
+    expect(GROUPS.find(group => group.title === 'Property identification')?.fields.find(field => field.id === 'assessmentPtinNo')?.ph).toBe('V.L.T No.');
   });
 
   it('shows one editable assessment/PTIN field in Step 2 and keeps receipt extraction compatibility', () => {

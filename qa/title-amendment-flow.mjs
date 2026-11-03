@@ -29,7 +29,7 @@ for (const [instrument, variant, deedType, draft, mode, file] of cases) {
     const before = JSON.stringify(state);
     const render = async selected => rt.renderArtifact(rt.compileDeed({ instrumentId: instrument, variantId: variant, values: rt.mergeValues(state), schedules: rt.scheduleMergesFor(state), rewrites: rt.rewritesFor(state), snapshotHash: 'typed', unresolvedWarnings: [] }, selected), 'docx');
     const preview = rt.titleAmendmentPreview(templates[kind], record, kind);
-    for (const value of ['OWN-AMEND-42', '04-03-2024', 'OWN AMEND OFFICE', 'OWN-CODE-42']) assert(preview.includes(value), file + ': ' + value);
+    for (const value of ['OWN-AMEND-42', '04-03-2024', 'Own Amend Office', 'OWN-CODE-42']) assert(preview.includes(value), file + ': ' + value);
     assert.doesNotMatch(preview, /BASE OFFICE|ORIGINAL-TITLE|UNRELATED-FLAT/);
     for (const selected of [source, { kind: 'built-in' }]) {
       const output = await render(selected), text = await rt.docxToText(new Uint8Array(await output.result.blob.arrayBuffer()));

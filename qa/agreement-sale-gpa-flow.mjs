@@ -63,7 +63,7 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
     assert.match(text, /ABCDE1234F/); assert.match(text, /PQRST5678L/);
     assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 1);
     const schedule = text.slice(text.indexOf('SCHEDULE OF PROPERTY'));
-    assert.match(schedule, /adjacent house No.[\s:]*LANDMARK-99/i);
+    assert.match(schedule, /adjacent H\.No\.\s+LANDMARK-99/i);
     assert.doesNotMatch(schedule, /near\s*\/\s*adjacent/i);
     if (property.startsWith('flat')) assert.match(schedule, /30 Sq.yds equivalent to 25.08 square meters/);
     assert.doesNotMatch(xml, /<w:txbxContent\b/);

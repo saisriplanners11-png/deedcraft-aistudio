@@ -2,9 +2,19 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
+const flatInputs = rt.groupsForStep(3, 'Flat').flatMap(group => group.fields.map(field => field.id));
+for (const field of ['developmentDocNo','developmentDocDate','developmentSro','supplementalDocNo','supplementalSro','stiltFloors','upperFloors']) assert(flatInputs.includes(field), `${field} remains available in the flat property inputs`);
+for (const field of ['developmentSroCode','supplementalSroCode']) assert(!flatInputs.includes(field) && rt.ALL_FIELDS.find(item => item.id === field)?.hidden, `${field} remains stored for its Word binding without a separate visible input`);
+const linkSroCode = rt.LINK_OPTIONS.find(item => item.id === 'linkDoc')?.fields.find(field => field.id === 'linkSroCode');
+assert(linkSroCode?.hidden, 'link document SRO code remains separate in storage without a second visible field');
+for (const optionId of ['rectificationDeed','supplementalDeed']) {
+ const option = rt.LINK_OPTIONS.find(item => item.id === optionId);
+ assert(option?.fields.some(field => field.id === optionId + 'Sro'), `${optionId} SRO name remains available in its enclosure`);
+ assert(option?.fields.find(field => field.id === optionId + 'SroCode')?.hidden, `${optionId} code is stored for its existing template placeholder without a separate visible box`);
+}
 const templateBytes = new Uint8Array(await readFile(new URL('../sale-deed-template-v10.docx', import.meta.url)));
 const validation = await rt.validateSaleDeedTemplate(templateBytes);
-const input = (suffix, date) => ({ developmentDocNo: `DEVELOPMENT-${suffix}`, developmentDocDate: date, developmentSro: `DEVELOPMENT OFFICE ${suffix}`, developmentSroCode: `DEV-CODE-${suffix}`, supplementalDocNo: `ALLOTMENT-${suffix}`, supplementalSro: `ALLOTMENT OFFICE ${suffix}`, supplementalSroCode: `SUP-CODE-${suffix}`, stiltFloors: '2', upperFloors: '7' });
+const input = (suffix, date) => { const titleSuffix = suffix[0] + suffix.slice(1).toLowerCase(); return { developmentDocNo: `DEVELOPMENT-${suffix}`, developmentDocDate: date, developmentSro: `Development Office ${titleSuffix}`, developmentSroCode: `DEV-CODE-${suffix}`, supplementalDocNo: `ALLOTMENT-${suffix}`, supplementalSro: `Allotment Office ${titleSuffix}`, supplementalSroCode: `SUP-CODE-${suffix}`, stiltFloors: '2', upperFloors: '7' }; };
 for (const mode of ['ordinary', 'gpa', 'agpa']) for (const stage of ['semi', 'finished']) for (const numberOnly of [false, true]) {
  const state = rt.sampleState(`${mode}-flat-${stage}`);
  state.form = { ...state.form, ...input('ONE', numberOnly ? '' : '2024-02-03') };

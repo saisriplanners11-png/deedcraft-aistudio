@@ -7,8 +7,11 @@ import { poaValues } from './poa-options';
 import { titleAmendmentKind, titleAmendmentValues } from './title-amendments';
 import { giftRelationshipValues } from './gift-options';
 import { localAuthorityName } from './fields';
+import { instrumentIdForLegacyType } from './instruments';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
 import { flatStage, flatVariant } from './flat-options';
+import { normalizePropertyPlaceName } from './place-names';
+import { parsePropertyHousePtinPairs, propertyHousePtinOutput } from './property-house-ptin';
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
@@ -32,7 +35,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   const f = withDerived(state.form);
   const out: Record<string, string> = { 'Stamp Paper Margin': f.stampPaperMargin || 'Legacy' };
   out['Landmark Valuation Enabled'] = String(['Open Place', 'Vacant Plot'].includes(state.category));
-  if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || '').toLocaleUpperCase('en-IN'); out.VILLAGE = (f.village || '').toLocaleUpperCase('en-IN'); }
+  if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || ''); out.VILLAGE = normalizePropertyPlaceName('village', f.village || ''); }
   const nalaArea = acreGuntasToSqYards(f.nalaExtent || '');
   if (nalaArea !== null) out['NALA Converted Extent'] = String(nalaArea);
   const minorErrors = (['executant', 'claimant'] as const).flatMap(side => partyRecords(state, side).flatMap((record, index) => minorPartyErrors(record.values, side).map(reason => `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 1}: ${reason}`)));
@@ -44,7 +47,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   for (const field of ALL_FIELDS) {
     if (!field.ph) continue;
     const names = Array.isArray(field.ph) ? field.ph : [field.ph];
-    let value = uppercasePartyIdentity(field.id, f[field.id] ?? '');
+    let value = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, f[field.id] ?? ''));
     if (field.type === 'date') value = deedDate(value);
     for (const n of names) out[n] = value;
   }
@@ -54,7 +57,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['V.L.T.No.'] = out['V.L.T No.'];
   // The Schedule of Property's "Registration Sub-District" placeholder uses
   // the same office selected in Jurisdiction, never an older link-deed office.
-  const registrationSro = f.sro || f.linkSro || '';
+  const registrationSro = normalizePropertyPlaceName('sro', f.sro || f.linkSro || '');
   out['Sub Registrar'] = registrationSro;
   out['Sub-Registrar'] = registrationSro;
   // Both party recitals have their own PAN slot in the updated draft.
@@ -70,7 +73,16 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Near / Adjacent'] = f.nearAdjacent || '';
   out['Landmark House No.'] = ['Demolished', 'Part open place'].includes(state.category) ? f.landmarkHNo || '' : f.nearHNo || '';
   out['Municipal House Nos.'] = f.bearingHNo || '';
-  out['Municipality/Municipal Corporation/Gram Panchayat Name'] = f.permissionAuthorityName || '';
+  const pairedHouseIds = parsePropertyHousePtinPairs(f.housePtinPairs || '');
+  if (pairedHouseIds !== null) {
+    const pairedOutput = propertyHousePtinOutput(f.housePtinPairs || '');
+    out['Bearing H.No.'] = pairedOutput.houseNos;
+    out['Municipal House Nos.'] = pairedOutput.houseNos;
+    if (state.category === 'Part open place') out['Near H.No.'] = pairedOutput.houseNos;
+    out['P.T.I.No.'] = pairedOutput.ptins;
+    out['P.T.I. No.'] = pairedOutput.ptins;
+  }
+  out['Municipality/Municipal Corporation/Gram Panchayat Name'] = normalizePropertyPlaceName('permissionAuthorityName', f.permissionAuthorityName || '');
   out['House Permission No.'] = f.permBuildingPermitNo || f.buildingPermitNo || '';
   out['Stage'] = state.category === 'Flat' ? flatStage(f.flatStage) : out['Stage'] || '';
   out['Plot Nos.'] = f.plotNo || '';
@@ -130,7 +142,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   }
 
   if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA'].includes(state.deedType)) {
-    out['Municipality/Gram Panchayat Name'] = f.permissionAuthorityName || '';
+    out['Municipality/Gram Panchayat Name'] = normalizePropertyPlaceName('permissionAuthorityName', f.permissionAuthorityName || '');
     out.Date = executionDeedDate(f.executionDate || '');
     for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
   }
@@ -142,7 +154,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   // The template has a single set of instrument placeholders, so the largest
   // payment is the one printed there; the full list is recited in the receipt
   // clause instead (see paymentRecital).
-  const paid = state.payments.filter(p => p.amount !== '');
+  const paid = instrumentIdForLegacyType(state.deedType) === 'power_of_attorney' ? [] : state.payments.filter(p => p.amount !== '');
   const primary: Payment | undefined = paid.length
     ? paid.reduce((a, b) => (Number(b.amount) > Number(a.amount) ? b : a))
     : undefined;
@@ -213,7 +225,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
     find: /in the presence of the following witnesses on the afore mentioned date\./,
     replace: 'in the presence of the following witnesses.',
   });
-  const paid = state.payments.filter(payment => payment.amount !== '');
+  const paid = instrumentIdForLegacyType(state.deedType) === 'power_of_attorney' ? [] : state.payments.filter(payment => payment.amount !== '');
   // The v2 template contains one sample paragraph for each payment method.
   // Replace each sample with one cloned paragraph per actual payment, or remove
   // it entirely when that method was not used.
@@ -375,9 +387,10 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
       if ((isMunicipalGift(state) && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key])) || (['linkDocNo', 'linkDocType'].every(key => !!titleRecord.values[key])
         && (titleRecord.values.linkSro || scheduleState.form.sro))) {
+        const titleSro = normalizePropertyPlaceName('sro', titleRecord.values.linkSro || scheduleState.form.sro || '');
         registeredTitleLinks.push({ ...mapped,
-          'Sub Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
-          'Sub-Registrar': titleRecord.values.linkSro || scheduleState.form.sro,
+          'Sub Registrar': titleSro,
+          'Sub-Registrar': titleSro,
           'Sub Registrar Code': titleRecord.values.linkSroCode || '',
         });
       }
@@ -414,14 +427,18 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     titleValues['Nala Order No'] = nala?.values.nalaOrderNo || '';
     titleValues['Nala Order No.'] = titleValues['Nala Order No'];
     titleValues['Nala Order Date'] = deedDate(nala?.values.nalaProceedingDate || '');
-    const tax = mapped(taxRecords.find(({ values: item }) => item.houseTaxReceiptNo && item.localBodyName));
-    titleValues['House Tax Receipt'] = tax?.['House Tax Receipt'] || '';
-    titleValues['Local Body Name'] = tax?.['Local Body Name'] || '';
     const taxRecord = taxRecords.find(({ values: item }) => item.houseTaxReceiptNo && item.localBodyName);
+    const tax = mapped(taxRecord);
+    const taxReceiptNo = tax?.['House Tax Receipt'] || '';
+    const taxBearingHNo = taxRecord?.values.bearingHNo || record.values.bearingHNo || '';
+    titleValues['House Tax Receipt'] = [taxReceiptNo, taxBearingHNo ? `Bearing H.No. ${taxBearingHNo}` : ''].filter(Boolean).join(', ');
+    titleValues['Local Body Name'] = tax?.['Local Body Name'] || '';
     titleValues['Tax Paid Date'] = deedDate(taxRecord?.values.taxPaidDate || '');
     const explicitAssessment = preferredField('bltNo', ['houseTax', 'assessment']);
     const taxAssessment = taxRecords.find(({ values: item }) => item.assessmentPtinNo)?.values.assessmentPtinNo;
-    const assessment = explicitAssessment || record.values.bltNo || taxAssessment || '';
+    const extractedPairs = parsePropertyHousePtinPairs(record.values.housePtinPairs || '');
+    const pairedAssessment = extractedPairs === null ? '' : propertyHousePtinOutput(record.values.housePtinPairs || '').ptins;
+    const assessment = extractedPairs !== null ? pairedAssessment : explicitAssessment || record.values.bltNo || taxAssessment || '';
     titleValues['P.T.I.No.'] = assessment;
     titleValues['P.T.I. No.'] = assessment;
     const permission = mapped(complete(['permissions'], ['permBuildingPermitNo', 'permissionAuthorityName']));

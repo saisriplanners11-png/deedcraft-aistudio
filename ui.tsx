@@ -6,6 +6,7 @@ import { flatStage } from './flat-options';
 import { css } from './css';
 import type { Field, Group } from './fields';
 import { fieldHelp } from './field-help';
+import { normalizePropertyPlaceName } from './place-names';
 import type { Conflict, FieldEvidence } from './logic';
 import { DOC_KINDS, type DocKind } from './extract';
 
@@ -112,7 +113,8 @@ export function Input({
   // A saved execution date may predate the month-only control and still include
   // a day. Display its year/month in the native month picker without losing it
   // until the drafter changes the field.
-  const shown = field.id === 'flatStage' ? flatStage(rawShown) || rawShown : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(rawShown) ? rawShown.slice(0, 7) : rawShown;
+  const formatted = normalizePropertyPlaceName(field.id, rawShown);
+  const shown = field.id === 'flatStage' ? flatStage(formatted) || formatted : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? formatted.slice(0, 7) : formatted;
 
   return (
     <FieldContainer className="deed-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
@@ -235,7 +237,8 @@ export function FieldGroup({
   onDismiss?: (id: string) => void;
   onAcceptGroup?: (ids: string[]) => void;
 }) {
-  const clashing = group.fields.filter(f => conflicts?.[f.id]).map(f => f.id);
+  const visibleFields = group.fields.filter(f => !f.hidden);
+  const clashing = visibleFields.filter(f => conflicts?.[f.id]).map(f => f.id);
 
   return (
     <Section
@@ -258,7 +261,7 @@ export function FieldGroup({
         <p style={css(`margin:0 0 16px;font-size:12px;color:${C.body};line-height:1.6;max-width:80ch`)}>{group.note}</p>
       ) : null}
       <div className="deed-field-grid" style={css(`display:grid;grid-template-columns:repeat(${group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
-        {group.fields.map(f => (<React.Fragment key={f.id}>
+      {visibleFields.map(f => (<React.Fragment key={f.id}>
           <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="before" />
           {renderField?.(f, form[f.id] || '', value => setField(f.id, value)) ?? <Input
             key={f.id}

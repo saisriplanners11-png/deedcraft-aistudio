@@ -3,6 +3,7 @@ import { initialState, generationBlockers } from './logic';
 import { deedFilename, mergeValues, scheduleMergesFor } from './merge';
 import { appStateFor, draftReducer, newDraft } from './source-draft';
 import { deedDate } from './deed-format';
+import { propertyHousePtinOutput } from './property-house-ptin';
 
 it('restores separate title amendments without turning them into the original title or a flat allotment agreement', () => {
   let draft = newDraft();
@@ -22,7 +23,7 @@ it('restores separate title amendments without turning them into the original ti
   expect(schedule.titleLinkRecords?.map(record => record['Link Doct.No.'])).toEqual(['TITLE-1']);
   expect(schedule.amendmentRecords?.rectification[0]['Rectification Deed No.']).toBe('RECT-1');
   expect(schedule.amendmentRecords?.rectification[0]['Rectification Deed Date']).toBe('03-02-2021');
-  expect(schedule.amendmentRecords?.supplemental[0]['Supplemental Deed SRO']).toBe('SUPP SRO');
+  expect(schedule.amendmentRecords?.supplemental[0]['Supplemental Deed SRO']).toBe('Supp SRO');
   expect(schedule.values['Supplemental Agreement No.']).toBe('FLAT-ALLOTMENT');
   expect(restored.manual).toEqual(draft.manual);
 });
@@ -56,6 +57,36 @@ describe('deed download filename', () => {
   it('removes characters that cannot be used in a filename', () => {
     expect(deedFilename({ ...initialState, deedType: 'Sale', form: { ...initialState.form, claimantName: 'A/B: C' } }))
       .toBe('Sale-A-B-C.docx');
+  });
+});
+
+describe('property H.No./PTIN pair output', () => {
+  it('prints every paired H.No. and PTIN in row order and keeps schedules isolated', () => {
+    const first = '[{"id":"one","houseNo":"6-1-142","ptin":"PTIN-142"},{"id":"two","houseNo":"6-1-143","ptin":"PTIN-143"}]';
+    const second = '[{"id":"three","houseNo":"2-1-4","ptin":"PTIN-204"}]';
+    const state = {
+      ...initialState,
+      category: 'Part open place',
+      form: { ...initialState.form, housePtinPairs: first },
+      additionalSchedules: [{ id: 'second', docNames: [], category: 'Part open place', unit: 'Sq. Yards', values: { housePtinPairs: second } }],
+    };
+    const main = mergeValues(state);
+    expect(main['Municipal House Nos.']).toBe('6-1-142, 6-1-143');
+    expect(main['Near H.No.']).toBe('6-1-142, 6-1-143');
+    expect(main['P.T.I.No.']).toBe('PTIN-142 (H.No. 6-1-142); PTIN-143 (H.No. 6-1-143)');
+    const schedules = scheduleMergesFor(state);
+    expect(schedules[0].values['P.T.I.No.']).toBe(main['P.T.I.No.']);
+    expect(schedules[1].values['Municipal House Nos.']).toBe('2-1-4');
+    expect(schedules[1].values['P.T.I.No.']).toBe('PTIN-204 (H.No. 2-1-4)');
+  });
+
+  it('reads legacy single H.No./PTIN values as one unchanged pair', () => {
+    expect(propertyHousePtinOutput('', '6-1-142', 'OLD-PTIN')).toEqual({
+      houseNos: '6-1-142', ptins: 'OLD-PTIN (H.No. 6-1-142)',
+    });
+    const values = mergeValues({ ...initialState, category: 'Part open place', form: { ...initialState.form, bearingHNo: '6-1-142', bltNo: 'OLD-PTIN' } });
+    expect(values['Municipal House Nos.']).toBe('6-1-142');
+    expect(values['P.T.I.No.']).toBe('OLD-PTIN');
   });
 });
 

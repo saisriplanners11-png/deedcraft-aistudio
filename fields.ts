@@ -118,6 +118,7 @@ export const SCHEDULE_VARIANT: Record<string, string> = {
 };
 
 export const HOUSE_CATEGORIES = ['Residential', 'Commercial', 'Flat'];
+export const HOUSE_PTIN_PAIR_CATEGORIES = [...HOUSE_CATEGORIES, 'Part open place'];
 
 const party = (side: 'executant' | 'claimant'): Field[] => {
   const P = side === 'executant' ? 'Executant' : 'Claimant';
@@ -340,14 +341,16 @@ export const GROUPS: Group[] = [
     note: 'Collected only for a built structure — these fill Annexure I-A of the deed.',
     fields: [
       { id: 'houseStage', label: 'House completion stage', type: 'select', options: ['Finished', 'Semi-Finished'], only: ['Residential', 'Commercial'] },
-      { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', only: HOUSE_CATEGORIES },
+      { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', only: HOUSE_PTIN_PAIR_CATEGORIES },
       { id: 'roofMaterial', label: 'Nature of roof', only: HOUSE_CATEGORIES,
         options: ROOF_NATURE_OPTIONS,
         hint: 'Select the description supported by the property record, or enter a custom description.' },
       { id: 'constructionDescription', label: 'Type of structure / construction', type: 'select', only: HOUSE_CATEGORIES,
         options: STRUCTURE_TYPE_OPTIONS,
         hint: 'Select the construction description for Annexure I-A.' },
-      { id: 'bltNo', label: 'PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'], span: 2, only: HOUSE_CATEGORIES },
+      { id: 'bltNo', label: 'PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'], span: 2, only: HOUSE_PTIN_PAIR_CATEGORIES },
+      { id: 'housePtinPairs', label: 'House number / PTIN pairs', type: 'textarea', hidden: true,
+        hint: 'Return a compact JSON array of {"houseNo":"...","ptin":"..."} rows. Pair values only when the source supports the association; retain unpaired values as rows with the other value blank.' },
       { id: 'taxesPerAnnum', label: 'Tax per annum (₹)', ph: 'Taxes Per Annum', type: 'money', only: HOUSE_CATEGORIES },
       { id: 'annualRentalValue', label: 'Annual rental value (₹)', ph: 'Annual Rental Value', type: 'money', only: HOUSE_CATEGORIES },
       { id: 'tapConnectionNo', label: 'Tap connection no(s).', ph: 'Tap Connection No.', only: HOUSE_CATEGORIES },
@@ -384,9 +387,9 @@ export const GROUPS: Group[] = [
       { id: 'stiltFloors', label: 'Number of stilt floors', ph: ['Stilt Floors', '1'], type: 'number', only: ['Flat'] },
       { id: 'upperFloors', label: 'Number of upper floors', ph: ['Upper Floors', '5'], type: 'number', only: ['Flat'] },
       { id: 'developmentSro', label: 'Development agreement — SRO', ph: 'Development SRO', only: ['Flat'] },
-      { id: 'developmentSroCode', label: 'Development agreement — SRO code', ph: 'Development SRO Code', only: ['Flat'] },
+      { id: 'developmentSroCode', label: 'Development agreement — SRO code', ph: 'Development SRO Code', only: ['Flat'], hidden: true },
       { id: 'supplementalSro', label: 'Supplemental agreement — SRO', ph: 'Supplemental SRO', only: ['Flat'] },
-      { id: 'supplementalSroCode', label: 'Supplemental agreement — SRO code', ph: 'Supplemental SRO Code', only: ['Flat'] },
+      { id: 'supplementalSroCode', label: 'Supplemental agreement — SRO code', ph: 'Supplemental SRO Code', only: ['Flat'], hidden: true },
       { id: 'developmentDocNo', label: 'Development agreement-cum-GPA document number', ph: 'Document No.', only: ['Flat'] },
       { id: 'developmentDocDate', label: 'Development agreement-cum-GPA date', ph: 'Document Date', type: 'date', only: ['Flat'] },
       { id: 'supplementalDocNo', label: 'Supplemental agreement document number', ph: 'Supplemental Agreement No.', only: ['Flat'] },
@@ -425,7 +428,7 @@ export const LINK_OPTIONS: LinkOption[] = [
       { id: prefix + 'No', label: 'Document number', ph: kind + ' Deed No.' },
       { id: prefix + 'Date', label: 'Execution date', ph: kind + ' Deed Date', type: 'date' as const },
       { id: prefix + 'Sro', label: 'Sub-Registrar Office', ph: kind + ' Deed SRO' },
-      { id: prefix + 'SroCode', label: 'SRO code', ph: kind + ' Deed SRO Code' },
+      { id: prefix + 'SroCode', label: 'SRO code', ph: kind + ' Deed SRO Code', hidden: true },
     ] };
   }),
   { id: 'landLayoutLrs', label: 'Vacant Land Tax / Approved Layout / LRS', telugu: '', note: 'Enter each available land-tax, layout and regularisation detail for this property.', fields: [
@@ -443,7 +446,7 @@ export const LINK_OPTIONS: LinkOption[] = [
     { id: 'layoutFileNo', label: 'Approved layout file number', ph: 'Layout File No.' },
   ] },
   { id: 'assessment', label: 'Tax/Assessment Identification', telugu: '', note: 'Enter the property assessment or PTIN identifier once here. A house-tax receipt may fill this value when it is shown on the receipt.', fields: [
-    { id: 'bltNo', label: 'Assessment / PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
+    { id: 'bltNo', label: 'PTIN Number / Assessment Number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
   ] },
   { id: 'lrsApplication', label: 'L.R.S.-2020 Application', telugu: '', note: 'Layout regularisation application and date.', fields: [
     { id: 'lrsApplicationNo', label: 'Application number', ph: 'LRS Application No.' },
@@ -463,7 +466,7 @@ export const LINK_OPTIONS: LinkOption[] = [
       { id: 'linkDocDate', label: 'Link deed execution date', ph: 'Link Doct.Date', type: 'date',
         hint: 'The date this document was executed, shown in its opening recital on the first page — not the SRO registration/presentation date.' },
       { id: 'linkSro', label: 'Sub-Registrar Office', ph: ['Sub Registrar', 'Sub-Registrar'], span: 2 },
-      { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Type this document’s SRO name or code and choose its matching office. The name and code are filled together for this record.' },
+      { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Filled automatically from the selected Sub-Registrar Office.', hidden: true },
     ],
   },
   {
@@ -471,8 +474,9 @@ export const LINK_OPTIONS: LinkOption[] = [
     note: 'Enter the receipt and the property assessment/PTIN separately. Do not use a demand or receipt number as the assessment number.',
     fields: [
       { id: 'houseTaxReceiptNo', label: 'House tax receipt number', ph: 'House Tax Receipt' },
-      { id: 'bltNo', label: 'Assessment / PTIN number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
-      { id: 'assessmentPtinNo', label: 'Assessment / PTIN number',
+      { id: 'bearingHNo', label: 'Bearing H.No.', ph: 'Bearing H.No.', hint: 'The subject property house number shown with this tax receipt.' },
+      { id: 'bltNo', label: 'PTIN Number / Assessment Number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
+      { id: 'assessmentPtinNo', label: 'PTIN Number / Assessment Number',
         hint: 'Kept for older drafts.', hidden: true },
       { id: 'localBodyName', label: 'Local body', ph: 'Local Body Name', hint: 'Municipality / Gram Panchayat / GHMC circle' },
       { id: 'taxPaidDate', label: 'Tax paid date', ph: 'Tax Paid Date', type: 'date' },
@@ -536,7 +540,8 @@ export function groupsForStep(step: number, category: string): Group[] {
   return GROUPS.filter(g => g.step === step)
     .map(g => ({ ...g,
       ...(category === 'Flat' && g.title === 'Boundaries' ? { title: 'Boundaries of Apartment', note: 'The four apartment-level property boundaries. Enter the individual flat boundaries separately below.' } : {}),
-      fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category)))
+      fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
+        && !(HOUSE_PTIN_PAIR_CATEGORIES.includes(category) && ['bearingHNo', 'bltNo'].includes(f.id)))
       .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
         ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' }
         : f.id === 'bearingHNo' && category === 'Flat' ? { ...f, label: 'Municipal H.Nos.' } : f) }))

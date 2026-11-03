@@ -239,7 +239,7 @@ export const supportingRecordsForSchedule = (state: AppState, scheduleId: string
   state.supportingRecords.filter(record => record.scheduleId === scheduleId);
 
 const JURISDICTION_IDS = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar'];
-const PROPERTY_IDS = ['localAuthorityType', 'plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'landmarkHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
+const PROPERTY_IDS = ['localAuthorityType', 'plotNo', 'bearingHNo', 'nearAdjacent', 'nearHNo', 'landmarkHNo', 'assessmentPtinNo', 'surveyNo', 'extentSqYards', 'extentSqMeters', 'housePtinPairs', ...FLAT_SCHEDULE_FIELDS, ...FLAT_BOUNDARY_FIELDS, ...ALL_FIELDS.filter(field => field.only?.includes('Flat')).map(field => field.id)];
 const BOUNDARY_IDS = ['boundaryNorth', 'boundarySouth', 'boundaryEast', 'boundaryWest'];
 const STRUCTURE_IDS = ['houseStage', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo'];
 const VALUATION_IDS = ['govtRate', 'structValue'];

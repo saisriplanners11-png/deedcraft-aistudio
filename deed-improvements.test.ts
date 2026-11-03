@@ -110,7 +110,7 @@ describe('requested deed improvements', () => {
     const state = { ...initialState, deedType: 'Gift', draft: 'Municipal Gift', form: { ...initialState.form, localAuthorityType: 'Municipality', village: 'Sircilla' } };
     // Municipal mode is selected by its explicit flag/variant in the application.
     const values = mergeValues(state);
-    expect(values.ULB).toBe('MUNICIPAL COUNCIL'); expect(values.VILLAGE).toBe('SIRCILLA');
+    expect(values.ULB).toBe('Municipal Council'); expect(values.VILLAGE).toBe('Sircilla');
   });
   it('resolves vendor and vendee grammar independently, without changing identity placeholders', () => {
     const text = partyWording('The Vendor/s has/have agreed and the Vendee/s has/have accepted. <EXECUTANT NAME> <CLAIMANT NAME>', 1, 2);

@@ -789,8 +789,8 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
   const landmark = values.get(norm('Near / Adjacent'))?.toLowerCase();
   if (landmark === 'near' || landmark === 'adjacent') {
-    p = replaceRunText(p, /<[^<>]*>|\b(?:near\s*\/\s*a?djacent|near|adjacent)\s+(?:house\s+no\.?|h\.?\s*no\.?)/gi,
-      match => match[0].startsWith('<') ? match[0] : `${landmark} house No.`);
+    p = replaceRunText(p, /<[^<>]*>|\b(?:near\s*\/\s*a?djacent|near|adjacent)\s+(?:house\s+no\.?|h\.?\s*no\.?)\s*/gi,
+      match => match[0].startsWith('<') ? match[0] : `${landmark} H.No. `);
   }
   for (const tag of ['Executant Share', 'Attorney Share', 'Claimant Share']) {
     if (values.has(norm(tag)) && !values.get(norm(tag))) p = replaceRunText(p, new RegExp(`,?\\s*holding\\s+(?:an\\s+)?undivided\\s+share\\s+of\\s*<${tag}>(?:\\s+in the schedule property)?\\.?`, 'gi'), () => '.');
@@ -1592,7 +1592,7 @@ function prepareLandmarkBlock(block: string, values: Record<string, string>, var
   block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     const text = plainText(paragraph);
     if (!/^\s*All that\b/i.test(text) || /<\s*Landmark House No\.\s*>/i.test(text) || (/near\s*\/\s*adjacent|near house|adjacent house/i.test(text) && /<\s*Near H\.No\.\s*>/i.test(text))) return paragraph;
-    return replaceRunText(paragraph, /\bsituated\s+at\b/i, () => `situated ${relation} house No.<Landmark House No.> at`);
+    return replaceRunText(paragraph, /\bsituated\s+at\b/i, () => `situated ${relation} H.No. <Landmark House No.> at`);
   });
   return block.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
     if (!valuationLandmark) return table;
@@ -1608,7 +1608,7 @@ function prepareLandmarkBlock(block: string, values: Record<string, string>, var
       const column = index++;
       let first = true;
       return cell.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
-        const value = first ? column === cells.length - 1 ? ': <Landmark House No.>' : column === cells.length - 2 ? `${relation} house No.` : '' : '';
+        const value = first ? column === cells.length - 1 ? ': <Landmark House No.>' : column === cells.length - 2 ? `${relation} H.No.` : '' : '';
         first = false;
         return replaceRunText(paragraph, /[\s\S]+/, () => value);
       });
@@ -1866,6 +1866,10 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   const partyRewrites = rewrites.filter(rewrite => rewrite.partyRole).map(rewrite => ({ ...rewrite, finalSuffix: generalPoa ? /\s*hereinafter[\s\S]*$/i : /\s*\(Hereinafter[\s\S]*$/i }));
   const paymentRewrites = rewrites.filter(rewrite => rewrite.records && !rewrite.partyRole && /^(?:RTGS|Cheque|Demand Draft|UPI|Cash|Housing Loan|Through Bank)/.test(rewrite.find.source))
     .filter(rewrite => !rewrite.when || rewrite.regularWeight).map(rewrite => ({ ...rewrite, when: undefined }));
+  const openingRewrites: Rewrite[] = [...partyRewrites, ...paymentRewrites];
+  if (generalPoa && values['Poa Variant'] === 'general-power-of-attorney-family') {
+    openingRewrites.push({ find: /GENERAL POWER OF ATTORNEY\s*\(FOR SALE OF IMMOVABLE PROPERTY\)/i, replace: 'G.P.A. (FAMILY MEMBERS)' });
+  }
   let opening = chunks.slice(0, first).join('');
   const titleChunks = topLevelChildren(opening);
   const titleStart = titleChunks.find(child => /^Registered Deed:/i.test(plainText(opening.slice(child.start, child.end)).trim()));
@@ -1880,7 +1884,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     if (section) opening += `<w:p><w:pPr>${section}</w:pPr></w:p>`;
   }
   if (generalPoa) opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /<Friend\/Relationship>\s*<CLAIMANT NAME>/i, () => '<Poa Attorney Appointment>'));
-  opening = fill(opening, values, [...partyRewrites, ...paymentRewrites]);
+  opening = fill(opening, values, openingRewrites);
   // Repeated parties must continue with normal margins rather than carrying
   // the source's first-section stamp margin across all their opening pages.
   if (generalPoa || partyRewrites.reduce((sum, rewrite) => sum + (rewrite.records?.length || 0), 0) > 2) {

@@ -3,6 +3,8 @@ import { acreGuntasToSqYards } from './land-area';
 import { localAuthorityName } from './fields';
 import type Anthropic from '@anthropic-ai/sdk';
 import { flatStage } from './flat-options';
+import { normalizePropertyPlaceName } from './place-names';
+import { canonicalPropertyHousePtinPairs } from './property-house-ptin';
 import { getClient, EXTRACT_MODEL, VISION_MODEL, VERIFY_MODEL, readableError } from './claude';
 import { FLAT_AGREEMENT_FIELDS, ALL_FIELDS, PERSON_FIELDS, PARTY_ENTITY_FIELDS, partyEntityFields, type PartyType, GROUPS, LINK_OPTIONS } from './fields';
 import { docxToText, readZip } from './docx';
@@ -67,6 +69,7 @@ export function sectionFields(profile: ExtractionProfile) {
     ownSection,
     { id: 'step3', title: 'Step 3 · Jurisdiction', fields: fields(2) },
     { id: 'step4', title: 'Step 4 · Property and schedule', fields: [...fields(3), ...['category', 'unit'].filter(f => allowed.has(f))] },
+    ...(optionId === 'linkDoc' ? [{ id: 'step5', title: 'Step 5 · Market value', fields: linkMarketValueFields }] : []),
   ].filter(section => section.fields.length > 0);
 }
 
@@ -114,6 +117,9 @@ const extraFields = ['category', 'unit'];
 // extracted in the background as their own step5 section below.
 const phaseTwoFields = GROUPS.filter(group => [2, 3].includes(group.step)).flatMap(group => group.fields.map(field => field.id));
 const phaseOnePropertyFields = phaseTwoFields.filter(field => !['consid', 'executionDate', 'stampValue'].includes(field));
+// Link deeds provide the property's basic rate and structure valuation. Their
+// consideration and stamp details describe the old transaction, not this deed.
+const linkMarketValueFields = ['govtRate', 'structValue'];
 const jurisdictionFields = GROUPS.filter(group => group.step === 2).flatMap(group => group.fields.map(field => field.id)).filter(field => field !== 'executionDate');
 const propertyScheduleFields = [...GROUPS.filter(group => group.step === 3).flatMap(group => group.fields.map(field => field.id)), ...extraFields];
 // Include every legal-entity variant, not just the individual-card fields in
@@ -133,7 +139,7 @@ export function profileFields(profile: ExtractionProfile): string[] {
   if (profile.startsWith('guardian:')) return partyFields(profile.split(':')[1] as 'executant' | 'claimant').filter(field => field.includes('Guardian') && !field.endsWith('Relationship'));
   const option = profileOption(profile);
   if (option) return profile === 'phase1:linkDoc'
-    ? [...new Set([...option.fields.map(field => field.id), ...phaseOnePropertyFields, ...extraFields])]
+    ? [...new Set([...option.fields.map(field => field.id), ...phaseOnePropertyFields, ...extraFields, ...linkMarketValueFields])]
     : option.fields.map(field => field.id);
   if (profile === 'party-person') return PERSON_FIELDS.map(f => f.id);
   if (profile.startsWith('entity:') || profile.startsWith('authorization:')) {
@@ -152,21 +158,28 @@ export function profileFields(profile: ExtractionProfile): string[] {
 }
 
 const historicalTransactionFields = new Set(['consid', 'executionDate', 'stampValue', 'amount', 'refNo', 'bank', 'branch', 'date', 'payer', 'payee']);
-function profileInstruction(profile: ExtractionProfile) {
+function baseProfileInstruction(profile: ExtractionProfile) {
   if (profile.startsWith('guardian:')) { const side = profile.split(':')[1]; return `This upload identifies the selected minor's guardian only. Use role=${side}, record=primary and ${side}Guardian fields. Read the Aadhaar holder's own name, DOB, number and address. S/O, W/O, D/O or C/O identifies a relative, never the holder. Never replace the minor's own identity or infer guardian relationship from C/O.`; }
 
   if (profile === 'party-person') return 'Read only the selected person identity, relationship, designation, contact and complete postal address into person-prefixed fields with role=party-person, record=primary. Do not return organisation or ownership-party fields. Omit printed age: age is derived from DOB. Never infer authority from committee membership. If the source contains several different people, preserve distinct record identifiers for review; never combine their details.';
   if (profile.startsWith('entity:') || profile.startsWith('authorization:')) return 'Read only the organisation particulars / authority references requested for this ' + profile.split(':')[1] + ' with that role and record=primary. Separate organisation identifiers, office and branch addresses from representative personal particulars. Do not return person, property, payment or historical party facts. Copy only visible evidence; do not infer an act or authorization.';
   const option = profileOption(profile);
   if (option) return profile === 'phase1:linkDoc'
-    ? `This is a ${option.label} uploaded in Phase 1. For its own card fields use role="link". For every supported Phase 2 fact use role="property" and record="primary" — never role="link". Inspect any SCHEDULE OF PROPERTY especially carefully and return every visible property identifier and boundary, including flatStage, flatNo, flatFloorNo, apartmentName, superBuiltUpAreaSqFt, udsSqYards, flatBoundaryNorth, flatBoundarySouth, flatBoundaryEast and flatBoundaryWest when explicitly printed. Keep the apartment-level boundaries in boundaryNorth, boundarySouth, boundaryEast and boundaryWest, and the individual flat boundaries in the flatBoundary fields; never substitute one boundary set for the other. Return bltNo only for a subject-property identifier explicitly labelled PTIN, P.T.I. No., Property Tax Identification No., Property Tax ID or Assessment No.; do not use demand, receipt, survey, house-number or amount values. Return nearAdjacent only as Near or Adjacent when explicitly printed; return the house number alone in nearHNo. If it literally says "part open plot" or "part open place", category MUST be "Part open place"; use "Vacant Plot" only for a whole open/vacant plot. Do not return current executant, claimant, payment, sale consideration, stamp-paper value, or current execution-date facts from this historical/property record.`
-    : `This is a ${option.label} uploaded in Phase 1. Use role="link" and record="primary". Return only its own card fields (${option.fields.map(field => field.id).join(', ')}). ${profile === 'phase1:houseTax' ? 'Read the receipt number, assessment/PTIN number into bltNo, local body and tax paid date. Keep receipt number, assessment number, demand number, house number and payment amount separate.' : profile === 'phase1:landLayoutLrs' ? 'For each uploaded document, copy only explicitly labelled vacant land tax/V.L.T., approved layout file, LRS 2020 application and LRS proceeding values and dates. Do not infer one identifier from another or overwrite unrelated details.' : profile === 'phase1:vacantTax' ? 'Copy only the identifier explicitly labelled vacant land tax or V.L.T.; do not use a house-tax receipt or demand number.' : profile === 'phase1:assessment' ? 'Copy only the subject property assessment or PTIN identifier; do not use receipt or demand numbers.' : profile === 'phase1:titleDeed' ? 'Read only the title deed number and khata number, using the exact labels beside each value.' : profile === 'phase1:nala' ? 'Read only the NALA order number, proceeding date, original Acre-Guntas extent in nalaExtent, and its square-yard equivalent in convertedExtentText.' : profile === 'phase1:permissions' ? 'Read only the permission number, date, and issuing local authority.' : ''} Do not return Phase 2 jurisdiction/property/valuation facts, and do not return executant, claimant or payment facts from this document.`;
+    ? `This is a ${option.label} uploaded in Phase 1. For its own card fields use role="link". For every supported Phase 2 fact use role="property" and record="primary" — never role="link". Inspect any SCHEDULE OF PROPERTY especially carefully and return every visible property identifier and boundary, including flatStage, flatNo, flatFloorNo, apartmentName, superBuiltUpAreaSqFt, udsSqYards, flatBoundaryNorth, flatBoundarySouth, flatBoundaryEast and flatBoundaryWest when explicitly printed. Keep the apartment-level boundaries in boundaryNorth, boundarySouth, boundaryEast and boundaryWest, and the individual flat boundaries in the flatBoundary fields; never substitute one boundary set for the other. Return bltNo using this priority: subject-property identifier explicitly labelled PTIN, P.T.I. No., Property Tax Identification No. or Property Tax ID first; if none is printed, use Assessment No. If both exist, return PTIN. Do not use demand, receipt, survey, house-number or amount values. Return nearAdjacent only as Near or Adjacent when explicitly printed; return the house number alone in nearHNo. If it literally says "part open plot" or "part open place", category MUST be "Part open place"; use "Vacant Plot" only for a whole open/vacant plot. Do not return current executant, claimant, payment, sale consideration, stamp-paper value, or current execution-date facts from this historical/property record.`
+    : `This is a ${option.label} uploaded in Phase 1. Use role="link" and record="primary". Return only its own card fields (${option.fields.map(field => field.id).join(', ')}). ${profile === 'phase1:houseTax' ? 'Read the receipt number, the subject property Bearing H.No. into bearingHNo, PTIN Number into bltNo as first priority; only if no PTIN Number is printed, use the Assessment Number. If both are present, return the PTIN Number. Also read local body and tax paid date. Keep receipt number, assessment number, demand number, house number and payment amount separate.' : profile === 'phase1:landLayoutLrs' ? 'For each uploaded document, copy only explicitly labelled vacant land tax/V.L.T., approved layout file, LRS 2020 application and LRS proceeding values and dates. Do not infer one identifier from another or overwrite unrelated details.' : profile === 'phase1:vacantTax' ? 'Copy only the identifier explicitly labelled vacant land tax or V.L.T.; do not use a house-tax receipt or demand number.' : profile === 'phase1:assessment' ? 'Prioritize the subject property PTIN Number. If no PTIN Number is printed, use the Assessment Number. If both are present, return PTIN. Do not use receipt or demand numbers.' : profile === 'phase1:titleDeed' ? 'Read only the title deed number and khata number, using the exact labels beside each value.' : profile === 'phase1:nala' ? 'Read only the NALA order number, proceeding date, original Acre-Guntas extent in nalaExtent, and its square-yard equivalent in convertedExtentText.' : profile === 'phase1:permissions' ? 'Read only the permission number, date, and issuing local authority.' : ''} Do not return Phase 2 jurisdiction/property/valuation facts, and do not return executant, claimant or payment facts from this document.`;
   if (profile === 'party:executant') return 'This file was uploaded specifically for the current executant. Return every visibly supported executant individual/signatory identity, address, contact, occupation and PAN/Aadhaar field AND every visibly supported legal-entity field: party type, entity name, PAN, official mobile, registered/principal office address, signatory designation, firm/LLP registration, ROF office, partnership deed number/date, GSTIN and authority; society/trust classification, registration, registrar, NOC and governing-body resolution; company classification, CIN, DIN and board resolution; or HUF/other entity description, registration and authorization. Set executantPartyType only when the document explicitly establishes it. On Aadhaar cards, inspect the line labelled S/O, W/O, D/O or C/O and return the relationship prefix in executantRelation and only the father/relative name in executantRelativeName; do not omit it when it is clearly visible. Read the front and back and independently recheck names, identifiers, authority and address blocks. Do not return claimant, property, link-deed or payment facts.';
   if (profile === 'party:claimant') return 'This file was uploaded specifically for the current claimant. Return every visibly supported claimant individual/signatory identity, address, contact, occupation and PAN/Aadhaar field AND every visibly supported legal-entity field: party type, entity name, PAN, official mobile, registered/principal office address, signatory designation, firm/LLP registration, ROF office, partnership deed number/date, GSTIN and authority; society/trust classification, registration, registrar, NOC and governing-body resolution; company classification, CIN, DIN and board resolution; or HUF/other entity description, registration and authorization. Set claimantPartyType only when the document explicitly establishes it. On Aadhaar cards, inspect the line labelled S/O, W/O, D/O or C/O and return the relationship prefix in claimantRelation and only the father/relative name in claimantRelativeName; do not omit it when it is clearly visible. Read the front and back and independently recheck names, identifiers, authority and address blocks. Do not return executant, property, link-deed or payment facts.';
   if (profile === 'flat-agreements') return 'Read only the development agreement-cum-GPA document number, execution date, registering SRO and SRO code, stilt and upper floor counts, and the separate supplemental/allotment agreement number and its own SRO/code. Use role=property and record=primary. Keep development and supplemental registration details separate. Never use the older title deed number or the current sale GPA/AGPA authority number for either agreement. Omit facts that are not explicitly stated. Do not return party, payment, consideration or other property fields.';
   if (profile === 'jurisdiction') return 'This file was uploaded specifically to fill Jurisdiction for the current property. Return only propState, districtRegistrar, sro, district, mandal and village, all with role="property" and record="primary". Do not return link-document, property-schedule, party, valuation or payment facts.';
   if (profile === 'property-schedule') return 'This file was uploaded specifically to fill the Property Schedule for the current property. Return only property identification, boundaries, structure/annexure details, category and unit, all with role="property" and record="primary". Do not return link-document, jurisdiction, valuation, party or payment facts.';
   return '';
+}
+const HOUSE_PTIN_PAIR_INSTRUCTION = 'For the housePtinPairs field, return a compact JSON array string such as [{"houseNo":"6-1-142","ptin":"PTIN-1"},{"houseNo":"6-1-143","ptin":"PTIN-2"}]. Capture every subject-property H.No. and PTIN. Pair values only when the document layout, labels or wording supports the association; if unclear, preserve the H.No. and PTIN in separate rows with the other value blank. Do not infer a PTIN from a receipt, demand number, survey number, house number or tax amount.';
+function profileInstruction(profile: ExtractionProfile) {
+  const base = baseProfileInstruction(profile);
+  return profile === 'phase1:linkDoc' || profile === 'property-schedule'
+    ? `${base} ${HOUSE_PTIN_PAIR_INSTRUCTION}`
+    : base;
 }
 function allowedByProfile(candidate: Candidate, profile: ExtractionProfile) {
   if (!profileFields(profile).includes(candidate.field) || candidate.field === 'stampPaperMargin' || candidate.field.endsWith('CourtOrderPermitsExecution')) return false;
@@ -291,6 +304,12 @@ export function cleanCandidate(raw: any, page: number, index: number): Candidate
   if (typeof raw.quote !== 'string' || !raw.quote.trim() || typeof raw.region !== 'string' || !raw.region.trim()) return null;
   if (typeof raw.historical !== 'boolean' || typeof raw.handwritten !== 'boolean') return null;
   const field = raw.field;
+  if (field === 'housePtinPairs') {
+    const canonical = canonicalPropertyHousePtinPairs(value);
+    if (!canonical) return null;
+    value = canonical;
+  }
+  value = normalizePropertyPlaceName(field, value);
   // Registration endorsements commonly print "CS No. 1323/2016 & Doct
   // No. 1263/2016" in the same rotated margin.  When the model's quotation
   // includes that labelled evidence, select the number following Doct No.,
@@ -541,7 +560,8 @@ type EvidencePage = { number: number; text: string; kind: string; drawing: boole
 const LINK_TASK_INSTRUCTIONS = {
   step2: 'Identify the MAIN uploaded instrument from the complete document. Its attached plans, check slips and Form 60/61 declarations are NOT its document type. linkDocType and linkNature come from the main instrument heading. linkDocNo is the registered document number/year of THIS instrument, never CS/Check Slip No., a stamp serial, or an older deed cited in a title recital. Combine the document number and year only when printed source evidence supports both. linkDocDate is the execution date in the main instrument opening recital, never dates on declarations or presentation endorsements. linkPriorOwner is the vendor named in the main deed opening, reference only. Book and registered pages must be visibly printed. Use role=link, record=primary. Resolve ancillary references by their labels and document relationship; do not count their frequency as truth.',
   step3: 'Extract subject PROPERTY jurisdiction, prioritizing the main property schedule over party residence and office letterheads. district is the REVENUE district the property lies in, and districtRegistrar is the Registration District named beside "District Registrar"/"Registration Jurisdiction of District Registrar" — most schedules state only one district name for both, in which case copy that same printed name into both district and districtRegistrar rather than leaving district blank; only give them different values when the schedule visibly prints two distinct district names. Never take district from a party\'s own address block. Copy printed place names without words proper, village, or mandal. propState must be normalized to exactly "Telangana" or "Andhra Pradesh" — the only two allowed values — even when the document prints "Telangana State", "T.S.", "TS" or similar; infer it from the printed district/SRO when the state itself is not spelled out. Use role=property, record=primary.',
-  step4: 'Extract the MAIN subject property and schedule, prioritizing its verbatim schedule over plan headings and neighboring property labels. Copy all four explicitly labeled apartment/property boundaries, and keep any separately labeled flat-unit boundaries in flatBoundaryNorth, flatBoundarySouth, flatBoundaryEast and flatBoundaryWest; never merge the two sets. For a flat, independently copy its stage, flat number, floor number, apartment complex name, built-up area including common area, UDS, and municipal house numbers into their matching fields. Copy every subject identifier and both alternate extents. A site-plan file number is NOT a building permit number. A neighboring H.No. goes only into nearHNo; when the source explicitly says Near or Adjacent, return that relationship separately in nearAdjacent. Copy the subject property PTIN / P.T.I. No. / Property Tax Identification No. / Property Tax ID / Assessment No. only into bltNo; never use demand, receipt, survey, house-number or amount values. Use the schedule wording for category: part open plot means Part open place. Use role=property, record=primary. Preserve separate records only if the instrument actually conveys multiple distinct scheduled properties.',
+  step4: 'Extract the MAIN subject property and schedule, prioritizing its verbatim schedule over plan headings and neighboring property labels. Copy all four explicitly labeled apartment/property boundaries, and keep any separately labeled flat-unit boundaries in flatBoundaryNorth, flatBoundarySouth, flatBoundaryEast and flatBoundaryWest; never merge the two sets. For a flat, independently copy its stage, flat number, floor number, apartment complex name, built-up area including common area, UDS, and municipal house numbers into their matching fields. Copy every subject identifier and both alternate extents. A site-plan file number is NOT a building permit number. A neighboring H.No. goes only into nearHNo; when the source explicitly says Near or Adjacent, return that relationship separately in nearAdjacent. Copy every explicitly labelled subject-property PTIN / P.T.I. No. / Property Tax Identification No. / Property Tax ID / Assessment No. into housePtinPairs with its supported H.No. association; retain all rows and use a blank side when association is unclear. Keep the legacy bltNo field for a single PTIN value. Never use demand, receipt, survey, house-number or amount values as PTIN. Use the schedule wording for category: part open plot means Part open place. Use role=property, record=primary. Preserve separate records only if the instrument actually conveys multiple distinct scheduled properties.',
+  step5: 'Extract only the visibly printed basic market rate per square yard into govtRate and structure valuation into structValue from this property valuation/schedule. Preserve the source units and labels in the quote. Never return the old deed consideration, stamp value, stamp margin or execution date: those belong to the prior transaction and must remain blank for the new deed.',
 };
 const ADMINISTRATIVE_RULES = 'For linkSro and sro return the visibly printed office LOCATION name only (for example Sircilla); retain Joint/Sub-Registrar designations in the verbatim source quote. linkRegisteredPage is only an explicitly labeled registered BOOK PAGE or page range: a document number and the ordinary page ordinals of this PDF are never registered book pages. Property pinCode requires a postal code explicitly printed for the SUBJECT PROPERTY address; never copy a party, stamp vendor or office postal code. Likewise, party residential addresses never establish property village, district, mandal or state, even if their town matches the property town.';
 
@@ -572,12 +592,13 @@ async function extractLinkDocFast(inputPages: Page[], initialNotes: string[], si
   const step2Section = sections.find(s => s.id === 'step2');
   const step3Section = sections.find(s => s.id === 'step3');
   const step4Section = sections.find(s => s.id === 'step4');
+  const step5Section = sections.find(s => s.id === 'step5');
   const pageParts = (subset: Page[]) => subset.flatMap(p => [{ type: 'text', text: `SOURCE PAGE ${p.number}: ${p.region}` } as Part, ...p.parts]);
 
   // Purely functional: read (with a transient-retry and too-large-response
   // split fallback) and return candidates. Progress events and failure notes
   // are the caller's job, so an internal id here never leaks into the UI as
-  // its own row — only the real wizard steps (step2/step3/step4) are shown.
+  // its own row — only the real wizard steps (step2 through step5) are shown.
   // A single page's facts read reliably in one request up to roughly a dozen
   // fields (the same ceiling the general path uses for a compact one-page
   // read). Asking one call for the jurisdiction+schedule list in full — 30+
@@ -622,17 +643,19 @@ async function extractLinkDocFast(inputPages: Page[], initialNotes: string[], si
   }
 
   const step2Pages = inputPages.slice(0, LINK_DEED_STEP2_PAGES);
-  // Native PDF text is a cheap, deterministic page index.  It locates the
-  // normal schedule headings without asking a vision model to guess page
-  // numbers. Scanned PDFs have no useful native text, so the bounded fallback
-  // reads every page after the instrument opening rather than silently losing a
-  // later schedule.
-  const scheduleSignal = /schedule\s+(?:of\s+)?(?:the\s+)?property|description\s+of\s+(?:the\s+)?property|boundar(?:y|ies)|extent|survey\s*(?:no|number)|plot\s*(?:no|number)|flat\s*(?:no|number)/i;
-  let discovered = inputPages.filter(page => page.number > LINK_DEED_STEP2_PAGES && scheduleSignal.test(page.text || ''));
+  // Native PDF text is a cheap, deterministic page index. It locates schedule
+  // headings without asking a vision model to guess page numbers. Include the
+  // opening pages when a short document places its schedule there; scanned
+  // documents without native text fall back to every page after the opening,
+  // or the whole document when it has no later pages.
+  const scheduleSignal = /schedule\s+(?:of\s+)?(?:the\s+)?property|description\s+of\s+(?:the\s+)?property|boundar(?:y|ies)|extent|survey\s*(?:no|number)|plot\s*(?:no|number)|flat\s*(?:no|number)|market\s+value|valuation|basic\s+rate|govt\.?\s*rate/i;
+  const discovered = inputPages.filter(page => scheduleSignal.test(page.text || ''));
   const schedulePageNumbers = new Set(discovered.flatMap(page => [page.number - 1, page.number, page.number + 1]));
   const schedulePages = discovered.length
     ? inputPages.filter(page => schedulePageNumbers.has(page.number))
-    : inputPages.slice(LINK_DEED_STEP2_PAGES);
+    : inputPages.length > LINK_DEED_STEP2_PAGES
+      ? inputPages.slice(LINK_DEED_STEP2_PAGES)
+      : inputPages;
   notes.push(discovered.length
     ? `Schedule page discovery examined pages ${schedulePages.map(page => page.number).join(', ')}.`
     : `No native schedule heading was found; examined pages ${schedulePages.map(page => page.number).join(', ') || '1'} visually.`);
@@ -654,11 +677,12 @@ async function extractLinkDocFast(inputPages: Page[], initialNotes: string[], si
     }
   })();
   const scheduleJob = (async () => {
-    if (!step3Section && !step4Section) return;
+    if (!step3Section && !step4Section && !step5Section) return;
     if (step3Section) event('step3', step3Section.title, 'running');
     if (step4Section) event('step4', step4Section.title, 'running');
+    if (step5Section) event('step5', step5Section.title, 'running');
     try {
-      const candidates = await readGroup('schedule', schedulePages, [...(step3Section?.fields || []), ...(step4Section?.fields || [])], `${LINK_TASK_INSTRUCTIONS.step3}\n${LINK_TASK_INSTRUCTIONS.step4}`);
+      const candidates = await readGroup('schedule', schedulePages, [...(step3Section?.fields || []), ...(step4Section?.fields || []), ...(step5Section?.fields || [])], `${LINK_TASK_INSTRUCTIONS.step3}\n${LINK_TASK_INSTRUCTIONS.step4}\n${LINK_TASK_INSTRUCTIONS.step5 || ''}`);
       if (step3Section) {
         const fields3 = candidates.filter(c => step3Section.fields.includes(c.field));
         publish('step3', { candidates: fields3, plans: [], notes: [] });
@@ -669,12 +693,18 @@ async function extractLinkDocFast(inputPages: Page[], initialNotes: string[], si
         publish('step4', { candidates: fields4, plans: [], notes: [] });
         event('step4', step4Section.title, fields4.length ? 'done' : 'review');
       }
+      if (step5Section) {
+        const fields5 = candidates.filter(c => step5Section.fields.includes(c.field));
+        publish('step5', { candidates: fields5, plans: [], notes: [] });
+        event('step5', step5Section.title, fields5.length ? 'done' : 'review');
+      }
     } catch (error) {
       stop(signal);
-      const title = [step3Section?.title, step4Section?.title].filter(Boolean).join(' / ');
+      const title = [step3Section?.title, step4Section?.title, step5Section?.title].filter(Boolean).join(' / ');
       notes.push(`${title}: ${readableError(error).message}`);
       if (step3Section) event('step3', step3Section.title, 'error');
       if (step4Section) event('step4', step4Section.title, 'error');
+      if (step5Section) event('step5', step5Section.title, 'error');
     }
   })();
   await Promise.all([step2Job, scheduleJob]);

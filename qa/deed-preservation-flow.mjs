@@ -74,7 +74,7 @@ for (const [instrumentId, variantId, deedType, draft, file, mode] of modes) {
     if (regularGift) { assert.doesNotMatch(text, /following undivided shares|NALA converted extent:|30%|20%/i, context); assert.match(text, /WHEREAS the Donees are the friends of the Donor\./); }
     else { assert.match(text, /NALA converted extent: 242 Sq\. Yards\./, context); assert.match(text, /30%/, context); }
     if (!municipal) assert.match(text, /7,65,432/, context);
-    else { assert.match(text, /MIXED VILLAGE/); assert.doesNotMatch(text, /Represented by its Commissioner|MUNICIPAL COUNCIL, SIRCILLA|FAMILY MEMBER|ANNEXURE/); }
+    else { assert.match(text, /Mixed Village/); assert.doesNotMatch(text, /Represented by its Commissioner|MUNICIPAL COUNCIL, SIRCILLA|FAMILY MEMBER|ANNEXURE/); }
     if (instrumentId === 'sale' && mode !== 'ordinary') { assert.match(text, /AUTH-42/); assert.match(text, /AUTHORITY SRO/); }
     if (instrumentId === 'sale' && property.startsWith('flat')) { assert.match(text, /DGPA-42/); assert.match(text, /ALLOTMENT-42/); assert(text.indexOf('DGPA-42') < text.indexOf('after duly satisfying')); }
     if (instrumentId === 'agreement_of_sale') { assert.doesNotMatch(text, /<WITHOUT POSSESSION>/); assert.match(text, variantId === 'with-possession' ? /WITH POSSESSION/ : /WITHOUT POSSESION/); }

@@ -47,7 +47,7 @@ for (const version of ['v1', 'v2', 'v3', 'v4', 'v5', 'v6']) for (const property 
   assert.match(text, /7,65,432/); assert.match(text, /without any monetary consideration/);
   assert.match(text, /NALA-42/); assert.match(text, /through her\./);
   assert.doesNotMatch(text, /holding (?:an? )?undivided share|holding 60%|following undivided shares|NALA converted extent:|50%|60%|100%/i);
-  assert.match(text, /adjacent house No\.\s*LANDMARK-99/i);
+  assert.match(text, /adjacent H\.No\.\s+LANDMARK-99/i);
   const valuation = text.slice(text.search(/STATEMENT OF MARKET VALUE|ANNEXURE/));
   if (property !== 'plot') assert.doesNotMatch(valuation, /(?:near|adjacent)\s+(?:house\s*no|h\.no)/i);
   if (property.includes('flat')) assert.match(text, /30 Sq.yds equivalent to 25.08 square meters/);
@@ -71,7 +71,7 @@ for (const municipal of [false, true]) for (const side of ['executant', 'claiman
   assert.match(text, /GUARDIAN PERSON/); assert.match(text, /MINOR CHILD/); assert.match(text, /Mother/);
   if (side === 'executant') assert.match(text, /COURT-42 dated 02-01-2026/);
   if (municipal) {
-    assert.match(text, /MIXED CASE VILLAGE/); assert.match(text, /30 square yards equivalent to 25.08 square meters/);
+    assert.match(text, /Mixed Case Village/); assert.match(text, /30 square yards equivalent to 25.08 square meters/);
     assert.doesNotMatch(text, /Represented by its Commissioner|MUNICIPAL COUNCIL, SIRCILLA|FAMILY MEMBER|ANNEXURE|WHEREAS the Donee is the/);
   }
   cases++;

@@ -3,6 +3,7 @@ import { appStateFor, draftReducer, newDraft, plansFor, resolveDraft, type Candi
 import { cleanCandidate, cleanDrawing } from './upload-extraction';
 import { ageFrom, todayISO } from './logic';
 import { newStructureDetail } from './fields';
+import { parsePropertyHousePtinPairs, serializePropertyHousePtinPairs } from './property-house-ptin';
 
 const candidate = (field: string, value: string, patch: Partial<Candidate> = {}): Candidate => ({ id: field, field, value, role: 'executant', record: 'primary', quote: value, page: 1, region: 'Seller handwritten particulars', handwritten: true, historical: false, status: 'accepted', ...patch });
 const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${id}.jpg`, revision: 0, hash: id, status: 'done', result: { candidates, plans: [], notes: [] } });
@@ -79,6 +80,43 @@ describe('source-backed drafts', () => {
     expect(appStateFor(draft).additionalSchedules[0].values.bltNo).toBe('PTIN-TWO');
     set('property|primary|bltNo', 'MANUAL-PTIN');
     expect(appStateFor(draft).form.bltNo).toBe('MANUAL-PTIN');
+  });
+  it('prefills an uploaded PTIN for Part open place and keeps every house/PTIN row through save and reload', () => {
+    const sourceOne = source('link-one', [candidate('housePtinPairs', '[{"houseNo":"6-1-142","ptin":"PTIN-142"}]', { role: 'property' })]);
+    const sourceTwo = source('link-two', [candidate('housePtinPairs', '[{"houseNo":"6-1-143","ptin":"PTIN-143"}]', { role: 'property' })]);
+    let draft = draftWith(sourceOne, sourceTwo);
+    draft = draftReducer(draft, { type: 'manual', key: 'property|primary|category', value: 'Part open place' });
+    const extracted = parsePropertyHousePtinPairs(appStateFor(draft).form.housePtinPairs);
+    expect(extracted?.map(row => [row.houseNo, row.ptin])).toEqual([
+      ['6-1-142', 'PTIN-142'], ['6-1-143', 'PTIN-143'],
+    ]);
+
+    const editedRows = [...(extracted || []), { id: 'manual-row-3', houseNo: '6-1-144', ptin: 'PTIN-144' }];
+    draft = draftReducer(draft, { type: 'manual', key: 'property|primary|housePtinPairs', value: serializePropertyHousePtinPairs(editedRows) });
+    draft = draftReducer(draft, { type: 'add-property', id: 'second' });
+    draft = draftReducer(draft, { type: 'manual', key: 'property|second|category', value: 'Part open place' });
+    draft = draftReducer(draft, { type: 'manual', key: 'property|second|housePtinPairs', value: '[{"id":"second-row","houseNo":"2-1-4","ptin":"SECOND-PTIN"}]' });
+    const restored = draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) });
+    const state = appStateFor(restored);
+    expect(parsePropertyHousePtinPairs(state.form.housePtinPairs)?.map(row => row.ptin)).toEqual(['PTIN-142', 'PTIN-143', 'PTIN-144']);
+    expect(parsePropertyHousePtinPairs(state.additionalSchedules[0].values.housePtinPairs)?.map(row => row.ptin)).toEqual(['SECOND-PTIN']);
+  });
+  it('keeps legacy one-value PTIN extraction available for Part open place', () => {
+    let draft = newDraft();
+    draft = draftReducer(draft, { type: 'manual', key: 'property|primary|category', value: 'Part open place' });
+    draft = draftReducer(draft, { type: 'manual', key: 'link|tax|linkOption', value: 'houseTax' });
+    draft = draftReducer(draft, { type: 'manual', key: 'link|tax|bltNo', value: 'LEGACY-PTIN' });
+    expect(appStateFor(draft).form.bltNo).toBe('LEGACY-PTIN');
+  });
+  it('accepts structured house/PTIN extraction rows and rejects malformed pair payloads', () => {
+    const make = (value: string) => cleanCandidate({
+      field: 'housePtinPairs', value, role: 'property', record: 'primary',
+      quote: 'H.No. 6-1-142 PTIN PTIN-142', page: 1, region: 'Schedule',
+      historical: false, handwritten: false,
+    }, 1, 0);
+    expect(make('[{"houseNo":"6-1-142","ptin":"PTIN-142"}]')?.value)
+      .toContain('PTIN-142');
+    expect(make('not a pair list')).toBeNull();
   });
   it('keeps repeatable Annexure I-A rows isolated by property schedule', () => {
     const primary = { totalFloors: '1', rows: [{ ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '5' }] };
@@ -344,6 +382,7 @@ describe('source-backed drafts', () => {
     // needs its own consideration, stamp paper and date — these must stay blank
     // until supplied, never inherited silently. Static identity (relation, house
     // number) is different: it legitimately carries forward with the confirmed party.
+    // A linked property's government rate is a property valuation and remains available.
     const linkDeed = source('linkDeed', [
       candidate('linkDocType', 'Registered Sale Deed', { role: 'link', id: 'link-type' }),
       candidate('linkDocNo', '1263/2016', { role: 'link', id: 'link-no' }),
@@ -362,7 +401,7 @@ describe('source-backed drafts', () => {
     expect(form.executantRelationName).toBe('S/O NARSAIAH');
     expect(form.executantHNo).toBe('11-1-138');
     expect(form.executantOccupation).toBe('');
-    expect(form.consid).toBe(''); expect(form.stampValue).toBe(''); expect(form.executionDate).toBe(''); expect(form.govtRate).toBe('');
+    expect(form.consid).toBe(''); expect(form.stampValue).toBe(''); expect(form.executionDate).toBe(''); expect(form.govtRate).toBe('1000');
   });
   it('deduplicates identical payment uploads by content, not filename', () => {
     const a = source('a', [candidate('amount','200', { role: 'payment' })]);

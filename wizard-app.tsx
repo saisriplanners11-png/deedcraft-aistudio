@@ -1,5 +1,6 @@
 import { isMinorParty } from './minor-parties';
-import { findSro, isSroField, sroFieldPair } from './sro-directory';
+import { resolveSroSelection } from './sro-directory';
+import { normalizePropertyPlaceName, titleCasePlaceName } from './place-names';
 import { titleAmendmentKind, titleAmendmentLabel } from './title-amendments';
 import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
 import { IconButton } from './icon-button';
@@ -9,7 +10,7 @@ import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflo
 import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
-import { ALL_FIELDS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
 import { FileDropZone } from './file-drop-zone';
@@ -43,6 +44,7 @@ import { PlacementRecord, PlacementSlot, PlacementAnchor } from './template-plac
 import { PLACEMENT_CATALOG, placementStepIndex } from './template-placement';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity, vendeeShareCents, type VendeeSharesBySchedule } from './logic';
+import { newPropertyHousePtinPair, propertyHousePtinPairsForEditor, serializePropertyHousePtinPairs, type PropertyHousePtinPair } from './property-house-ptin';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
@@ -125,6 +127,42 @@ function StructureDetailsTable({ value, defaultRoof, onChange, onNotice }: { val
     </div>
     <p style={{ margin: '10px 0 0', fontSize: 11, color: C.muted }}>Add up to the declared Total Floors. Each Floor No. may be used more than once.</p>
   </Section>;
+}
+
+function HousePtinPairsEditor({
+  serialized, legacyHouseNo, legacyPtin, onChange,
+}: {
+  serialized: string; legacyHouseNo: string; legacyPtin: string; onChange: (value: string) => void;
+}) {
+  const rows = propertyHousePtinPairsForEditor(serialized, legacyHouseNo, legacyPtin);
+  const save = (next: PropertyHousePtinPair[]) => onChange(serializePropertyHousePtinPairs(next));
+  const patchRow = (id: string, patch: Partial<Pick<PropertyHousePtinPair, 'houseNo' | 'ptin'>>) =>
+    save(rows.map(row => row.id === id ? { ...row, ...patch } : row));
+  return <section className="house-ptin-pairs" aria-label="House number and PTIN pairs">
+    <div className="house-ptin-pairs-heading">
+      <h3>House number and PTIN</h3>
+      <p>Add one row for each subject house number. Existing values stay in their rows when you add another.</p>
+    </div>
+    <div className="house-ptin-pairs-list">
+      {rows.map((row, index) => <div className="house-ptin-pair-row" key={row.id}>
+        <label>
+          <span>H.No. {index + 1}</span>
+          <input aria-label={`H.No. for PTIN pair ${index + 1}`} value={row.houseNo}
+            onChange={event => patchRow(row.id, { houseNo: event.target.value })} placeholder="e.g. 6-1-142" />
+        </label>
+        <label>
+          <span>PTIN {index + 1}</span>
+          <input aria-label={`PTIN for H.No. ${index + 1}`} value={row.ptin}
+            onChange={event => patchRow(row.id, { ptin: event.target.value })} placeholder="Property tax ID" />
+        </label>
+        <button type="button" className="quiet house-ptin-remove" aria-label={`Remove H.No./PTIN pair ${index + 1}`}
+          onClick={() => save(rows.filter(item => item.id !== row.id))}>Remove</button>
+      </div>)}
+    </div>
+    <button type="button" className="quiet house-ptin-add" onClick={() => save([...rows, newPropertyHousePtinPair()])}>
+      + Add H.No./PTIN pair
+    </button>
+  </section>;
 }
 
 type ExtractStep = { id?: string; title: string; state: 'queued' | 'running' | 'done' | 'review' | 'error' };
@@ -751,16 +789,14 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const visibleSavedDeeds = savedDeeds.filter(deed => [deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
-    if (isSroField(field)) {
-      const office = findSro(value);
-      if (office) {
-        const pair = sroFieldPair(field);
-        dispatch({ type: 'manual', key: fieldKey(role, record, pair.name), value: office.name });
-        dispatch({ type: 'manual', key: fieldKey(role, record, pair.code), value: office.code });
-        setDownload(null);
-        return;
-      }
+    const sro = resolveSroSelection(field, value);
+    if (sro) {
+      dispatch({ type: 'manual', key: fieldKey(role, record, sro.nameField), value: sro.name });
+      dispatch({ type: 'manual', key: fieldKey(role, record, sro.codeField), value: sro.code });
+      setDownload(null);
+      return;
     }
+    value = normalizePropertyPlaceName(field, value);
     value = uppercasePartyIdentity(field, value);
     if (field === 'consid') {
       const consideration = Number(value);
@@ -1458,14 +1494,24 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             const merge = activeScheduleMerge;
             const i = activePropertyIndex;
             const multipleProperties = propertyRecords.length > 1;
+            const propertyGroups = groupsForStep(3, record.category).map(group => ({
+              ...group,
+              fields: group.fields.filter(field => !(record.category === 'Part open place' && field.id === 'nearHNo')),
+            })).filter(group => group.fields.length);
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
               <ScheduleTypeControl municipal={municipalGift} scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
               {multipleProperties && <div className="add-document-row"><IconButton icon={Pencil} label={`Edit documents for property ${i + 1}`} onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }} /></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
-              <RecordFieldGroup role="property" record={id} category={record.category} step={3} resolved={resolved} edit={edit}
+              <RecordFieldGroup role="property" record={id} category={record.category} step={3} groupsOverride={propertyGroups} resolved={resolved} edit={edit}
                 fallbackValues={{ bltNo: id === 'primary' ? state.form.bltNo : record.values.bltNo || '' }} />
+              {HOUSE_PTIN_PAIR_CATEGORIES.includes(record.category) && <HousePtinPairsEditor
+                serialized={record.values.housePtinPairs || ''}
+                legacyHouseNo={record.values.bearingHNo || (record.category === 'Part open place' ? record.values.nearHNo : '') || ''}
+                legacyPtin={record.values.bltNo || ''}
+                onChange={value => edit('property', id, 'housePtinPairs', value)}
+              />}
               {['Residential', 'Commercial'].includes(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
                 defaultRoof={record.values.roofMaterial || ''}
