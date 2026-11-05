@@ -17,6 +17,7 @@ export function representativeDesignationOptions(partyType: string): string[] {
 
 export const isEntity = (values: Record<string, string>, side: PartySide) => ['Firm / LLP', 'Company', 'Society / Association', 'Society / Trust', 'Others / HUF'].includes(values[side + 'PartyType']);
 export function partyDisplayName(values: Record<string, string>, side: PartySide): string {
+  if (side === 'claimant' && (values.claimantPartyType || '').startsWith('Guardian') && values.claimantWardName) return values.claimantWardName;
   const name = values[side + (isEntity(values, side) ? 'EntityName' : 'Name')] || '';
   return isEntity(values, side) ? name.toLocaleUpperCase('en-IN') : name;
 }

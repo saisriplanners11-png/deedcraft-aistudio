@@ -17,7 +17,7 @@ Use **Dashboard version** in the header to choose **Classic** or **Registration 
 | 3. Jurisdiction | Existing upload, then dependent lookup fields and remaining original fields | Existing jurisdiction extraction, canonical values, date control and placement slots |
 | 4. Property Schedules | Existing per-property upload, switcher, fields, boundaries, structures and agreements | Existing scoped extraction, evidence/review and schedule editing |
 | 5. Market Value | Existing combined/per-property sections | Existing value extraction, declared value, computed rate and duty meanings |
-| 6. Payment Details | Existing payment forms and balance checks | Existing payment records and validation; omitted for Gift |
+| 6. Payment Details | Existing payment forms and balance checks | Existing payment records and validation; omitted for Gift and General/Family GPA |
 | 7. Executant Details | Existing repeated party forms and identity uploads | Existing individual/entity/guardian/authorisation/representative extraction and authority editor |
 | 8. Claimant Details | Existing repeated party forms and identity uploads | Existing recipient/entity/guardian uploads, shares and personal data |
 | 9. Reverify | Existing grouped outstanding details and configured template fields | Existing validation, issue navigation and candidate confirmation |

@@ -31,8 +31,7 @@ for (const property of properties) for (const variant of variants) for (const cu
   const entries = await rt.readZip(output);
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   const text = await rt.docxToText(output);
-  if (variant === variants[1]) assert.match(text, /^G\.P\.A\. \(FAMILY MEMBERS\)/);
-  else assert.match(text, /^GENERAL POWER OF ATTORNEY \(FOR SALE OF IMMOVABLE PROPERTY\)/);
+  assert.match(text, /^GENERAL POWER OF ATTORNEY \(FOR SALE OF IMMOVABLE PROPERTY\)/);
   assert.match(text, new RegExp(`appoint my ${variant === variants[1] ? 'son' : 'friend'} SAMPLE PURCHASER as`));
   assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
   assert.match(text, /24-10-2026/); assert.match(text, /01-10-2026/); assert.match(text, /TITLE-44/);

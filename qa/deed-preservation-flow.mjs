@@ -77,7 +77,7 @@ for (const [instrumentId, variantId, deedType, draft, file, mode] of modes) {
     else { assert.match(text, /Mixed Village/); assert.doesNotMatch(text, /Represented by its Commissioner|MUNICIPAL COUNCIL, SIRCILLA|FAMILY MEMBER|ANNEXURE/); }
     if (instrumentId === 'sale' && mode !== 'ordinary') { assert.match(text, /AUTH-42/); assert.match(text, /AUTHORITY SRO/); }
     if (instrumentId === 'sale' && property.startsWith('flat')) { assert.match(text, /DGPA-42/); assert.match(text, /ALLOTMENT-42/); assert(text.indexOf('DGPA-42') < text.indexOf('after duly satisfying')); }
-    if (instrumentId === 'agreement_of_sale') { assert.doesNotMatch(text, /<WITHOUT POSSESSION>/); assert.match(text, variantId === 'with-possession' ? /WITH POSSESSION/ : /WITHOUT POSSESION/); }
+    if (instrumentId === 'agreement_of_sale') { assert.doesNotMatch(text, /<WITHOUT POSSESSION>/); assert.match(text, variantId === 'with-possession' ? /WITH POSSESSION/ : /WITHOUT POSSESSION/); }
     if (instrumentId === 'agreement_of_sale' || instrumentId === 'power_of_attorney') { assert.match(text, /FINGERPRINTS AS PER SECTION 32A/); assert.match(text, /SIGNATURES OF WITNESSES/); }
     if (variantId === 'general-power-of-attorney-family') assert.match(text, /son SAMPLE PURCHASER and daughter second recipient/i);
     cases++;

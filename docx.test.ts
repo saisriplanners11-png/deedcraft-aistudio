@@ -522,7 +522,7 @@ describe('sale deed template merge', () => {
     };
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text).toContain('Assessment No. PTIN-142 (H.No. 6-1-142); PTIN-143 (H.No. 6-1-143) (Part).');
+    expect(text).toContain('Assessment No. PTIN-142 bearing H.No.6-1-142; PTIN-143 bearing H.No.6-1-143 (Part).');
     expect(text).toContain('6-1-142, 6-1-143');
   });
 

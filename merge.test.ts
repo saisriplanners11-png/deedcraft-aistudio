@@ -3,7 +3,7 @@ import { initialState, generationBlockers } from './logic';
 import { deedFilename, mergeValues, scheduleMergesFor } from './merge';
 import { appStateFor, draftReducer, newDraft } from './source-draft';
 import { deedDate } from './deed-format';
-import { propertyHousePtinOutput } from './property-house-ptin';
+import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePtinOutput } from './property-house-ptin';
 
 it('restores separate title amendments without turning them into the original title or a flat allotment agreement', () => {
   let draft = newDraft();
@@ -73,16 +73,16 @@ describe('property H.No./PTIN pair output', () => {
     const main = mergeValues(state);
     expect(main['Municipal House Nos.']).toBe('6-1-142, 6-1-143');
     expect(main['Near H.No.']).toBe('6-1-142, 6-1-143');
-    expect(main['P.T.I.No.']).toBe('PTIN-142 (H.No. 6-1-142); PTIN-143 (H.No. 6-1-143)');
+    expect(main['P.T.I.No.']).toBe('PTIN-142 bearing H.No.6-1-142; PTIN-143 bearing H.No.6-1-143');
     const schedules = scheduleMergesFor(state);
     expect(schedules[0].values['P.T.I.No.']).toBe(main['P.T.I.No.']);
     expect(schedules[1].values['Municipal House Nos.']).toBe('2-1-4');
-    expect(schedules[1].values['P.T.I.No.']).toBe('PTIN-204 (H.No. 2-1-4)');
+    expect(schedules[1].values['P.T.I.No.']).toBe('PTIN-204 bearing H.No.2-1-4');
   });
 
   it('reads legacy single H.No./PTIN values as one unchanged pair', () => {
     expect(propertyHousePtinOutput('', '6-1-142', 'OLD-PTIN')).toEqual({
-      houseNos: '6-1-142', ptins: 'OLD-PTIN (H.No. 6-1-142)',
+      houseNos: '6-1-142', ptins: 'OLD-PTIN bearing H.No.6-1-142',
     });
     const values = mergeValues({ ...initialState, category: 'Part open place', form: { ...initialState.form, bearingHNo: '6-1-142', bltNo: 'OLD-PTIN' } });
     expect(values['Municipal House Nos.']).toBe('6-1-142');
@@ -105,4 +105,10 @@ describe('Optional party percentages', () => {
     state.vendorSharesBySchedule.primary.second = '101';
     expect(generationBlockers(state).filter(item => item.id.startsWith('vendor-share')).map(item => item.id)).toEqual(['vendor-share-primary-second']);
   });
+});
+
+it('does not invent an association between an unpaired property H.No. and a receipt-only PTIN', () => {
+  const pairs = housePtinPairsForSources({ bearingHNo: '6-2-24' }, [{ values: { linkOption: 'houseTax', bltNo: '1105008210' } }]);
+  expect(parsePropertyHousePtinPairs(pairs)?.map(row => [row.houseNo, row.ptin])).toEqual([['6-2-24', ''], ['', '1105008210']]);
+  expect(propertyHousePtinOutput(pairs).ptins).toBe('1105008210');
 });

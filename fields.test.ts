@@ -85,8 +85,7 @@ describe('field mapping', () => {
     const partOpenGroups = groupsForStep(3, 'Part open place');
     expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).not.toContain('bltNo');
     expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).not.toContain('bearingHNo');
-    expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).toContain('nearHNo');
-    expect(partOpenGroups.flatMap(group => group.fields).find(field => field.id === 'nearHNo')?.label).toBe('Subject property H.No.');
+    expect(partOpenGroups.flatMap(group => group.fields.map(field => field.id))).not.toContain('nearHNo');
     expect(groupsForStep(3, 'Open Place').flatMap(group => group.fields.map(field => field.id))).not.toContain('bltNo');
     expect(GROUPS.find(group => group.title === 'Property identification')?.fields.find(field => field.id === 'assessmentPtinNo')?.ph).toBe('V.L.T No.');
   });
@@ -97,7 +96,7 @@ describe('field mapping', () => {
     expect(options.find(option => option.id === 'landLayoutLrs')?.fields.map(field => field.id))
       .toEqual(['vltNo', 'layoutFileNo', 'lrsApplicationNo', 'lrsApplicationDate', 'lrsProceedingNo', 'lrsProceedingDate']);
     const visibleAssessmentFields = options.flatMap(option => option.fields)
-      .filter(field => !field.hidden && field.label === 'Assessment / PTIN number');
+      .filter(field => !field.hidden && field.label === 'PTIN Number / Assessment Number');
     expect(visibleAssessmentFields).toHaveLength(1);
     expect(visibleAssessmentFields[0].id).toBe('bltNo');
     const receiptAssessment = LINK_OPTIONS.find(option => option.id === 'houseTax')!.fields.find(field => field.id === 'assessmentPtinNo');
@@ -154,7 +153,7 @@ describe('field mapping', () => {
       const state = { ...initialState, category, form: { ...initialState.form, nearHNo: '6-5-62/1' } };
       expect(generationBlockers(state).map(item => item.id)).not.toContain('nearAdjacent');
       const fields = groupsForStep(3, category).flatMap(group => group.fields);
-      expect(fields.find(field => field.id === 'nearHNo')?.label).toBe('Subject property H.No.');
+      expect(fields.some(field => field.id === 'nearHNo')).toBe(false);
       expect(fields.some(field => field.id === 'nearAdjacent')).toBe(true);
     }
   });
@@ -304,4 +303,9 @@ describe('field mapping', () => {
     expect(mergeValues(state)['Market of Value Rs./-']).toBe('');
   });
 
+});
+
+it('routes missing house and PTIN identifiers to Step 2 only', () => {
+  const blockers = generationBlockers({ ...initialState, category: 'Residential' });
+  for (const id of ['bearingHNo', 'bltNo']) expect(blockers.find(item => item.id === id)?.step).toBe(1);
 });

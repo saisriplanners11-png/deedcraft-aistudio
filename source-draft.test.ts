@@ -439,3 +439,18 @@ describe('evidence validation', () => {
     expect(max).toBe(2); expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(7);
   });
 });
+
+it('restores every separate Step 2 tax-receipt pair without duplicating inferred scalar values', () => {
+  let draft = newDraft();
+  const set = (key: string, value: string) => { draft = draftReducer(draft, { type: 'manual', key, value }); };
+  set('property|primary|category', 'Part open place');
+  for (const [record, houseNo, ptin] of [['tax-one', '6-2-24', '1105008210'], ['tax-two', '6-2-25', '1105008211']]) {
+    set(`link|${record}|linkOption`, 'houseTax');
+    set(`link|${record}|bearingHNo`, houseNo);
+    set(`link|${record}|bltNo`, ptin);
+  }
+  const restored = appStateFor(draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) }));
+  expect(parsePropertyHousePtinPairs(restored.form.housePtinPairs)?.map(row => [row.houseNo, row.ptin]))
+    .toEqual([['6-2-24', '1105008210'], ['6-2-25', '1105008211']]);
+  expect(restored.form.bearingHNo).toBe('6-2-24, 6-2-25');
+});

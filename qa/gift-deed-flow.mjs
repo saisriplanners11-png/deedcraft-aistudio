@@ -79,7 +79,7 @@ for(const version of ['v1','v2','v3','v4','v5','v6']) {
   assert.match(text,/ABCDE1234F/);assert.match(text,/PQRST5678L/);
   assert.match(text,/DECLARATION/);assert.match(text,/Donors further declare that they have/);
   assert.doesNotMatch(text,/has\/have|is\/are|property hereby sold|____%/i);
-  if(variantId!=='family-gift')assert.doesNotMatch(text,/FAMILY MEMBERS?/);
+  if(variantId!=='family-gift' && ['v5','v6'].includes(version))assert.doesNotMatch(text,/^FAMILY MEMBERS?$/m);
   assert.equal(generated.manifest.templateVersionId,`custom:synthetic-${version}`);
  }
 }
@@ -112,9 +112,11 @@ for (const version of ['v1','v2','v3','v4','v5','v6']) {
  assert.match(text,/NALA-42/); // Keep the linked title record itself.
  const paragraphText=paragraph=>[...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(match=>match[1]).join('');
  const title=[...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].find(match=>paragraphText(match[0]).includes('GIFT SETTLEMENT DEED IN FAVOUR OF'))?.[0];
- assert(title);assert.match(paragraphText(title),/^GIFT SETTLEMENT DEED IN FAVOUR OF OTHERS\s*$/);
- assert.doesNotMatch(title,/<w:(?:br|cr)\b/);
+ const sourceEntries=await rt.readZip(bytes);
+ const sourceXml=new TextDecoder().decode(sourceEntries.find(entry=>entry.name==='word/document.xml').data);
+ const sourceTitle=[...sourceXml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].find(match=>paragraphText(match[0]).includes('GIFT SETTLEMENT DEED IN FAVOUR OF'))?.[0];
+ assert.equal(title,sourceTitle,'Retain exact source title XML and formatting');
  assert.equal(state.vendorSharesBySchedule.primary.primary,'100');
  await writeFile(`tmp/gift/qa/voice-note-${version}.docx`,output);
 }
-console.log('PASS: Gift single-line title, blank signing day, omitted party/schedule shares and NALA extent across all six source revisions.');
+console.log('PASS: Gift source-exact title, blank signing day, omitted party/schedule shares and NALA extent across all six source revisions.');

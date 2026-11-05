@@ -1,6 +1,43 @@
 import { ageFrom } from './party-age';
 import { deedDate } from './deed-format';
 
+
+const CLAIMANT_IDENTITY = ['Name', 'Gender', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'Pan', 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'] as const;
+
+/** Rendering view only: a saved Guardian card still stores the adult's details
+ * in its original fields, while the ward remains the recipient in the deed. */
+export function minorClaimantValues(values: Record<string, string>): Record<string, string> {
+  if (!(values.claimantPartyType || '').startsWith('Guardian') || !values.claimantWardName) return values;
+  const out: Record<string, string> = { ...values, claimantPartyType: 'Minor' };
+  for (const suffix of CLAIMANT_IDENTITY) {
+    out['claimant' + suffix] = values['claimantWard' + suffix] || '';
+    out['claimantGuardian' + suffix] = values['claimant' + suffix] || '';
+  }
+  out.claimantAge = ageFrom(out.claimantDob || '');
+  return out;
+}
+
+function minorVendeeGuardianRecital(values: Record<string, string>): string {
+  const v = (key: string) => (values['claimantGuardian' + key] || '').trim();
+  const gender = (values.claimantGender || '').toLowerCase();
+  const possessive = gender === 'female' ? 'her' : gender === 'male' ? 'his' : 'their';
+  const relationship = v('Relationship') || 'guardian';
+  const family: Record<string, string> = { father: 'Father', mother: 'Mother', grandfather: 'Grand Father', grandmother: 'Grand Mother' };
+  const normalized = relationship.toLowerCase().replace(/[\s-]+/g, '');
+  const guardian = family[normalized] ? 'natural ' + family[normalized] : relationship;
+  const relation = [v('Relation'), v('RelativeName').toLocaleUpperCase('en-IN')].filter(Boolean).join(' ');
+  const parts = [`is under guardianship of ${possessive} ${guardian} ${v('Name').toLocaleUpperCase('en-IN')}${relation ? ' ' + relation : ''}`];
+  const age = ageFrom(v('Dob'));
+  if (age) parts.push(`Aged ${age} years${v('Dob') ? ' (DOB:' + deedDate(v('Dob')) + ')' : ''}`);
+  if (v('Occupation')) parts.push('occu:' + v('Occupation'));
+  const address = [v('HNo') ? 'H.No.' + v('HNo') : '', v('Locality'), v('Village') ? v('Village') + ' Village' : '', v('Mandal') ? v('Mandal') + ' Mandal' : '', v('District') ? 'Dist:' + v('District') : '', v('State') ? 'State:' + v('State') : '', v('PinCode') ? 'Pin Code:' + v('PinCode') : ''].filter(Boolean).join(', ');
+  if (address) parts.push('R/o ' + address);
+  if (v('Mobile')) parts.push('Cell No:' + v('Mobile'));
+  if (v('Aadhaar')) parts.push('Aadhaar No:' + v('Aadhaar'));
+  if (v('Pan')) parts.push('PAN:' + v('Pan'));
+  return parts.join(', ');
+}
+
 export function isMinorParty(values: Record<string, string>, side: string): boolean {
   if (['Firm / LLP', 'Company', 'Society / Association', 'Society / Trust', 'Others / HUF'].includes(values[side + 'PartyType'])) return false;
   const age = ageFrom(values[side + 'Dob'] || '');
@@ -29,6 +66,10 @@ export function minorPartyErrors(values: Record<string, string>, side: string): 
   return errors;
 }
 export function minorGuardianRecital(values: Record<string, string>, side: string): string {
+  if (side === 'claimant') {
+    const minor = minorClaimantValues(values);
+    if (isMinorParty(minor, side)) return minorVendeeGuardianRecital(minor);
+  }
   if ((values[side + 'PartyType'] || '').startsWith('Guardian') && values[side + 'WardName']) {
     let recital = 'acting as ' + (values[side + 'GuardianRelationship'] || 'guardian') + ' and guardian of minor ' + values[side + 'WardName'].toLocaleUpperCase('en-IN') + (values[side + 'WardDob'] ? ', DOB: ' + deedDate(values[side + 'WardDob']) : '');
     if (side === 'executant' && values[side + 'CourtOrderNo']) recital += ', acting under permission of ' + (values[side + 'CourtName'] || '') + ', order ' + values[side + 'CourtOrderNo'] + ' dated ' + deedDate(values[side + 'CourtOrderDate'] || '');

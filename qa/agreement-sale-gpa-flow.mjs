@@ -42,7 +42,7 @@ for (const property of ['plot', 'open', 'dismantled', 'part', 'house-finished', 
     const output = new Uint8Array(await artifact.result.blob.arrayBuffer());
     const entries = await rt.readZip(output), xml = xmlOf(entries), text = await rt.docxToText(output);
     assert.deepEqual(artifact.result.unmapped, []);
-    assert.match(text, new RegExp(variant === 'with-possession' ? '^AGREEMENT OF SALE-CUM-GPA WITH POSSESSION' : '^AGREEMENT OF SALE-CUM-GPA WITHOUT POSSESION'));
+    assert.match(text, new RegExp(variant === 'with-possession' ? '^AGREEMENT OF SALE-CUM-GPA WITH POSSESSION' : '^AGREEMENT OF SALE-CUM-GPA WITHOUT POSSESSION'));
     if (variant === 'with-possession') {
       assert.match(text, /5\. POSSESSION/);
       assert.match(text, /already delivered and handed over the peaceful, vacant and physical possession/);

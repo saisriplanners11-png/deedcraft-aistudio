@@ -1,3 +1,4 @@
+import { orderedEnclosureIds } from './enclosure-records';
 import { isMinorParty } from './minor-parties';
 import { resolveSroSelection } from './sro-directory';
 import { normalizePropertyPlaceName, titleCasePlaceName } from './place-names';
@@ -6,7 +7,7 @@ import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant
 import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
-import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
+import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
@@ -44,7 +45,7 @@ import { PlacementRecord, PlacementSlot, PlacementAnchor } from './template-plac
 import { PLACEMENT_CATALOG, placementStepIndex } from './template-placement';
 import { deedFilename, propertyForm, mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppercasePartyIdentity, vendeeShareCents, type VendeeSharesBySchedule } from './logic';
-import { newPropertyHousePtinPair, propertyHousePtinPairsForEditor, serializePropertyHousePtinPairs, type PropertyHousePtinPair } from './property-house-ptin';
+import { housePtinPairsForSources, newPropertyHousePtinPair, propertyHousePtinPairsForEditor, serializePropertyHousePtinPairs, type PropertyHousePtinPair } from './property-house-ptin';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
 import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
@@ -151,7 +152,7 @@ function HousePtinPairsEditor({
             onChange={event => patchRow(row.id, { houseNo: event.target.value })} placeholder="e.g. 6-1-142" />
         </label>
         <label>
-          <span>PTIN {index + 1}</span>
+          <span>PTIN Number / Assessment Number {index + 1}</span>
           <input aria-label={`PTIN for H.No. ${index + 1}`} value={row.ptin}
             onChange={event => patchRow(row.id, { ptin: event.target.value })} placeholder="Property tax ID" />
         </label>
@@ -354,8 +355,8 @@ function LinkRecordCard({
   </section>;
 }
 
-function TitlePointCard({ option, record, form, onField, onUpload, sources, busy, onDelete, instrument, variant, templateSource }: {
-  option: (typeof LINK_OPTIONS)[number]; record: string; form: Record<string, string>;
+function TitlePointCard({ option, record, ordinal, form, onField, onUpload, sources, busy, onDelete, instrument, variant, templateSource }: {
+  option: (typeof LINK_OPTIONS)[number]; record: string; ordinal?: number; form: Record<string, string>;
   onField: (field: string, value: string) => void; onUpload: (files: File[]) => void;
   sources: Source[]; busy: boolean; onDelete?: () => void;
   instrument: Draft['instrumentId']; variant: string; templateSource: DeedTemplateSource;
@@ -374,9 +375,9 @@ function TitlePointCard({ option, record, form, onField, onUpload, sources, busy
     return () => { current = false; };
   }, [active, instrument, variant, templateSource]);
   const label = kind ? titleAmendmentLabel(kind) : option.id === 'linkDoc' ? 'Registered Deed' : option.id === 'permissions' ? 'House Permission' : option.label;
-  return <section className="panel link-record" data-title-point={option.id} data-title-amendment={kind}>
-    <div className="document-card-heading"><span className="document-card-icon"><FileText size={20} aria-hidden="true" /></span><div><h2>{label}</h2><p>Upload a source to fill the details, or enter them below.</p></div><span className="document-source-count">{sources.length ? `${sources.length} source${sources.length === 1 ? '' : 's'}` : 'Manual / upload'}</span></div>
-    <DocumentUpload label={`Add ${option.id === 'linkDoc' ? 'a registered deed' : option.label.toLowerCase()}`} busy={busy} multiple={option.id === 'linkDoc' || option.id === 'landLayoutLrs'} onUpload={onUpload} />
+  return <section className="panel link-record" aria-label={`${label} ${ordinal || 1}`} data-record-id={record} data-title-point={option.id} data-title-amendment={kind}>
+    <div className="document-card-heading"><span className="document-card-icon"><FileText size={20} aria-hidden="true" /></span><div><h2>{label}{ordinal ? ` ${ordinal}` : ''}</h2><p>Upload pages for this record, or enter its details. Use Add another for a separate document.</p></div><span className="document-source-count">{sources.length ? `${sources.length} source${sources.length === 1 ? '' : 's'}` : 'Manual / upload'}</span></div>
+    <DocumentUpload label={`Add ${option.id === 'linkDoc' ? 'a registered deed' : option.label.toLowerCase()}`} busy={busy} multiple onUpload={onUpload} />
     <SourceFeedback sources={sources} visibleFields={visibleFields.map(field => field.id)} />
     {option.id === 'landLayoutLrs' ? [
       ['Vacant Land Tax / Assessment', 'vltNo'],
@@ -675,7 +676,10 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   // Every real edit goes through `dispatch`/`edit`, never this setter.
   const baseNotices = [...generationBlockers(state), ...(draft.sources.some(s=>s.status==='reading'||s.status==='queued') ? [{id:'pending-uploads',label:'Document verification',reason:'Wait for all uploads to finish verification.',source:'Uploaded documents',step:1}] : [])];
   const shareBlockers = baseNotices.filter(item => item.id.startsWith('vendee-share-') || item.id.startsWith('vendor-share-'));
-  const recordOptions = (role: Role) => [...new Set(Object.keys(resolved.values).filter(k => k.startsWith(role + '|')).map(k => k.split('|')[1]))];
+  const recordOptions = (role: Role) => {
+    const ids = [...new Set(Object.keys(resolved.values).filter(k => k.startsWith(role + '|')).map(k => k.split('|')[1]))];
+    return role === 'link' ? orderedEnclosureIds(ids, draft.linkPropertyRecords, draft.manual) : ids;
+  };
   const workflowSteps = stepsFor(state.deedType);
   const step = draft.step;
   const previousStep = adjacentWorkflowStep(state.deedType, step, -1);
@@ -798,7 +802,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     }
     value = normalizePropertyPlaceName(field, value);
     value = uppercasePartyIdentity(field, value);
-    if (field === 'consid') {
+    if (field === 'consid' && hasPaymentStep(state.deedType)) {
       const consideration = Number(value);
       const paid = state.payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
       if (Number.isFinite(consideration) && consideration < paid) {
@@ -961,20 +965,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     if (states.some(state => state === 'review')) return 'review';
     return 'done';
   };
-  /** Each grouped section uses one record per property, including several uploaded files. */
+  /** Adding a document always creates a separate, property-scoped record. */
   const addLinkDocuments = (optionId: string, files: File[]) => {
-    if (optionId === 'landLayoutLrs' || optionId === 'houseTax') {
-      const related = optionId === 'landLayoutLrs'
-        ? ['landLayoutLrs', 'vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'layoutLrs']
-        : ['houseTax', 'assessment'];
-      const existing = recordOptions('link').find(record => propertyForLinkRecord(record) === activePropertyId
-        && related.includes(resolved.values[fieldKey('link', record, 'linkOption')]));
-      const record = existing || crypto.randomUUID();
-      if (!existing) dispatch({ type: 'link-property', record, propertyId: activePropertyId });
-      edit('link', record, 'linkOption', optionId);
-      if (files.length) void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${optionId}` as ExtractionProfile);
-      return;
-    }
     if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'link-property', record, propertyId: activePropertyId }); edit('link', record, 'linkOption', optionId); return; }
     if (optionId === 'linkDoc') {
       const record = crypto.randomUUID();
@@ -1292,10 +1284,10 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
     </main> : <div className="shell">
       {presentation ? <presentation.Navigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={[...new Set([...notices.map(notice => notice.step), ...(Object.entries(draft.jurisdictionLookups || {}).some(([propertyId, lookup]) => lookup.needsReview?.some(field => !!resolved.values[fieldKey('property', propertyId, field)])) ? [2] : [])])]} title={deedDefinition.label} onNavigate={goto} /> : <><div className="mobile-step-picker"><label htmlFor="mobile-step">Drafting workspace</label><select id="mobile-step" value={step} onChange={e => goto(Number(e.target.value))}><option value={-1}>Overview</option>{workflowSteps.map(s => <option key={s.id} value={s.id}>{workflowSteps.indexOf(s) + 1}. {s.label}</option>)}</select></div>
-      <nav className="rail" aria-label="Deed steps"><div className="rail-heading">YOUR WORKSPACE</div><div className="rail-draft-meta"><FileText size={20} aria-hidden="true" /><div><strong>{deedDefinition.label}</strong><span>{vm.doneIds.filter(id => id <= 8).length} of 9 drafting steps complete</span></div></div>
+      <nav className="rail" aria-label="Deed steps"><div className="rail-heading">YOUR WORKSPACE</div><div className="rail-draft-meta"><FileText size={20} aria-hidden="true" /><div><strong>{deedDefinition.label}</strong><span>{workflowSteps.filter(s => s.id <= 8 && vm.doneIds.includes(s.id)).length} of {workflowSteps.filter(s => s.id <= 8).length} drafting steps complete</span></div></div>
         <button className={`rail-overview${step === -1 ? ' active' : ''}`} aria-current={step === -1 ? 'page' : undefined} onClick={() => goto(-1)}><LayoutGrid size={18} aria-hidden="true" /> Overview</button>
         {[1, 2, 3, 4].map(phase => <div className="rail-phase" key={phase}>
-          <span className="rail-phase-label">{['', 'Setup & sources', draft.instrumentId === 'gift' ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][phase]}</span>
+          <span className="rail-phase-label">{['', 'Setup & sources', !hasPaymentStep(state.deedType) ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][phase]}</span>
           {workflowSteps.filter(s => s.phase === phase).map(s => (
             <button key={s.id} className={`rail-step${step === s.id ? ' active' : ''}${vm.doneIds.includes(s.id) ? ' done' : ''}`} aria-current={step === s.id ? 'step' : undefined} onClick={() => goto(s.id)}>
               <b>{String(workflowSteps.indexOf(s) + 1).padStart(2, '0')}</b>
@@ -1333,7 +1325,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <button type="button" className="review-shortcut" onClick={() => goto(8)}><span className="review-shortcut-icon"><Check size={20} aria-hidden="true" /></span><span><strong>{notices.length ? `${notices.length} details need a closer look` : 'Ready for a final review'}</strong><small>{notices.length ? 'See outstanding details, grouped by drafting section.' : 'Read through your deed and confirm the details.'}</small></span><ArrowRight size={20} aria-hidden="true" /></button>
           <div className="dashboard-stats">
             <div><span className="metric-icon"><Files size={20} aria-hidden="true" /></span><strong>{vm.filled}<span> / {vm.applicableCount}</span></strong><span>Applicable fields entered</span></div>
-            <div><span className="metric-icon"><CircleCheck size={20} aria-hidden="true" /></span><strong>{vm.doneIds.filter(id => id <= 8).length}<span> / 9</span></strong><span>Drafting steps complete</span></div>
+            <div><span className="metric-icon"><CircleCheck size={20} aria-hidden="true" /></span><strong>{workflowSteps.filter(s => s.id <= 8 && vm.doneIds.includes(s.id)).length}<span> / {workflowSteps.filter(s => s.id <= 8).length}</span></strong><span>Drafting steps complete</span></div>
             <div><span className="metric-icon"><ListChecks size={20} aria-hidden="true" /></span><strong>{vm.openCount}</strong><span>Readiness checks open</span></div>
           </div>
           <div className="dashboard-details"><details className="dashboard-section document-options"><summary>Document preferences <span>Optional formatting</span></summary>
@@ -1351,7 +1343,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <section className="dashboard-section" aria-labelledby="workflow-title">
             <div className="dashboard-section-head"><div><p className="eyebrow">WORKFLOW</p><h2 id="workflow-title">Your drafting steps</h2></div><span>Choose any step to continue</span></div>
             {[1, 2, 3, 4].map(phase => <div className="dashboard-phase" key={phase}>
-              <h3><span className="phase-icon">{phase === 1 ? <FolderOpen size={17} aria-hidden="true" /> : phase === 2 ? <LayoutGrid size={17} aria-hidden="true" /> : phase === 3 ? <Users size={17} aria-hidden="true" /> : <CircleCheck size={17} aria-hidden="true" />}</span><span>{['', 'Setup & sources', draft.instrumentId === 'gift' ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][phase]}</span><i /></h3>
+              <h3><span className="phase-icon">{phase === 1 ? <FolderOpen size={17} aria-hidden="true" /> : phase === 2 ? <LayoutGrid size={17} aria-hidden="true" /> : phase === 3 ? <Users size={17} aria-hidden="true" /> : <CircleCheck size={17} aria-hidden="true" />}</span><span>{['', 'Setup & sources', !hasPaymentStep(state.deedType) ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][phase]}</span><i /></h3>
               <div className="overview-grid">{workflowSteps.filter(s => s.phase === phase).map(s => (
                 <button key={s.id} type="button" className={`overview-card${vm.doneIds.includes(s.id) ? ' done' : ''}${s.id >= 10 ? ' optional' : ''}`} onClick={() => goto(s.id)}>
                   <span className="overview-card-top"><b>{String(workflowSteps.indexOf(s) + 1).padStart(2, '0')}</b><em>{s.id >= 10 ? 'Optional plan' : vm.doneIds.includes(s.id) ? 'Complete' : 'To do'}</em></span>
@@ -1437,40 +1429,40 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <div className="documents-intro"><div><h2>Documents for this property</h2><p>Add the records you have. Review the extracted details in each card.</p></div><span>{records.length} document{records.length === 1 ? '' : 's'} added</span></div>
           {options.map(option => {
             const related = sectionRecords(option.id);
-            const existing = option.id === 'landLayoutLrs' || option.id === 'houseTax' ? related.slice(0, 1) : related;
             return <React.Fragment key={option.id}>
-              {existing.map(record => {
-                const grouped = option.id === 'landLayoutLrs' || option.id === 'houseTax';
-                const canonical = grouped ? related.find(id => resolved.values[fieldKey('link', id, 'linkOption')] === option.id) : record;
-                const priority = option.id === 'landLayoutLrs' ? ['vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'layoutLrs'] : ['assessment'];
-                const ordered = grouped ? [canonical, ...priority.flatMap(kind => related.filter(id => resolved.values[fieldKey('link', id, 'linkOption')] === kind)), ...related].filter((id, index, ids): id is string => !!id && ids.indexOf(id) === index) : [record];
-                const form = Object.fromEntries(option.fields.map(field => [field.id, ordered.map(id => resolved.values[fieldKey('link', id, field.id)]).find(Boolean) || '']));
-                if (option.id === 'houseTax' && !form.bltNo) form.bltNo = resolved.values[fieldKey('property', activePropertyId, 'bltNo')]
-                  || related.map(id => resolved.values[fieldKey('link', id, 'assessmentPtinNo')]).find(Boolean) || '';
-                if (option.id === 'landLayoutLrs' && !form.vltNo) form.vltNo = resolved.values[fieldKey('property', activePropertyId, 'assessmentPtinNo')]
-                  || records.filter(id => !resolved.values[fieldKey('link', id, 'linkOption')])
-                    .map(id => resolved.values[fieldKey('link', id, 'assessmentPtinNo')]).find(Boolean) || '';
+              {related.map((record, index) => {
+                const form = Object.fromEntries(option.fields.map(field => [field.id, resolved.values[fieldKey('link', record, field.id)] || '']));
+                if (option.id === 'houseTax' && !form.bltNo) form.bltNo = resolved.values[fieldKey('link', record, 'assessmentPtinNo')] || '';
                 const ensureRecord = () => {
-                  if (resolved.values[fieldKey('link', record, 'linkOption')] !== option.id) {
+                  if (!resolved.values[fieldKey('link', record, 'linkOption')]) {
                     dispatch({ type: 'link-property', record, propertyId: activePropertyId });
                     edit('link', record, 'linkOption', option.id);
                   }
                 };
-                return <TitlePointCard key={record} option={option} record={record} form={form}
+                return <TitlePointCard key={record} ordinal={index + 1} option={option.id === 'houseTax' ? { ...option, fields: option.fields.filter(field => !['bearingHNo', 'bltNo', 'assessmentPtinNo'].includes(field.id)) } : option} record={record} form={form}
                   instrument={draft.instrumentId} variant={draft.variantId} templateSource={activeTemplateSource}
                   onField={(field, value) => { ensureRecord(); edit('link', record, field, value); }}
                   onUpload={files => { ensureRecord(); void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${option.id}` as ExtractionProfile); }}
-                  sources={draft.sources.filter(source => source.assignment?.role === 'link' && (grouped ? related.includes(source.assignment.record) : source.assignment.record === record))}
-                  busy={(grouped ? related : [record]).some(id => !!sourceBusyFor('link', id))}
-                  onDelete={() => (grouped ? related : [record]).forEach(clearLinkRecord)} />;
+                  sources={draft.sources.filter(source => source.assignment?.role === 'link' && source.assignment.record === record)}
+                  busy={!!sourceBusyFor('link', record)}
+                  onDelete={() => clearLinkRecord(record)} />;
               })}
+              {!!related.length && <div className="add-document-row"><button type="button" className="quiet" onClick={() => addLinkDocuments(option.id, [])}>+ Add another {option.label}</button></div>}
             </React.Fragment>;
           })}
+          {(HOUSE_PTIN_PAIR_CATEGORIES.includes(category) || category === 'Flat' || sectionRecords('houseTax').length > 0) && <section className="panel" aria-label="Property tax identification">
+            <HousePtinPairsEditor
+              serialized={housePtinPairsForSources({ ...activeProperty?.values, category }, state.linkRecordsBySchedule?.[activePropertyId] || [])}
+              legacyHouseNo={(['Part open place', 'Demolished'].includes(category) ? activeProperty?.values.nearHNo || activeProperty?.values.bearingHNo : activeProperty?.values.bearingHNo) || ''}
+              legacyPtin={activeProperty?.values.bltNo || ''}
+              onChange={value => edit('property', activePropertyId, 'housePtinPairs', value)}
+            />
+          </section>}
           {category === 'Flat' && ['sale', 'agreement_of_sale'].includes(draft.instrumentId) && <section className="panel flat-agreement-documents" aria-label="Landowner–developer agreements">
             <h2>Landowner–developer agreements</h2>
             <ScopedSectionUpload label="development / supplemental agreement" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'flat-agreements')} />
             <SourceFeedback sources={draft.sources.filter(source => source.profile === 'flat-agreements' && source.assignment?.record === activePropertyId)} />
-            <PlacementRecord scope="property" id={activePropertyId}><FieldGroup group={{ ...GROUPS.find(group => group.title === 'Landowner–developer agreements')!, step: 1, title: 'Development & flat-allotment registration', placementSection: 'flat-agreement-documents', note: '' }} form={Object.fromEntries(GROUPS.find(group => group.title === 'Landowner–developer agreements')!.fields.map(field => [field.id, resolved.values[fieldKey('property', activePropertyId, field.id)] || '']))} setField={(field, value) => edit('property', activePropertyId, field, value)} /></PlacementRecord>
+            <PlacementRecord scope="property" id={activePropertyId}><FieldGroup group={{ ...GROUPS.find(group => group.title === 'Landowner–developer agreements')!, step: 1, title: 'Development & flat-allotment registration', placementSection: 'flat-agreement-documents', note: '' }} form={Object.fromEntries(['flatStage', ...GROUPS.find(group => group.title === 'Landowner–developer agreements')!.fields.map(field => field.id)].map(field => [field, resolved.values[fieldKey('property', activePropertyId, field)] || '']))} setField={(field, value) => edit('property', activePropertyId, field, value)} /></PlacementRecord>
           </section>}
           <AddLinkDocument onAdd={addLinkDocuments} />
           </>}
@@ -1506,12 +1498,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} groupsOverride={propertyGroups} resolved={resolved} edit={edit}
                 fallbackValues={{ bltNo: id === 'primary' ? state.form.bltNo : record.values.bltNo || '' }} />
-              {HOUSE_PTIN_PAIR_CATEGORIES.includes(record.category) && <HousePtinPairsEditor
-                serialized={record.values.housePtinPairs || ''}
-                legacyHouseNo={record.values.bearingHNo || (record.category === 'Part open place' ? record.values.nearHNo : '') || ''}
-                legacyPtin={record.values.bltNo || ''}
-                onChange={value => edit('property', id, 'housePtinPairs', value)}
-              />}
+
               {['Residential', 'Commercial'].includes(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
                 defaultRoof={record.values.roofMaterial || ''}
@@ -1544,7 +1531,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           </>}
         </LinkStageGate>}
 
-        {step === 5 && draft.instrumentId !== 'gift' && <section className="panel payments">
+        {step === 5 && hasPaymentStep(state.deedType) && <section className="panel payments">
           <div className="finish-section-heading"><span className="finish-heading-icon"><CreditCard size={22} aria-hidden="true" /></span><div><h2>Payment summary</h2><p>Add each payment separately. Upload proof to read its details, or enter them below.</p></div></div>
           <div className="payment-summary-grid"><div><span>Sale consideration</span><strong>{vm.considINR || 'Not entered'}</strong><button type="button" className="quiet" onClick={() => goto(4)}>Edit consideration <ArrowRight size={13} aria-hidden="true" /></button></div><div><span>Payments recorded</span><strong>{vm.paidINR || '₹0'}</strong><small>{state.payments.length} payment {state.payments.length === 1 ? 'record' : 'records'}</small></div><div className={vm.payMatched ? 'is-reconciled' : ''}><span>{vm.payMatched ? 'Reconciliation' : 'Balance remaining'}</span><strong>{!state.form.consid.trim() ? 'Awaiting value' : vm.payMatched ? 'Matched' : vm.balanceINR || '₹0'}</strong><small>{vm.payMatched ? 'Payments match the consideration' : 'Compare payments with the sale consideration'}</small></div></div>
           <div className="payment-list-heading"><h3>Payment records</h3><span>Choose a method for each payment</span></div>

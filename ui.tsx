@@ -237,7 +237,14 @@ export function FieldGroup({
   onDismiss?: (id: string) => void;
   onAcceptGroup?: (ids: string[]) => void;
 }) {
+  const agreementOrder = ['developmentDocNo', 'developmentDocDate', 'developmentSro', 'supplementalDocNo', 'supplementalSro', 'stiltFloors', 'upperFloors'];
   const visibleFields = group.fields.filter(f => !f.hidden);
+  if (flatStage(form.flatStage) === 'Semi-Finished' && visibleFields.some(field => field.id === 'developmentDocNo') && visibleFields.some(field => field.id === 'stiltFloors')) {
+    visibleFields.sort((a, b) => {
+      const rank = (id: string) => agreementOrder.includes(id) ? agreementOrder.indexOf(id) : agreementOrder.length;
+      return rank(a.id) - rank(b.id);
+    });
+  }
   const clashing = visibleFields.filter(f => conflicts?.[f.id]).map(f => f.id);
 
   return (

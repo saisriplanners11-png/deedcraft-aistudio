@@ -134,9 +134,14 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
     { id: k('Age'), label: 'Age', ph: `${P} Age`, type: 'number', hint: 'Calculated from date of birth to today.' },
     { id: k('Dob'), label: 'Date of birth', ph: `${P} Dob`, type: 'date' },
     { id: k('GuardianRelationship'), label: 'Guardian relationship to minor', type: 'select', options: ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Brother', 'Sister', 'Court-appointed Guardian', 'Other'], allowCustom: true },
-    ...['Name', 'Relation', 'RelativeName', 'Dob', 'Aadhaar', 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => ({ id: k('Guardian' + suffix), label: 'Guardian ' + (({ Name: 'full name', RelativeName: 'father’s / relative’s name', Dob: 'date of birth', Aadhaar: 'Aadhaar number', HNo: 'house no.', PinCode: 'PIN code' } as Record<string, string>)[suffix] || suffix), ...(suffix === 'Dob' ? { type: 'date' as const } : {}) })),
+    ...['Name', 'Relation', 'RelativeName', 'Dob', ...(side === 'claimant' ? ['Occupation'] : []), 'Aadhaar', ...(side === 'claimant' ? ['Pan'] : []), 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => ({ id: k('Guardian' + suffix), label: 'Guardian ' + (({ Name: 'full name', RelativeName: 'father’s / relative’s name', Dob: 'date of birth', Aadhaar: 'Aadhaar number', HNo: 'house no.', PinCode: 'PIN code' } as Record<string, string>)[suffix] || suffix), ...(suffix === 'Dob' ? { type: 'date' as const } : {}) })),
     { id: k('WardName'), label: 'Represented minor’s full name' },
     { id: k('WardDob'), label: 'Represented minor’s date of birth', type: 'date' },
+    ...(side === 'claimant' ? [
+      { id: k('WardGender'), label: 'Represented minor’s gender', type: 'select' as const, options: ['Male', 'Female', 'Other'] },
+      { id: k('WardRelation'), label: 'Represented minor’s relation', type: 'select' as const, options: ['S/O', 'W/O', 'D/O', 'C/O'] },
+      ...['RelativeName', 'Occupation', 'Aadhaar', 'Pan', 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => ({ id: k('Ward' + suffix), label: 'Represented minor’s ' + (({ RelativeName: 'father’s / relative’s name', Aadhaar: 'Aadhaar number', Pan: 'PAN', HNo: 'house no.', PinCode: 'PIN code' } as Record<string, string>)[suffix] || suffix.toLowerCase()) })),
+    ] : []),
     { id: k('CourtOrderNo'), label: 'Court permission order / case number' },
     { id: k('CourtName'), label: 'Court granting permission' },
     { id: k('CourtOrderDate'), label: 'Court permission date', type: 'date' },
@@ -541,7 +546,7 @@ export function groupsForStep(step: number, category: string): Group[] {
     .map(g => ({ ...g,
       ...(category === 'Flat' && g.title === 'Boundaries' ? { title: 'Boundaries of Apartment', note: 'The four apartment-level property boundaries. Enter the individual flat boundaries separately below.' } : {}),
       fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
-        && !(HOUSE_PTIN_PAIR_CATEGORIES.includes(category) && ['bearingHNo', 'bltNo'].includes(f.id)))
+        && !(step === 3 && (['bearingHNo', 'bltNo'].includes(f.id) || (['Part open place', 'Demolished'].includes(category) && f.id === 'nearHNo'))))
       .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
         ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' }
         : f.id === 'bearingHNo' && category === 'Flat' ? { ...f, label: 'Municipal H.Nos.' } : f) }))

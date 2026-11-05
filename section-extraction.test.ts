@@ -315,3 +315,11 @@ describe('shared document section extraction', () => {
     expect(sameTranscription({...c,field:'nearHNo',value:'10-1-36/1'},{...c,field:'nearHNo',value:'H.No.10-1-36/2'})).toBe(false);
   });
 });
+
+it('requests every H.No./PTIN pair in the Step 2 house-tax and assessment workers', () => {
+  for (const profile of ['phase1:houseTax', 'phase1:assessment'] as const) {
+    expect(profileFields(profile)).toContain('housePtinPairs');
+    expect(sectionFields(profile)).toHaveLength(1);
+    expect(sectionFields(profile)[0].fields).toContain('housePtinPairs');
+  }
+});

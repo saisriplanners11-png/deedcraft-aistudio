@@ -10,7 +10,8 @@ export function findSro(value: string) {
   const matches = offices.filter(office => [office.name, office.code, sroLabel(office)].some(candidate => normalized(candidate) === key));
   return matches.length === 1 ? matches[0] : undefined;
 }
-export const isSroField = (id: string) => /sro(?:code)?$/i.test(id);
+// Jurisdiction uses its original manual office field. Linked records use the directory.
+export const isSroField = (id: string) => id !== 'sro' && /sro(?:code)?$/i.test(id);
 export function sroFieldPair(id: string) {
   const name = id.replace(/Code$/i, '');
   return { name, code: name + 'Code' };

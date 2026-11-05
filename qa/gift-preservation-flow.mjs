@@ -40,7 +40,7 @@ for (const version of ['v1', 'v2', 'v3', 'v4', 'v5', 'v6']) for (const property 
   const bytes = new Uint8Array(await result.blob.arrayBuffer()), text = await rt.docxToText(bytes);
   const entries = await rt.readZip(bytes), xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   assert.deepEqual(result.unmapped, []);
-  assert.match(text, /GIFT SETTLEMENT DEED IN FAVOUR OF OTHERS/);
+  assert.match(text, /GIFT SETTLEMENT DEED IN FAVOUR OF\s+(?:OTHER THAN FAMILY MEMBER|FAMILY MEMBER)/);
   assert.match(text, /WHEREAS the Donee is the friend of the Donor\./);
   assert.match(text, /__-10-2026/); assert.match(xml, /w:top="8352"/);
   assert.match(text, /ABCDE1234F/); assert.match(text, /PQRST5678L/);

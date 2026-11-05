@@ -1,7 +1,7 @@
 import { isMinorParty, minorPartyErrors } from './minor-parties';
 import { ageFrom, todayISO } from './party-age';
 import { acreGuntasToSqYards } from './land-area';
-import { stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
+import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
 import { flatStage, flatLabel } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
@@ -291,7 +291,7 @@ const num = (v: any) => (v === '' || v === null || v === undefined ? NaN : Numbe
 const has = (v: any) => v !== '' && v !== null && v !== undefined;
 
 const FIELD_STEPS: Record<string, number> = Object.fromEntries(
-  GROUPS_FOR_MISSING().flatMap(group => group.fields.map((field: any) => [field.id, group.step]))
+  [...GROUPS_FOR_MISSING().flatMap(group => group.fields.map((field: any) => [field.id, group.step])), ...['bearingHNo', 'bltNo', 'housePtinPairs'].map(id => [id, 1])]
 );
 
 function GROUPS_FOR_MISSING() {
@@ -392,7 +392,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   }
 
   const addRecordField = (record: ValueRecord, id: string, label: string, reason: string, source: string, step: number) => {
-    if (!has(record.values[id])) missing.push({ id: `${record.id}-${id}`, label, reason, source, step });
+    if (!has(record.values[id])) missing.push({ id: `${record.id}-${id}`, label, reason, source, step: ['bearingHNo', 'bltNo', 'housePtinPairs'].includes(id) ? 1 : step });
   };
   state.additionalLinkDocuments.forEach((record, index) => {
     for (const id of ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro']) {
@@ -466,6 +466,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     ids.forEach(id => addRecordField(record, id, `Schedule ${index + 2}: ${fieldLabel(id)}`, 'Every property schedule must be complete before combined registration.', 'Link deed, property record, plan or manual entry.', 3));
   });
 
+  if (hasPaymentStep(state.deedType)) {
   if (!state.payments.some(payment => has(payment.amount))) {
       missing.push({ id: 'payment', label: 'Payment details', reason: 'The receipt clause must state how the consideration was paid.', source: 'Cheque, housing-loan disbursement, DD, transfer/UPI receipt or payment acknowledgement.', step: 5 });
   } else {
@@ -486,6 +487,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       });
     });
   }
+  }
   for (const id of Object.keys(state.conflicts)) {
     missing.push({ id: `conflict-${id}`, label: displayLabel(id), reason: 'Uploaded documents disagree about this value.', source: 'Review and choose the correct source value.', step: FIELD_STEPS[id] ?? (id.startsWith('executant') ? 6 : id.startsWith('claimant') ? 7 : 0) });
   }
@@ -498,9 +500,9 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   if (f.structValue && (!Number.isFinite(Number(f.structValue)) || Number(f.structValue)<0)) invalid('structValue','Structure valuation must be a valid non-negative amount.',3);
   if (['Residential','Commercial','Flat'].includes(state.category)) add('structValue','A structure valuation is required for this category.','Valuation record or manual entry',3);
   if (!positive(f.consid)) invalid('consid','Final consideration must be a positive valid amount.',3);
-  if (state.payments.some(p=>!positive(p.amount))) invalid('payment-total','Every payment amount must be positive and valid.',4);
+  if (hasPaymentStep(state.deedType) && state.payments.some(p=>!positive(p.amount))) invalid('payment-total','Every payment amount must be positive and valid.',4);
   const total = state.payments.reduce((sum,p)=>sum+(Number(p.amount)||0),0);
-  if (positive(f.consid) && state.payments.length && Math.round(total*100)!==Math.round(Number(f.consid)*100)) {
+  if (hasPaymentStep(state.deedType) && positive(f.consid) && state.payments.length && Math.round(total*100)!==Math.round(Number(f.consid)*100)) {
     invalid('payment-total',total>Number(f.consid)?'Payments exceed final consideration.':'Payments must exactly equal final consideration before generation.',4);
   }
   return missing;
@@ -758,7 +760,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
         && (state.category !== 'Flat' || FLAT_BOUNDARY_FIELDS.every(id => !!f[id])),
       note: state.category === 'Flat' ? 'All four apartment and all four flat abutments are required' : 'All four abutments are required' },
     { label: 'Valuation entered', ok: hasBase, note: 'Duty is computed on the higher of the two' },
-    { label: state.deedType === 'Gift' ? 'Gift without monetary consideration' : 'Consideration fully received', ok: state.deedType === 'Gift' || payMatched, note: state.deedType === 'Gift' ? 'Consideration is Nil' : 'Payments must total the consideration' },
+    ...(hasPaymentStep(state.deedType) || state.deedType === 'Gift' ? [{ label: state.deedType === 'Gift' ? 'Gift without monetary consideration' : 'Consideration fully received', ok: state.deedType === 'Gift' || payMatched, note: state.deedType === 'Gift' ? 'Consideration is Nil' : 'Payments must total the consideration' }] : []),
     { label: 'Executant details complete', ok: stepIsDone(6), note: 'Identity and capacity of the vendor' },
     { label: 'Claimant details complete', ok: stepIsDone(7), note: 'Identity of the purchaser' },
     { label: 'Schedule of property composed', ok: !!state.scheduleText, note: 'Reads into the deed verbatim' },

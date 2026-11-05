@@ -47,7 +47,7 @@ for (const minorSide of ['executant', 'claimant']) {
   Object.assign(state.form, { [minorSide + 'PartyType']: 'Minor', [minorSide + 'Dob']: '2015-01-02', [minorSide + 'GuardianName']: 'GUARDIAN PERSON', [minorSide + 'GuardianRelationship']: 'Mother', [minorSide + 'GuardianDob']: '1980-01-02', [minorSide + 'GuardianAadhaar']: '123456789012', [minorSide + 'CourtOrderNo']: 'COURT-42', [minorSide + 'CourtName']: 'District Court', [minorSide + 'CourtOrderDate']: '2026-01-02', [minorSide + 'CourtOrderPermitsExecution']: 'Yes' });
   const result = await rt.fillSaleDeed(rt.mergeValues(state), 'IF OPEN PLOT', rt.rewritesFor(state), rt.scheduleMergesFor(state));
   const text = await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-  assert.equal((text.match(/a minor represented by Mother: GUARDIAN PERSON/g) || []).length, 1);
+  assert.equal((text.match(minorSide === 'claimant' ? /is under guardianship of their natural Mother GUARDIAN PERSON/g : /a minor represented by Mother: GUARDIAN PERSON/g) || []).length, 1);
   if (minorSide === 'executant') assert.match(text, /COURT-42 dated 02-01-2026/);
 }
 console.log(`PASS: ${cases} deed/property/margin combinations, per-side grammar, NALA schedule conversion, municipal capitals and minor guardian/court recitals.`);

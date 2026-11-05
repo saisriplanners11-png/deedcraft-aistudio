@@ -1,3 +1,4 @@
+import { ENCLOSURE_RECITALS, type EnclosureRecords, type EnclosureRecitalKind } from './enclosure-records';
 import { partyWording } from './party-wording';
 import { municipalCouncilRecital } from './municipal-gift';
 import { partyPronouns } from './party-pronouns';
@@ -814,9 +815,24 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     if (record['PARTY CAPACITY PREFIX']) {
       paragraph = replaceRunText(paragraph, repeat.find, match => record['PARTY CAPACITY PREFIX'] + match[0]);
     }
+    if (record['MINOR CLAIMANT'] === 'true') {
+      const text = plainText(paragraph);
+      const marker = /\(MINOR\)/i.test(text) ? '' : ', (MINOR)';
+      if (/<\s*Claimant\s+Dob\s*>/i.test(text)) {
+        if (marker) {
+          const dob = /\(\s*DOB\s*:\s*<\s*Claimant\s+Dob\s*>\s*\)/i;
+          if (dob.test(text)) paragraph = replaceRunText(paragraph, dob, match => match[0] + marker);
+          else paragraph = replaceRunText(paragraph, /<\s*Claimant\s+Dob\s*>/i, match => match[0] + marker);
+        }
+      } else if (/<\s*Claimant\s+Age\s*>\s*years/i.test(text)) {
+        paragraph = replaceRunText(paragraph, /<\s*Claimant\s+Age\s*>\s*years/i, match => match[0] + ' (DOB:<Claimant Dob>)' + marker);
+      } else throw new Error('The selected Word draft cannot place the minor claimant’s age/date of birth. Restore these identity fields.');
+    }
     if (record['MINOR GUARDIAN RECITAL']) {
+      const minorClaimant = record['MINOR CLAIMANT'] === 'true';
       const recital = ', <MINOR GUARDIAN RECITAL>';
-      if (/\s*\(Hereinafter|\s+represented herein/i.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, /,?\s*\(Hereinafter|\s+represented herein/i, match => recital + ' ' + match[0].replace(/^,\s*/, ''));
+      const boundary = minorClaimant ? /[.,]?\s*(?:\(?hereinafter\b|represented herein)/i : /,?\s*\(Hereinafter|\s+represented herein/i;
+      if (boundary.test(plainText(paragraph))) paragraph = replaceRunText(paragraph, boundary, match => recital + (minorClaimant ? ', ' : ' ') + match[0].replace(/^,?\s*/, ''));
       else paragraph = replaceRunText(paragraph, /[\s\S]+/, match => match[0] + recital);
     }
     if (record['Executant Share'] && /<PRINCIPAL NAME>/i.test(plainText(paragraph)) && !/<Executant Share>/i.test(plainText(paragraph))) {
@@ -931,10 +947,15 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>, 
     { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.') },
     { test: /L\.R\.S\. Proceeding:/i, keep: () => has('LRS Proceeding No.') },
   ];
-  return topLevelChildren(body).map(child => {
+  const children = topLevelChildren(body);
+  const hasPartIdentification = children.some(child => {
+    const text = plainText(body.slice(child.start, child.end));
+    return /Tax\/Assessment & Identification Particulars:/i.test(text) && /\(Part\)/i.test(text);
+  });
+  return children.map(child => {
     const chunk = body.slice(child.start, child.end);
     const titleText = plainText(chunk);
-    if (/Tax\/Assessment & Identification Particulars:/i.test(titleText)) {
+    if (/Tax\/Assessment & Identification Particulars:/i.test(titleText) && hasPartIdentification) {
       const partRecital = /\(Part\)/i.test(titleText);
       if (partRecital !== (variant === 'IF PART OPEN PLACE')) return '';
     }
@@ -945,6 +966,22 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>, 
     }
     return chunk;
   }).join('');
+}
+
+function assertEnclosureRepetition(xml: string, schedules: ScheduleMerge[]): void {
+  if (!schedules.some(schedule => Object.values(schedule.enclosureRecords || {}).some(records => records && records.length > 1))) return;
+  const text = plainText(xml);
+  for (const kind of Object.keys(ENCLOSURE_RECITALS) as EnclosureRecitalKind[]) {
+    const count = Math.max(0, ...schedules.map(schedule => schedule.enclosureRecords?.[kind]?.length || 0));
+    if (count > 1 && !ENCLOSURE_RECITALS[kind].test(text)) throw new Error(`The selected Word draft is missing the ${kind} recital needed for ${count} entered records. Restore its source paragraph or choose a compatible draft.`);
+  }
+}
+
+function enclosureRewrites(schedule: ScheduleMerge): Rewrite[] {
+  return (Object.keys(ENCLOSURE_RECITALS) as EnclosureRecitalKind[]).flatMap(kind => {
+    const records = schedule.enclosureRecords?.[kind];
+    return records && records.length > 1 ? [{ find: ENCLOSURE_RECITALS[kind], replace: '', records }] : [];
+  });
 }
 
 function amendmentRewrites(schedule: ScheduleMerge): Rewrite[] {
@@ -1350,6 +1387,7 @@ export type ScheduleMerge = {
   /** Flow-of-title values and registered link deeds owned by this schedule. */
   titleValues?: Record<string, string>;
   titleLinkRecords?: Record<string, string>[];
+  enclosureRecords?: EnclosureRecords;
   amendmentRecords?: { rectification: Record<string, string>[]; supplemental: Record<string, string>[] };
   /** Source-backed recitals shown only when supporting files were uploaded. */
   supportingRecords?: string[];
@@ -1852,6 +1890,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
   let xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), generalPoa ? 'power_of_attorney' : 'agreement_of_sale');
   assertTitleAmendmentBindings(xml, schedules);
+  assertEnclosureRepetition(xml, schedules);
   if (!generalPoa) xml = selectAgreementPossession(xml, values['Agreement Possession Variant']);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const { chunks, first, tail, blocks } = agreementTemplateParts(xml);
@@ -1867,9 +1906,6 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   const paymentRewrites = rewrites.filter(rewrite => rewrite.records && !rewrite.partyRole && /^(?:RTGS|Cheque|Demand Draft|UPI|Cash|Housing Loan|Through Bank)/.test(rewrite.find.source))
     .filter(rewrite => !rewrite.when || rewrite.regularWeight).map(rewrite => ({ ...rewrite, when: undefined }));
   const openingRewrites: Rewrite[] = [...partyRewrites, ...paymentRewrites];
-  if (generalPoa && values['Poa Variant'] === 'general-power-of-attorney-family') {
-    openingRewrites.push({ find: /GENERAL POWER OF ATTORNEY\s*\(FOR SALE OF IMMOVABLE PROPERTY\)/i, replace: 'G.P.A. (FAMILY MEMBERS)' });
-  }
   let opening = chunks.slice(0, first).join('');
   const titleChunks = topLevelChildren(opening);
   const titleStart = titleChunks.find(child => /^Registered Deed:/i.test(plainText(opening.slice(child.start, child.end)).trim()));
@@ -1877,7 +1913,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   if (!titleStart || !titleEnd) throw new Error('Retain the Agreement title-record boundaries.');
   const titleBlock = opening.slice(titleStart.start, titleEnd.start);
   const titles = schedules.map(schedule => fill(removeOptionalTitleRecitals(titleBlock, map(schedule.titleValues || schedule.values), schedule.variant), schedule.titleValues || schedule.values,
-    [...amendmentRewrites(schedule), ...(schedule.titleLinkRecords?.length ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])])).join('');
+    [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords?.length ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])])).join('');
   opening = opening.slice(0, titleStart.start) + titles + opening.slice(titleEnd.start);
   if (generalPoa && !/<w:sectPr\b/.test(opening)) {
     const section = xml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/)?.[0];
@@ -1898,7 +1934,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
       opening = opening.slice(0, firstPrincipal.end) + `<w:p><w:pPr>${stamp}</w:pPr></w:p>` + opening.slice(firstPrincipal.end);
     }
   }
-  if (!generalPoa) opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/, paragraph => replaceRunText(paragraph, /AGREEMENT OF SALE-CUM-GPA WITH POSSESSION/, () => values['Agreement Possession Variant'] === 'without-possession' ? 'AGREEMENT OF SALE-CUM-GPA WITHOUT POSSESION' : 'AGREEMENT OF SALE-CUM-GPA WITH POSSESSION').replace(/<w:t(?:\s[^>]*)?>/, '<w:t xml:space="preserve">'));
+  if (!generalPoa && values['Agreement Possession Variant'] === 'without-possession' && plainText(new TextDecoder().decode(document.data)).includes('<WITHOUT POSSESSION>')) opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/, paragraph => replaceRunText(paragraph, /WITH POSSESSION/, () => 'WITHOUT POSSESSION'));
   const selected = schedules.map((schedule, index) => {
     const variant = schedule.variant === 'IF FLAT' ? schedule.values['Flat Stage'] === 'Semi Finished' ? 'IF FLAT SEMI FINISHED' : 'IF FLAT FINISHED' : schedule.variant;
     let block = blocks.get(variant);
@@ -2010,6 +2046,7 @@ export async function fillSaleDeed(
 
   let xml = protectDeedTemplateSource(new TextDecoder().decode(doc.data), 'sale');
   assertTitleAmendmentBindings(xml, schedules);
+  assertEnclosureRepetition(xml, schedules);
   const hasSaleOpenings = plainText(xml).includes('<IF SALE DEED>');
   const bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
   const bodyEnd = xml.lastIndexOf('</w:body>');
@@ -2066,7 +2103,7 @@ export async function fillSaleDeed(
     const titleBlocks = (await Promise.all(selected.map(async (schedule, scheduleIndex) => {
       const titleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.titleValues || values)) titleValues.set(norm(key), value ?? '');
-      const titleRewrites: Rewrite[] = [...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
+      const titleRewrites: Rewrite[] = [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
         ? [{ find: /(?:\(a\)\s+)?Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
         : [])];
       let block = removeOptionalTitleRecitals(
@@ -2414,6 +2451,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
   const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'municipal-gift');
   assertTitleAmendmentBindings(xml, schedules);
+  assertEnclosureRepetition(xml, schedules);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const { chunks, first: firstIndex, tail, blocks } = giftTemplateParts(xml.slice(start, end), true);
   const missing = new Set<string>();
@@ -2495,6 +2533,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   const document = entries.find(entry => entry.name === 'word/document.xml')!;
   let xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), 'gift');
   assertTitleAmendmentBindings(xml, schedules);
+  assertEnclosureRepetition(xml, schedules);
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const body = enforceRegularGiftSourcePolicy(xml.slice(start, end));
   const { chunks, first, tail, blocks } = giftTemplateParts(body);
@@ -2507,20 +2546,15 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   const giftRewrites = rewrites.filter(rewrite => rewrite.partyRole).map(rewrite => ({ ...rewrite, records: rewrite.records?.map(withoutShares), finalSuffix: /\s*\(Hereinafter called the [\s\S]*$/i }));
   const fill = (block: string, record: Record<string, string>, partyRewrites: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => fillParagraph(paragraph, map(record), missing, partyRewrites));
   let opening = chunks.slice(0, first).join('');
-  const headingChunks = topLevelChildren(opening).map(child => opening.slice(child.start, child.end));
-  const headingIndex = headingChunks.findIndex(chunk => /^GIFT SETTLEMENT DEED IN FAVOUR OF/i.test(plainText(chunk).trim()));
-  if (headingIndex >= 0) {
-    const separateCategory = /^(?:FAMILY MEMBERS?|OTHER|OTHERS|TRUST OR CHARITY|<FAMILY MEMBER\/OTHER THAN FAMILY MEMBER>)$/i.test(plainText(headingChunks[headingIndex + 1] || '').trim());
-    const category = values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY'
-      : values['Gift Variant'] && values['Gift Variant'] !== 'family-gift' ? 'OTHERS' : donees > 1 ? 'FAMILY MEMBERS' : 'FAMILY MEMBER';
-    let heading = replaceRunText(headingChunks[headingIndex], /[\s\S]+/, () => `GIFT SETTLEMENT DEED IN FAVOUR OF ${category}`);
-    heading = heading.replace(/<w:(?:br|cr)\b[^>]*\/>/g, '').replace(/<w:ind\b[^>]*\/>/g, '').replace(/<w:spacing\b[^>]*w:val="[^"]*"[^>]*\/>/g, '')
-      .replace(/<w:sz(Cs)?\b[^>]*\/>/g, '<w:sz$1 w:val="24"/>');
-    heading = heading.replace(/<w:jc\b[^>]*\/>/g, '').replace('<w:pPr>', '<w:pPr><w:jc w:val="center"/>');
-    headingChunks[headingIndex] = heading;
-    if (separateCategory) headingChunks.splice(headingIndex + 1, 1);
-    opening = headingChunks.join('');
-  }
+  // Preserve source title paragraphs and formatting. Only resolve the source's
+  // explicit category placeholder; do not synthesize or reflow a deed heading.
+  const headingEnd = topLevelChildren(opening).find(child => /Market Value|THIS GIFT SETTLEMENT/i.test(plainText(opening.slice(child.start, child.end))))?.start ?? 0;
+  const sourceHeading = opening.slice(0, headingEnd);
+  const category = values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY'
+    : values['Gift Variant'] && values['Gift Variant'] !== 'family-gift' ? 'OTHER THAN FAMILY MEMBER' : 'FAMILY MEMBER';
+  const resolvedHeading = sourceHeading.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+    replaceRunText(paragraph, /<FAMILY MEMBER\/OTHER THAN FAMILY MEMBER>/g, () => category));
+  opening = opening.slice(headingEnd);
   let relationshipFound = false;
   opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     const text = plainText(paragraph);
@@ -2532,9 +2566,9 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       return replaceRunText(paragraph, /[\s\S]+/, () => values['Gift Relationship Recital']);
     }
     paragraph = replaceRunText(paragraph, /DD[-/.]?MM[-/.]?YYYY/g, () => '<Date>');
-    if (values['Gift Variant'] && values['Gift Variant'] !== 'family-gift') paragraph = replaceRunText(paragraph, /FAMILY MEMBERS?/gi, () => values['Gift Variant'] === 'gift-to-trust-or-charity' ? 'TRUST OR CHARITY' : 'OTHER');
     return giftParagraphWording(paragraph, donors, donees, values);
   });
+  opening = resolvedHeading + opening;
   if (!relationshipFound) {
     const children = topLevelChildren(opening);
     const claimant = children.find(child => /<\s*CLAIMANT NAME\s*>/i.test(plainText(opening.slice(child.start, child.end))));
@@ -2548,7 +2582,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     const block = opening.slice(titleStart.start, titleEnd.start);
     const titleBlocks = schedules.map(schedule => {
       const title = map(schedule.titleValues || values);
-      const titleRewrites: Rewrite[] = [...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1 ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])];
+      const titleRewrites: Rewrite[] = [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1 ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])];
       return fill(removeOptionalTitleRecitals(block, title, schedule.variant), schedule.titleValues || values, titleRewrites);
     }).join('');
     opening = opening.slice(0, titleStart.start) + titleBlocks + opening.slice(titleEnd.start);

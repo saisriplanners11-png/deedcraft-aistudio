@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { displaySro, findSro, resolveSroSelection, sroLabel, SRO_OFFICES, sroFieldPair } from './sro-directory';
+import { isSroField, displaySro, findSro, resolveSroSelection, sroLabel, SRO_OFFICES, sroFieldPair } from './sro-directory';
 import { initialState } from './logic';
 import { mergeValues } from './merge';
 import { emptySaleAuthority } from './sale-options';
@@ -58,4 +58,10 @@ it('splits the combined SRO selection into each enclosure record’s existing na
     expect(draft.manual[fieldKey(role, record, field + 'Code')]).toBe('1410');
   }
   expect(resolveSroSelection('rectificationDeedSro', 'unlisted office [X-7]')).toMatchObject({ name: 'Unlisted Office', code: 'X-7' });
+});
+
+it('keeps Jurisdiction SRO manual while retaining the linked-deed directory', () => {
+  expect(isSroField('sro')).toBe(false);
+  expect(resolveSroSelection('sro', 'Adilabad')).toBeNull();
+  expect(isSroField('linkSro')).toBe(true);
 });

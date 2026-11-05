@@ -93,7 +93,31 @@ export function propertyHousePtinOutput(
   return {
     houseNos: rows.map(row => row.houseNo.trim()).filter(Boolean).join(', '),
     ptins: rows.filter(row => row.ptin.trim()).map(row => row.houseNo.trim()
-      ? `${row.ptin.trim()} (H.No. ${row.houseNo.trim()})`
+      ? `${row.ptin.trim()} bearing H.No.${row.houseNo.trim()}`
       : row.ptin.trim()).join('; '),
   };
+}
+
+/** Resolve Step 2 identifiers without combining unrelated source records. Explicit
+ * repeatable rows (including an intentionally empty list) remain authoritative. */
+export function housePtinPairsForSources(property: Record<string, string>, records: { values: Record<string, string> }[]): string {
+  if (parsePropertyHousePtinPairs(property.housePtinPairs || '') !== null) return property.housePtinPairs;
+  const legacyHouseNo = ['Part open place', 'Demolished'].includes(property.category) ? property.nearHNo || property.bearingHNo || '' : property.bearingHNo || '';
+  if (property.bltNo) return serializePropertyHousePtinPairs([{ id: 'legacy-property-pair', houseNo: legacyHouseNo, ptin: property.bltNo }]);
+  const values: string[] = [];
+  for (const { values: record } of records) {
+    if (!['houseTax', 'assessment'].includes(record.linkOption || '')) continue;
+    if (parsePropertyHousePtinPairs(record.housePtinPairs || '') !== null) values.push(record.housePtinPairs);
+    else if (record.bearingHNo || record.bltNo || record.assessmentPtinNo) values.push(serializePropertyHousePtinPairs([{
+      id: 'legacy-source-pair', houseNo: record.bearingHNo || '', ptin: record.bltNo || record.assessmentPtinNo || '',
+    }]));
+  }
+  // A house number alone still belongs to its original schedule binding.
+  if (!values.length) return '';
+  // Avoid repeating a legacy scalar copied from the same supporting record.
+  const rows = values.flatMap(value => parsePropertyHousePtinPairs(value) || []);
+  const houseNo = legacyHouseNo;
+  const ptin = property.bltNo || '';
+  if ((houseNo || ptin) && !rows.some(row => (!houseNo || row.houseNo === houseNo) && (!ptin || row.ptin === ptin))) values.unshift(serializePropertyHousePtinPairs([{ id: 'legacy-property-pair', houseNo, ptin }]));
+  return values.length ? mergePropertyHousePtinPairValues(values) || '' : '';
 }

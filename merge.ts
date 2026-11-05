@@ -1,4 +1,5 @@
-import { minorGuardianRecital, minorPartyErrors } from './minor-parties';
+import { enclosureRecordsFor } from './enclosure-records';
+import { isMinorParty, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
 import { executionDeedDate } from './deed-format';
 import { acreGuntasToSqYards } from './land-area';
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
@@ -11,7 +12,7 @@ import { instrumentIdForLegacyType } from './instruments';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
 import { flatStage, flatVariant } from './flat-options';
 import { normalizePropertyPlaceName } from './place-names';
-import { parsePropertyHousePtinPairs, propertyHousePtinOutput } from './property-house-ptin';
+import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePtinOutput } from './property-house-ptin';
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
@@ -32,7 +33,7 @@ function ownershipShare(state: AppState, side: 'executant' | 'claimant', partyId
 
 /** Values for every placeholder the template names. */
 export function mergeValues(state: AppState): Record<string, string> {
-  const f = withDerived(state.form);
+  const f = withDerived(minorClaimantValues(state.form));
   const out: Record<string, string> = { 'Stamp Paper Margin': f.stampPaperMargin || 'Legacy' };
   out['Landmark Valuation Enabled'] = String(['Open Place', 'Vacant Plot'].includes(state.category));
   if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || ''); out.VILLAGE = normalizePropertyPlaceName('village', f.village || ''); }
@@ -288,12 +289,14 @@ export function rewritesFor(state: AppState): Rewrite[] {
       find: new RegExp(side === 'executant' ? '<EXECUTANT NAME>' : '<CLAIMANT NAME>'), replace: '',
       partyRole: side,
       records: records.map((record, index) => {
+        const identity = side === 'claimant' ? minorClaimantValues(record.values) : record.values;
+        const minorClaimant = side === 'claimant' && isMinorParty(identity, side);
         const form = { ...state.form };
-        for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = record.values[field.id] || '';
+        for (const field of ALL_FIELDS.filter(f => f.id.startsWith(side))) form[field.id] = identity[field.id] || '';
         const partyId = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
         const people = state.partyPeopleByParty?.[side + '|' + partyId] || { representatives: [], members: [] };
-        const prefix = partyCapacityPrefix(record.values[side + 'PartyType']);
-        return { 'MINOR GUARDIAN RECITAL': minorGuardianRecital(record.values, side), 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), 'Registration Name': partyDisplayName(record.values, side), 'Registration Address': isEntity(record.values, side) ? record.values[side + 'EntityAddress'] || '' : ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => record.values[side + suffix]?.trim()).filter(Boolean).join(', '), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
+        const prefix = minorClaimant ? '' : partyCapacityPrefix(record.values[side + 'PartyType']);
+        return { 'MINOR CLAIMANT': String(minorClaimant), 'MINOR GUARDIAN RECITAL': minorGuardianRecital(record.values, side), 'PARTY CAPACITY PREFIX': prefix, ...mergeValues({ ...state, form }), 'Registration Name': partyDisplayName(record.values, side), 'Registration Address': isEntity(record.values, side) ? record.values[side + 'EntityAddress'] || '' : ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => identity[side + suffix]?.trim()).filter(Boolean).join(', '), [side === 'executant' ? 'Executant Share' : 'Claimant Share']: ownershipShare(state, side, partyId), ...(isEntity(record.values, side) ? { 'ENTITY RECITAL': entityRecital(record.values, side, people) } : {}), 'UNDIVIDED SHARE RECITAL': ownershipShare(state, side, partyId) ? 'Holding Undivided Share of ' + ownershipShare(state, side, partyId) : '' };
       }),
     });
   }
@@ -365,9 +368,11 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       additionalSchedules: [],
       structureDetailsBySchedule: { primary: record.structureDetails || { totalFloors: '', rows: [] } },
     };
+    const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
+    const identificationPairs = housePtinPairsForSources({ ...record.values, category: record.category }, titleLinkRecords);
+    if (identificationPairs) scheduleState.form.housePtinPairs = identificationPairs;
     const values = mergeValues(scheduleState);
     const titleValues = { ...values };
-    const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
     const amendmentKind = (item: typeof titleLinkRecords[number]) => titleAmendmentKind(item.values);
     const amendmentRecords = { rectification: [] as Record<string, string>[], supplemental: [] as Record<string, string>[] };
     for (const item of titleLinkRecords) {
@@ -430,14 +435,13 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const taxRecord = taxRecords.find(({ values: item }) => item.houseTaxReceiptNo && item.localBodyName);
     const tax = mapped(taxRecord);
     const taxReceiptNo = tax?.['House Tax Receipt'] || '';
-    const taxBearingHNo = taxRecord?.values.bearingHNo || record.values.bearingHNo || '';
-    titleValues['House Tax Receipt'] = [taxReceiptNo, taxBearingHNo ? `Bearing H.No. ${taxBearingHNo}` : ''].filter(Boolean).join(', ');
+    titleValues['House Tax Receipt'] = taxReceiptNo;
     titleValues['Local Body Name'] = tax?.['Local Body Name'] || '';
     titleValues['Tax Paid Date'] = deedDate(taxRecord?.values.taxPaidDate || '');
     const explicitAssessment = preferredField('bltNo', ['houseTax', 'assessment']);
     const taxAssessment = taxRecords.find(({ values: item }) => item.assessmentPtinNo)?.values.assessmentPtinNo;
-    const extractedPairs = parsePropertyHousePtinPairs(record.values.housePtinPairs || '');
-    const pairedAssessment = extractedPairs === null ? '' : propertyHousePtinOutput(record.values.housePtinPairs || '').ptins;
+    const extractedPairs = parsePropertyHousePtinPairs(identificationPairs);
+    const pairedAssessment = extractedPairs === null ? '' : propertyHousePtinOutput(identificationPairs).ptins;
     const assessment = extractedPairs !== null ? pairedAssessment : explicitAssessment || record.values.bltNo || taxAssessment || '';
     titleValues['P.T.I.No.'] = assessment;
     titleValues['P.T.I. No.'] = assessment;
@@ -450,6 +454,8 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     titleValues['Application Date'] = deedDate(preferredField('lrsApplicationDate', ['landLayoutLrs', 'lrsApplication', 'layoutLrs']));
     titleValues['LRS Proceeding No.'] = preferredField('lrsProceedingNo', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']);
     titleValues['Proceeding Date'] = deedDate(preferredField('lrsProceedingDate', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']));
+    const enclosureRecords = enclosureRecordsFor(titleLinkRecords);
+    for (const records of Object.values(enclosureRecords)) if (records?.length) Object.assign(titleValues, records[0]);
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
       .filter(Boolean);
@@ -471,7 +477,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }).filter(share => share.percentage !== '') : undefined;
-    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, amendmentRecords, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
+    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, amendmentRecords, enclosureRecords, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
   });
 }
 

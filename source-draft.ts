@@ -1,10 +1,11 @@
+import { orderedEnclosureIds } from './enclosure-records';
 import { acreGuntasToSqYards } from './land-area';
 import { titleAmendmentKind } from './title-amendments';
 import { normalizeWorkflowStep } from './workflow-steps';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_PTIN_PAIR_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
-import { mergePropertyHousePtinPairValues } from './property-house-ptin';
+import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePtinOutput, mergePropertyHousePtinPairValues } from './property-house-ptin';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
@@ -203,7 +204,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     if (action.draftId !== draft.id || !draft.sources.some(s => s.id === action.sourceId && s.revision === action.sourceRevision)) return draft;
     next = { ...draft, sources: draft.sources.map(s => s.id === action.sourceId ? { ...s, ...action.patch, id: s.id, revision: s.revision } : s) };
   }
-  if (next !== draft && next.step === 5 && next.instrumentId === 'gift') next = { ...next, step: 6 };
+  if (next !== draft) next = { ...next, step: normalizeWorkflowStep(next.instrumentId, next.step) };
   return next === draft ? draft : { ...next, revision: draft.revision + 1 };
 }
 
@@ -398,7 +399,9 @@ export function appStateFor(draft: Draft): AppState {
   const byPropertyId = new Map(extractedProperties.map(record => [record.id, record]));
   const properties = propertyIds.map(id => byPropertyId.get(id) || ({ id, values: {}, docNames: [] }));
   const transaction = forRole('property').find(r => r.id === 'transaction');
-  const sellers = forRole('executant'); const buyers = forRole('claimant'); const links = forRole('link');
+  const sellers = forRole('executant'); const buyers = forRole('claimant');
+  const linkValues = forRole('link');
+  const links = orderedEnclosureIds(linkValues.map(record => record.id), draft.linkPropertyRecords, draft.manual).map(id => linkValues.find(record => record.id === id)!);
   const primarySeller = sellers.find(record => record.id === 'primary') || sellers[0];
   const primaryBuyer = buyers.find(record => record.id === 'primary') || buyers[0];
   const linkScheduleId = (record: ValueRecord) => draft.linkPropertyRecords[record.id]
@@ -417,6 +420,13 @@ export function appStateFor(draft: Draft): AppState {
   const isTitleAmendment = (record: ValueRecord) => !!titleAmendmentKind(record.values);
   const registeredLinks = links.filter(r => !isTitleAmendment(r) && (r.values.linkOption === 'linkDoc' || (!r.values.linkOption && ['linkDocNo','linkDocType','linkDocDate','linkSro'].some(f=>r.values[f]))));
   const supportingLinks = links.filter(r=>!registeredLinks.includes(r));
+  const withIdentification = (values: Record<string, string>, scheduleId: string, propertyValues = values) => {
+    const pairs = housePtinPairsForSources(propertyValues, linkRecordsBySchedule[scheduleId] || []);
+    const rows = parsePropertyHousePtinPairs(pairs);
+    if (rows === null) return values;
+    return { ...values, housePtinPairs: pairs, bearingHNo: propertyHousePtinOutput(pairs).houseNos,
+      bltNo: rows.map(row => row.ptin).filter(Boolean).join('; ') };
+  };
   const primaryLinks = linkRecordsBySchedule.primary || [];
   const primaryRegisteredLink = primaryLinks.find(r => registeredLinks.includes(r));
   const form = { ...EMPTY_FORM, ...properties[0]?.values, ...primarySeller?.values, ...primaryBuyer?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
@@ -432,7 +442,7 @@ export function appStateFor(draft: Draft): AppState {
     if (role === 'claimant') return record === primaryBuyer?.id;
     return true;
   }).map(key => key.split('|')[2]);
-  const derived = withDerived(form);
+  const derived = withDerived(withIdentification(form, 'primary', properties[0]?.values || {}));
   for (const field of unresolvedFields) derived[field] = '';
   // Most parties are individuals related as S/o, and nearly every deed is
   // registered in Telangana — default to the common answer instead of
@@ -465,7 +475,7 @@ export function appStateFor(draft: Draft): AppState {
     additionalLinkDocuments: registeredLinks.slice(1),
     additionalSchedules: properties.slice(1).map(r => {
       const inferred = assessmentFor(r.id, r.values.category || '');
-      return { ...r, values: inferred && !r.values.bltNo ? { ...r.values, bltNo: inferred } : r.values,
+      return { ...r, values: withIdentification(inferred && !r.values.bltNo ? { ...r.values, bltNo: inferred } : r.values, r.id, r.values),
         category: r.values.category || '', unit: r.values.unit || '' };
     }),
     supportingRecords: supportingLinks.map(r=>({id:r.id,scheduleId:draft.sources.find(s=>s.assignment?.record===r.id)?.assignment?.propertyRecord || 'primary',docName:draft.sources.find(s=>s.assignment?.record===r.id)?.name || '',values:r.values})),
