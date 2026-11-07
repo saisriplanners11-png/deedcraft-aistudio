@@ -1,0 +1,10 @@
+.wizard-app .release-particulars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.wizard-app .release-particulars>h2,.wizard-app .release-particulars>h3,.wizard-app .release-particulars>p,.wizard-app .release-particulars>fieldset,.wizard-app .release-particulars>ul,.wizard-app .release-particulars>button{grid-column:1/-1;margin:0}
+.wizard-app .release-particulars .field{display:grid;align-content:start;gap:6px;min-width:0;font-size:13px}
+.wizard-app .release-particulars .field>span{font-weight:600;line-height:1.45}
+.wizard-app .release-particulars .field>input,.wizard-app .release-particulars .field>select{width:100%;min-width:0;min-height:40px;padding:9px 11px;border:1px solid var(--dc-gold-light);border-radius:6px;background:var(--dc-paper);font:inherit;color:var(--dc-ink)}
+.wizard-app .release-particulars fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:18px;border:1px solid var(--dc-rule);border-radius:8px;min-width:0}
+.wizard-app .release-particulars legend{padding:0 6px;font-weight:600}
+.wizard-app .release-particulars small{color:var(--dc-muted);line-height:1.5}
+.wizard-app .release-particulars>button{justify-self:start}
+@media(max-width:620px){.wizard-app .release-particulars,.wizard-app .release-particulars fieldset{grid-template-columns:minmax(0,1fr)}.wizard-app .release-particulars fieldset{padding:14px}}

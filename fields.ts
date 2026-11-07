@@ -170,7 +170,7 @@ export const PARTY_CAPACITY_OPTIONS = [
   'Attorney / Agent (ఏజెంట్)',
 ] as const;
 
-export type PartyType = 'Individual' | 'Minor' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF' | typeof PARTY_CAPACITY_OPTIONS[number];
+export type PartyType = 'Bank' | 'Individual' | 'Minor' | 'Firm / LLP' | 'Society / Association' | 'Society / Trust' | 'Company' | 'Others / HUF' | typeof PARTY_CAPACITY_OPTIONS[number];
 
 /** An authorised signatory for a non-individual party, with each postal
  * component retained separately for registration use. */
@@ -189,7 +189,7 @@ export const newPartyRepresentative = (): PartyRepresentative => ({
 
 /** Entity particulars feed the organisation recital; people are stored separately. */
 export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyType): Field[] => {
-  if (type === 'Individual' || (PARTY_CAPACITY_OPTIONS as readonly string[]).includes(type)) return [];
+  if (type === 'Bank' || type === 'Individual' || (PARTY_CAPACITY_OPTIONS as readonly string[]).includes(type)) return [];
   const k = (name: string) => `${side}${name}`;
   const common = [
     { id: k('EntityName'), label: 'Entity name (English)', span: 2 as const },
@@ -472,6 +472,7 @@ export const LINK_OPTIONS: LinkOption[] = [
         hint: 'The date this document was executed, shown in its opening recital on the first page — not the SRO registration/presentation date.' },
       { id: 'linkSro', label: 'Sub-Registrar Office', ph: ['Sub Registrar', 'Sub-Registrar'], span: 2 },
       { id: 'mortgageAmount', label: 'Mortgage Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true },
+      { id: 'mortgageInterestAmount', label: 'Interest Amount (₹)', type: 'money', hidden: true, hint: 'Enter the interest amount for this mortgage, including 0 when no interest applies.' },
       { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Filled automatically from the selected Sub-Registrar Office.', hidden: true },
     ],
   },

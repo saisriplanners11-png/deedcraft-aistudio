@@ -10,7 +10,7 @@ export { newPayment, MODES } from './payments';
 export { PLACEMENT_CATALOG } from './template-placement';
 export { DEED_PRESERVATION_VERSION, preservationProfileFor } from './deed-preservation';
 export { validateDeedTemplate, loadTitleAmendmentTemplates, titleAmendmentPreview } from './docx';
-export { validateReconveyanceTemplate, fillReconveyanceDeed, validateGeneralPoaTemplate, fillGeneralPoaDeed, validateAgreementSaleGpaTemplate, fillAgreementSaleGpaDeed, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
+export { validateReleaseTemplate, fillReleaseDeed, validateReconveyanceTemplate, fillReconveyanceDeed, validateGeneralPoaTemplate, fillGeneralPoaDeed, validateAgreementSaleGpaTemplate, fillAgreementSaleGpaDeed, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
 export { validateFieldContract, canonicalContract, EMPTY_FIELD_CONTRACT } from './template-fields';
 import { fillSaleDeed, type DeedTemplateSource } from './docx';
 import { initialState, type AppState } from './logic';
@@ -34,11 +34,13 @@ export const saleMatrixCases = ['ordinary', 'gpa', 'agpa'].flatMap(mode => [
   ['house-finished', 'Finished house', 'Residential', 'Finished'], ['house-semi', 'Semi-finished house', 'Residential', 'Semi-Finished'],
   ['flat-finished', 'Finished flat', 'Flat', 'Finished'], ['flat-semi', 'Semi-finished flat', 'Flat', 'Semi-Finished'],
 ].map(item => [`${mode}-${item[0]}`, `${mode.toUpperCase()} — ${item[1]}`, item[2], item[3]]));
-export const sampleCasesFor = (contract = EMPTY_FIELD_CONTRACT, validation?: { saleOpenings?: boolean }) => validation?.saleOpenings ? [...saleMatrixCases, sampleCases.find(item => item[0] === 'multiple')!, ...(contract.fields.some(field => field.scope === 'party') ? [['entity', 'Company vendor', 'Vacant Plot', '']] : [])] : contract.fields.some(field => field.scope === 'party') ? [...sampleCases, ['entity', 'Company vendor', 'Vacant Plot', '']] : sampleCases;
+export const sampleCasesFor = (contract = EMPTY_FIELD_CONTRACT, validation?: { saleOpenings?: boolean; releaseTemplate?: boolean }) => validation?.releaseTemplate ? [...saleMatrixCases.filter(item=>item[0].startsWith('ordinary-')), sampleCases.find(item=>item[0]==='multiple')!] : validation?.saleOpenings ? [...saleMatrixCases, sampleCases.find(item => item[0] === 'multiple')!, ...(contract.fields.some(field => field.scope === 'party') ? [['entity', 'Company vendor', 'Vacant Plot', '']] : [])] : contract.fields.some(field => field.scope === 'party') ? [...sampleCases, ['entity', 'Company vendor', 'Vacant Plot', '']] : sampleCases;
 
 export async function renderSample(id: string, source: DeedTemplateSource): Promise<Uint8Array> {
   const contract = source.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : source.fieldContract || EMPTY_FIELD_CONTRACT;
   const state = sampleState(id);
+  const release = source.kind === 'custom' && source.validation.releaseTemplate;
+  if (release) { state.deedType='Release'; state.draft='Co-owner Release'; state.form.totalPropertyValue='3000000'; state.releaseData={ releasedBySchedule: { primary: { primary: '1/3' } } }; }
   const mode = state.saleDocument || 'ordinary';
   const records = templateRecords(state);
   const customValues: Record<string, Record<string, string>> = {};
@@ -49,7 +51,7 @@ export async function renderSample(id: string, source: DeedTemplateSource): Prom
       customValues[field.id][record.id] = field.type === 'text' || field.type === 'multiline' ? `${field.sampleValue} ${index + 1}` : field.sampleValue;
     }
   }
-  const compiled = compileDeed({ instrumentId: 'sale', variantId: mode === 'gpa' ? 'sale-deed-by-gpa-holder' : mode === 'agpa' ? 'sale-through-existing-agpa' : DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'synthetic-sample', values: mergeValues(state), schedules: scheduleMergesFor(state), rewrites: rewritesFor(state), unresolvedWarnings: [], templateFieldData: { records, values: customValues } }, source);
+  const compiled = compileDeed({ instrumentId: release ? 'release' : 'sale', variantId: release ? 'co-owner-release' : mode === 'gpa' ? 'sale-deed-by-gpa-holder' : mode === 'agpa' ? 'sale-through-existing-agpa' : DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'synthetic-sample', values: mergeValues(state), schedules: scheduleMergesFor(state), rewrites: rewritesFor(state), unresolvedWarnings: [], templateFieldData: { records, values: customValues } }, source);
   const { result } = await renderArtifact(compiled, 'docx');
   if (result.unmapped.length) throw new Error(`Unmapped sample placeholders: ${result.unmapped.join(', ')}`);
   return new Uint8Array(await result.blob.arrayBuffer());

@@ -32,6 +32,8 @@ export interface TemplateVersion {
 
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
+  id: 'ts-release-v1', instrumentId: 'release', variantIds: DEED_DEFINITIONS.release.variants.map(v => v.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-07', version: '1.0.0', status: 'approved', templateVersionId: 'release-deed-v1', sourceDocument: 'RELEASE DEED.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
+}, {
   id: 'ts-reconveyance-v1', instrumentId: 'reconveyance', variantIds: DEED_DEFINITIONS.reconveyance.variants.map(v => v.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-07', version: '1.0.0', status: 'approved', templateVersionId: 'reconveyance-deed-v1', sourceDocument: 'DEED OF RECONVEYANCE.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
 }, {
   id: 'ts-gift-municipal-2026-10-v3', instrumentId: 'gift', variantIds: ['municipal-gift'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-29', version: '3.0.0', status: 'approved', templateVersionId: 'gift-municipal-v3', sourceDocument: 'GIFT DEED FOR MUNCIPAL (2).docx', propertyCategories: ['Vacant Plot', 'Open Place', 'Demolished', 'Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
@@ -71,6 +73,8 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'release-deed-v1', referenceId: 'ts-release-v1', instrumentId: 'release', version: '1.0.0', asset: 'release-deed-template-v1.docx', sha256: 'd3077f53109780af91f60d77299737ce5f190198d8a46a126e03eb7237db33f1', immutable: true,
+}, {
   id: 'reconveyance-deed-v1', referenceId: 'ts-reconveyance-v1', instrumentId: 'reconveyance', version: '1.0.0', asset: 'reconveyance-deed-template-v1.docx', sha256: '313d04bd3de1eb11949e6c9e3721ae5073250c43ea969330168b8801a98ba62b', immutable: true,
 }, {
   id: 'gift-municipal-v3', referenceId: 'ts-gift-municipal-2026-10-v3', instrumentId: 'gift', version: '3.0.0', asset: 'gift-municipal-template-v3.docx', sha256: '507c06be8e45f9e091c2298d9736425b3a926c7f6237cf9d4c2a6bf37dfd9b49', immutable: true,

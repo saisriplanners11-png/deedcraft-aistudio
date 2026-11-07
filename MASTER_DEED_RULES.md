@@ -1,6 +1,6 @@
 # Permanent master rules for all deeds
 
-Status: user-confirmed permanent project policy, updated 05-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-05.2.
+Status: user-confirmed permanent project policy, updated 07-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-07.2.
 
 The user explicitly instructed: "Save all these as permanent master rules for all deeds. Whenever I upload a new draft, apply these modifications over it and change a rule only when I explicitly ask."
 
@@ -120,6 +120,7 @@ These versions describe the current sources, not permanent restrictions against 
 
 | Deed | Current default | Retained historical versions |
 | --- | --- | --- |
+| Release, Family and Co-owner | release-deed-v1 from RELEASE DEED.docx | First approved version |
 | Sale, Sale through GPA/AGPA | sale-deed-v11 from SALE DEED (7).docx | v10 and earlier registered Sale assets/hashes |
 | General/Family GPA | general-poa-v3 from G.P.A FOR CONSIDERATION (2).docx | v1-v2 |
 | Agreement of Sale Cum GPA, both possession variants | agreement-sale-gpa-v4 from AGREEMENT OF SALE CUM GPA (3).docx | v1-v3 |
@@ -150,3 +151,21 @@ Detailed implementation records: [replacement preservation](notes/deed-template-
 | 29-10-2026 | User's voice note asks that typing Rectification Deed or Supplemental Deed in Link Document type automatically show the matching point and update its document number, date, SRO and code. | Added SRC-04. Replaced duplicate classification/mapping with a shared typed-record route, added source-based live previews, retained saved field/record IDs, and blocked silent omission by incompatible sources. Advanced preservation version from 2026-10-28.1 to 2026-10-29.1; all prior rules remain in force. |
 
 The Classic Step 3 Jurisdiction Sub-Registrar Office uses the original manual text input. The combined directory selector and name/code resolution remain available for linked records under COM-14. This presentation restoration does not change the deed output policy.
+
+## Release Deed (07-11-2026)
+
+- **REL-01 — Approved default and source fidelity.** Release uses immutable `release-deed-v1` from the user-supplied `RELEASE DEED.docx` (SHA-256 `d3077f53109780af91f60d77299737ce5f190198d8a46a126e03eb7237db33f1`) for both Family Release and Co-owner Release. Resolve only its title category placeholder and applicable property blocks. Use a dedicated renderer and preservation profile; never fall back to Sale or Reconveyance. Retain the source asset, formatting/package parts and all applicable common rules.
+- **REL-02 — Named parties and relationships.** Support multiple releasors and multiple releasees with independent identities, capacity, gender and signatures. Family Release records relationships between stable named releasor/releasee IDs; Co-owner Release uses co-owner wording. Resolve count/gender agreement and replace source Vendor/Vendee payment labels with Releasor/Releasee as expressly authorized.
+- **REL-03 — Released rights.** Store property-scoped released shares by releasor ID and optional received allocations by releasee ID, as shares of the whole property. Accept fractions and percentages, retaining their entered form. Keep optional blanks; never infer equal or complete allocations, and never print an incomplete sum as a complete aggregate. Retain legacy combined `releasedShare` separately without assigning it to a person. Keep whole-property descriptions distinct from released portions; calculate supported proportional extents with exact share arithmetic and round only for display. Retain optional ordinary ownership data separately.
+- **REL-04 — Paid branch and values.** This source authorizes paid releases only. Keep the explicitly entered whole-property value separate from consideration for released rights; do not derive either money value from share arithmetic. Existing entered consideration governs market-value/estimate bindings under COM-02. Preserve separate payment records and each supplied reference/date/bank/branch/payer/payee. Do not invent a no-consideration legal branch.
+- **REL-05 — Replacement and saved drafts.** Default Release drafts automatically adopt the current default without losing facts, files, IDs, relationships or allocations. Explicit custom templates remain selected. Revalidate at download, reject missing Release bindings/clauses, require fresh Release samples for publication and keep Release download regressions in the build.
+
+07-11-2026 authorization: the user explicitly approved and requested implementation of the multi-party Release plan, including REL-01–05. This adds Release-specific behavior while retaining all earlier rules. Runtime preservation advances from `2026-11-05.2` to `2026-11-07.1`. No duty-rate or production-deployment change is authorized by this integration.
+
+## Reconveyance workflow update 07-11-2026
+
+- **REC-01 — Per-mortgage interest.** Each registered mortgage link record stores its own Mortgage Amount and Interest Amount (explicit zero allowed); sum each stable record once across properties regardless of attached files. Missing/invalid amounts block generation. Preserve older saved deed-level interest until per-record entry replaces it.
+- **REC-02 — Market Value and totals.** Step 5 retains all original market-value input fields, with Total Principal Amount, read-only Total Interest Amount and read-only Total Amount added. Keep the manual principal override and reset-to-link-total action; repayments and heading use effective principal plus summed interest. No repayment section in Step 1 and no automatic duty estimates or sale-payment reconciliation.
+- **REC-03 — Bank releasor.** For bank-to-person Reconveyance (including Title Deed), the Releasor party-type selector offers Bank. It asks only for the same saved bank name, branch and official designation; reuse existing draft values. Bank selection omits personal-identity entry/requirements and the official personal-identity segment from the bank opening. Keep saved identity data. Person-to-person does not offer Bank and retains full individual identities.
+
+07-11-2026 explicit user change (REC-01–03, Reconveyance exception to COM-04): replaces deed-level interest entry with per-link interest and summed totals, restores original valuation inputs, and adds the Bank party form using only existing bank particulars. All other instruments and immutable source packages remain unchanged. Runtime preservation advances from 2026-11-07.1 to 2026-11-07.2.

@@ -1,8 +1,10 @@
+import { releaseErrors } from './release';
+import type { ReleaseData } from './release';
 import { isMinorParty, minorPartyErrors } from './minor-parties';
 import { ageFrom, todayISO } from './party-age';
 import { acreGuntasToSqYards } from './land-area';
 import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
-import { reconveyanceErrors } from './reconveyance';
+import { isBankReconveyance, reconveyanceErrors } from './reconveyance';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
 import { flatStage, flatLabel } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
@@ -109,6 +111,7 @@ export type AppState = {
   additionalSchedules: ScheduleRecord[];
   vendeeSharesBySchedule?: VendeeSharesBySchedule;
   vendorSharesBySchedule?: VendeeSharesBySchedule;
+  releaseData?: ReleaseData;
   /** Uploaded evidence recited only in the property schedule it supports. */
   supportingRecords: SupportingRecord[];
   /** Repeatable Annexure I-A structure rows, keyed by property schedule id. */
@@ -450,6 +453,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
 
   });
   }
+  if (state.deedType === 'Release') releaseErrors(state).forEach((reason,index)=>missing.push({id:'release-'+index,label:'Release',reason,source:'Release particulars',step:4}));
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
@@ -508,7 +512,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   }
   if (state.deedType === 'Deed Of Reconvayance') {
     const omitted = /govtRate|consid|structValue|structureDetails|bltNo|constructionDescription|taxesPerAnnum|annualRentalValue|tapConnectionNo|metersNo|payment/i;
-    const retained = missing.filter(item => !omitted.test(item.id) && item.step !== 5);
+    const retained = missing.filter(item => !omitted.test(item.id) && item.step !== 5 && !(isBankReconveyance(state) && f.executantPartyType === 'Bank' && item.step === 6 && !item.id.startsWith('vendor-share-')));
     reconveyanceErrors(state).forEach((reason, index) => retained.push({ id: 'reconveyance-' + index, label: 'Reconveyance', reason, source: 'Mortgage documents or manual entry.', step: 4 }));
     return retained;
   }
@@ -726,7 +730,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const variant = SCHEDULE_VARIANT[state.category] || '';
 
   // ---- completeness --------------------------------------------------------
-  const reconFields = ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation','mortgageAmount'];
+  const reconFields = ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation','mortgageAmount','mortgageInterestAmount'];
   const required = ALL_FIELDS.filter(x => !x.derived && (state.deedType === 'Deed Of Reconvayance' ? !['govtRate','consid','structValue','principalOverride'].includes(x.id) : !reconFields.includes(x.id)));
   const applicable = required.filter(x => {
     if (x.only && !x.only.includes(state.category)) return false;

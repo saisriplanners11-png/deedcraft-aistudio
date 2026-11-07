@@ -1,3 +1,4 @@
+import { newPartyRepresentative } from './fields';
 import { describe, expect, it } from 'vitest';
 import { mortgagePaise, reconveyanceAmounts } from './reconveyance';
 
@@ -153,4 +154,42 @@ it('preserves combined-address compatibility and rejects dropped identity/proper
   const state=mortgageState();
   const result=await fillReconveyanceDeed(mergeValues(state),rewritesFor(state),scheduleMergesFor(state),{kind:'custom',name:'combined.docx',hash:'test',bytes:revised,validation});
   expect(await docxToText(new Uint8Array(await result.blob.arrayBuffer()))).toContain('R/o 1-1, Sample Village, Sample Mandal, Sample District, Telangana, 500001');
+});
+
+it('sums independent mortgage interest once across schedules and retains manual principal', async () => {
+  const state=mortgageState(3); state.form.interestAmount='999';
+  state.linkRecordsBySchedule.primary.forEach((record,i)=>record.values.mortgageInterestAmount=['0.10','0.20','0'][i]);
+  expect(repaymentFor(state)).toMatchObject({principal:'600.30',interest:'0.30',total:'600.60',errors:[]});
+  state.form.principalOverride='100';
+  expect(repaymentFor(state)).toMatchObject({principal:'100.00',interest:'0.30',total:'100.30'});
+  const result=await generate(state), text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+  expect(text).toContain('interest of Rs.0.30');expect(text).toContain('Value of Rs.100.30');
+  state.linkRecordsBySchedule.primary[1].values.mortgageInterestAmount='';
+  expect(repaymentFor(state).errors.join(' ')).toContain('interest amount');
+  state.linkRecordsBySchedule.primary[1].values.mortgageInterestAmount='-1';
+  expect(repaymentFor(state).errors.length).toBeGreaterThan(0);
+});
+it('keeps bank-only releasors separate from person-to-person identities', async () => {
+  const state=mortgageState(); state.form.executantPartyType='Bank';
+  for(const field of Object.keys(state.form)) if(field.startsWith('executant') && field!=='executantPartyType') state.form[field]='';
+  expect(generationBlockers(state).filter(item=>item.step===6)).toEqual([]);
+  const output=await generate(state),text=await docxToText(new Uint8Array(await output.blob.arrayBuffer()));
+  expect(text).toContain('SAMPLE BANK, Central Branch');expect(text).toContain('Manager');expect(text).not.toContain('Aged  years');
+  expect(text).not.toContain('Authorised official of the Branch');
+  state.partyPeopleByParty = { 'executant|primary': { members: [], representatives: [
+    { ...newPartyRepresentative(), name: 'Bank Representative', designation: 'Authorised Signatory', dob: '1985-05-09', hNo: '17', village: 'Sample Village' },
+  ] } };
+  const represented = await generate(state);
+  const representedText = await docxToText(new Uint8Array(await represented.blob.arrayBuffer()));
+  expect(representedText).toContain('Authorised Signatory: BANK REPRESENTATIVE');
+  expect(representedText).toContain('09-05-1985');
+  expect(representedText).toContain('R/o 17, Sample Village');
+  state.draft=DEED_DEFINITIONS.reconveyance.variants[1].label;state.form.mortgagePartyMode='person-to-person';
+  expect(reconveyanceErrors(state).join(' ')).toContain('Bank releasors require');
+});
+it('preserves independently entered link interest through save/reopen', () => {
+  let draft=draftReducer(newDraft(),{type:'instrument',instrumentId:'reconveyance'});
+  for(const [field,value] of Object.entries({linkOption:'linkDoc',mortgageAmount:'20.15',mortgageInterestAmount:'0.05'})) draft=draftReducer(draft,{type:'manual',key:fieldKey('link','loan',field),value});
+  draft=draftReducer(draft,{type:'load',draft:JSON.parse(JSON.stringify(draft))});
+  expect(repaymentFor(appStateFor(draft))).toMatchObject({principal:'20.15',interest:'0.05',total:'20.20',errors:[]});
 });

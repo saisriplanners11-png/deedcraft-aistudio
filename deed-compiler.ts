@@ -1,5 +1,5 @@
 import { reconveyanceBindingErrors } from './reconveyance';
-import { BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, fillGiftDeed, fillReconveyanceDeed, fillAgreementSaleGpaDeed, fillGeneralPoaDeed, type DeedTemplateSource, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
+import { BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, fillGiftDeed, fillReleaseDeed, fillReconveyanceDeed, fillAgreementSaleGpaDeed, fillGeneralPoaDeed, type DeedTemplateSource, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
 import type { InstrumentId } from './instruments';
 import { definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
@@ -60,13 +60,15 @@ export async function renderArtifact(
   templateSource: DeedTemplateSource = compiled.templateSource || BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<{ result: MergeResult; manifest: GenerationManifest }> {
   if (format !== 'docx') throw new Error('Only DOCX rendering is approved at this time.');
-  if (!['reconveyance', 'sale', 'gift', 'agreement_of_sale', 'power_of_attorney'].includes(compiled.snapshot.instrumentId)) throw new Error('No approved renderer is registered for this instrument.');
+  if (!['release', 'reconveyance', 'sale', 'gift', 'agreement_of_sale', 'power_of_attorney'].includes(compiled.snapshot.instrumentId)) throw new Error('No approved renderer is registered for this instrument.');
   const first = compiled.snapshot.schedules[0];
   if (!first) throw new Error('At least one property schedule is required by the Sale template.');
   const binding = bindTemplateFields(templateSource.kind === 'built-in' ? undefined : templateSource.fieldContract, compiled.snapshot.templateFieldData || { records: [], values: {} }, compiled.snapshot.values, compiled.snapshot.schedules, compiled.snapshot.rewrites || []);
   if (binding.errors.length) throw new Error(binding.errors.join(' '));
   if (templateSource.kind !== 'built-in' && templateSource.fieldContract?.fields.length && !compiled.snapshot.templateFieldData) throw new Error('Template field values are missing from this draft snapshot.');
-  const result = compiled.snapshot.instrumentId === 'reconveyance'
+  const result = compiled.snapshot.instrumentId === 'release'
+    ? await fillReleaseDeed({ ...binding.values, 'Release Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)
+    : compiled.snapshot.instrumentId === 'reconveyance'
     ? await fillReconveyanceDeed(binding.values, binding.rewrites, binding.schedules, templateSource)
     : compiled.snapshot.instrumentId === 'power_of_attorney'
     ? await fillGeneralPoaDeed({ ...binding.values, 'Poa Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)

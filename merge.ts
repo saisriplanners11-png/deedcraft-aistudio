@@ -1,3 +1,4 @@
+import { releaseValues, releaseScheduleValues } from './release';
 import { enclosureRecordsFor } from './enclosure-records';
 import { isMinorParty, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
 import { executionDeedDate } from './deed-format';
@@ -199,6 +200,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     out[label] = rows.length ? rows.reduce((sum, row) => sum + Number(row.builtUpAreaSqFt || 0), 0).toLocaleString('en-IN') : '';
   }
   if (isMunicipalGift(state)) { out.Village = out.VILLAGE; out['Local Authority Type'] = out.ULB; }
+  if (state.deedType === 'Release') Object.assign(out, releaseValues(state));
   if (state.deedType === 'Deed Of Reconvayance') Object.assign(out, reconveyanceValues(state));
   return out;
 }
@@ -241,10 +243,10 @@ export function rewritesFor(state: AppState): Rewrite[] {
     'Housing Loan Branch': payment.branch || '',
     'Remitting Bank': [payment.bank, payment.branch].filter(Boolean).join(', '),
     Date: deedDate(payment.date),
-    'Claimant Name': payment.payer || partyDisplayName(state.form, 'claimant') || '',
-    'CLAIMANT NAME': payment.payer || state.form.claimantName || '',
-    'Executant Name': payment.payee || partyDisplayName(state.form, 'executant') || '',
-    'EXECUTANT NAME': payment.payee || state.form.executantName || '',
+    'Claimant Name': payment.payer || (state.deedType === 'Release' ? partyRecords(state,'claimant').map(p=>partyDisplayName(p.values,'claimant')).filter(Boolean).join(', ') : partyDisplayName(state.form, 'claimant')) || '',
+    'CLAIMANT NAME': payment.payer || (state.deedType === 'Release' ? partyRecords(state,'claimant').map(p=>partyDisplayName(p.values,'claimant')).filter(Boolean).join(', ') : state.form.claimantName) || '',
+    'Executant Name': payment.payee || (state.deedType === 'Release' ? partyRecords(state,'executant').map(p=>partyDisplayName(p.values,'executant')).filter(Boolean).join(', ') : partyDisplayName(state.form, 'executant')) || '',
+    'EXECUTANT NAME': payment.payee || (state.deedType === 'Release' ? partyRecords(state,'executant').map(p=>partyDisplayName(p.values,'executant')).filter(Boolean).join(', ') : state.form.executantName) || '',
   });
   const v2PaymentParagraphs: Array<{ mode: Payment['mode']; find: RegExp; refName: string }> = [
     { mode: 'rtgs', find: /RTGS\/NEFT:\s*Amount of Rs\./i, refName: 'UTR No.' },
@@ -375,6 +377,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     if (identificationPairs) scheduleState.form.housePtinPairs = identificationPairs;
     const values = mergeValues(scheduleState);
     values['Property Category'] = record.category;
+    if (state.deedType === 'Release') Object.assign(values, releaseScheduleValues(state, record.id));
     const titleValues = { ...values };
     const amendmentKind = (item: typeof titleLinkRecords[number]) => titleAmendmentKind(item.values);
     const amendmentRecords = { rectification: [] as Record<string, string>[], supplemental: [] as Record<string, string>[] };

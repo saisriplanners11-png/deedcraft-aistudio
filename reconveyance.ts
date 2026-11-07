@@ -1,13 +1,7 @@
+import { representativeRecital } from './party-entities';
 import { flatStage } from './flat-options';
-/** Currency values use integer paise; blank and malformed amounts stay unresolved. */
-export function mortgagePaise(value: string): bigint | null {
-  const input = value.trim();
-  if (input.includes(',') && !/^(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})(?:\.\d{1,2})?$/.test(input)) return null;
-  const clean = input.replace(/,/g, '');
-  if (!/^\d+(?:\.\d{1,2})?$/.test(clean)) return null;
-  const [whole, fraction = ''] = clean.split('.');
-  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
-}
+import { moneyPaise as mortgagePaise } from './deed-money';
+export { moneyPaise as mortgagePaise } from './deed-money';
 
 export function paiseAmount(value: bigint): string {
   return `${value / 100n}.${String(value % 100n).padStart(2, '0')}`;
@@ -50,11 +44,26 @@ export function reconveyanceRecords(state: AppState): MortgageRecord[] {
   const order = [...new Set(['primary', ...state.additionalSchedules.map(record => record.id), ...Object.keys(state.linkRecordsBySchedule)])];
   return order.flatMap(id => state.linkRecordsBySchedule[id] || []).filter(record => record.values.linkOption === 'linkDoc' || (!record.values.linkOption && ['mortgageAmount','linkDocNo','linkDocDate','linkSro'].some(field => !!record.values[field]?.trim())));
 }
-export function repaymentFor(state: AppState) {
-  return reconveyanceAmounts(reconveyanceRecords(state), state.form.principalOverride || '', state.form.interestAmount || '');
+export function mortgageInterestTotal(records: MortgageRecord[], legacyInterest = '') {
+  // Older saved drafts retain their deed-level interest until a link interest is entered.
+  if (legacyInterest.trim() && !records.some(record => Object.prototype.hasOwnProperty.call(record.values, 'mortgageInterestAmount'))) return { interest: legacyInterest, errors: [] as string[] };
+  const errors: string[] = [], seen = new Set<string>(); let total = 0n;
+  for (const record of records) {
+    if (seen.has(record.id)) continue; seen.add(record.id);
+    const amount = mortgagePaise(record.values.mortgageInterestAmount || '');
+    if (amount === null) errors.push('Mortgage document ' + seen.size + ': enter a valid interest amount, including zero.'); else total += amount;
+  }
+  return { interest: errors.length || !seen.size ? '' : paiseAmount(total), errors };
 }
+export function repaymentFor(state: AppState) {
+  const records = reconveyanceRecords(state), interest = mortgageInterestTotal(records, state.form.interestAmount || '');
+  const amounts = reconveyanceAmounts(records, state.form.principalOverride || '', interest.interest);
+  return { ...amounts, errors: [...amounts.errors, ...interest.errors] };
+}
+export const isBankReconveyance = (state: AppState) => state.deedType === 'Deed Of Reconvayance' && (state.draft === 'TITLE DEED' || state.form.mortgagePartyMode === 'bank-to-person');
 export function reconveyanceErrors(state: AppState): string[] {
   const errors = [...repaymentFor(state).errors];
+  if (state.form.executantPartyType === 'Bank' && !isBankReconveyance(state)) errors.push('Bank releasors require a bank-to-person draft. Choose an individual party for person-to-person.');
   const records = reconveyanceRecords(state);
   records.forEach((record, index) => {
     for (const field of ['linkDocNo','linkSro','linkSroCode']) if (!record.values[field]?.trim()) errors.push(`Mortgage ${index + 1}: complete ${field}.`);
@@ -72,6 +81,7 @@ export function reconveyanceErrors(state: AppState): string[] {
 }
 export function reconveyanceValues(state: AppState): Record<string, string> {
   const amount = repaymentFor(state);
+  const representatives = state.partyPeopleByParty?.['executant|' + (state.primaryExecutantId || 'primary')]?.representatives || [];
   return {
     'Principal Amount': amount.principal, 'Intrest Amount': amount.interest, 'Interest Amount': amount.interest,
     'Total Amount': amount.total, 'Market of Value Rs./-': amount.total,
@@ -79,6 +89,8 @@ export function reconveyanceValues(state: AppState): Record<string, string> {
     'Mortgage Party Mode': state.draft === 'TITLE DEED' ? 'bank-to-person' : state.form.mortgagePartyMode || '',
     'BANK NAME': state.form.bankName || '', Branch: state.form.bankBranch || '', Designation: state.form.officialDesignation || '',
     'Mortgage Records': JSON.stringify(reconveyanceRecords(state)),
+    'Bank Representative Details': representatives.filter(person => person.name.trim()).map(representativeRecital).join('; '),
+    'Bank Releasor': isBankReconveyance(state) && state.form.executantPartyType === 'Bank' ? 'true' : '',
   };
 }
 
@@ -89,7 +101,8 @@ export function reconveyanceBindingErrors(values: Record<string,string>): string
     records = JSON.parse(values['Mortgage Records'] || '[]');
     if (!Array.isArray(records) || records.some(record => !record || typeof record.id !== 'string' || !record.values || typeof record.values !== 'object')) return ['Invalid mortgage records.'];
   } catch { return ['Invalid mortgage records.']; }
-  const errors = reconveyanceAmounts(records, values['Principal Amount'] || '', values['Intrest Amount'] ?? values['Interest Amount'] ?? '').errors;
+  const interest = mortgageInterestTotal(records, values['Intrest Amount'] ?? values['Interest Amount'] ?? '');
+  const errors = [...reconveyanceAmounts(records, values['Principal Amount'] || '', interest.interest).errors, ...interest.errors];
   for (const record of records) {
     if (!record.values.linkDocNo || !deedDate(record.values.linkDocDate || '') || !record.values.linkSro || !record.values.linkSroCode) errors.push('Complete every mortgage number, execution date, SRO and SRO code.');
   }

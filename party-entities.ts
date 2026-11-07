@@ -1,6 +1,6 @@
 import { ageFrom } from './party-age';
 import { deedDate } from './deed-format';
-import { partyEntityFields, type PartyPeople, type PartyType } from './fields';
+import { partyEntityFields, type PartyRepresentative, type PartyPeople, type PartyType } from './fields';
 
 export type PartySide = 'executant' | 'claimant';
 
@@ -10,6 +10,7 @@ export function representativeDesignationOptions(partyType: string): string[] {
     case 'Firm / LLP': return ['Managing Partner', 'Partner', 'Designated Partner', 'Authorised Signatory', 'Authorised Representative'];
     case 'Society / Association':
     case 'Society / Trust': return ['President', 'Vice President', 'Member', 'Secretary', 'Joint Secretary', 'General Secretary', 'Treasurer', 'Managing Trustee', 'Trustee', 'Authorised Signatory', 'Authorised Representative'];
+    case 'Bank': return ['Branch Manager', 'Manager', 'Authorised Signatory', 'Authorised Representative'];
     case 'Company': return ['Managing Director', 'Director', 'Whole-time Director', 'Chairperson', 'Chief Executive Officer', 'Company Secretary', 'Branch Manager', 'Authorised Signatory', 'Authorised Representative'];
     default: return ['Karta', 'Manager', 'Authorised Signatory', 'Authorised Representative'];
   }
@@ -52,20 +53,22 @@ export function entityRecital(values: Record<string, string>, side: PartySide, p
   add('partnership deed dated ', firm ? date(v('FirmDeedDate')) : '');
   add('GSTIN ', firm ? v('FirmGstin') : '');
   add('acting under authorization ', company ? v('CompanyBoardResolution') : firm ? v('FirmAuthority') : society ? v('SocietyResolutionNo') : v('OtherAuthority'));
-  const reps = people.representatives.map(p => {
-    const designation = p.designation.trim().replace(/[:\s]+$/, '');
-    const text = [(designation ? designation + ': ' : '') + (p.name.toLocaleUpperCase('en-IN') || '____')];
-    if (p.relationName) text.push([p.relation, p.relationName.toLocaleUpperCase('en-IN')].filter(Boolean).join(' '));
-    const age = p.dob ? ageFrom(p.dob) : p.age;
-    if (age) text.push('aged ' + age + ' years');
-    if (p.dob) text.push('(DOB: ' + date(p.dob) + ')');
-    const address = [p.hNo, p.locality, p.village, p.mandal, p.district, p.state, p.pinCode].filter(Boolean).join(', ');
-    if (address) text.push('R/o ' + address);
-    if (p.aadhaar) text.push('Aadhaar No. ' + p.aadhaar);
-    if (p.pan) text.push('PAN No. ' + p.pan);
-    if (p.mobile) text.push('Mobile No. ' + p.mobile);
-    return text.filter(Boolean).join(', ');
-  });
+  const reps = people.representatives.map(representativeRecital);
   parts.push('represented by\n' + (reps.join('\n') || '____'));
   return parts.join(', ');
+}
+
+export function representativeRecital(p: PartyRepresentative): string {
+  const designation = p.designation.trim().replace(/[:\s]+$/, '');
+  const text = [(designation ? designation + ': ' : '') + (p.name.toLocaleUpperCase('en-IN') || '____')];
+  if (p.relationName) text.push([p.relation, p.relationName.toLocaleUpperCase('en-IN')].filter(Boolean).join(' '));
+  const age = p.dob ? ageFrom(p.dob) : p.age;
+  if (age) text.push('aged ' + age + ' years');
+  if (p.dob) text.push('(DOB: ' + date(p.dob) + ')');
+  const address = [p.hNo, p.locality, p.village, p.mandal, p.district, p.state, p.pinCode].filter(Boolean).join(', ');
+  if (address) text.push('R/o ' + address);
+  if (p.aadhaar) text.push('Aadhaar No. ' + p.aadhaar);
+  if (p.pan) text.push('PAN No. ' + p.pan);
+  if (p.mobile) text.push('Mobile No. ' + p.mobile);
+  return text.filter(Boolean).join(', ');
 }

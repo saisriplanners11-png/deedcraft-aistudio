@@ -1,3 +1,4 @@
+import type { ReleaseData } from './release';
 import { orderedEnclosureIds } from './enclosure-records';
 import { acreGuntasToSqYards } from './land-area';
 import { titleAmendmentKind } from './title-amendments';
@@ -66,6 +67,7 @@ export type Draft = {
   /** Optional for drafts saved before vendee allocations were introduced. */
   vendeeSharesBySchedule?: VendeeSharesBySchedule;
   vendorSharesBySchedule?: VendeeSharesBySchedule;
+  releaseData?: ReleaseData;
   partyPeople?: Record<string, PartyPeopleIds>;
   /** Instrument identity is part of the draft snapshot and cannot be inferred from its fields. */
   instrumentId: InstrumentId;
@@ -163,7 +165,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
       const omit = <T,>(values: Record<string, T> = {}) => Object.fromEntries(Object.entries(values).filter(([id]) => id !== action.record));
       next = { ...next, propertyIds: next.propertyIds.filter(id => id !== action.record), activePropertyId: next.activePropertyId === action.record ? 'primary' : next.activePropertyId,
         linkPropertyRecords: Object.fromEntries(Object.entries(next.linkPropertyRecords).filter(([, id]) => id !== action.record)),
-        structureDetailsBySchedule: omit(next.structureDetailsBySchedule), vendeeSharesBySchedule: omit(next.vendeeSharesBySchedule), vendorSharesBySchedule: omit(next.vendorSharesBySchedule), ...(next.jurisdictionLookups ? { jurisdictionLookups: omit(next.jurisdictionLookups) } : {}) };
+        releaseData: next.releaseData ? { ...next.releaseData, releasedBySchedule: omit(next.releaseData.releasedBySchedule), allocatedBySchedule: omit(next.releaseData.allocatedBySchedule) } : undefined, structureDetailsBySchedule: omit(next.structureDetailsBySchedule), vendeeSharesBySchedule: omit(next.vendeeSharesBySchedule), vendorSharesBySchedule: omit(next.vendorSharesBySchedule), ...(next.jurisdictionLookups ? { jurisdictionLookups: omit(next.jurisdictionLookups) } : {}) };
     }
   }
   if (action.type === 'remove-party') {
@@ -186,7 +188,12 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     const partyPeople = { ...draft.partyPeople }; delete partyPeople[partyKey(action.role, action.record)];
     for (const id of ids) for (const key of Object.keys(manual)) if (key.startsWith('party-person|' + id + '|')) delete manual[key];
     for (const id of ids) for (const key of Object.keys(choices)) if (key.startsWith('party-person|' + id + '|')) delete choices[key];
-    next = { ...cleared, partyPeople, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
+    const releaseData = draft.releaseData ? { ...draft.releaseData,
+      relationships: draft.releaseData.relationships?.filter(r => action.role === 'executant' ? r.releasorId !== action.record : r.releaseeId !== action.record),
+      releasedBySchedule: Object.fromEntries(Object.entries(draft.releaseData.releasedBySchedule || {}).map(([id, values]) => [id, Object.fromEntries(Object.entries(values).filter(([key]) => action.role !== 'executant' || key !== action.record))])),
+      allocatedBySchedule: Object.fromEntries(Object.entries(draft.releaseData.allocatedBySchedule || {}).map(([id, values]) => [id, Object.fromEntries(Object.entries(values).filter(([key]) => action.role !== 'claimant' || key !== action.record))])),
+    } : undefined;
+    next = { ...cleared, releaseData, partyPeople, manual, choices, vendeeSharesBySchedule: shares, vendorSharesBySchedule: vendorShares,
       templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([id, values]) => [id, Object.fromEntries(Object.entries(values).filter(([key]) => key !== `${action.role}:${action.record}`))])),
       sources: cleared.sources.filter(source => !(source.assignment?.role === 'party-person' && ids.includes(source.assignment.record))),
       saleAuthority: draft.saleAuthority ? { ...draft.saleAuthority, attorneys: draft.saleAuthority.attorneys.map(attorney => ({ ...attorney, principalIds: action.role === 'executant' ? attorney.principalIds.filter(id => id !== action.record) : attorney.principalIds })) } : undefined };
@@ -483,6 +490,7 @@ export function appStateFor(draft: Draft): AppState {
     structureDetailsBySchedule: Object.fromEntries(propertyIds.map(id => [id, draft.structureDetailsBySchedule[id] || newStructureDetails()])),
     vendeeSharesBySchedule: draft.vendeeSharesBySchedule || {},
     vendorSharesBySchedule: draft.vendorSharesBySchedule || {},
+    releaseData: draft.releaseData,
   };
 }
 

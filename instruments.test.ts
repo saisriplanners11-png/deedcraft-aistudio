@@ -21,7 +21,9 @@ describe('multi-instrument registry', () => {
     for (const variant of DEED_DEFINITIONS.gift.variants) expect(releaseGate('gift', variant.id).ready).toBe(true);
     expect(releaseGate('will').reasons[0]).toMatch(/approved legal reference/i);
     expect(releaseGate('reconveyance', 'title-deed').ready).toBe(true);
-    expect(LEGAL_REFERENCES).toHaveLength(16);
+    expect(releaseGate('release','family-release').ready).toBe(true);
+    expect(releaseGate('release','co-owner-release').ready).toBe(true);
+    expect(LEGAL_REFERENCES).toHaveLength(17);
   });
 
   it('persists instrument and definition version through source-backed projections', () => {

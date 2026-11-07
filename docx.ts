@@ -1,8 +1,9 @@
+import { releaseBindingErrors, releasedExtent, releasedSquareMetres, releasedTotal, releaseShareLabel, type ReleasePartyShare } from './release';
 import { ENCLOSURE_RECITALS, type EnclosureRecords, type EnclosureRecitalKind } from './enclosure-records';
 import { partyWording } from './party-wording';
 import { municipalCouncilRecital } from './municipal-gift';
 import { partyPronouns } from './party-pronouns';
-import { reconveyanceBindingErrors, reconveyanceAmounts, mortgagePaise } from './reconveyance';
+import { reconveyanceBindingErrors, reconveyanceAmounts, mortgageInterestTotal, mortgagePaise } from './reconveyance';
 import { deedDate as deedDateForReconveyance } from './deed-format';
 import { giftPartyWording } from './gift-wording';
 import { regularGiftSourcePolicy } from './gift-template-policy';
@@ -54,6 +55,7 @@ export type TemplateValidationResult = {
   valid: boolean;
   preservationVersion?: string;
   saleOpenings?: boolean;
+  releaseTemplate?: boolean;
   errors: string[];
   detectedPlaceholders: string[];
   omittedPlaceholders: string[];
@@ -74,7 +76,8 @@ export async function loadTitleAmendmentTemplates(instrument: InstrumentId, vari
   const validation = await validateDeedTemplate(bytes, instrument, variant, 'template.docx', source.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : source.fieldContract || EMPTY_FIELD_CONTRACT);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes), document = entries.find(entry => entry.name === 'word/document.xml')!;
-  const xml = protectDeedTemplateSource(new TextDecoder().decode(document.data), preservationProfileFor(instrument, variant));
+  const raw = new TextDecoder().decode(document.data);
+  const xml = protectDeedTemplateSource(instrument === 'release' ? normalizeReleaseSource(raw) : raw, preservationProfileFor(instrument, variant));
   const paragraphs = xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
   return Object.fromEntries((['rectification', 'supplemental'] as const).flatMap(kind => {
     const paragraph = paragraphs.find(p => new RegExp('^' + kind + ' Deed:', 'i').test(plainText(p).trim()));
@@ -99,6 +102,7 @@ export async function validateDeedTemplate(bytes: Uint8Array, instrument: Instru
       const missing = contract.fields.filter(field => !tags.has(norm(field.placeholder)));
       if (missing.length) throw new Error(`The replacement omits configured fields: ${missing.map(field => '<' + field.placeholder + '>').join(', ')}. Restore their placeholders; existing field definitions and saved values must be retained.`);
     }
+    if (profile === 'release') return validateReleaseTemplate(bytes, contract);
     if (profile === 'reconveyance') return validateReconveyanceTemplate(bytes);
     if (profile === 'sale') return validateSaleDeedTemplate(bytes, filename, undefined, contract);
     if (profile === 'gift') return validateGiftDeedTemplate(bytes);
@@ -899,9 +903,11 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   p = replaceRunText(p, /\s+on\s+<Date>/gi, match =>
     values.get(norm('Date')) ? match[0] : '');
   if (!values.get(norm('District Registrar'))) p = replaceRunText(p, /\s+and\s+within the Registration District:\s*<District Registrar>/gi, () => '');
+  if (!values.has(norm('Release Variant'))) {
   partyWording(plainText(p), Number(values.get(norm('Ownership Vendor Count')) || 1), Number(values.get(norm('Ownership Vendee Count')) || 1), (find, replacement) => { p = replaceRunText(p, find, match => match[0].replace(find, replacement)); }, Number(values.get(norm('Authority Attorney Count')) || values.get(norm('Ownership Vendee Count')) || 1));
   const pronounValues = Object.fromEntries(['Executant Gender', 'Claimant Gender', 'Attorney Gender', 'Ownership Vendor Count', 'Ownership Vendee Count', 'Authority Attorney Count'].map(key => [key, values.get(norm(key)) || '']));
   partyPronouns(plainText(p), pronounValues, (find, replacement) => { p = replaceRunText(p, find, () => replacement); });
+  }
   p = removeEmptyFields(p, values, missing);
   p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
@@ -1317,7 +1323,14 @@ export async function scheduleText(
   vendorShares?: VendeeShare[],
   templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<string> {
-  const bin = await templateBytes(templateSource);
+  const bin = values['Release Variant'] && templateSource.kind === 'built-in' ? await loadTemplate('release-deed-v1') : await templateBytes(templateSource);
+  if (values['Release Variant']) {
+    const entries = await readZip(bin);
+    const xml = normalizeReleaseSource(new TextDecoder().decode(entries.find(e=>e.name==='word/document.xml')!.data));
+    const block = releaseParts(xml).blocks.get(variant);
+    if (!block) throw new Error('Unsupported Release property variant.');
+    return (releasePropertyBlock(block, { variant, values, structureDetails }, values).match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).map(plainText).filter(Boolean).join('\n');
+  }
   if ((templateSource.kind === 'library' && templateSource.versionId.startsWith('reconveyance-')) || values['Reconveyance Draft']) {
     const entries = await readZip(bin);
     const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
@@ -2727,7 +2740,8 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   const records = JSON.parse(values['Mortgage Records'] || '[]') as import('./reconveyance').MortgageRecord[];
   const bindingErrors = reconveyanceBindingErrors(values);
   if (bindingErrors.length) throw new Error(bindingErrors.join(' '));
-  const amounts = reconveyanceAmounts(records, values['Principal Amount'] || '', values['Intrest Amount'] ?? values['Interest Amount'] ?? '');
+  const interest = mortgageInterestTotal(records, values['Intrest Amount'] ?? values['Interest Amount'] ?? '');
+  const amounts = reconveyanceAmounts(records, values['Principal Amount'] || '', interest.interest);
   if (amounts.errors.length) throw new Error(amounts.errors.join(' '));
   if (!schedules.length) throw new Error('Add a property schedule.');
   const bytes = source.kind === 'built-in' ? await loadTemplate('reconveyance-deed-v1') : await templateBytes(source);
@@ -2741,6 +2755,12 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   const merged = { ...values, 'Market of Value Rs./-': amounts.total, 'Total Amount': amounts.total, 'Principal Amount': amounts.principal, 'Intrest Amount': amounts.interest, 'Interest Amount': amounts.interest, 'DEPOSITE OF TITLE DEED/MORTGAGE DEED': values['Reconveyance Draft'] === 'title-deed' ? 'DEPOSIT OF TITLE DEEDS' : 'MORTGAGE DEED' };
   const fill = (block: string, record: Record<string, string>, rules: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
+    if (record['Bank Releasor'] === 'true' && /<BANK NAME>/i.test(plainText(paragraph))) {
+      const identity = /,\s*(?:<EXECUTANT NAME>|<Executant Address>)[\s\S]*?Authorised official of the Branch,\s*/i;
+      const hasRepresentatives = !!record['Bank Representative Details'];
+      if (hasRepresentatives && !identity.test(plainText(paragraph))) throw new Error('The bank opening needs its representative identity clause to print the saved representative details.');
+      paragraph = replaceRunText(paragraph, identity, () => hasRepresentatives ? ', <Bank Representative Details>, ' : ', ');
+    }
     const filled = fillParagraph(paragraph, new Map(Object.entries(record).map(([key, value]) => [norm(key), value])), missing, rules);
     return replaceRunText(filled, /\b(near|adjacent)\s+H\.No\.\s*/gi, match => match[1].toLowerCase() + ' house No.');
   });
@@ -2789,4 +2809,222 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   if (/<\s*(?:IF |BANK NAME|Principal Amount|Intrest Amount)/.test(plainText(output))) throw new Error('Unresolved Reconveyance conditional or amount binding.');
   entry.data = new TextEncoder().encode(output);
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing], unmapped: [] };
+}
+
+// Release has an independent source layout and renderer; it never uses Sale clauses.
+const RELEASE_VARIANTS = ['IF OPEN PLACE','IF OPEN PLOT','IF DIMOLISHED HOUSE','IF PART OPEN PLACE','IF HOUSE','IF HOUSE SEMI FINISHED','IF FLAT SEMI FINISHED','IF FLAT FINISHED'];
+function releaseParts(xml: string) {
+  const start=xml.indexOf('<w:body>')+8, end=xml.lastIndexOf('</w:body>');
+  const body=xml.slice(start,end), chunks=topLevelChildren(body).map(c=>body.slice(c.start,c.end));
+  const texts=chunks.map(c=>plainText(c).trim());
+  const positions=texts.flatMap((t,i)=>/^SCHEDULE$/.test(t)?[i]:[]);
+  const tail=texts.findIndex(t=>/^And more clearly shown/i.test(t));
+  const marker=texts.findIndex(t=>/^<IF OPEN PLACE\/VACANT PLOT/.test(t));
+  const titleStart=texts.findIndex(t=>/^Registered Deed:/i.test(t));
+  const titleEnd=texts.findIndex(t=>/^AND WHEREAS the parties/i.test(t));
+  if(start<8 || end<start || positions.length!==8 || tail<=positions[7] || marker<0 || titleStart<0 || titleEnd<=titleStart) throw new Error('Incompatible Release template: retain its opening, title/enclosure recitals, eight property schedules and declaration/closing.');
+  return {start,end,chunks,texts,marker,titleStart,titleEnd,tail,blocks:new Map(RELEASE_VARIANTS.map((v,i)=>[v,chunks.slice(positions[i],positions[i+1]??tail).join('')]))};
+}
+function normalizeReleaseSource(xml: string): string {
+  return xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>{
+    const t=plainText(p);
+    // The approved source uses generic title slots within its two named amendment recitals.
+    for(const kind of ['Rectification','Supplemental']) if(new RegExp('^'+kind+' Deed:','i').test(t)) {
+      for(const [from,to] of [['Link Doc Type',kind+' Deed Type'],['Sub Registrar',kind+' Deed SRO'],['Sub Registrar Code',kind+' Deed SRO Code']]) p=replaceRunText(p,new RegExp('<\\s*'+escapeRegExp(from)+'\\s*>','gi'),()=>'<'+to+'>');
+    }
+    if(/^RTGS\/NEFT:/i.test(t)) p=replaceRunText(p,/Transaction No\.\/UTR No\.\s*(?=dated:)/i,()=> 'Transaction No./UTR No.<UTR No.> ');
+    return p;
+  });
+}
+export async function validateReleaseTemplate(bytes: Uint8Array, contract: TemplateFieldContract = EMPTY_FIELD_CONTRACT): Promise<TemplateValidationResult> {
+  const errors:string[]=[]; let tags:string[]=[];
+  try {
+    const entries=await readZip(bytes), document=entries.find(e=>e.name==='word/document.xml');
+    if(!document) throw new Error('Missing Word document part.');
+    const xml=protectDeedTemplateSource(normalizeReleaseSource(new TextDecoder().decode(document.data)), 'release'), parts=releaseParts(xml), text=plainText(xml);
+    tags=angleTags(xml); const detected=new Set(tags.map(norm));
+    const require=(tag:string)=>{if(!detected.has(norm(tag))) errors.push('Missing Release binding: <'+tag+'>.');};
+    for(const side of ['Executant','Claimant']) for(const suffix of ['NAME','RELATION NAME','Age','Dob','Occupation','Adhar Number','Cell.No.','PAN','H.No.','Locality','Village','Mandal','District','State','Pin Code']) require(side+' '+suffix);
+    for(const tag of ['BETWEEN FAMILY MEMBERS/CO-OWNERS','Total Value of Property Rs./-','Share Value of Property Rs./-','Stamp of Rs/-','RELATIONSHIP','Share','Shared Sq.yards','Shared UDS','Shared Built-up Area','Shared Car Parking Area','Link Doct.No.','Link Doct.Date','Sub Registrar','Sub Registrar Code']) require(tag);
+    const titleSpecs: [string, string[]][] = [
+      ['Registered Deed', ['Link Doc Type','Link Doct.No.','Link Doct.Date','Sub Registrar','Sub Registrar Code']],
+      ...['Rectification','Supplemental'].map(kind => [kind+' Deed', ['Type','No.','Date','SRO','SRO Code'].map(suffix=>kind+' Deed '+suffix)] as [string,string[]]),
+      ['Vacant Land Tax/Assessment',['V.L.T.No.']], ['Approved Layout',['Layout File No.']],
+      ['Title Deed',['Pattadar Pass Book No.','Pass Book Khata No.']], ['Nala Order',['Nala Order No.','Link Doct.Date']],
+      ['Property Tax',['House Tax Receipt','Link Doct.Date','Village']], ['Tax/Assessment & Identification Particulars',['P.T.I.No.']],
+      ['House Permission',['House Permission No.','Permission Date','Municipality/Gram Panchayat Name']],
+      ['L.R.S.-2020 Application',['LRS Application No.','Application Date']], ['L.R.S. Proceeding',['LRS Proceeding No.','Proceeding Date']],
+    ];
+    for(const [label,required] of titleSpecs) {
+      const paragraph=parts.chunks.slice(parts.titleStart,parts.titleEnd).find(p=>plainText(p).trim().startsWith(label+':'));
+      if(!paragraph) { errors.push('Retain the Release '+label+' recital so entered records cannot be omitted.'); continue; }
+      const bindings=new Set(angleTags(paragraph).map(norm));
+      for(const tag of required) if(!bindings.has(norm(tag))) errors.push(label+': retain <'+tag+'> for that record.');
+    }
+    for(const phrase of [/^RELEASE DEED /,/release, relinquish, surrender and forever quitclaim/i,/DECLARATION/,/SIGN\/S OF THE RELEASOR\/S/,/SIGN\/S OF THE RELEASEE\/S/,/free from all encumbrances/i]) if(!phrase.test(text)) errors.push('Retain the approved Release title, operative clauses, declaration and signature wording.');
+    for(const mode of ['RTGS/NEFT:','Cheque:','Demand Draft:','UPI/Online:','Cash:','Housing Loan:','Through Bank:']) if(!text.includes(mode)) errors.push('Retain the Release payment paragraph '+mode);
+    for(const [variant,block] of parts.blocks) {
+      const detail=(block.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).find(p=>/^THE RELEASOR\/S HAS\/HAVE RELEASED/i.test(plainText(p).trim()));
+      if(!detail || !angleTags(detail).some(tag=>norm(tag)==='share')) errors.push(variant+': retain the released-portion recital and its <Share> binding.');
+      const blockTags=new Set(angleTags(block).map(norm));
+      const required=['Locality','Village','Mandal','District','Sub-Registrar','District Registrar','Pin Code','Share',...(variant.includes('FLAT')?['Flat No.','Floor No.','UDS','Built-up Area','Car Parking Area','Shared UDS','Shared Built-up Area','Shared Car Parking Area','North Boundary of Flat','South Boundary of Flat','East Boundary of Flat','West Boundary of Flat']:['Extent in Sq.yards','Shared Sq.yards','North Boundary','South Boundary','East Boundary','West Boundary'])];
+      for(const tag of required) if(!blockTags.has(norm(tag))) errors.push(variant+': retain <'+tag+'>.');
+    }
+    const allowed=new Set([...ALL_FIELDS.flatMap(f=>f.ph?Array.isArray(f.ph)?f.ph:[f.ph]:[]),...LEGACY_TEMPLATE_TAGS,...AMENDMENT_TAGS,...contract.fields.map(f=>f.placeholder), 'BETWEEN FAMILY MEMBERS/CO-OWNERS','RELATIONSHIP','Total Value of Property Rs./-','Share Value of Property Rs./-','Share','Shared Sq.yards','Shared UDS','Shared Extent in Sq.Meters','Shared Plinth Area','Shared Built-up Area','Shared Car Parking Area','Amount','UTR No.','Cheque No.','DD No.','Transaction ID','Housing Loan Bank','Type of structure','Assessment Bearing Particulars','Total Land Extent','Stage','Plinth Area','Nature of House','Plot Nos.','Municipal House Nos.','EXECUTANT RELATION NAME','CLAIMANT RELATION NAME','North Boundary of Apartment','South Boundary of Apartment','East Boundary of Apartment','West Boundary of Apartment','Pattadar Pass Book No.','Pass Book Khata No.','Nala Order No.','V.L.T.No.'].map(norm));
+    for(const tag of tags) if(!allowed.has(norm(tag)) && !/^IF OPEN PLACE\/VACANT PLOT/.test(tag)) errors.push('Unsupported Release placeholder <'+tag+'>.');
+  } catch(e) { errors.push(e instanceof Error?e.message:String(e)); }
+  return {valid:!errors.length,errors,releaseTemplate:true,preservationVersion:DEED_PRESERVATION_VERSION,detectedPlaceholders:tags,omittedPlaceholders:[]};
+}
+function releaseWording(p:string, sellers:number,buyers:number,values:Record<string,string>):string {
+  const replace=(find:RegExp,value:string)=>{p=replaceRunText(p,find,()=>value);};
+  replace(/\bVendee\/s\b/gi,buyers===1?'Releasee':'Releasees'); replace(/\bVendor\/s\b/gi,sellers===1?'Releasor':'Releasors');
+  replace(/\bRELEASOR\/S\b/g,sellers===1?'RELEASOR':'RELEASORS'); replace(/\bReleasor\/s\b/g,sellers===1?'Releasor':'Releasors');
+  replace(/\bRELEASEE\/S\b/g,buyers===1?'RELEASEE':'RELEASEES'); replace(/\bReleasee\/s\b/g,buyers===1?'Releasee':'Releasees');
+  replace(/\bis\/are\b/g,sellers===1?'is':'are'); replace(/\bHAS\/HAVE\b/g,sellers===1?'HAS':'HAVE');
+  replace(/\backnowledge\/s\b/g,sellers===1?'acknowledges':'acknowledge');
+  replace(/\b(?:Releasor|Releasors) (?:hereby )?(?:declares that have has|declares that)/gi,(sellers===1?'Releasor hereby declares that the Releasor has':'Releasors hereby declare that they have'));
+  replace(/\b(?:Releasor|Releasors) further declares\b/gi,sellers===1?'Releasor further declares':'Releasors further declare');
+  replace(/\bReleasor do hereby\b/g,'Releasor does hereby');
+  replace(/\bhas no manner\b/g,sellers===1?'has no manner':'have no manner');
+  const pronoun=sellers>1?'THEIR':values['Executant Gender']==='Male'?'HIS':values['Executant Gender']==='Female'?'HER':'THEIR';
+  replace(/HIS\/HER\/THEIR/g,pronoun);
+  replace(/\bin his name\b/g,buyers>1?'in their names':values['Claimant Gender']==='Male'?'in his name':values['Claimant Gender']==='Female'?'in her name':'in their name');
+  if(buyers===1) replace(/\babsolute and exclusive owners\b/g,'absolute and exclusive owner');
+  if(buyers>1) replace(/by any one of them/gi,'by the Releasees');
+  replace(/the Executant and Claimant herewith have/gi,'the '+(sellers===1?'Releasor':'Releasors')+' and '+(buyers===1?'Releasee':'Releasees')+' herewith have');
+  replace(/WITNESSES\/S/g,'WITNESSES');
+  if (/^(?:IN CONSIDERATION|The receipt and sufficiency)/i.test(plainText(p).trim())) replace(/\btheir\b/g,sellers>1?'their':values['Executant Gender']==='Male'?'his':values['Executant Gender']==='Female'?'her':'their');
+  replace(/\bWE DECLARE\b/g,sellers+buyers>1?'WE DECLARE':'I DECLARE');
+  replace(/SIGN\/S OF THE/g,'SIGNATURE'+(sellers===1&&buyers===1?'':'S')+' OF THE');
+  return p;
+}
+function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Record<string,string>):string {
+  const shares=JSON.parse(values['Release Releasor Shares']||'[]') as ReleasePartyShare[];
+  const allocations=JSON.parse(values['Release Recipient Shares']||'[]') as ReleasePartyShare[];
+  const total=releasedTotal(shares,values['Release Legacy Share']);
+  for(const p of [...shares,...allocations]) if(p.share.trim() && !releasedTotal([{...p}])) throw new Error('Correct the released or received share for '+p.name+'.');
+  const aggregate={...values, Share:total};
+  const areaKeys:Record<string,string>={'Shared Sq.yards':'Extent in Sq.yards','Shared UDS':'UDS','Shared Plinth Area':'Plinth Area','Shared Built-up Area':'Built-up Area','Shared Car Parking Area':'Car Parking Area'};
+  for(const [target,source] of Object.entries(areaKeys)) aggregate[target]=releasedExtent(values[source]||'',total);
+  const yardKey=schedule.variant.includes('FLAT')?'Shared UDS':'Shared Sq.yards';
+  aggregate['Shared Extent in Sq.Meters']=releasedSquareMetres(values[schedule.variant.includes('FLAT')?'UDS':'Extent in Sq.yards']||'',total);
+  if(schedule.variant.includes('FLAT') && values.UDS) aggregate['Extent in Sq.Meters']=(Number(values.UDS.replace(/,/g,''))*0.836127).toFixed(2);
+  block=prepareLandmarkBlock(block,aggregate,schedule.variant);
+  block=block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g,row=>{
+    const tags=angleTags(row);
+    if(tags.some(t=>/^Shared /i.test(t)) && !total) return '';
+    return row;
+  });
+  const sample=(block.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).find(p=>/^THE RELEASOR\/S HAS\/HAVE RELEASED/i.test(plainText(p).trim()))!;
+  const perPerson=shares.filter(p=>p.share.trim());
+  const rows=schedule.structureDetails?.rows||[];
+  if (schedule.variant === 'IF HOUSE' || schedule.variant === 'IF HOUSE SEMI FINISHED') {
+    block=block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g,row=>{
+      const text=plainText(row);
+      if(/In First Floor/i.test(text) && /<Shared Plinth Area>/i.test(text)) return '';
+      if(/In Ground Floor/i.test(text) && /<Shared Plinth Area>/i.test(text)) return total ? rows.filter(r=>r.builtUpAreaSqFt.trim()).map(r=>replaceRunText(replaceRunText(row,/In Ground Floor/i,()=> 'In '+r.floorNo+' Floor'),/<Shared Plinth Area>/gi,()=>releasedExtent(r.builtUpAreaSqFt,total))).join('') : '';
+      return row;
+    });
+  }
+  block=block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>{
+    if(p===sample) {
+      const records=perPerson.length ? perPerson : total?[{id:'legacy',name:'',share:total}]:[];
+      return records.map(person=>{
+        const v={...aggregate,Share:releaseShareLabel(person.share)};
+        for(const [target,source] of Object.entries(areaKeys)) v[target]=releasedExtent(values[source]||'',person.share);
+        v['Shared Extent in Sq.Meters']=releasedSquareMetres(values[schedule.variant.includes('FLAT')?'UDS':'Extent in Sq.yards']||'',person.share);
+        let paragraph=replaceRunText(p,/<Extent in Sq\.Meters>/g,()=>'<Shared Extent in Sq.Meters>');
+        if(person.name) paragraph=replaceRunText(paragraph,/THE RELEASOR\/S HAS\/HAVE RELEASED HIS\/HER\/THEIR/i,()=>person.name+' HAS RELEASED '+(person.gender==='Male'?'HIS':person.gender==='Female'?'HER':'THEIR'));
+        // Flat portions have built-up/parking areas, not invented ground/first floors.
+        if(schedule.variant.includes('FLAT')) paragraph=replaceRunText(paragraph,/ including Plinth area:[\s\S]*$/i,()=>[v['Shared Built-up Area']?' including built-up area '+v['Shared Built-up Area']+' square feet':'',v['Shared Car Parking Area']?', car parking area '+v['Shared Car Parking Area']+' square feet':''].join('')+'.');
+        for(const [floor,pattern] of [['Ground',/Ground Floor:\s*<\s*Shared Plinth Area>\s*square feets/gi],['First',/First Floor:\s*<\s*Shared Plinth Area>\s*square feets/gi]] as const) {
+          const area=rows.find(r=>r.floorNo.toLowerCase().includes(floor.toLowerCase()))?.builtUpAreaSqFt||'';
+          const shared=releasedExtent(area,person.share);
+          paragraph=replaceRunText(paragraph,pattern,()=>shared?`${floor} Floor: ${shared} square feets`:'');
+        }
+        return fillReleaseParagraph(paragraph,v,[]);
+      }).join('')+allocations.filter(a=>a.share.trim()).map(a=>paragraphLike(p,`${a.name}: received share ${releaseShareLabel(a.share)} of the Schedule Property.`)).join('');
+    }
+    if(!total) p=replaceRunText(p,/undivided\s*<Share>\s*/gi,()=> '');
+    if(/^All that the .*roof house/i.test(plainText(p))) {
+      if(rows.length) p=replaceRunText(p,/consisting of Ground Floor:\s*<\s*Plinth Area>\s*square feets\s*First Floor:\s*<\s*Plinth Area>\s*square feets/i,()=> 'consisting of '+rows.filter(r=>r.builtUpAreaSqFt.trim()).map(r=>r.floorNo+' Floor: '+r.builtUpAreaSqFt+' square feets').join(', '));
+      for(const [floor,pattern] of [['Ground',/Ground Floor:\s*<\s*Plinth Area>\s*square feets/gi],['First',/First Floor:\s*<\s*Plinth Area>\s*square feets/gi]] as const) {
+        const area=rows.find(r=>r.floorNo.toLowerCase().includes(floor.toLowerCase()))?.builtUpAreaSqFt||'';
+        p=replaceRunText(p,pattern,()=>area?`${floor} Floor: ${area} square feets`:'');
+      }
+    }
+    return fillReleaseParagraph(p,aggregate,[]);
+  });
+  return block;
+}
+function fillReleaseParagraph(p:string,values:Record<string,string>,rules:Rewrite[],missing=new Set<string>()):string {
+  p=replaceRunText(p,/DD-MM-YYYY/g,()=>'<Date>');
+  p=releaseWording(p,Number(values['Ownership Vendor Count']||1),Number(values['Ownership Vendee Count']||1),values);
+  return fillParagraph(p,new Map(Object.entries(values).map(([k,v])=>[norm(k),v])),missing,rules);
+}
+export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewrite[],schedules:ScheduleMerge[],source:DeedTemplateSource=BUILT_IN_TEMPLATE_SOURCE):Promise<MergeResult> {
+  const errors=releaseBindingErrors(values); if(errors.length) throw new Error(errors.join(' '));
+  if(!schedules.length) throw new Error('Add a Release property schedule.');
+  const bytes=source.kind==='built-in'?await loadTemplate('release-deed-v1'):await templateBytes(source);
+  const validation=await validateReleaseTemplate(bytes,source.kind==='built-in'?EMPTY_FIELD_CONTRACT:source.fieldContract);
+  if(!validation.valid) throw new Error(validation.errors.join(' '));
+  const entries=await readZip(bytes), entry=entries.find(e=>e.name==='word/document.xml')!;
+  const xml=protectDeedTemplateSource(normalizeReleaseSource(new TextDecoder().decode(entry.data)), 'release'), parts=releaseParts(xml), missing=new Set<string>();
+  assertEnclosureRepetition(xml,schedules); assertTitleAmendmentBindings(xml,schedules);
+  const allShares=schedules.map(s=>releasedTotal(JSON.parse(s.values['Release Releasor Shares']||'[]'),s.values['Release Legacy Share']));
+  const merged={...values,Share:allShares.length===1?allShares[0]:'','BETWEEN FAMILY MEMBERS/CO-OWNERS':values['Release Variant']==='family-release'?'BETWEEN FAMILY MEMBERS':'BETWEEN CO-OWNERS'};
+  const partyRules=rewrites.filter(r=>r.partyRole).map(r=>({...r,finalSuffix:/\s*\(Hereinafter[\s\S]*$/i}));
+  // Source payment samples have no numbering; retain all actual housing-loan payments.
+  const paymentCandidates=rewrites.filter(r=>r.records&&!r.partyRole&&/^(?:RTGS|Cheque|Demand Draft|UPI|Cash|Housing Loan|Through Bank)/.test(r.find.source));
+  const paymentRules=[...new Map(paymentCandidates.map(r=>[r.find.source,{...r,when:undefined}])).values()];
+  const rules=[...partyRules,...paymentRules,...rewrites.filter(r=>!r.records)];
+  const fill=(block:string,v:Record<string,string>,r:Rewrite[]=[])=>block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>fillReleaseParagraph(p,v,r,missing));
+  let opening=parts.chunks.slice(0,parts.titleStart).join('');
+  opening=opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>/WHEREAS the Releasor\/s is\/are/i.test(plainText(p))?replaceRunText(p,/[\s\S]+/,()=>merged['Release Relationship Recital']):p);
+  opening=fill(opening,merged,rules);
+  const title=parts.chunks.slice(parts.titleStart,parts.titleEnd).join('');
+  const titles=schedules.map(s=>fill(removeOptionalTitleRecitals(title,new Map(Object.entries(s.titleValues||{}).map(([k,v])=>[norm(k),v])),s.variant),{...merged,...s.titleValues},[...enclosureRewrites(s),...amendmentRewrites(s),...(s.titleLinkRecords?.length?[{find:/^Registered Deed:/i,replace:'',records:s.titleLinkRecords}]:[])])).join('');
+  const operative=fill(parts.chunks.slice(parts.titleEnd,parts.marker).join(''),merged,rules);
+  const properties=schedules.map(s=>{
+    if(!['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'].includes(s.values['Property Category'])) throw new Error('Unsupported Release property category.');
+    const block=parts.blocks.get(s.variant); if(!block) throw new Error('Unsupported Release property variant '+s.variant);
+    const v={...merged,...s.values};
+    return releasePropertyBlock(block,s,v);
+  }).join('');
+  let closing=parts.chunks.slice(parts.tail).join('');
+  const sellers=JSON.parse(values['Release Releasor Names']||'[]') as string[],buyers=JSON.parse(values['Release Releasee Names']||'[]') as string[];
+  closing=closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>{
+    if(/SIGN\/S OF THE RELEASOR\/S/.test(plainText(p))) return sellers.map((name,i)=>paragraphLike(p,`${i+1}. ${name} — SIGNATURE OF THE RELEASOR`)).join('')+buyers.map((name,i)=>paragraphLike(p,`${i+1}. ${name} — SIGNATURE OF THE RELEASEE`)).join('');
+    return p;
+  });
+  closing=fill(closing,merged);
+  let signing=false;
+  closing=closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>{
+    const text=plainText(p).trim();
+    if(/SIGNATURE OF THE RELEASOR/.test(text)) signing=true;
+    if(signing && !/^2\.$/.test(text)) p=keepWithNext(p);
+    if(signing && /^2\.$/.test(text)) signing=false;
+    return p;
+  });
+  let result=opening+titles+operative+properties+closing;
+  let empty=0;
+  result=topLevelChildren(result).map(c=>result.slice(c.start,c.end)).filter(c=>{if(plainText(c).trim()||/<w:(?:sectPr|tbl|drawing)\b/.test(c)){empty=0;return true;}return ++empty<=1;}).join('');
+  result=result.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>/^\s*(?:SCHEDULE|THE DETAILS|ANNEXURE|DECLARATION|Boundaries of)/i.test(plainText(p))?keepWithNext(p):p);
+  result=result.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>plainText(p).trim() ? (p.includes('<w:pPr>')?p.replace('<w:pPr>','<w:pPr><w:keepLines/>'):p.replace(/(<w:p(?:\s[^>]*)?>)/,'$1<w:pPr><w:keepLines/></w:pPr>')):p);
+  const unmapped=angleTags(result); if(unmapped.length) throw new Error('Unresolved Release placeholders: '+unmapped.join(', '));
+  result=result.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g,section=>section.replace(/<w:pgSz\b[^>]*\/>/,'<w:pgSz w:w="11920" w:h="16840"/>').replace(/<w:pgMar\b[^>]*\/>/,'<w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>'));
+  // Long/repeated identities must continue with normal margins, rather than
+  // repeating the stamp-paper gap on a second opening page.
+  const complexOpening = sellers.length + buyers.length > 2 || partyRules.some(r=>r.records?.some(p=>p['ENTITY RECITAL'] || p['MINOR GUARDIAN RECITAL']));
+  if(complexOpening) {
+    const section=result.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/)?.[0];
+    if(section) {
+      result=result.replace(section,'');
+      const boundary=topLevelChildren(result).find(c=>/^THIS RELEASE DEED/i.test(plainText(result.slice(c.start,c.end)).trim()));
+      if(!boundary) throw new Error('Cannot safely paginate the Release opening.');
+      result=result.slice(0,boundary.end)+'<w:p><w:pPr>'+section+'</w:pPr></w:p>'+result.slice(boundary.end);
+    }
+  }
+  entry.data=new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0,parts.start)+result+xml.slice(parts.end),values['Stamp Paper Margin']));
+  return {blob:new Blob([await writeZip(entries) as any],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),missing:[...missing],unmapped:[]};
 }
