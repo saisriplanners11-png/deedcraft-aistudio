@@ -5,8 +5,8 @@ import { appStateFor, draftReducer, newDraft } from './source-draft';
 import { compileDeed } from './deed-compiler';
 
 describe('multi-instrument registry', () => {
-  it('registers all sixteen committed instrument families with valid workflow contracts', () => {
-    expect(INSTRUMENT_IDS).toHaveLength(16);
+  it('registers all seventeen committed instrument families with valid workflow contracts', () => {
+    expect(INSTRUMENT_IDS).toHaveLength(17);
     expect(validateRegistry()).toEqual([]);
     for (const definition of Object.values(DEED_DEFINITIONS)) {
       expect(definition.variants.length).toBeGreaterThan(0);
@@ -20,7 +20,8 @@ describe('multi-instrument registry', () => {
     expect(releaseGate('gift', 'family-gift').ready).toBe(true);
     for (const variant of DEED_DEFINITIONS.gift.variants) expect(releaseGate('gift', variant.id).ready).toBe(true);
     expect(releaseGate('will').reasons[0]).toMatch(/approved legal reference/i);
-    expect(LEGAL_REFERENCES).toHaveLength(15);
+    expect(releaseGate('reconveyance', 'title-deed').ready).toBe(true);
+    expect(LEGAL_REFERENCES).toHaveLength(16);
   });
 
   it('persists instrument and definition version through source-backed projections', () => {

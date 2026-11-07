@@ -4,7 +4,7 @@
  * never infer legal wording for an instrument whose approved reference is absent.
  */
 export type InstrumentId =
-  | 'sale' | 'gift' | 'will' | 'mortgage' | 'partition' | 'release'
+  | 'reconveyance' | 'sale' | 'gift' | 'will' | 'mortgage' | 'partition' | 'release'
   | 'exchange' | 'lease' | 'power_of_attorney' | 'rectification'
   | 'cancellation' | 'trust' | 'settlement' | 'agreement_of_sale'
   | 'development_agreement_agpa' | 'family_arrangement';
@@ -74,6 +74,7 @@ const d = (
 });
 
 export const DEED_DEFINITIONS: Record<InstrumentId, DeedDefinition> = {
+  reconveyance: d('reconveyance', 'Deed Of Reconvayance', 'Deed Of Reconvayance', ['TITLE DEED', 'MORTGAGE DEED (PERSON TO PERSON and bank to person)'], [['releasor','Releasor',true],['releasee','Releasee',true]], [f('principalOverride','Principal Amount (₹)','money',false), f('interestAmount','Interest Amount (₹)','money')]),
   sale: d('sale', 'Sale', 'Sale Deed', ['Outright Absolute Sale Deed', 'Sale Deed by GPA Holder', 'Sale through existing AGPA', 'Tripartite Sale Deed', 'Staged Consideration', 'Agreement of Sale cum GPA', 'Court Auction Sale'], [['vendor','Vendor / Executant',true],['purchaser','Purchaser / Claimant',true]], [f('consideration','Sale consideration','money'),f('possession','Delivery of possession')], { consideration: true, duty: 'ts.sale' }),
   gift: d('gift', 'Gift', 'Gift Deed', ['Family Gift', 'Non-family Gift', 'Gift to Trust or Charity', 'Municipal Gift'], [['donor','Donor',true],['donee','Donee',true]], [f('relationship','Relationship'),f('acceptance','Acceptance by donee'),f('possession','Possession'),f('lifeInterest','Reserved life interest','boolean',false,true),f('revocation','Revocation conditions','long-text',false,true)], { duty: 'ts.gift', variantLabels: { 'Non-family Gift': 'Others', 'Municipal Gift': 'Gift to Local Bodies' } }),
   will: d('will', 'Will', 'Will / Testament', ['Individual Will', 'Will with Minor Beneficiary', 'Will with Testamentary Trust'], [['testator','Testator',false],['beneficiary','Beneficiary',true],['executor','Executor',true],['witness','Attesting Witness',true]], [f('capacity','Testamentary capacity'),f('bequests','Specific bequests','long-text'),f('residuaryEstate','Residuary estate','long-text'),f('guardian','Guardian','text',false,true),f('priorWillRevocation','Revocation of prior wills','boolean',true,true)], { property: false }),

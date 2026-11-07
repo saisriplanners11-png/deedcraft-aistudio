@@ -10,7 +10,7 @@ export { newPayment, MODES } from './payments';
 export { PLACEMENT_CATALOG } from './template-placement';
 export { DEED_PRESERVATION_VERSION, preservationProfileFor } from './deed-preservation';
 export { validateDeedTemplate, loadTitleAmendmentTemplates, titleAmendmentPreview } from './docx';
-export { validateGeneralPoaTemplate, fillGeneralPoaDeed, validateAgreementSaleGpaTemplate, fillAgreementSaleGpaDeed, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
+export { validateReconveyanceTemplate, fillReconveyanceDeed, validateGeneralPoaTemplate, fillGeneralPoaDeed, validateAgreementSaleGpaTemplate, fillAgreementSaleGpaDeed, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
 export { validateFieldContract, canonicalContract, EMPTY_FIELD_CONTRACT } from './template-fields';
 import { fillSaleDeed, type DeedTemplateSource } from './docx';
 import { initialState, type AppState } from './logic';

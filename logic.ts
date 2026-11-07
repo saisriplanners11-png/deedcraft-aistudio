@@ -2,6 +2,7 @@ import { isMinorParty, minorPartyErrors } from './minor-parties';
 import { ageFrom, todayISO } from './party-age';
 import { acreGuntasToSqYards } from './land-area';
 import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
+import { reconveyanceErrors } from './reconveyance';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
 import { flatStage, flatLabel } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
@@ -505,6 +506,12 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   if (hasPaymentStep(state.deedType) && positive(f.consid) && state.payments.length && Math.round(total*100)!==Math.round(Number(f.consid)*100)) {
     invalid('payment-total',total>Number(f.consid)?'Payments exceed final consideration.':'Payments must exactly equal final consideration before generation.',4);
   }
+  if (state.deedType === 'Deed Of Reconvayance') {
+    const omitted = /govtRate|consid|structValue|structureDetails|bltNo|constructionDescription|taxesPerAnnum|annualRentalValue|tapConnectionNo|metersNo|payment/i;
+    const retained = missing.filter(item => !omitted.test(item.id) && item.step !== 5);
+    reconveyanceErrors(state).forEach((reason, index) => retained.push({ id: 'reconveyance-' + index, label: 'Reconveyance', reason, source: 'Mortgage documents or manual entry.', step: 4 }));
+    return retained;
+  }
   return missing;
 }
 
@@ -689,7 +696,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const regfeeN = hasBase ? Math.round((baseN * r.r) / 100) : NaN;
   const dutyN = hasBase ? stampN + transferN + regfeeN + r.u + r.m : NaN;
 
-  const dutyRows = !hasBase
+  const dutyRows = state.deedType === 'Deed Of Reconvayance' || !hasBase
     ? []
     : [
         { label: 'Stamp duty', rate: r.s.toFixed(2) + '% of ' + money(baseN), amount: money(stampN), strong: true },
@@ -719,7 +726,8 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const variant = SCHEDULE_VARIANT[state.category] || '';
 
   // ---- completeness --------------------------------------------------------
-  const required = ALL_FIELDS.filter(x => !x.derived);
+  const reconFields = ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation','mortgageAmount'];
+  const required = ALL_FIELDS.filter(x => !x.derived && (state.deedType === 'Deed Of Reconvayance' ? !['govtRate','consid','structValue','principalOverride'].includes(x.id) : !reconFields.includes(x.id)));
   const applicable = required.filter(x => {
     if (x.only && !x.only.includes(state.category)) return false;
     for (const side of ['executant', 'claimant'] as const) if (x.id.startsWith(side)) {
@@ -737,6 +745,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const stepIsDone = (id: number) => {
     if (placed.some(instance => placementStepIndex(instance.field.placement) === id && instance.error)) return false;
     if (id === 0) return !!(state.deedType && state.category && state.draft);
+    if (id === 4 && state.deedType === 'Deed Of Reconvayance') return !reconveyanceErrors(state).length && !!f.stampValue;
     if (id === 5) return payMatched;
     if (id === 3) return !!state.scheduleText;
     if (id === 6 || id === 7) return !generationBlockers(state).some(item => item.step === id);
@@ -765,7 +774,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     { label: 'Claimant details complete', ok: stepIsDone(7), note: 'Identity of the purchaser' },
     { label: 'Schedule of property composed', ok: !!state.scheduleText, note: 'Reads into the deed verbatim' },
     ...[...new Set(placed.map(instance => placementStepIndex(instance.field.placement)))].map(id => ({ label: `Template fields — ${STEPS[id!]?.label}`, ok: !placed.some(instance => placementStepIndex(instance.field.placement) === id && instance.error), note: 'Complete required fields in their configured step' })),
-  ].map(c => ({ ...c, mark: c.ok ? '✓' : '!' }));
+  ].filter(c => state.deedType !== 'Deed Of Reconvayance' || !['Valuation entered','Consideration fully received'].includes(c.label)).concat(state.deedType === 'Deed Of Reconvayance' ? [{ label: 'Repayment amounts complete', ok: !reconveyanceErrors(state).length, note: 'Principal plus interest with complete mortgage records' }] : []).map(c => ({ ...c, mark: c.ok ? '✓' : '!' }));
 
   const openCount = checks.filter(c => !c.ok).length;
   const blockers = [...generationBlockers(state), ...placed.filter(instance => instance.error).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement)! }))];
@@ -820,8 +829,8 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     baseINR: money(baseN),
     basis,
     dutyRows,
-    dutyINR: money(dutyN),
-    dutyWords: words(dutyN),
+    dutyINR: state.deedType === 'Deed Of Reconvayance' ? '' : money(dutyN),
+    dutyWords: state.deedType === 'Deed Of Reconvayance' ? '' : words(dutyN),
     stampValueINR: money(f.stampValue),
     scheduleCount: 1 + state.additionalSchedules.length,
     linkDocumentCount: 1 + state.additionalLinkDocuments.length,

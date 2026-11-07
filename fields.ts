@@ -471,6 +471,7 @@ export const LINK_OPTIONS: LinkOption[] = [
       { id: 'linkDocDate', label: 'Link deed execution date', ph: 'Link Doct.Date', type: 'date',
         hint: 'The date this document was executed, shown in its opening recital on the first page — not the SRO registration/presentation date.' },
       { id: 'linkSro', label: 'Sub-Registrar Office', ph: ['Sub Registrar', 'Sub-Registrar'], span: 2 },
+      { id: 'mortgageAmount', label: 'Mortgage Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true },
       { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Filled automatically from the selected Sub-Registrar Office.', hidden: true },
     ],
   },
@@ -529,9 +530,18 @@ export const LINK_OPTIONS: LinkOption[] = [
 export const TITLE_SECTION_IDS = ['linkDoc', 'rectificationDeed', 'supplementalDeed', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions'] as const;
 
 /** Flat list of every field, in step order. De-duplicated: `linkDoc`'s core four are the same fields already in GROUPS. */
+export const RECONVEYANCE_FIELDS: Field[] = [
+  { id: 'principalOverride', label: 'Principal Amount (₹)', type: 'money' },
+  { id: 'interestAmount', label: 'Interest Amount (₹)', type: 'money', ph: 'Intrest Amount' },
+  { id: 'mortgagePartyMode', label: 'Mortgage party mode', type: 'select', options: ['bank-to-person','person-to-person'] },
+  { id: 'bankName', label: 'Bank name', ph: 'BANK NAME' },
+  { id: 'bankBranch', label: 'Branch', ph: 'Branch' },
+  { id: 'officialDesignation', label: 'Official designation', ph: 'Designation' },
+];
+export const MORTGAGE_AMOUNT_FIELD: Field = { id: 'mortgageAmount', label: 'Mortgage Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true };
 export const ALL_FIELDS: Field[] = Object.values(
   Object.fromEntries(
-    [...GROUPS.flatMap(g => g.fields), ...LINK_OPTIONS.flatMap(o => o.fields), ...PARTY_ENTITY_FIELDS].map(f => [f.id, f])
+    [...GROUPS.flatMap(g => g.fields), ...LINK_OPTIONS.flatMap(o => o.fields), ...PARTY_ENTITY_FIELDS, ...RECONVEYANCE_FIELDS, MORTGAGE_AMOUNT_FIELD].map(f => [f.id, f])
   )
 );
 

@@ -2,11 +2,11 @@ import type { InstrumentId } from './instruments';
 
 /** Independent of Word assets: updating a draft never changes these rules. */
 export const DEED_PRESERVATION_VERSION = '2026-11-05.2';
-export type PreservationProfile = 'sale' | 'gift' | 'municipal-gift' | 'agreement_of_sale' | 'power_of_attorney';
+export type PreservationProfile = 'reconveyance' | 'sale' | 'gift' | 'municipal-gift' | 'agreement_of_sale' | 'power_of_attorney';
 
 export function preservationProfileFor(instrument: InstrumentId, variant = ''): PreservationProfile {
   if (instrument === 'gift') return variant === 'municipal-gift' ? 'municipal-gift' : 'gift';
-  if (instrument === 'sale' || instrument === 'agreement_of_sale' || instrument === 'power_of_attorney') return instrument;
+  if (instrument === 'reconveyance' || instrument === 'sale' || instrument === 'agreement_of_sale' || instrument === 'power_of_attorney') return instrument;
   throw new Error(`Template preservation rules and a renderer must be registered for ${instrument} before replacement drafts can be used.`);
 }
 

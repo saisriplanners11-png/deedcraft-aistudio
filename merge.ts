@@ -2,6 +2,7 @@ import { enclosureRecordsFor } from './enclosure-records';
 import { isMinorParty, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
 import { executionDeedDate } from './deed-format';
 import { acreGuntasToSqYards } from './land-area';
+import { reconveyanceValues } from './reconveyance';
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
 import { isMunicipalGift } from './municipal-gift';
 import { poaValues } from './poa-options';
@@ -142,7 +143,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     out[ph] = [f[`${side}Relation`]?.toUpperCase(), uppercasePartyIdentity(`${side}RelativeName`, f[`${side}RelativeName`] || '')].filter(Boolean).join(' ');
   }
 
-  if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA'].includes(state.deedType)) {
+  if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA', 'Deed Of Reconvayance'].includes(state.deedType)) {
     out['Municipality/Gram Panchayat Name'] = normalizePropertyPlaceName('permissionAuthorityName', f.permissionAuthorityName || '');
     out.Date = executionDeedDate(f.executionDate || '');
     for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
@@ -198,6 +199,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     out[label] = rows.length ? rows.reduce((sum, row) => sum + Number(row.builtUpAreaSqFt || 0), 0).toLocaleString('en-IN') : '';
   }
   if (isMunicipalGift(state)) { out.Village = out.VILLAGE; out['Local Authority Type'] = out.ULB; }
+  if (state.deedType === 'Deed Of Reconvayance') Object.assign(out, reconveyanceValues(state));
   return out;
 }
 
@@ -372,6 +374,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const identificationPairs = housePtinPairsForSources({ ...record.values, category: record.category }, titleLinkRecords);
     if (identificationPairs) scheduleState.form.housePtinPairs = identificationPairs;
     const values = mergeValues(scheduleState);
+    values['Property Category'] = record.category;
     const titleValues = { ...values };
     const amendmentKind = (item: typeof titleLinkRecords[number]) => titleAmendmentKind(item.values);
     const amendmentRecords = { rectification: [] as Record<string, string>[], supplemental: [] as Record<string, string>[] };

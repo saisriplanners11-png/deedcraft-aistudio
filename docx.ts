@@ -2,6 +2,8 @@ import { ENCLOSURE_RECITALS, type EnclosureRecords, type EnclosureRecitalKind } 
 import { partyWording } from './party-wording';
 import { municipalCouncilRecital } from './municipal-gift';
 import { partyPronouns } from './party-pronouns';
+import { reconveyanceBindingErrors, reconveyanceAmounts, mortgagePaise } from './reconveyance';
+import { deedDate as deedDateForReconveyance } from './deed-format';
 import { giftPartyWording } from './gift-wording';
 import { regularGiftSourcePolicy } from './gift-template-policy';
 import { DEED_PRESERVATION_VERSION, preservationProfileFor, protectedSourceWording, type PreservationProfile } from './deed-preservation';
@@ -97,6 +99,7 @@ export async function validateDeedTemplate(bytes: Uint8Array, instrument: Instru
       const missing = contract.fields.filter(field => !tags.has(norm(field.placeholder)));
       if (missing.length) throw new Error(`The replacement omits configured fields: ${missing.map(field => '<' + field.placeholder + '>').join(', ')}. Restore their placeholders; existing field definitions and saved values must be retained.`);
     }
+    if (profile === 'reconveyance') return validateReconveyanceTemplate(bytes);
     if (profile === 'sale') return validateSaleDeedTemplate(bytes, filename, undefined, contract);
     if (profile === 'gift') return validateGiftDeedTemplate(bytes);
     if (profile === 'municipal-gift') return validateMunicipalGiftTemplate(bytes);
@@ -1315,6 +1318,16 @@ export async function scheduleText(
   templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<string> {
   const bin = await templateBytes(templateSource);
+  if ((templateSource.kind === 'library' && templateSource.versionId.startsWith('reconveyance-')) || values['Reconveyance Draft']) {
+    const entries = await readZip(bin);
+    const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
+    const parts = reconveyanceParts(xml);
+    const names: Record<string,string> = { 'IF HOUSE': 'IF FINISHED HOUSE', 'IF HOUSE SEMI FINISHED': 'IF SEMI FINISHED HOUSE', 'IF DIMOLISHED HOUSE': 'IF DEMOLISHED HOUSE', 'IF FLAT SEMI FINISHED': 'IF SEMI FINISHED FLAT', 'IF FLAT FINISHED': 'IF FINISHED FLAT' };
+    const block = parts.blocks.get(names[variant] || variant);
+    if (!block) throw new Error('Unsupported Reconveyance property variant.');
+    const missing = new Set<string>();
+    return prepareLandmarkBlock(block, values, variant).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, new Map(Object.entries(values).map(([key,value]) => [norm(key),value])), missing, [])).split(/<\/w:p>/).map(plainText).filter(Boolean).join('\n');
+  }
   const entries = await readZip(bin);
   const doc = entries.find(e => e.name === 'word/document.xml');
   if (!doc) throw new Error('Template is missing word/document.xml.');
@@ -2655,4 +2668,125 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
   document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
+}
+
+// Reconveyance uses its own source sections and never enters Sale/Gift rendering.
+const RECONVEYANCE_BLOCKS = ['IF OPEN PLACE','IF OPEN PLOT','IF DEMOLISHED HOUSE','IF PART OPEN PLACE','IF FINISHED HOUSE','IF SEMI FINISHED HOUSE','IF SEMI FINISHED FLAT','IF FINISHED FLAT'];
+function reconveyanceParts(xml: string) {
+  const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
+  const body = xml.slice(start, end);
+  const chunks = topLevelChildren(body).map(child => body.slice(child.start, child.end));
+  const texts = chunks.map(chunk => plainText(chunk).trim());
+  const at = (tag: string) => texts.indexOf(`<${tag}>`);
+  const bank = at('IF BANK TO PERSON'), person = at('IF PERSON TO PERSON');
+  const common = texts.findIndex(text => /^WHEREAS, the Releasee\/s had created/i.test(text));
+  const closing = texts.findIndex(text => /^IN WITNESS WHEREOF/i.test(text));
+  const positions = RECONVEYANCE_BLOCKS.map(at);
+  if (bank < 0 || person <= bank || common <= person || closing < 0 || positions.some(index => index < common || index >= closing) || positions.some((index, i) => i > 0 && index <= positions[i - 1])) throw new Error('Incompatible Reconveyance template: retain both openings, all eight property blocks, mortgage recitals and closing.');
+  const blocks = new Map(RECONVEYANCE_BLOCKS.map((name, i) => [name, chunks.slice(positions[i] + 1, positions[i + 1] ?? closing).join('')]));
+  return { start, end, chunks, texts, bank, person, common, closing, first: positions[0], blocks };
+}
+export async function validateReconveyanceTemplate(bytes: Uint8Array): Promise<TemplateValidationResult> {
+  const errors: string[] = [];
+  try {
+    const entries = await readZip(bytes);
+    const entry = entries.find(entry => entry.name === 'word/document.xml');
+    if (!entry) throw new Error('Missing Word document part.');
+    const xml = new TextDecoder().decode(entry.data);
+    const parts = reconveyanceParts(xml);
+    const text = plainText(xml);
+    const detected = new Set(angleTags(xml).map(norm));
+    const requireTag = (tag: string) => { if (!detected.has(norm(tag))) errors.push('Missing Reconveyance binding: ' + tag); };
+    for (const party of ['Executant','Claimant']) {
+      for (const suffix of ['Age','Dob','Occupation','Adhar Number','Cell.No.','PAN']) requireTag(party + ' ' + suffix);
+      requireTag(party.toUpperCase() + ' NAME'); requireTag(party.toUpperCase() + ' RELATION NAME');
+      if (!detected.has(norm(party + ' Address'))) for (const suffix of ['H.No.','Locality','Village','Mandal','District','State','Pin Code']) requireTag(party + ' ' + suffix);
+    }
+    for (const tag of ['Market of Value Rs./-','Stamp of Rs/-','DEPOSITE OF TITLE DEED/MORTGAGE DEED','District','State','Sub-Registrar']) requireTag(tag);
+    for (const [name, block] of parts.blocks) {
+      const tags = new Set(angleTags(block).map(norm));
+      const required = [...(['IF DEMOLISHED HOUSE','IF PART OPEN PLACE'].includes(name) ? [] : ['Survey No.']),'Locality','Village','Mandal','District','Pin Code','Sub-Registrar','District Registrar', ...(name.includes('FLAT') ? ['Flat No.','Floor No.','Built-up Area','Car Parking Area','UDS','Extent in Sq.Meters','Total Land Extent','Apartment Complex Name','Plot Nos.','North Boundary of Apartment','South Boundary of Apartment','East Boundary of Apartment','West Boundary of Apartment','North Boundary of Flat','South Boundary of Flat','East Boundary of Flat','West Boundary of Flat'] : ['Extent in Sq.yards','Extent in Sq.Meters','North Boundary','South Boundary','East Boundary','West Boundary'])];
+      if (name === 'IF OPEN PLOT') required.push('Plot No.');
+      if (/FINISHED HOUSE/.test(name)) required.push('Bearing H.No.','Nature of House','Plinth Area');
+      if (['IF OPEN PLACE','IF OPEN PLOT','IF DEMOLISHED HOUSE','IF PART OPEN PLACE','IF SEMI FINISHED HOUSE','IF SEMI FINISHED FLAT'].includes(name)) required.push('Near H.No.');
+      if (name === 'IF FINISHED FLAT') required.push('Municipal House Nos.');
+      for (const tag of required) if (!tags.has(norm(tag))) errors.push(name + ': retain <' + tag + '> so saved property details are not lost.');
+    }
+    const supported = new Set([...ALL_FIELDS.flatMap(field => field.ph ? Array.isArray(field.ph) ? field.ph : [field.ph] : []), ...RECONVEYANCE_BLOCKS, 'IF BANK TO PERSON','IF PERSON TO PERSON','DEPOSITE OF TITLE DEED/MORTGAGE DEED','Principal Amount','Intrest Amount','Interest Amount','Total Amount','EXECUTANT RELATION NAME','CLAIMANT RELATION NAME','Total Land Extent','Executant Address','Claimant Address','Landmark House No.','Nature of House','Plinth Area','Plot Nos.','Municipal House Nos.','Stage','North Boundary of Apartment','South Boundary of Apartment','East Boundary of Apartment','West Boundary of Apartment'].map(norm));
+    for (const tag of angleTags(xml)) if (!supported.has(norm(tag))) errors.push('Unsupported Reconveyance placeholder <' + tag + '>.');
+    for (const tag of ['Principal Amount','Intrest Amount','Total Amount','MORTGAGE AMOUNT','Link Doct.No.','Link Doct.Date','Sub Registrar','Sub Registrar Code','BANK NAME','Branch','Designation','Executant PAN','Claimant PAN']) if (!text.includes(`<${tag}>`) && !(tag === 'Intrest Amount' && detected.has(norm('Interest Amount')))) errors.push(`Missing Reconveyance binding: ${tag}`);
+    if (!/WHEREAS, the Releasee\/s had further created/.test(text)) errors.push('Missing repeatable additional-mortgage recital.');
+  } catch (error: any) { errors.push(error.message); }
+  return { valid: !errors.length, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
+}
+export async function fillReconveyanceDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
+  const bank = values['Mortgage Party Mode'] === 'bank-to-person';
+  if (!bank && values['Mortgage Party Mode'] !== 'person-to-person') throw new Error('Select the mortgage party mode.');
+  if (values['Reconveyance Draft'] === 'title-deed' && !bank) throw new Error('TITLE DEED requires the bank opening.');
+  if (bank && ['BANK NAME','Branch','Designation'].some(key => !values[key]?.trim())) throw new Error('Complete bank name, branch and official designation.');
+  const records = JSON.parse(values['Mortgage Records'] || '[]') as import('./reconveyance').MortgageRecord[];
+  const bindingErrors = reconveyanceBindingErrors(values);
+  if (bindingErrors.length) throw new Error(bindingErrors.join(' '));
+  const amounts = reconveyanceAmounts(records, values['Principal Amount'] || '', values['Intrest Amount'] ?? values['Interest Amount'] ?? '');
+  if (amounts.errors.length) throw new Error(amounts.errors.join(' '));
+  if (!schedules.length) throw new Error('Add a property schedule.');
+  const bytes = source.kind === 'built-in' ? await loadTemplate('reconveyance-deed-v1') : await templateBytes(source);
+  const validation = await validateReconveyanceTemplate(bytes);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  const entries = await readZip(bytes);
+  const entry = entries.find(entry => entry.name === 'word/document.xml')!;
+  const xml = new TextDecoder().decode(entry.data);
+  const parts = reconveyanceParts(xml);
+  const missing = new Set<string>();
+  const merged = { ...values, 'Market of Value Rs./-': amounts.total, 'Total Amount': amounts.total, 'Principal Amount': amounts.principal, 'Intrest Amount': amounts.interest, 'Interest Amount': amounts.interest, 'DEPOSITE OF TITLE DEED/MORTGAGE DEED': values['Reconveyance Draft'] === 'title-deed' ? 'DEPOSIT OF TITLE DEEDS' : 'MORTGAGE DEED' };
+  const fill = (block: string, record: Record<string, string>, rules: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
+    const filled = fillParagraph(paragraph, new Map(Object.entries(record).map(([key, value]) => [norm(key), value])), missing, rules);
+    return replaceRunText(filled, /\b(near|adjacent)\s+H\.No\.\s*/gi, match => match[1].toLowerCase() + ' house No.');
+  });
+  const mortgage = (record: import('./reconveyance').MortgageRecord) => {
+    const v = record.values;
+    if (!v.linkDocNo || !deedDateForReconveyance(v.linkDocDate) || !v.linkSro || !v.linkSroCode || mortgagePaise(v.mortgageAmount || '') === null) throw new Error('Complete each mortgage number, date, amount, SRO and SRO code.');
+    return { ...merged, 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': v.mortgageAmount, 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
+  };
+  let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank ? parts.person : parts.common).join(''), merged, rewrites.filter(rule => rule.partyRole));
+  let common = parts.chunks.slice(parts.common, parts.first).map(chunk => {
+    const text = plainText(chunk);
+    if (/WHEREAS, the Releasee\/s had further created/.test(text)) return records.slice(1).map(record => fill(chunk, mortgage(record))).join('');
+    if (/WHEREAS, the relevant instrument/.test(text)) return fill(chunk, mortgage(records[0]));
+    if (values['Reconveyance Draft'] !== 'title-deed') chunk = replaceRunText(chunk, /Memoranda of Deposit of Title Deeds/g, () => 'Mortgage Deeds');
+    return fill(chunk, merged);
+  }).join('');
+  const variants: Record<string, string> = { 'IF OPEN PLACE':'IF OPEN PLACE','IF OPEN PLOT':'IF OPEN PLOT','IF DIMOLISHED HOUSE':'IF DEMOLISHED HOUSE','IF PART OPEN PLACE':'IF PART OPEN PLACE','IF HOUSE':'IF FINISHED HOUSE','IF HOUSE SEMI FINISHED':'IF SEMI FINISHED HOUSE','IF FLAT SEMI FINISHED':'IF SEMI FINISHED FLAT','IF FLAT FINISHED':'IF FINISHED FLAT' };
+  const properties = schedules.map(schedule => {
+    if (schedule.values['Property Category'] && !['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'].includes(schedule.values['Property Category'])) throw new Error('Unsupported Reconveyance property category.');
+    const block = parts.blocks.get(variants[schedule.variant]);
+    if (!block) throw new Error(`Unsupported Reconveyance property variant: ${schedule.variant}`);
+    const propertyValues: Record<string,string> = { ...merged, ...schedule.values };
+    if (schedule.variant.startsWith('IF FLAT') && propertyValues.UDS) propertyValues['Extent in Sq.Meters'] = (Number(propertyValues.UDS.replace(/,/g, '')) * 0.836127).toFixed(2);
+    let propertyBlock = prepareLandmarkBlock(block, propertyValues, schedule.variant);
+    if (['IF DIMOLISHED HOUSE','IF PART OPEN PLACE'].includes(schedule.variant) && propertyValues['Survey No.'] && !angleTags(propertyBlock).some(tag => norm(tag) === norm('Survey No.'))) propertyBlock = propertyBlock.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /square meters,/i, () => 'square meters, in Survey No/s.<Survey No.>,'));
+    const rows = schedule.structureDetails?.rows || [];
+    propertyBlock = propertyBlock.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+      for (const [floor, pattern] of [['Ground', /Ground Floor:\s*<\s*Plinth Area>/gi], ['First', /First Floor:\s*<\s*Plinth Area>/gi]] as const) {
+        const area = rows.find(row => row.floorNo.toLowerCase().includes(floor.toLowerCase()))?.builtUpAreaSqFt;
+        if (area) paragraph = replaceRunText(paragraph, pattern, match => match[0].replace(/<[^>]+>/, area));
+      }
+      return paragraph;
+    });
+    return fill(propertyBlock, propertyValues);
+  }).join('');
+  let closing = fill(parts.chunks.slice(parts.closing).join(''), merged);
+  // Keep the source's attestation, signature table and both witness lines together.
+  const closingParagraphs = [...closing.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
+  const lastContent = closingParagraphs.reduce((last, match, index) => plainText(match[0]).trim() ? index : last, -1);
+  let closingIndex = 0;
+  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (closingIndex++ >= lastContent) return paragraph;
+    return paragraph.includes('<w:pPr>') ? paragraph.replace('<w:pPr>', '<w:pPr><w:keepNext/><w:keepLines/>') : paragraph.replace(/(<w:p(?:\s[^>]*)?>)/, '$1<w:pPr><w:keepNext/><w:keepLines/></w:pPr>');
+  });
+  const output = xml.slice(0, parts.start) + opening + common + properties + closing + xml.slice(parts.end);
+  if (/<\s*(?:IF |BANK NAME|Principal Amount|Intrest Amount)/.test(plainText(output))) throw new Error('Unresolved Reconveyance conditional or amount binding.');
+  entry.data = new TextEncoder().encode(output);
+  return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing], unmapped: [] };
 }

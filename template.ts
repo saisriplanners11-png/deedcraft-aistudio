@@ -1,3 +1,4 @@
+import reconveyanceTemplateUrl from './reconveyance-deed-template-v1.docx?url';
 import generalPoaTemplateUrl from './general-poa-template-v3.docx?url';
 import generalPoaTemplateV2Url from './general-poa-template-v2.docx?url';
 import generalPoaTemplateV1Url from './general-poa-template-v1.docx?url';
@@ -49,6 +50,7 @@ export async function loadTemplate(templateVersionId: string): Promise<Uint8Arra
   if (['agreement-sale-gpa-v1', 'agreement-sale-gpa-v2', 'agreement-sale-gpa-v3', 'agreement-sale-gpa-v4'].includes(templateVersionId)) { const response = await fetch(templateVersionId === 'agreement-sale-gpa-v1' ? agreementSaleGpaTemplateV1Url : templateVersionId === 'agreement-sale-gpa-v2' ? agreementSaleGpaTemplateV2Url : templateVersionId === 'agreement-sale-gpa-v3' ? agreementSaleGpaTemplateV3Url : agreementSaleGpaTemplateUrl); if (!response.ok) throw new Error('Could not load the Agreement of Sale Cum GPA reference.'); return new Uint8Array(await response.arrayBuffer()); }
   if (['gift-municipal-v1', 'gift-municipal-v2', 'gift-municipal-v3'].includes(templateVersionId)) { const response = await fetch(templateVersionId === 'gift-municipal-v1' ? municipalGiftTemplateV1Url : templateVersionId === 'gift-municipal-v2' ? municipalGiftTemplateV2Url : municipalGiftTemplateUrl); if (!response.ok) throw new Error('Could not load the Municipal Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
   if (['gift-deed-v1', 'gift-deed-v2', 'gift-deed-v3', 'gift-deed-v4', 'gift-deed-v5', 'gift-deed-v6'].includes(templateVersionId)) { const response = await fetch(templateVersionId === 'gift-deed-v1' ? giftDeedTemplateV1Url : templateVersionId === 'gift-deed-v2' ? giftDeedTemplateV2Url : templateVersionId === 'gift-deed-v3' ? giftDeedTemplateV3Url : templateVersionId === 'gift-deed-v4' ? giftDeedTemplateV4Url : templateVersionId === 'gift-deed-v5' ? giftDeedTemplateV5Url : giftDeedTemplateUrl); if (!response.ok) throw new Error('Could not load the Gift reference.'); return new Uint8Array(await response.arrayBuffer()); }
+  if (templateVersionId === 'reconveyance-deed-v1') { const response = await fetch(reconveyanceTemplateUrl); if (!response.ok) throw new Error('Could not load Reconveyance template.'); return new Uint8Array(await response.arrayBuffer()); }
   const version = TEMPLATE_VERSIONS.find(item => item.id === templateVersionId);
   if (!version) throw new Error(`Template version ${templateVersionId} is not registered.`);
   if (templateVersionId === 'sale-deed-v11') return loadSaleDeedTemplate();

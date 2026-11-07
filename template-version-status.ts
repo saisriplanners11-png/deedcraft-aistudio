@@ -11,6 +11,7 @@ export function templateIsEarlier(pin: TemplatePin, latest?: TemplatePin | null)
 
 export function savedTemplateStatus(deed: SavedDeed, latest?: TemplatePin | null) {
   if (deed.templateMode === 'custom') return { label: `Custom template: ${deed.customTemplate?.name || 'saved Word document'}`, earlier: false };
+  if (deed.draft.instrumentId === 'reconveyance') return { label: 'Reconveyance v1 (reconveyance-deed-v1)', earlier: false };
   if (isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId)) return { label: 'General Power of Attorney v3 (general-poa-v3)', earlier: false };
   if (deed.draft.instrumentId === 'agreement_of_sale') return { label: 'Agreement of Sale Cum GPA v4 (agreement-sale-gpa-v4)', earlier: false };
   if (deed.draft.instrumentId === 'gift' && deed.draft.variantId === 'municipal-gift') return { label: 'Municipal Gift v3 (gift-municipal-v3)', earlier: false };
@@ -24,7 +25,7 @@ export function savedTemplateStatus(deed: SavedDeed, latest?: TemplatePin | null
 export function updateSavedDeedTemplate(deed: SavedDeed, defaults: Record<string, TemplatePin>): SavedDeed {
   if (deed.generationManifest && deed.generationManifest.preservationVersion !== DEED_PRESERVATION_VERSION) deed = { ...deed, generationManifest: null };
   if (deed.templateMode === 'custom') return deed;
-  const pin = isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId) ? bundledTemplatePin('general-poa-v3') : deed.draft.instrumentId === 'agreement_of_sale' ? bundledTemplatePin('agreement-sale-gpa-v4') : deed.draft.instrumentId === 'gift' ? bundledTemplatePin(giftTemplateVersion(deed.draft.variantId)) : defaults[deed.draft.instrumentId || 'sale'];
+  const pin = deed.draft.instrumentId === 'reconveyance' ? bundledTemplatePin('reconveyance-deed-v1') : isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId) ? bundledTemplatePin('general-poa-v3') : deed.draft.instrumentId === 'agreement_of_sale' ? bundledTemplatePin('agreement-sale-gpa-v4') : deed.draft.instrumentId === 'gift' ? bundledTemplatePin(giftTemplateVersion(deed.draft.variantId)) : defaults[deed.draft.instrumentId || 'sale'];
   if (!pin || (deed.libraryTemplate && !templateIsEarlier(deed.libraryTemplate, pin))) return deed;
   return { ...deed, ...(deed.draft.instrumentId === 'agreement_of_sale' ? { deedType: 'Agreement of Sale Cum GPA' } : {}), libraryTemplate: pin, generationManifest: null };
 }

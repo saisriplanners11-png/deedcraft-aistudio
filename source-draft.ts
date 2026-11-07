@@ -313,7 +313,7 @@ export function resolveDraft(draft: Draft) {
   for (const [key, candidates] of Object.entries(groups)) {
     const field = key.split('|')[2];
     // Historical mutable facts may support title, but must not become current facts.
-    const usable = candidates.filter(c => !c.historical || !CURRENT_STATE_ONLY.test(c.field));
+    const usable = candidates.filter(c => !c.historical || (c.field !== 'mortgageAmount' && !CURRENT_STATE_ONLY.test(c.field)));
     if (!usable.length) continue;
     if (field === 'housePtinPairs') {
       const mergedPairs = mergePropertyHousePtinPairValues(usable.map(candidate => candidate.value));
@@ -454,6 +454,7 @@ export function appStateFor(draft: Draft): AppState {
     defaultIfUnset(`${side}PartyType`, side === 'executant' && saleDocumentForVariant(draft.variantId) !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual');
     if (!(side === 'executant' && draft.gpaExecutantsReplaced)) defaultIfUnset(`${side}Relation`, 'S/O');
   }
+  for (const field of ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation']) derived[field] = values[fieldKey('property', 'primary', field)] || '';
   const partyDefaults = (side: 'executant' | 'claimant', values: Record<string, string>) => ({
     ...values,
     [`${side}PartyType`]: values[`${side}PartyType`] || (side === 'executant' && saleDocumentForVariant(draft.variantId) !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual'),
