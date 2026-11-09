@@ -1,4 +1,5 @@
 import { deedDate } from './deed-format';
+import { formatDeedAmount } from './deed-money';
 import { validatePlacement, type FieldPlacement } from './template-placement';
 export type TemplateFieldScope = 'transaction' | 'property' | 'party';
 export type TemplateFieldType = 'text' | 'multiline' | 'number' | 'currency' | 'date' | 'dropdown' | 'boolean';
@@ -41,7 +42,7 @@ export function validateFieldValue(field: TemplateField, raw: string): string | 
 }
 export function formatFieldValue(field: TemplateField, value: string): string {
   if (!value.trim()) return '____';
-  if (field.type === 'currency') return Number(value.replace(/,/g, '')).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  if (field.type === 'currency') return formatDeedAmount(value);
   if (field.type === 'date') return deedDate(value);
   if (field.type === 'boolean') return value === 'true' ? 'Yes' : 'No';
   return value;

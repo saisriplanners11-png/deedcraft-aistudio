@@ -1,3 +1,4 @@
+import { formatMoneyInput } from './deed-money';
 import './release-fields.css';
 import type { AppState } from './logic';
 import { releaseParties, releaseErrors, type ReleaseData } from './release';
@@ -6,9 +7,9 @@ export function ReleaseFields({state,draft,dispatch,schedules,onValue}:{state:Ap
   const data=draft.releaseData||{}, sellers=releaseParties(state,'executant'), buyers=releaseParties(state,'claimant');
   const update=(value:ReleaseData)=>dispatch({type:'load',draft:{...draft,revision:draft.revision+1,releaseData:value}});
   return <section className="panel release-particulars" aria-label="Release particulars"><h2>Release particulars</h2>
-    <label className="field"><span>Total value of the whole property (₹)</span><input inputMode="decimal" value={state.form.totalPropertyValue||''} onChange={e=>onValue('totalPropertyValue',e.target.value)}/></label>
-    <label className="field"><span>Paid consideration for the released rights (₹)</span><input inputMode="decimal" value={state.form.consid||''} onChange={e=>onValue('consid',e.target.value)}/></label>
-    <label className="field"><span>Stamp value (₹)</span><input inputMode="decimal" value={state.form.stampValue||''} onChange={e=>onValue('stampValue',e.target.value)}/></label>
+    <label className="field"><span>Total value of the whole property (₹)</span><input inputMode="decimal" value={formatMoneyInput(state.form.totalPropertyValue||'')} onChange={e=>onValue('totalPropertyValue',e.target.value.replace(/,/g, ''))}/></label>
+    <label className="field"><span>Paid consideration for the released rights (₹)</span><input inputMode="decimal" value={formatMoneyInput(state.form.consid||'')} onChange={e=>onValue('consid',e.target.value.replace(/,/g, ''))}/></label>
+    <label className="field"><span>Stamp value (₹)</span><input inputMode="decimal" value={formatMoneyInput(state.form.stampValue||'')} onChange={e=>onValue('stampValue',e.target.value.replace(/,/g, ''))}/></label>
     <label className="field"><span>First-page stamp-paper margin</span><select value={state.form.stampPaperMargin||'Legacy'} onChange={e=>onValue('stampPaperMargin',e.target.value)}><option value="Legacy">Legacy margin</option><option value="None">Normal margin</option><option value="100">₹100 stamp paper — 5.8 inches</option><option value="50">₹50 stamp paper — 6 inches</option><option value="20">₹20 stamp paper — 6 inches</option></select></label>
     <p>Shares refer to the whole property. Enter a fraction such as 1/3 or a percentage such as 25%. Blank shares remain unspecified. Recipient allocations describe shares of the whole property received under this deed.</p>
     {schedules.map((s,i)=><fieldset key={s.id}><legend>Property {i+1} — {s.category}</legend>

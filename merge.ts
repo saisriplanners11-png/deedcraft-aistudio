@@ -2,6 +2,7 @@ import { releaseValues, releaseScheduleValues } from './release';
 import { enclosureRecordsFor } from './enclosure-records';
 import { isMinorParty, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
 import { executionDeedDate } from './deed-format';
+import { formatDeedAmount } from './deed-money';
 import { acreGuntasToSqYards } from './land-area';
 import { reconveyanceValues } from './reconveyance';
 import { authorityPartyValues, saleDocumentLabel } from './sale-options';
@@ -18,7 +19,7 @@ import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePti
 // Builds the placeholder -> value map the template expects, from live form state.
 
 import type { Rewrite, ScheduleMerge } from './docx';
-import { ALL_FIELDS, GROUPS, LINK_OPTIONS, ROOF_NATURE_OPTIONS, STRUCTURE_TYPE_OPTIONS, SCHEDULE_VARIANT } from './fields';
+import { ALL_FIELDS, GROUPS, LINK_OPTIONS, STRUCTURE_TYPE_OPTIONS, SCHEDULE_VARIANT } from './fields';
 import { withDerived, deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { deedPaymentRecital, modeSpec, type Payment } from './payments';
 
@@ -52,6 +53,8 @@ export function mergeValues(state: AppState): Record<string, string> {
     const names = Array.isArray(field.ph) ? field.ph : [field.ph];
     let value = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, f[field.id] ?? ''));
     if (field.type === 'date') value = deedDate(value);
+    if (field.type === 'money') value = formatDeedAmount(value);
+    if (field.type === 'number' && /^(?:extentSq|udsSq|superBuiltUpAreaSq|parkingAreaSq)/.test(field.id)) value = value.replace(/,/g, '');
     for (const n of names) out[n] = value;
   }
   // Legacy drafts stored vacant-land assessment under assessmentPtinNo.
@@ -79,8 +82,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   const pairedHouseIds = parsePropertyHousePtinPairs(f.housePtinPairs || '');
   if (pairedHouseIds !== null) {
     const pairedOutput = propertyHousePtinOutput(f.housePtinPairs || '');
-    out['Bearing H.No.'] = pairedOutput.houseNos;
-    out['Municipal House Nos.'] = pairedOutput.houseNos;
+    out['Bearing H.No.'] = (state.category === 'Residential' && f.bearingHNo) || pairedOutput.houseNos;
+    out['Municipal House Nos.'] = out['Bearing H.No.'];
     if (state.category === 'Part open place') out['Near H.No.'] = pairedOutput.houseNos;
     out['P.T.I.No.'] = pairedOutput.ptins;
     out['P.T.I. No.'] = pairedOutput.ptins;
@@ -91,7 +94,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Plot Nos.'] = f.plotNo || '';
   const houseRows = state.structureDetailsBySchedule.primary?.rows || [];
   const firstStructure = houseRows.find(row => row.structureType && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType));
-  out['Nature of House'] = (ROOF_NATURE_OPTIONS.includes(f.roofMaterial) ? f.roofMaterial : '') || (firstStructure?.structureType === 'Other / Custom Structure'
+  out['Nature of House'] = f.roofMaterial || (firstStructure?.structureType === 'Other / Custom Structure'
     ? firstStructure.customStructureType || '' : firstStructure?.structureType || '');
   out['Roof Material'] = f.roofMaterial || '';
   out['Construction Description'] = f.constructionDescription || '';
@@ -100,7 +103,7 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Age of House'] = ages.length ? String(Math.max(...ages)) : '';
   out['Floors'] = state.structureDetailsBySchedule.primary?.totalFloors || '';
   const areas = houseRows.map(row => row.builtUpAreaSqFt).filter(value => value !== '').map(Number).filter(Number.isFinite);
-  out['Plinth Area'] = areas.length ? areas.reduce((sum, area) => sum + area, 0).toLocaleString('en-IN') : '';
+  out['Plinth Area'] = areas.length ? String(areas.reduce((sum, area) => sum + area, 0)) : '';
 
   // Historical template aliases use the same entered structure facts.
   out['Structure Type'] = out['Nature of House'];
@@ -110,8 +113,8 @@ export function mergeValues(state: AppState): Record<string, string> {
   // Derived values.
   const squareYards = Number(String(f.extentSqYards || '').replace(/,/g, ''));
   if (f.extentSqYards && Number.isFinite(squareYards) && squareYards > 0) {
-    out['Extent in Sq.yards'] = squareYards.toLocaleString('en-IN');
-    out['Extent in Sq.Meters'] = (Math.round(squareYards * 0.836127 * 100) / 100).toLocaleString('en-IN');
+    out['Extent in Sq.yards'] = String(squareYards);
+    out['Extent in Sq.Meters'] = String(Math.round(squareYards * 0.836127 * 100) / 100);
   } else {
     out['Extent in Sq.yards'] = '';
     out['Extent in Sq.Meters'] = '';
@@ -126,16 +129,13 @@ export function mergeValues(state: AppState): Record<string, string> {
   // The deed's first page prints the sale consideration itself, not the
   // calculated basic-rate market value (which stays visible to the drafter
   // only in the Market Value step's on-screen "calculated market value" panel).
-  const rate = Number(f.govtRate);
-  const consid = Number(f.consid);
-  const considText = f.consid && Number.isFinite(consid) ? consid.toLocaleString('en-IN') : '';
+  const considText = formatDeedAmount(f.consid || '');
   out['Market of Value Rs./-'] = considText;
   out['Sale Consideration'] = considText;
   out['Statement of Market Value Consideration'] = considText;
   out['Sale Consideration Words'] = words(f.consid);
   out['Consideration in words'] = words(f.consid);
-  out['Market Value Per Sq.Yard'] =
-    f.govtRate === '' || Number.isNaN(rate) ? '' : rate.toLocaleString('en-IN');
+  out['Market Value Per Sq.Yard'] = formatDeedAmount(f.govtRate || '');
 
   // Relation + relative's name are collected as two fields but recite as one
   // template line ("S/o Yellaiah"), same as before the fields were split.
@@ -152,7 +152,7 @@ export function mergeValues(state: AppState): Record<string, string> {
 
   // The non-judicial stamp paper value is supplied by the user. It is not the
   // calculated statutory duty and therefore must never be derived from value.
-  out['Stamp of Rs/-'] = f.stampValue === '' ? '' : Number(f.stampValue).toLocaleString('en-IN');
+  out['Stamp of Rs/-'] = formatDeedAmount(f.stampValue || '');
 
   // The template has a single set of instrument placeholders, so the largest
   // payment is the one printed there; the full list is recited in the receipt
@@ -162,7 +162,7 @@ export function mergeValues(state: AppState): Record<string, string> {
     ? paid.reduce((a, b) => (Number(b.amount) > Number(a.amount) ? b : a))
     : undefined;
 
-  out['Cheque.Amount'] = primary?.amount ? Number(primary.amount).toLocaleString('en-IN') : '';
+  out['Cheque.Amount'] = formatDeedAmount(primary?.amount || '');
   out['Cheque.No.'] = primary?.refNo ?? '';
   out['Cheque.Branch'] = primary
     ? [primary.bank, primary.branch].filter(Boolean).join(', ')
@@ -194,10 +194,10 @@ export function mergeValues(state: AppState): Record<string, string> {
   out['Authority Principal Names'] = partyRecords(state, 'executant').map(record => partyDisplayName(record.values, 'executant').toLocaleUpperCase('en-IN')).filter(Boolean).join(', ');
   out['Executant Share'] = ownershipShare(state, 'executant', state.primaryExecutantId || 'primary');
   out['Claimant Share'] = ownershipShare(state, 'claimant', state.primaryClaimantId || 'primary');
-  out['Adjusted Amount'] = authority?.adjustedAmount ? Number(authority.adjustedAmount).toLocaleString('en-IN') : '';
+  out['Adjusted Amount'] = formatDeedAmount(authority?.adjustedAmount || '');
   for (const [label, pattern] of [['Ground Floor Area', /^(ground|g|0)$/i], ['First Floor Area', /^(first|1|1st)$/i]] as const) {
     const rows = houseRows.filter(row => pattern.test(row.floorNo.trim()));
-    out[label] = rows.length ? rows.reduce((sum, row) => sum + Number(row.builtUpAreaSqFt || 0), 0).toLocaleString('en-IN') : '';
+    out[label] = rows.length ? String(rows.reduce((sum, row) => sum + Number(row.builtUpAreaSqFt.replace(/,/g, '') || 0), 0)) : '';
   }
   if (isMunicipalGift(state)) { out.Village = out.VILLAGE; out['Local Authority Type'] = out.ULB; }
   if (state.deedType === 'Release') Object.assign(out, releaseValues(state));
@@ -235,7 +235,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
   // Replace each sample with one cloned paragraph per actual payment, or remove
   // it entirely when that method was not used.
   const paymentRecord = (payment: Payment, refName: string) => ({
-    Amount: payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '',
+    Amount: formatDeedAmount(payment.amount),
     [refName]: payment.refNo || '',
     'Utr/Reference No.': payment.refNo || '',
     'Bank Name': [payment.bank, payment.branch].filter(Boolean).join(', '),
@@ -275,7 +275,7 @@ export function rewritesFor(state: AppState): Rewrite[] {
   }
   if (paid.length && !(paid.length === 1 && paid[0].mode === 'cash')) {
     rewrites.push({ find: /\(1\)\s+Amount of Rs\..*paid via Cash\./i, replace: paid.map((payment, index) => {
-      const amount = payment.amount ? Number(payment.amount).toLocaleString('en-IN') : '';
+      const amount = formatDeedAmount(payment.amount);
       const mode = payment.mode ? modeSpec(payment.mode).label : '';
       const ref = payment.refNo || '';
       const bank = [payment.bank, payment.branch].filter(Boolean).join(', ');
@@ -364,13 +364,17 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const propertyFieldIds = new Set(GROUPS.flatMap(group => group.fields.map(field => field.id)));
     const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields)
       .filter(field => !propertyFieldIds.has(field.id)).map(field => [field.id, '']));
+    const structureDetails = record.structureDetails && {
+      ...record.structureDetails,
+      rows: record.structureDetails.rows.map(row => ({ ...row, builtUpAreaSqFt: row.builtUpAreaSqFt.replace(/,/g, '') })),
+    };
     const scheduleState: AppState = {
       ...state,
       category: record.category,
       unit: record.unit,
       form: { ...propertyForm(state, record.values), ...blankTitleFields },
       additionalSchedules: [],
-      structureDetailsBySchedule: { primary: record.structureDetails || { totalFloors: '', rows: [] } },
+      structureDetailsBySchedule: { primary: structureDetails || { totalFloors: '', rows: [] } },
     };
     const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
     const identificationPairs = housePtinPairsForSources({ ...record.values, category: record.category }, titleLinkRecords);
@@ -451,6 +455,16 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const assessment = extractedPairs !== null ? pairedAssessment : explicitAssessment || record.values.bltNo || taxAssessment || '';
     titleValues['P.T.I.No.'] = assessment;
     titleValues['P.T.I. No.'] = assessment;
+    if (record.category === 'Residential') {
+      if (extractedPairs?.some(row => row.houseNo && !row.ptin)) {
+        titleValues['Partial House Identification'] = extractedPairs.filter(row => row.ptin || row.houseNo).map((row, index) => {
+          if (!row.ptin) return `${index ? 'separately identified by' : 'bearing'} H.No.${row.houseNo}`;
+          return `under Assessment No.${row.ptin}${row.houseNo ? ' bearing H.No.' + row.houseNo : ''}`;
+        }).join('; ');
+      } else if (!assessment && values['Bearing H.No.']) {
+        titleValues['Partial House Identification'] = 'bearing H.No.' + values['Bearing H.No.'];
+      }
+    }
     const permission = mapped(complete(['permissions'], ['permBuildingPermitNo', 'permissionAuthorityName']));
     titleValues['House Permission No.'] = permission?.['House Permission No.'] || record.values.buildingPermitNo || '';
     titleValues['Permission Date'] = permission?.['Permission Date'] || '';
@@ -483,7 +497,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
         percentage: cents === null ? '' : String(cents / 100),
       };
     }).filter(share => share.percentage !== '') : undefined;
-    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, amendmentRecords, enclosureRecords, supportingRecords, structureDetails: record.structureDetails, vendorShares, vendeeShares };
+    return { variant: variantFor(record.category, record.category === 'Flat' ? record.values.flatStage : record.values.houseStage), values, titleValues, titleLinkRecords: registeredTitleLinks, amendmentRecords, enclosureRecords, supportingRecords, structureDetails, vendorShares, vendeeShares };
   });
 }
 

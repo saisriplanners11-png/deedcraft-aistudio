@@ -1,6 +1,6 @@
 import type { AppState } from './logic';
 import { partyDisplayName } from './party-entities';
-import { moneyPaise as mortgagePaise } from './deed-money';
+import { formatDeedAmount, moneyPaise as mortgagePaise } from './deed-money';
 
 export interface ReleaseData {
   releasedBySchedule?: Record<string, Record<string, string>>;
@@ -59,8 +59,8 @@ export function releaseValues(state: AppState): Record<string,string> {
   const relations=(state.releaseData?.relationships||[]).filter(r=>r.wording.trim() && sellers.some(p=>p.id===r.releasorId) && buyers.some(p=>p.id===r.releaseeId));
   const relationship=family ? relations.map(r=>`${sellers.find(p=>p.id===r.releasorId)!.name} is ${r.wording.trim()} of ${buyers.find(p=>p.id===r.releaseeId)!.name}.`).join(' ') : 'The Releasor/s and Releasee/s are co-owners of the Schedule Property.';
   return { 'Release Variant':family?'family-release':'co-owner-release', 'Release Relationship Recital':relationship,
-    'Release Errors':JSON.stringify(releaseErrors(state)), 'Total Value of Property Rs./-':state.form.totalPropertyValue||'',
-    'Share Value of Property Rs./-':state.form.consid||state.form.releaseConsideration||'',
+    'Release Errors':JSON.stringify(releaseErrors(state)), 'Total Value of Property Rs./-':formatDeedAmount(state.form.totalPropertyValue||''),
+    'Share Value of Property Rs./-':formatDeedAmount(state.form.consid||state.form.releaseConsideration||''),
     'Release Releasor Names':JSON.stringify(sellers.map(p=>p.name)), 'Release Releasee Names':JSON.stringify(buyers.map(p=>p.name)),
     'Release Legacy Share':state.form.releasedShare||'' };
 }

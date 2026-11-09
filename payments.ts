@@ -1,4 +1,5 @@
 import { deedDate } from './deed-format';
+import { formatDeedAmount } from './deed-money';
 // The payments recited in the receipt clause.
 //
 // A sale is rarely discharged by one instrument: an advance token by UPI, a
@@ -72,7 +73,7 @@ export type ModeSpec = {
   recital: (p: Payment) => string;
 };
 
-const money0 = (v: string) => (v === '' ? '____' : Number(v).toLocaleString('en-IN'));
+const money0 = (v: string) => formatDeedAmount(v) || '____';
 
 export const MODES: ModeSpec[] = [
   {

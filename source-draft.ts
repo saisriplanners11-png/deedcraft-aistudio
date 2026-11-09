@@ -431,7 +431,7 @@ export function appStateFor(draft: Draft): AppState {
     const pairs = housePtinPairsForSources(propertyValues, linkRecordsBySchedule[scheduleId] || []);
     const rows = parsePropertyHousePtinPairs(pairs);
     if (rows === null) return values;
-    return { ...values, housePtinPairs: pairs, bearingHNo: propertyHousePtinOutput(pairs).houseNos,
+    return { ...values, housePtinPairs: pairs, bearingHNo: (propertyValues.category === 'Residential' && propertyValues.bearingHNo) || propertyHousePtinOutput(pairs).houseNos,
       bltNo: rows.map(row => row.ptin).filter(Boolean).join('; ') };
   };
   const primaryLinks = linkRecordsBySchedule.primary || [];

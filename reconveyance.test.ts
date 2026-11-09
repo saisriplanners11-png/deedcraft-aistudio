@@ -63,7 +63,7 @@ describe('Reconveyance source rendering and workflow', () => {
       const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
       expect(text).toContain('DEED OF RECONVEYANCE');
       expect(text).toContain(`Value of Rs.${repaymentFor(state).total}`);
-      expect(text).toContain('interest of Rs.0.00');
+      expect(text).toMatch(/interest of Rs\.0(?![.][0-9])/);
       expect(text.match(/additional mortgage/g)?.length || 0).toBe(count - 1);
       for(let i=1;i<=count;i++) expect(text).toContain(`Document No.DOC-${i}, dated:0${i}-01-2025`);
       for(let i=1;i<=count;i++) { expect(text).toContain(`Sub-Registrar, OFFICE-${i} (CODE-${i})`); expect(text).toContain(`amount of Rs.${i*100}.10/-`); }
@@ -121,8 +121,8 @@ describe('Reconveyance source rendering and workflow', () => {
   });
 });
 
-it('extracts the uploaded mortgage amount and rejects older recited amounts', () => {
-  const candidate={field:'mortgageAmount',value:'1234.50',role:'link',record:'primary',quote:'This instrument secures Rs.1234.50',region:'opening',historical:false,handwritten:false};
+it('extracts the uploaded mortgage loan amount and rejects older recited amounts', () => {
+  const candidate={field:'mortgageAmount',value:'Rs.1,234.50/-',role:'link',record:'primary',quote:'Mortgage Loan Amount: Rs.1,234.50/-',region:'opening',historical:false,handwritten:false};
   expect(cleanCandidate(candidate,1,0)?.value).toBe('1234.50');
   expect(cleanCandidate({...candidate,historical:true,quote:'Earlier mortgage for Rs.1234.50'},1,0)).toBeNull();
   let draft=draftReducer(newDraft(),{type:'instrument',instrumentId:'reconveyance'});
@@ -160,10 +160,12 @@ it('sums independent mortgage interest once across schedules and retains manual 
   const state=mortgageState(3); state.form.interestAmount='999';
   state.linkRecordsBySchedule.primary.forEach((record,i)=>record.values.mortgageInterestAmount=['0.10','0.20','0'][i]);
   expect(repaymentFor(state)).toMatchObject({principal:'600.30',interest:'0.30',total:'600.60',errors:[]});
-  state.form.principalOverride='100';
-  expect(repaymentFor(state)).toMatchObject({principal:'100.00',interest:'0.30',total:'100.30'});
+  state.form.principalOverride='2000.00';
+  expect(repaymentFor(state)).toMatchObject({principal:'2000.00',interest:'0.30',total:'2000.30'});
   const result=await generate(state), text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-  expect(text).toContain('interest of Rs.0.30');expect(text).toContain('Value of Rs.100.30');
+  expect(text).toContain('interest of Rs.0.30');expect(text).toContain('Value of Rs.2,000.30');
+  expect(text).toContain('Rs.2,000/-');
+  expect(text).not.toContain('2,000.00');
   state.linkRecordsBySchedule.primary[1].values.mortgageInterestAmount='';
   expect(repaymentFor(state).errors.join(' ')).toContain('interest amount');
   state.linkRecordsBySchedule.primary[1].values.mortgageInterestAmount='-1';

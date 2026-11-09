@@ -1,3 +1,4 @@
+import { formatDeedAmount } from './deed-money';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { PlacementAnchor, PlacementSlot } from './template-placement-context';
 import { FileUp, Trash2 } from 'lucide-react';
@@ -8,7 +9,7 @@ import {
   MODES, modeSpec, extractPayment, tdsOn, netOf, type Payment, type PayMode,
 } from './payments';
 
-const money = (v: number) => '₹' + Math.round(v).toLocaleString('en-IN');
+const money = (v: number) => '₹' + formatDeedAmount(v.toFixed(2));
 
 /** A bare labelled input in the register style, for records that are not form fields. */
 function PInput({

@@ -5,6 +5,7 @@ import { municipalCouncilRecital } from './municipal-gift';
 import { partyPronouns } from './party-pronouns';
 import { reconveyanceBindingErrors, reconveyanceAmounts, mortgageInterestTotal, mortgagePaise } from './reconveyance';
 import { deedDate as deedDateForReconveyance } from './deed-format';
+import { formatDeedAmount } from './deed-money';
 import { giftPartyWording } from './gift-wording';
 import { regularGiftSourcePolicy } from './gift-template-policy';
 import { DEED_PRESERVATION_VERSION, preservationProfileFor, protectedSourceWording, type PreservationProfile } from './deed-preservation';
@@ -951,7 +952,7 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>, 
     { test: /Title Deed:/i, keep: () => has('Pattadar Pass Book No', 'Pass Book Khata No') },
     { test: /Nala Order:/i, keep: () => has('Nala Order No') },
     { test: /Property Tax:/i, keep: () => has('House Tax Receipt', 'Local Body Name') },
-    { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('P.T.I.No.') },
+    { test: /Tax\/Assessment & Identification Particulars:/i, keep: () => has('P.T.I.No.') || has('Partial House Identification') },
     { test: /House Permission:/i, keep: () => has('House Permission No.', 'Municipality/Gram Panchayat Name') },
     { test: /L\.R\.S\.-2020 Application:/i, keep: () => has('LRS Application No.') },
     { test: /L\.R\.S\. Proceeding:/i, keep: () => has('LRS Proceeding No.') },
@@ -970,6 +971,9 @@ function removeOptionalTitleRecitals(body: string, values: Map<string, string>, 
     }
     const rule = optional.find(item => item.test.test(titleText));
     if (rule && !rule.keep()) return '';
+    if (/Tax\/Assessment & Identification Particulars:/i.test(titleText) && has('Partial House Identification')) {
+      return replaceRunText(chunk, /under\s+Assessment\s+No\.\s*<\s*P\.T\.I\.\s*No\.\s*>/i, () => '<Partial House Identification>');
+    }
     if (/jointly executed a Registered Development Agreement/i.test(titleText) && !has('Stilt Floors') && !has('Upper Floors')) {
       return replaceRunText(chunk, /for the development and construction of\s*<Stilt Floors>\s*Stilt\s*\+\s*<Upper Floors>\s*Upper Floors/i, () => 'for the development and construction');
     }
@@ -1489,7 +1493,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     let paragraph = original;
     if (/^\s*All that the\b/i.test(text) && /having a plinth area[\s\S]*consisting of Ground Floor/i.test(text)) {
       const colon = /Ground Floor:/i.test(text);
-      const floors = floorRows.map(floor => `${floorName(floor.floorNo)}${colon ? ':' : ','} ${floor.builtUpAreaSqFt ? Number(floor.builtUpAreaSqFt.replace(/,/g, '')).toLocaleString('en-IN') + ' square feet' : 'area not supplied'}`).join('; ');
+      const floors = floorRows.map(floor => `${floorName(floor.floorNo)}${colon ? ':' : ','} ${floor.builtUpAreaSqFt ? floor.builtUpAreaSqFt.replace(/,/g, '') + ' square feet' : 'area not supplied'}`).join('; ');
       paragraph = replaceRunText(paragraph, /having a plinth area[\s\S]*?(?=\s+in plot no\.)/i, () => floors ? `consisting of ${floors}${colon ? ',' : ''}` : '');
     }
     // Keep the house schedule opening and floor-table heading with their content.
@@ -1504,7 +1508,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     }
     if (/^\s*All that the\b/i.test(text) && /<Plinth Area>/i.test(text)) {
       const floorSummary = rows.filter(row => row.floorNo).map(row => {
-        const parts = [structureName(row), row.builtUpAreaSqFt ? `${row.builtUpAreaSqFt} square feet` : ''].filter(Boolean);
+        const parts = [structureName(row), row.builtUpAreaSqFt ? `${row.builtUpAreaSqFt.replace(/,/g, '')} square feet` : ''].filter(Boolean);
         return `${floorName(row.floorNo)}${parts.length ? ` (${parts.join(', ')})` : ''}`;
       }).join(', ');
       paragraph = replaceRunText(paragraph,
@@ -1521,8 +1525,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   });
   const areaText = (value: string) => {
     if (!value.trim()) return '';
-    const number = Number(value.replace(/,/g, ''));
-    return `${Number.isFinite(number) ? number.toLocaleString('en-IN') : value.trim()} Sq.Ft.`;
+    return `${value.trim().replace(/,/g, '')} Sq.Ft.`;
   };
   const keepRowTogether = (row: string) => {
     if (/<w:cantSplit\b/.test(row)) return row;
@@ -1541,7 +1544,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
         const actualRows = floorRows.map(floor => {
           let row = replaceRunText(ground, /Ground Floor/, () => floorName(floor.floorNo));
           row = replaceRunText(row, /<Nature of House>/i, () => structureName(floor));
-          row = replaceRunText(row, /<Plinth Area>/i, () => floor.builtUpAreaSqFt ? Number(floor.builtUpAreaSqFt.replace(/,/g, '')).toLocaleString('en-IN') : '');
+          row = replaceRunText(row, /<Plinth Area>/i, () => floor.builtUpAreaSqFt.replace(/,/g, ''));
           return keepRowTogether(row);
         }).join('');
         return table.replace(ground, () => actualRows).replace(first || /$^/, '');
@@ -2752,7 +2755,9 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   const xml = new TextDecoder().decode(entry.data);
   const parts = reconveyanceParts(xml);
   const missing = new Set<string>();
-  const merged = { ...values, 'Market of Value Rs./-': amounts.total, 'Total Amount': amounts.total, 'Principal Amount': amounts.principal, 'Intrest Amount': amounts.interest, 'Interest Amount': amounts.interest, 'DEPOSITE OF TITLE DEED/MORTGAGE DEED': values['Reconveyance Draft'] === 'title-deed' ? 'DEPOSIT OF TITLE DEEDS' : 'MORTGAGE DEED' };
+  const total = formatDeedAmount(amounts.total);
+  const interestText = formatDeedAmount(amounts.interest);
+  const merged = { ...values, 'Market of Value Rs./-': total, 'Total Amount': total, 'Principal Amount': formatDeedAmount(amounts.principal), 'Intrest Amount': interestText, 'Interest Amount': interestText, 'DEPOSITE OF TITLE DEED/MORTGAGE DEED': values['Reconveyance Draft'] === 'title-deed' ? 'DEPOSIT OF TITLE DEEDS' : 'MORTGAGE DEED' };
   const fill = (block: string, record: Record<string, string>, rules: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
     if (record['Bank Releasor'] === 'true' && /<BANK NAME>/i.test(plainText(paragraph))) {
@@ -2767,7 +2772,7 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   const mortgage = (record: import('./reconveyance').MortgageRecord) => {
     const v = record.values;
     if (!v.linkDocNo || !deedDateForReconveyance(v.linkDocDate) || !v.linkSro || !v.linkSroCode || mortgagePaise(v.mortgageAmount || '') === null) throw new Error('Complete each mortgage number, date, amount, SRO and SRO code.');
-    return { ...merged, 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': v.mortgageAmount, 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
+    return { ...merged, 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': formatDeedAmount(v.mortgageAmount), 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
   };
   let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank ? parts.person : parts.common).join(''), merged, rewrites.filter(rule => rule.partyRole));
   let common = parts.chunks.slice(parts.common, parts.first).map(chunk => {

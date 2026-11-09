@@ -1,6 +1,6 @@
 # Permanent master rules for all deeds
 
-Status: user-confirmed permanent project policy, updated 07-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-07.2.
+Status: user-confirmed permanent project policy, updated 09-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-09.3.
 
 The user explicitly instructed: "Save all these as permanent master rules for all deeds. Whenever I upload a new draft, apply these modifications over it and change a rule only when I explicitly ask."
 
@@ -34,6 +34,8 @@ This register consolidates the rule inventory confirmed in this chat. It persist
 
 - **COM-17 — Bearing H.No. in identification.** In the existing Tax/Assessment & Identification Particulars point, append only “bearing H.No.6-2-24” after its associated Assessment/PTIN value. Keep the original point and receipt recital wording; do not append the house number to the receipt-number binding. Extract and save house number, assessment/PTIN, receipt and demand identifiers separately. This supersedes the earlier receipt-number placement.
 - **COM-18 — PTIN priority.** Label Step 2 rows PTIN Number / Assessment Number. Extract explicitly labelled PTIN first, or Assessment Number if PTIN is absent; never substitute receipt/demand identifiers.
+
+- **COM-19 — Custom field text.** For every field that permits typed text alongside suggestions, carry the complete entered value to its applicable deed bindings. Suggestions do not restrict the printed value. Use fallback text only when the relevant value is empty, and preserve separately entered facts such as per-floor descriptions. Existing field-specific formatting and deed rules still apply.
 
 ## General and Family GPA
 
@@ -135,6 +137,7 @@ Detailed implementation records: [replacement preservation](notes/deed-template-
 
 | Date | Authorization | Effect |
 | --- | --- | --- |
+| 09-11-2026 | User requested that typed text such as “R.C.C. Building & Shed Structure” print as entered in Nature of roof and all similar fields. | Added COM-19. The shared house merge uses the entered roof description before falling back to a floor description. Runtime preservation advanced to 2026-11-09.1. |
 | 05-11-2026 | User supplied a photo and voice note requesting the shown wording when the vendee is minor. | Added PTY-05: minor-first identity, (MINOR) after age/DOB, selected guardianship wording and full guardian particulars before the source recipient definition. Add guardian occupation and complete ward fields for Guardian entry; keep stored identities and existing executant court protections. Runtime preservation advanced to 2026-11-05.2. |
 | 05-11-2026 | User requested repeated uploads and manual entries for every Step 2 option and fixing options that currently prevent repetition. | Added SRC-06: fresh independent cards for every option; remove grouped record reuse/hiding; repeat supplied enclosure recitals with their own values and dates; preserve saved IDs, files, other records and property isolation. Runtime preservation advanced to 2026-11-05.1. |
 | 04-11-2026 | User requested H.No./PTIN rows in Step 2 only, all pairs from link deeds/house-tax uploads, and only the bearing H.No. addition to the existing identification point. | Amended COM-16/17: move pair editor out of property/structure; support all source pairs in Step 2; preserve manual/legacy data and source associations; print “bearing H.No.” after each paired assessment in the original point instead of appending to receipt number. Preserve other source wording. Runtime preservation advanced to 2026-11-04.3. |
@@ -165,7 +168,15 @@ The Classic Step 3 Jurisdiction Sub-Registrar Office uses the original manual te
 ## Reconveyance workflow update 07-11-2026
 
 - **REC-01 — Per-mortgage interest.** Each registered mortgage link record stores its own Mortgage Amount and Interest Amount (explicit zero allowed); sum each stable record once across properties regardless of attached files. Missing/invalid amounts block generation. Preserve older saved deed-level interest until per-record entry replaces it.
-- **REC-02 — Market Value and totals.** Step 5 retains all original market-value input fields, with Total Principal Amount, read-only Total Interest Amount and read-only Total Amount added. Keep the manual principal override and reset-to-link-total action; repayments and heading use effective principal plus summed interest. No repayment section in Step 1 and no automatic duty estimates or sale-payment reconciliation.
+- **REC-02 — Market Value and totals.** Step 5 shows stamp paper value and margin, Total Principal Amount, read-only Total Interest Amount and read-only Total Amount. Hide basic rate, calculated market value, structure valuation and sale consideration in Reconveyance. Keep the manual principal override and reset-to-link-total action; repayments and heading use effective principal plus summed interest. No repayment section in Step 1 and no automatic duty estimates or sale-payment reconciliation.
 - **REC-03 — Bank releasor.** For bank-to-person Reconveyance (including Title Deed), the Releasor party-type selector offers Bank. It asks only for the same saved bank name, branch and official designation; reuse existing draft values. Bank selection omits personal-identity entry/requirements and the official personal-identity segment from the bank opening. Keep saved identity data. Person-to-person does not offer Bank and retains full individual identities.
 
 07-11-2026 explicit user change (REC-01–03, Reconveyance exception to COM-04): replaces deed-level interest entry with per-link interest and summed totals, restores original valuation inputs, and adds the Bank party form using only existing bank particulars. All other instruments and immutable source packages remain unchanged. Runtime preservation advances from 2026-11-07.1 to 2026-11-07.2.
+
+09-11-2026 explicit House update to COM-10 and COM-16/17: restore the subject Bearing H.No. in Property Schedule while repeatable tax rows stay in Step 2. House tax identification retains the source point when a house or assessment identifier is present, prints unpaired values separately, and permits an absent PTIN. A schedule number can fill the house-only identification when no tax identifiers are supplied. Finished House does not request landmark inputs. Retain saved landmark details and established deed rendering. Runtime preservation advances to 2026-11-09.2.
+
+**COM-20 (09-11-2026) — Amount presentation.** The user requested that Reconveyance preserve paise such as 0.37 and 0.45 and omit .00 on whole amounts. Format rupee amounts across deeds with Indian comma grouping. Only monetary values receive money grouping. Print area measurements without digit grouping and preserve survey identifiers and their list separators. Runtime preservation advances to 2026-11-09.3.
+
+09-11-2026 REC-02 presentation update: at the user's request, hide the four sale valuation fields in Reconveyance Step 5. Keep stamp paper and repayment controls, saved data and Word output. No runtime preservation version change.
+
+09-11-2026 REC-01 clarification: label the existing per-mortgage principal field Mortgage Loan Amount. Extract the current uploaded mortgage's explicit loan principal into the existing binding. Do not substitute interest, outstanding balance, repayment total, property value or an older recited loan.

@@ -12,8 +12,11 @@ try {
  await page.getByLabel('Total Principal Amount (₹)',{exact:true}).waitFor();
  assert.equal(await page.getByLabel('Total Principal Amount (₹)',{exact:true}).inputValue(),'0.30');
  assert.equal(await page.getByLabel('Total Amount (₹)',{exact:true}).inputValue(),'0.50');
- assert.equal(await page.getByLabel(/^Basic rate per Sq/).count(),1);
- assert.equal(await page.getByLabel(/^Sale consideration/).count(),1);
+ for (const label of [/^Basic rate per Sq/, /^Calculated market value/, /^Structure valuation/, /^Sale consideration/]) {
+   assert.equal(await page.getByLabel(label).count(),0);
+ }
+ assert.equal(await page.getByLabel(/^Stamp paper value/).count(),1);
+ assert.equal(await page.getByLabel(/^First-page stamp-paper margin/).count(),1);
  await page.getByLabel('Total Principal Amount (₹)',{exact:true}).fill('10.10');
  assert.equal(await page.getByLabel('Total Interest Amount (₹)',{exact:true}).inputValue(),'0.20');
  assert.equal(await page.getByLabel('Total Amount (₹)',{exact:true}).inputValue(),'10.30');
@@ -32,10 +35,10 @@ try {
  await page.locator('.rail-step').first().click();
  assert.equal(await page.getByRole('heading',{name:'Reconveyance repayment'}).count(),0);
  await page.locator('.rail-step').nth(1).click();
- const amount=page.getByLabel(/^Mortgage Amount/), interest=page.getByLabel(/^Interest Amount/);
+ const amount=page.getByLabel(/^Mortgage Loan Amount/), interest=page.getByLabel(/^Interest Amount/);
  assert.equal(await amount.inputValue(),'0.30'); await interest.fill('0.35');
  await page.locator('.rail-step').filter({hasText:'Market Value'}).click();
  assert.equal(await page.getByLabel('Total Interest Amount (₹)',{exact:true}).inputValue(),'0.35');
  assert.equal(await page.getByLabel('Total Amount (₹)',{exact:true}).inputValue(),'0.65');
- assert.deepEqual(errors,[]);console.log('PASS: Reconveyance UI automatic amounts, manual override, reset, exact total and restored valuation fields, per-link interest, Bank form and saved values.');
+ assert.deepEqual(errors,[]);console.log('PASS: Reconveyance repayment, stamp paper controls, hidden valuation fields, per-link interest, Bank form and saved values.');
 }finally{await browser.close()}

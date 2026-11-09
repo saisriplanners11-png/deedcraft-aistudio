@@ -542,7 +542,7 @@ describe('sale deed template merge', () => {
     const state = { ...initialState, category: 'Flat', form };
     expect(variantFor('Flat')).toBe('IF FLAT');
     const text = await scheduleText('IF FLAT', mergeValues(state));
-    for (const value of ['A-502', 'Semi-Finished', 'Sky Residency', '1250', '42', '1,200', '10-1-1, 10-1-2',
+    for (const value of ['A-502', 'Semi-Finished', 'Sky Residency', '1250', '42', 'out of 1200 Sq.Yds.', '10-1-1, 10-1-2',
       'Apartment North', 'Apartment South', 'Apartment East', 'Apartment West',
       'Flat North', 'Flat South', 'Flat East', 'Flat West']) expect(text).toContain(value);
     expect(text).toContain('Boundaries of Apartment:');
@@ -915,7 +915,7 @@ describe('sale deed template merge', () => {
 
   it('renders three house floors in the schedule and original Annexure I-A without an added table', async () => {
     const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
-    form.roofMaterial = 'R.C.C.';
+    form.roofMaterial = 'R.C.C. Building & Shed Structure';
     form.constructionDescription = 'Framed with pillars & columns only';
     form.bearingHNo = '6-5-62/1';
     form.boundaryNorth = "33' Road";
@@ -931,20 +931,20 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const text = await docxToText(bytes);
-    expect(text).toContain('All that the R.C.C. Building with the open place bearing H.No.6-5-62/1');
+    expect(text).toContain('All that the R.C.C. Building & Shed Structure with the open place bearing H.No.6-5-62/1');
     expect(text).toContain('BUILDING / FLOOR DETAILS:');
     expect(text).toContain('Nature of Roof');
     expect(text).not.toContain('Structure Type');
     expect(text).toContain('Ground Floor\nR.C.C. Building\nFinished\n5 Years\n700 Sq.Ft.');
     expect(text).toContain('First Floor\nStone masonry\nSemi-Finished\n3 Years\n750 Sq.Ft.');
     expect(text).toContain('Second Floor\nR.C.C. Building\nFinished\n2 Years\n800 Sq.Ft.');
-    expect(text).toContain('TOTAL\n2,250 Sq.Ft.');
+    expect(text).toContain('TOTAL\n2250 Sq.Ft.');
     expect(text).toContain("33' Road");
     expect(text).toContain('House of Gudla Babu');
     expect(text).toContain("26' Road");
     expect(text).toContain('House of Adepu Krishahari');
     expect(text).toContain('ANNEXURE – 1A');
-    expect(text).toContain('Nature of roof\n: R.C.C.');
+    expect(text).toContain('Nature of roof\n: R.C.C. Building & Shed Structure');
     expect(text).toContain('Type of structure\n: Framed with pillars & columns only');
     expect(text).not.toContain('Age of the house\n:');
     expect(text).toContain('3.\nGround Floor\n: 700 sq.fts\nFirst Floor\n: 750 sq.fts (Semi-Finished)\nSecond Floor\n: 800 sq.fts');
@@ -1070,6 +1070,24 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).toContain('Tax/Assessment & Identification Particulars:');
     expect(text).toContain('Assessment No. PTIN-88');
+  });
+
+  it.each([false, true])('prints partial house tax identification in row order (mixed: %s)', async mixed => {
+    const state = { ...initialState, category: 'Residential', form: {
+      ...initialState.form,
+      houseStage: 'Finished',
+      bearingHNo: 'SCHEDULE-12',
+      housePtinPairs: JSON.stringify([
+        { id: 'house-only', houseNo: 'TAX-12', ptin: '' },
+        ...(mixed ? [{ id: 'ptin-only', houseNo: '', ptin: 'PTIN-88' }] : []),
+      ]),
+    } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const point = text.split('\n').find(line => line.includes('Tax/Assessment & Identification Particulars:'));
+    expect(point).toContain(mixed ? 'bearing H.No.TAX-12; under Assessment No.PTIN-88.' : 'bearing H.No.TAX-12.');
+    if (!mixed) expect(point).not.toContain('Assessment No.');
+    expect(text).toContain('bearing H.No.SCHEDULE-12');
   });
 });
 

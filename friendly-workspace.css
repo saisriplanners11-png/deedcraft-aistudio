@@ -106,3 +106,33 @@
 @media(min-width:901px){.wizard-app .deed-field-grid{gap:10px 12px!important}.wizard-app .party-record-card label.field{align-self:start}}
 @media(max-width:620px){.wizard-app .form-tools{flex-wrap:wrap}.wizard-app .screen-guide{flex-basis:50%}.wizard-app .document-upload .upload-copy small{font-size:11px}}
 .wizard-app .library-start-help>summary{font-size:12px;color:var(--dc-green);cursor:pointer;padding:6px 0;min-height:32px}
+
+.wizard-app .flat-agreement-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  align-items: start;
+}
+.wizard-app .flat-agreement-row.columns-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.wizard-app .documents-step .flat-agreement-row > .deed-field {
+  grid-column: auto !important;
+  min-width: 0;
+}
+@media (max-width: 620px) {
+  .wizard-app .flat-agreement-row.columns-2,
+  .wizard-app .flat-agreement-row.columns-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.wizard-app .repayment-panel { display: grid; gap: 18px; }
+.wizard-app .repayment-panel h2 { margin: 0; }
+.wizard-app .repayment-panel p { margin: 6px 0 0; color: var(--dc-body); font-size: 13px; line-height: 1.5; }
+.wizard-app .repayment-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 16px; }
+.wizard-app .repayment-breakdown > div { min-width: 0; padding: 14px; border: 1px solid var(--dc-rule); border-radius: 8px; }
+.wizard-app .repayment-panel input { width: 100%; min-width: 0; min-height: 44px; font-variant-numeric: tabular-nums; }
+.wizard-app .repayment-breakdown input[readonly] { background: var(--dc-paper); }
+.wizard-app .repayment-panel .repayment-reset { min-height: 44px; margin-top: 8px; }
+.wizard-app .repayment-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; padding: 12px 14px; border-radius: 8px; background: var(--dc-green); color: white; font-weight: 600; }
+.wizard-app .repayment-total input { flex: 1 1 170px; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font-size: 24px; font-weight: 700; }

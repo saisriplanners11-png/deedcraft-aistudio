@@ -81,3 +81,9 @@ An imported GPA/AGPA principal with no verified relation correctly remained unre
 The user approved REL-01–05 and implementation of this behavior on 07-11-2026. Preservation version 2026-11-07.1 adds these rules without weakening any previous instrument profile. Build gates include Release source validation and actual default-renderer downloads for all eight property branches, plus focused multi-party, shares, payments, saved-data, replacement and stamp-space tests. No rate or deployment change is included.
 
 Reconveyance REC-01–03 (07-11-2026): independent per-link mortgage interest is summed with exact currency arithmetic; Step 5 restores all original valuation fields alongside repayment totals and retained principal override/reset. Bank Releasor requests only existing bank name/branch/designation and omits the officer's personal segment; saved identity data survives switching. Legacy deed-level interest remains readable. Runtime preservation version is 2026-11-07.2.
+
+COM-19 (09-11-2026): Suggestions must not restrict the text printed for editable deed fields. The shared house merge now prefers the full roof description before a floor fallback. Runtime preservation version: 2026-11-09.1.
+
+09-11-2026 House update (COM-10 and COM-16/17): retain partial tax identification in the existing source point, restore the schedule Bearing H.No. editor, and hide the finished-house landmark inputs. Runtime preservation version: 2026-11-09.2.
+
+COM-20 (09-11-2026): group currency with Indian commas and omit zero fractional parts in output. Preserve nonzero decimals, keep exact Reconveyance paise arithmetic, and leave area measurements and survey identifiers outside the money formatter. Runtime preservation version: 2026-11-09.3.

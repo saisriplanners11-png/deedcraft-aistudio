@@ -9,17 +9,11 @@ import { fieldHelp } from './field-help';
 import { normalizePropertyPlaceName } from './place-names';
 import type { Conflict, FieldEvidence } from './logic';
 import { DOC_KINDS, type DocKind } from './extract';
+import { formatMoneyInput } from './deed-money';
+export { formatMoneyInput } from './deed-money';
 
 // Shared pieces of the deed-register look: rules and small caps, ink on cream,
 // serif for what the deed says and mono for what the registry counts.
-
-/** Formats a raw (comma-free) numeric string for display, Indian-grouped, keeping a trailing "." or partial decimal while the user is still typing it. */
-export function formatMoneyInput(raw: string): string {
-  if (raw === '') return '';
-  const [intPart, ...rest] = raw.split('.');
-  const grouped = intPart === '' ? '' : Number(intPart).toLocaleString('en-IN');
-  return rest.length ? `${grouped}.${rest.join('')}` : grouped;
-}
 
 export const C = {
   ink: 'var(--dc-ink)',
@@ -237,15 +231,39 @@ export function FieldGroup({
   onDismiss?: (id: string) => void;
   onAcceptGroup?: (ids: string[]) => void;
 }) {
-  const agreementOrder = ['developmentDocNo', 'developmentDocDate', 'developmentSro', 'supplementalDocNo', 'supplementalSro', 'stiltFloors', 'upperFloors'];
+  const agreementRows = [
+    ['developmentDocNo', 'developmentDocDate', 'developmentSro'],
+    ['supplementalDocNo', 'supplementalSro'],
+    ['stiltFloors', 'upperFloors'],
+  ];
+  const agreementOrder = agreementRows.flat();
   const visibleFields = group.fields.filter(f => !f.hidden);
-  if (flatStage(form.flatStage) === 'Semi-Finished' && visibleFields.some(field => field.id === 'developmentDocNo') && visibleFields.some(field => field.id === 'stiltFloors')) {
+  const semiFinished = flatStage(form.flatStage) === 'Semi-Finished';
+  const groupAgreementRows = semiFinished && group.placementSection === 'flat-agreement-documents';
+  if (semiFinished && visibleFields.some(field => field.id === 'developmentDocNo') && visibleFields.some(field => field.id === 'stiltFloors')) {
     visibleFields.sort((a, b) => {
       const rank = (id: string) => agreementOrder.includes(id) ? agreementOrder.indexOf(id) : agreementOrder.length;
       return rank(a.id) - rank(b.id);
     });
   }
   const clashing = visibleFields.filter(f => conflicts?.[f.id]).map(f => f.id);
+
+  const renderFields = (fields: typeof visibleFields) => fields.map(f => (<React.Fragment key={f.id}>
+    <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="before" />
+    {renderField?.(f, form[f.id] || '', value => setField(f.id, value)) ?? <Input
+      field={f}
+      value={form[f.id] || ''}
+      derivedValue={derived?.[f.id]}
+      conflict={conflicts?.[f.id]}
+      source={fieldSource?.[f.id]}
+      sourceDocument={fieldEvidence?.[f.id]?.docName}
+      onAccept={() => onAccept?.(f.id)}
+      onDismiss={() => onDismiss?.(f.id)}
+      onChange={v => setField(f.id, v)}
+    />}
+    {afterField?.(f.id)}
+    <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="after" />
+  </React.Fragment>));
 
   return (
     <Section
@@ -267,24 +285,13 @@ export function FieldGroup({
       {group.note ? (
         <p style={css(`margin:0 0 16px;font-size:12px;color:${C.body};line-height:1.6;max-width:80ch`)}>{group.note}</p>
       ) : null}
-      <div className="deed-field-grid" style={css(`display:grid;grid-template-columns:repeat(${group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
-      {visibleFields.map(f => (<React.Fragment key={f.id}>
-          <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="before" />
-          {renderField?.(f, form[f.id] || '', value => setField(f.id, value)) ?? <Input
-            key={f.id}
-            field={f}
-            value={form[f.id] || ''}
-            derivedValue={derived?.[f.id]}
-            conflict={conflicts?.[f.id]}
-            source={fieldSource?.[f.id]}
-            sourceDocument={fieldEvidence?.[f.id]?.docName}
-            onAccept={() => onAccept?.(f.id)}
-            onDismiss={() => onDismiss?.(f.id)}
-            onChange={v => setField(f.id, v)}
-          />}
-          {afterField?.(f.id)}
-          <PlacementSlot sectionId={sectionForGroup(group)} anchorFieldId={f.id} position="after" />
-        </React.Fragment>))}
+      <div className={groupAgreementRows ? 'flat-agreement-rows' : 'deed-field-grid'} style={css(`display:grid;grid-template-columns:repeat(${groupAgreementRows ? 1 : group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
+        {groupAgreementRows ? <>
+          {agreementRows.map(ids => <div key={ids[0]} className={`flat-agreement-row columns-${ids.length}`}>
+            {renderFields(visibleFields.filter(field => ids.includes(field.id)))}
+          </div>)}
+          {renderFields(visibleFields.filter(field => !agreementOrder.includes(field.id)))}
+        </> : renderFields(visibleFields)}
         {!group.placementContinuation && <PlacementSlot sectionId={sectionForGroup(group)} />}
       </div>
     </Section>

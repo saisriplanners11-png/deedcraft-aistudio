@@ -305,7 +305,8 @@ describe('field mapping', () => {
 
 });
 
-it('routes missing house and PTIN identifiers to Step 2 only', () => {
+it('routes a missing House bearing number to Property Schedule and allows a missing PTIN', () => {
   const blockers = generationBlockers({ ...initialState, category: 'Residential' });
-  for (const id of ['bearingHNo', 'bltNo']) expect(blockers.find(item => item.id === id)?.step).toBe(1);
+  expect(blockers.find(item => item.id === 'bearingHNo')?.step).toBe(3);
+  expect(blockers.some(item => item.id === 'bltNo')).toBe(false);
 });

@@ -5,8 +5,9 @@ import { ageFrom, todayISO } from './party-age';
 import { acreGuntasToSqYards } from './land-area';
 import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isBankReconveyance, reconveyanceErrors } from './reconveyance';
+import { formatDeedAmount } from './deed-money';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
-import { flatStage, flatLabel } from './flat-options';
+import { flatStage, flatLabel, isFinishedHouse } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
 // There is no seeded record: a field is blank until someone types into it, and
 // anything computed from a blank field reads as blank too, never as zero.
@@ -261,8 +262,8 @@ export const toSqYards = (v: any, unit: string) => (Number(v) || 0) * (SQ_YARD[u
 
 /** ₹ with Indian grouping. Blank in, blank out — never "₹0" for a field nobody filled. */
 export function money(v: any): string {
-  if (v === '' || v === null || v === undefined || Number.isNaN(Number(v))) return '';
-  return '₹' + Number(Math.round(Number(v))).toLocaleString('en-IN');
+  const amount = formatDeedAmount(typeof v === 'number' ? v.toFixed(2) : String(v ?? ''));
+  return amount ? '₹' + amount : '';
 }
 
 export function words(num: any): string {
@@ -295,7 +296,7 @@ const num = (v: any) => (v === '' || v === null || v === undefined ? NaN : Numbe
 const has = (v: any) => v !== '' && v !== null && v !== undefined;
 
 const FIELD_STEPS: Record<string, number> = Object.fromEntries(
-  [...GROUPS_FOR_MISSING().flatMap(group => group.fields.map((field: any) => [field.id, group.step])), ...['bearingHNo', 'bltNo', 'housePtinPairs'].map(id => [id, 1])]
+  [...GROUPS_FOR_MISSING().flatMap(group => group.fields.map((field: any) => [field.id, group.step])), ...['bltNo', 'housePtinPairs'].map(id => [id, 1])]
 );
 
 function GROUPS_FOR_MISSING() {
@@ -322,7 +323,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     if (id.startsWith('claimant')) return `Claimant: ${base}`;
     return base;
   };
-  const add = (id: string, reason: string, source: string, step = FIELD_STEPS[id] ?? 0) => {
+  const add = (id: string, reason: string, source: string, step = id === 'bearingHNo' && state.category !== 'Residential' ? 1 : FIELD_STEPS[id] ?? 0) => {
     if (!has(f[id]) && !missing.some(item => item.id === id)) {
       missing.push({ id, label: displayLabel(id), reason, source, step });
     }
@@ -379,10 +380,10 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   if (['Vacant Plot', 'Open Place', 'Agricultural land'].includes(state.category)) {
     add('nearAdjacent', 'Choose whether the landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   }
-  if (f.nearHNo && !['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
+  if (f.nearHNo && !isFinishedHouse(state.category, f.houseStage) && !['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose whether the entered landmark house number is near or adjacent to the property.', 'Link deed or property plan');
   if (f.landmarkHNo && ['Demolished', 'Part open place'].includes(state.category)) add('nearAdjacent', 'Choose Near or Adjacent for the separately entered landmark house.', 'Link deed or property plan');
   if (['Residential', 'Commercial'].includes(state.category)) {
-    ['bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
+    ['bearingHNo', ...(state.category === 'Commercial' ? ['bltNo'] : []), 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo']
       .forEach(id => add(id, 'The selected house schedule and Annexure I-A require this value.', 'Property-tax record, plan or house document'));
     addStructureDetails(state.structureDetailsBySchedule.primary, 'Structure Details', 3);
   }
@@ -395,8 +396,8 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     FLAT_BOUNDARY_FIELDS.forEach(id => add(id, 'All four boundaries of the individual flat are required.', 'Flat plan, apartment record or manual entry.', 3));
   }
 
-  const addRecordField = (record: ValueRecord, id: string, label: string, reason: string, source: string, step: number) => {
-    if (!has(record.values[id])) missing.push({ id: `${record.id}-${id}`, label, reason, source, step: ['bearingHNo', 'bltNo', 'housePtinPairs'].includes(id) ? 1 : step });
+  const addRecordField = (record: ValueRecord & { category?: string }, id: string, label: string, reason: string, source: string, step: number) => {
+    if (!has(record.values[id])) missing.push({ id: `${record.id}-${id}`, label, reason, source, step: ['bltNo', 'housePtinPairs'].includes(id) || (id === 'bearingHNo' && record.category !== 'Residential') ? 1 : step });
   };
   state.additionalLinkDocuments.forEach((record, index) => {
     for (const id of ['linkDocType', 'linkDocNo', 'linkDocDate', 'linkSro']) {
@@ -457,9 +458,9 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   state.additionalSchedules.forEach((record, index) => {
     const ids = ['propState', 'district', 'mandal', 'village', 'locality', 'pinCode', 'sro', 'districtRegistrar', 'plotNo', 'surveyNo', 'extentSqYards', ...BOUNDARY_IDS, 'govtRate'];
     if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(record.category)) ids.push('nearHNo');
-    if (['Vacant Plot', 'Open Place', 'Agricultural land'].includes(record.category) || (record.values.nearHNo && !['Demolished', 'Part open place'].includes(record.category))) ids.push('nearAdjacent');
+    if (['Vacant Plot', 'Open Place', 'Agricultural land'].includes(record.category) || (record.values.nearHNo && !isFinishedHouse(record.category, record.values.houseStage) && !['Demolished', 'Part open place'].includes(record.category))) ids.push('nearAdjacent');
     if (['Residential', 'Commercial'].includes(record.category)) {
-      ids.push('bearingHNo', 'bltNo', 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
+      ids.push('bearingHNo', ...(record.category === 'Commercial' ? ['bltNo'] : []), 'roofMaterial', 'constructionDescription', 'taxesPerAnnum', 'annualRentalValue', 'tapConnectionNo', 'metersNo');
       addStructureDetails(state.structureDetailsBySchedule[record.id], `Schedule ${index + 2}: Structure Details`, 3);
     }
     if (record.category === 'Flat') {
@@ -494,6 +495,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
   }
   }
   for (const id of Object.keys(state.conflicts)) {
+    if (isFinishedHouse(state.category, f.houseStage) && ['nearAdjacent', 'nearHNo'].includes(id)) continue;
     missing.push({ id: `conflict-${id}`, label: displayLabel(id), reason: 'Uploaded documents disagree about this value.', source: 'Review and choose the correct source value.', step: FIELD_STEPS[id] ?? (id.startsWith('executant') ? 6 : id.startsWith('claimant') ? 7 : 0) });
   }
   const invalid = (id: string, reason: string, step: number) => {
@@ -661,12 +663,12 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const printedSqYards = num(String(f.extentSqYards || '').replace(/,/g, ''));
   const sqYardsN = !Number.isNaN(printedSqYards) && printedSqYards > 0 ? printedSqYards : NaN;
   const hasExtent = !Number.isNaN(sqYardsN) && sqYardsN > 0;
-  const sqYards = f.extentSqYards || (hasExtent ? sqYardsN.toLocaleString('en-IN') : '');
-  const sqMeters = hasExtent ? (Math.round(sqYardsN * 0.836127 * 100) / 100).toLocaleString('en-IN') : '';
+  const sqYards = f.extentSqYards ? f.extentSqYards.replace(/,/g, '') : hasExtent ? String(sqYardsN) : '';
+  const sqMeters = hasExtent ? String(Math.round(sqYardsN * 0.836127 * 100) / 100) : '';
 
   const conversions = UNITS.map(u => ({
     unit: u,
-    value: hasExtent ? (Math.round((sqYardsN / (SQ_YARD[u] ?? 1)) * 1000) / 1000).toLocaleString('en-IN') : '—',
+    value: hasExtent ? String(Math.round((sqYardsN / (SQ_YARD[u] ?? 1)) * 1000) / 1000) : '—',
   }));
 
   // ---- valuation -----------------------------------------------------------

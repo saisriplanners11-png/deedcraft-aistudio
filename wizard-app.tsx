@@ -9,11 +9,13 @@ import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant
 import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
+import { formatDeedAmount, formatMoneyInput } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
 import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
 import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
@@ -23,7 +25,7 @@ import { savedTemplateStatus, templateIsEarlier, updateSavedDeedTemplate } from 
 import { POA_RELATIONSHIPS, isGeneralPoa, isFamilyPoa, poaRelationship, poaRelationshipErrors, poaValues } from './poa-options';
 import { GIFT_RELATIONSHIPS, giftRelationshipValues } from './gift-options';
 import { SALE_DOCUMENT_OPTIONS, saleVariant, saleDocumentLabel, saleAuthorityErrors, salePropertyErrors } from './sale-options';
-import { HOUSE_OPTIONS, FLAT_OPTIONS, propertyChoice, flatLabel } from './flat-options';
+import { HOUSE_OPTIONS, FLAT_OPTIONS, propertyChoice, flatLabel, flatStage, isFinishedHouse } from './flat-options';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
   peopleFor, plansFor, resolveDraft, type Candidate, type Role, type Source, type SourceResult, WorkQueue,
@@ -302,7 +304,7 @@ function RecordFieldGroup({
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
-      : (f.id === 'executionDate' ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
+      : (['executionDate', 'stampPaperMargin'].includes(f.id) ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
         ?? resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
   return <PlacementRecord scope={role} id={record}>
     {groups.map(g => (
@@ -400,15 +402,30 @@ function TitlePointCard({ option, record, ordinal, form, onField, onUpload, sour
   </section>;
 }
 
+/** Keep the add control in view when new cards are inserted above it. */
+function addDocumentsInPlace(anchor: HTMLElement, add: () => void, focus?: () => HTMLElement | null) {
+  const bottom = anchor.getBoundingClientRect().bottom;
+  flushSync(add);
+  window.scrollBy({ top: anchor.getBoundingClientRect().bottom - bottom, behavior: 'instant' });
+  focus?.()?.focus({ preventScroll: true });
+}
+
 /** Select which title points to add; the editable cards appear after selection. */
 function AddLinkDocument({ onAdd }: { onAdd: (optionId: string, files: File[]) => void }) {
   const [picking, setPicking] = useState(false);
+  const anchor = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = (ids: string[]) => {
+    if (!anchor.current) return;
+    addDocumentsInPlace(anchor.current, () => {
+      ids.forEach(id => onAdd(id, []));
+      setPicking(false);
+    }, () => trigger.current);
+  };
 
-  if (!picking) return <div className="document-add"><span className="document-card-icon"><FolderOpen size={22} aria-hidden="true" /></span><div><h3>Add supporting documents</h3><p>Choose a registered deed, tax record, permission or other enclosure.</p></div><button type="button" className="primary" onClick={() => setPicking(true)}>+ Add / upload document</button></div>;
-
-  return <div className="document-picker"><MultiPicker
-    onCancel={() => setPicking(false)}
-    onContinue={ids => { ids.forEach(id => onAdd(id, [])); setPicking(false); }} /></div>;
+  return picking
+    ? <div ref={anchor} className="document-picker"><MultiPicker onCancel={() => close([])} onContinue={close} /></div>
+    : <div ref={anchor} className="document-add"><span className="document-card-icon"><FolderOpen size={22} aria-hidden="true" /></span><div><h3>Add supporting documents</h3><p>Choose a registered deed, tax record, permission or other enclosure.</p></div><button ref={trigger} type="button" className="primary" onClick={() => setPicking(true)}>+ Add / upload document</button></div>;
 }
 
 /** Checkbox-style tile picker for choosing one or several document types before any upload happens. */
@@ -418,7 +435,7 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
   return <>
     <div className="add-document-row">
       <span>Which document(s) are you adding? Select as many as you have ready.</span>
-      <button className="quiet" onClick={onCancel}>Cancel</button>
+      <button type="button" className="quiet" onClick={onCancel}>Cancel</button>
     </div>
     <div className="picker-grid">
       {TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(o => o.id === id)!).map(o => (
@@ -427,7 +444,7 @@ function MultiPicker({ onContinue, onCancel }: { onContinue: (ids: string[]) => 
         </button>
       ))}
     </div>
-    <button className="primary" disabled={!selected.length} onClick={() => onContinue(selected)} style={{ marginTop: 10 }}>
+    <button type="button" className="primary" disabled={!selected.length} onClick={() => onContinue(selected)} style={{ marginTop: 10 }}>
       Continue with {selected.length || 0} document{selected.length === 1 ? '' : 's'}
     </button>
   </>;
@@ -803,6 +820,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const visibleSavedDeeds = savedDeeds.filter(deed => [deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
+    if (role === 'property' && field === 'stampPaperMargin') record = 'transaction';
     const sro = resolveSroSelection(field, value);
     if (sro) {
       dispatch({ type: 'manual', key: fieldKey(role, record, sro.nameField), value: sro.name });
@@ -1407,14 +1425,33 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
 
         {isRelease && [4,8].includes(step) && <ReleaseFields state={state} draft={draft} dispatch={dispatch} schedules={propertyRecords} onValue={(id,value)=>edit('property',propertyRecords[0]?.id||'primary',id,value)} />}
         {isReconveyance && step === 0 && draft.variantId !== 'title-deed' && <section className="panel"><FieldGroup group={{ step: 0, title: 'Mortgage party mode', fields: RECONVEYANCE_FIELDS.filter(field => field.id === 'mortgagePartyMode') }} form={state.form} setField={(id,value) => edit('property','primary',id,value)} /></section>}
-        {isReconveyance && [4,8].includes(step) && <section className="panel" aria-label="Reconveyance repayment"><h2>Reconveyance repayment</h2>
-
-  <label className="field"><span>Total Principal Amount (₹)</span><input aria-label="Total Principal Amount (₹)" inputMode="decimal" value={state.form.principalOverride || repayment.principal} onChange={event => edit('property','primary','principalOverride',event.target.value)} /></label>
-  <p>Current link-document sum: ₹{repayment.linkTotal || '—'} · {repayment.overridden ? 'Manual principal' : 'Automatic principal'}</p><button type="button" onClick={() => edit('property','primary','principalOverride','')}>Use link-document total</button>
-  <label className="field"><span>Total Interest Amount (₹)</span><input aria-label="Total Interest Amount (₹)" readOnly value={repayment.interest} /></label>
-  <label className="field"><span>Total Amount (₹)</span><input aria-label="Total Amount (₹)" readOnly value={repayment.total} /></label>
-
-</section>}
+        {isReconveyance && [4,8].includes(step) && <section className="panel repayment-panel" aria-label="Reconveyance repayment">
+          <header>
+            <h2>Reconveyance repayment</h2>
+            <p>The repayment total combines principal and interest from the linked mortgages. You can adjust the principal below.</p>
+          </header>
+          <div className="repayment-breakdown">
+            <div>
+              <label className="field">
+                <span>Total Principal Amount (₹)</span>
+                <input inputMode="decimal" aria-describedby="repayment-principal-source" value={repayment.overridden ? formatMoneyInput(state.form.principalOverride) : formatDeedAmount(repayment.principal)} onChange={event => edit('property','primary','principalOverride',event.target.value.replace(/,/g, ''))} />
+              </label>
+              <p id="repayment-principal-source">{repayment.overridden ? 'Manual principal' : 'Automatic principal'} · Link-document total ₹{formatDeedAmount(repayment.linkTotal) || '—'}</p>
+              <button className="repayment-reset" type="button" onClick={() => edit('property','primary','principalOverride','')}>Use link-document total</button>
+            </div>
+            <div>
+              <label className="field">
+                <span>Total Interest Amount (₹)</span>
+                <input readOnly aria-describedby="repayment-interest-source" value={formatDeedAmount(repayment.interest)} />
+              </label>
+              <p id="repayment-interest-source">Calculated from the mortgage records.</p>
+            </div>
+          </div>
+          <label className="repayment-total">
+            <span>Total Amount (₹)</span>
+            <input readOnly value={formatDeedAmount(repayment.total)} />
+          </label>
+        </section>}
         {municipalGift && [0, 8].includes(step) && <section className="panel" aria-label="Municipal Gift details"><h2>Municipal Gift</h2><p>Enter the recipient in Claimant Details, including their identity, address and representatives where applicable.</p><p><strong>Claimant:</strong> {partyRecords(state, 'claimant').map(record => partyDisplayName(record.values, 'claimant')).filter(Boolean).join(', ') || 'Complete Claimant Details.'}</p><p>Supports open place, plot, dismantled house and part open place.</p></section>}
         {draft.instrumentId === 'gift' && !municipalGift && [0, 7, 8].includes(step) && <section className="panel gift-relationship-panel" aria-label="Gift relationship">
           <h2>Donee relationship to Donor</h2>
@@ -1467,7 +1504,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                   busy={!!sourceBusyFor('link', record)}
                   onDelete={() => clearLinkRecord(record)} />;
               })}
-              {!!related.length && <div className="add-document-row"><button type="button" className="quiet" onClick={() => addLinkDocuments(option.id, [])}>+ Add another {option.label}</button></div>}
+              {!!related.length && <div className="add-document-row"><button type="button" className="quiet" onClick={event => addDocumentsInPlace(event.currentTarget, () => addLinkDocuments(option.id, []))}>+ Add another {option.label}</button></div>}
             </React.Fragment>;
           })}
           {(HOUSE_PTIN_PAIR_CATEGORIES.includes(category) || category === 'Flat' || sectionRecords('houseTax').length > 0) && <section className="panel" aria-label="Property tax identification">
@@ -1478,7 +1515,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               onChange={value => edit('property', activePropertyId, 'housePtinPairs', value)}
             />
           </section>}
-          {category === 'Flat' && ['sale', 'agreement_of_sale'].includes(draft.instrumentId) && <section className="panel flat-agreement-documents" aria-label="Landowner–developer agreements">
+          {category === 'Flat' && (flatStage(activeProperty?.values.flatStage) === 'Semi-Finished' || ['sale', 'agreement_of_sale'].includes(draft.instrumentId)) && <section className="panel flat-agreement-documents" aria-label="Landowner–developer agreements">
             <h2>Landowner–developer agreements</h2>
             <ScopedSectionUpload label="development / supplemental agreement" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'flat-agreements')} />
             <SourceFeedback sources={draft.sources.filter(source => source.profile === 'flat-agreements' && source.assignment?.record === activePropertyId)} />
@@ -1508,7 +1545,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             const multipleProperties = propertyRecords.length > 1;
             const propertyGroups = groupsForStep(3, record.category).map(group => ({
               ...group,
-              fields: group.fields.filter(field => !(record.category === 'Part open place' && field.id === 'nearHNo')),
+              fields: group.fields.filter(field => !(isFinishedHouse(record.category, record.values.houseStage) && ['nearAdjacent', 'nearHNo'].includes(field.id))),
             })).filter(group => group.fields.length);
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
@@ -1517,7 +1554,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} groupsOverride={propertyGroups} resolved={resolved} edit={edit}
-                fallbackValues={{ bltNo: id === 'primary' ? state.form.bltNo : record.values.bltNo || '' }} />
+                fallbackValues={{ bearingHNo: record.values.bearingHNo || '' }} />
 
               {['Residential', 'Commercial'].includes(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
@@ -1532,11 +1569,16 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <div className="add-document-row property-add-card"><span><House size={17} aria-hidden="true" />More than one property?</span><button type="button" className="primary" onClick={addProperty}>+ Add another property</button></div>
         </LinkStageGate>}
 
-        {step === 4 && !isRelease && <LinkStageGate status={combinedMarketStatus} loading="Extracting market value from the property documents…">
-          <section className="panel"><h2>Combined market value</h2><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link')} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} />
+        {step === 4 && !isRelease && <LinkStageGate status={isReconveyance ? null : combinedMarketStatus} loading="Extracting market value from the property documents…">
+          <section className="panel"><h2>{isReconveyance ? 'Stamp paper' : 'Combined market value'}</h2>
+            {!isReconveyance && <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link')} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} />}
             {propertyRecords.map((record, index) => <div key={record.id} style={index ? { marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.rule}` } : undefined}>
               {propertyRecords.length > 1 && <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {index + 1}{record.category ? ` — ${record.category}` : ''}</h3>}
-              <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit} />
+              <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit}
+                groupsOverride={isReconveyance ? groupsForStep(4, record.category).map(group => ({
+                  ...group, title: 'Stamp paper details', note: '', telugu: undefined,
+                  fields: group.fields.filter(field => ['stampPaperMargin', 'stampValue'].includes(field.id)),
+                })) : undefined} />
             </div>)}
           </section>
           {isReconveyance ? null : draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
@@ -1635,7 +1677,6 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         {step === 9 && <section className="panel download">
           <div className="finish-section-heading"><span className="finish-heading-icon"><Download size={22} aria-hidden="true" /></span><div><h2>Prepare your downloads</h2><p>Choose your template, then download the deed or property plan.</p></div><button type="button" className="quiet download-review-link" onClick={() => goto(8)}>Back to final review <ArrowRight size={14} aria-hidden="true" /></button></div>
           <p role="status"><strong>{isRelease ? 'Release Deed' : isReconveyance ? 'Deed Of Reconvayance' : generalPoa || agreementSaleGpa ? `${instrumentTitle} — ${state.draft}` : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift Deed' : 'Gift Settlement Deed') : saleDocumentLabel(state.saleDocument)}</strong> · {propertyRecords.map(record => `${record.category} ${record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''}`.trim()).join(' / ')}</p>
-          <FieldGroup group={{ step: 9, title: 'Page setup', fields: ALL_FIELDS.filter(field => field.id === 'stampPaperMargin') }} form={{ stampPaperMargin: state.form.stampPaperMargin || 'Legacy' }} setField={(id, value) => edit('property', 'transaction', id, value)} />
           <div className="template-picker" aria-label="Word template">
             <div className="template-picker-heading"><h3>1. Choose the Word template</h3><span>Applies to this draft</span></div>
             <div className="template-choices">

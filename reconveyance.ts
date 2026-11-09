@@ -1,6 +1,6 @@
 import { representativeRecital } from './party-entities';
 import { flatStage } from './flat-options';
-import { moneyPaise as mortgagePaise } from './deed-money';
+import { formatDeedAmount, moneyPaise as mortgagePaise } from './deed-money';
 export { moneyPaise as mortgagePaise } from './deed-money';
 
 export function paiseAmount(value: bigint): string {
@@ -20,7 +20,7 @@ export function reconveyanceAmounts(records: MortgageRecord[], principalOverride
     if (seen.has(record.id)) continue;
     seen.add(record.id);
     const amount = mortgagePaise(record.values.mortgageAmount || '');
-    if (amount === null || amount <= 0n) errors.push(`Mortgage document ${seen.size}: enter a positive mortgage amount.`);
+    if (amount === null || amount <= 0n) errors.push(`Mortgage document ${seen.size}: enter a positive mortgage loan amount.`);
     else sum += amount;
   }
   if (!seen.size) errors.push('Add at least one mortgage document.');
@@ -83,8 +83,8 @@ export function reconveyanceValues(state: AppState): Record<string, string> {
   const amount = repaymentFor(state);
   const representatives = state.partyPeopleByParty?.['executant|' + (state.primaryExecutantId || 'primary')]?.representatives || [];
   return {
-    'Principal Amount': amount.principal, 'Intrest Amount': amount.interest, 'Interest Amount': amount.interest,
-    'Total Amount': amount.total, 'Market of Value Rs./-': amount.total,
+    'Principal Amount': formatDeedAmount(amount.principal), 'Intrest Amount': formatDeedAmount(amount.interest), 'Interest Amount': formatDeedAmount(amount.interest),
+    'Total Amount': formatDeedAmount(amount.total), 'Market of Value Rs./-': formatDeedAmount(amount.total),
     'Reconveyance Draft': state.draft === 'TITLE DEED' ? 'title-deed' : 'mortgage-deed',
     'Mortgage Party Mode': state.draft === 'TITLE DEED' ? 'bank-to-person' : state.form.mortgagePartyMode || '',
     'BANK NAME': state.form.bankName || '', Branch: state.form.bankBranch || '', Designation: state.form.officialDesignation || '',

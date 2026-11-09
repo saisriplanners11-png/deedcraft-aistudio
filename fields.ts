@@ -471,7 +471,7 @@ export const LINK_OPTIONS: LinkOption[] = [
       { id: 'linkDocDate', label: 'Link deed execution date', ph: 'Link Doct.Date', type: 'date',
         hint: 'The date this document was executed, shown in its opening recital on the first page — not the SRO registration/presentation date.' },
       { id: 'linkSro', label: 'Sub-Registrar Office', ph: ['Sub Registrar', 'Sub-Registrar'], span: 2 },
-      { id: 'mortgageAmount', label: 'Mortgage Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true },
+      { id: 'mortgageAmount', label: 'Mortgage Loan Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true },
       { id: 'mortgageInterestAmount', label: 'Interest Amount (₹)', type: 'money', hidden: true, hint: 'Enter the interest amount for this mortgage, including 0 when no interest applies.' },
       { id: 'linkSroCode', label: 'SRO code', ph: 'Sub Registrar Code', hint: 'Filled automatically from the selected Sub-Registrar Office.', hidden: true },
     ],
@@ -539,7 +539,7 @@ export const RECONVEYANCE_FIELDS: Field[] = [
   { id: 'bankBranch', label: 'Branch', ph: 'Branch' },
   { id: 'officialDesignation', label: 'Official designation', ph: 'Designation' },
 ];
-export const MORTGAGE_AMOUNT_FIELD: Field = { id: 'mortgageAmount', label: 'Mortgage Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true };
+export const MORTGAGE_AMOUNT_FIELD: Field = { id: 'mortgageAmount', label: 'Mortgage Loan Amount (₹)', type: 'money', ph: 'MORTGAGE AMOUNT', hidden: true };
 export const ALL_FIELDS: Field[] = Object.values(
   Object.fromEntries(
     [...GROUPS.flatMap(g => g.fields), ...LINK_OPTIONS.flatMap(o => o.fields), ...PARTY_ENTITY_FIELDS, ...RECONVEYANCE_FIELDS, MORTGAGE_AMOUNT_FIELD].map(f => [f.id, f])
@@ -557,7 +557,7 @@ export function groupsForStep(step: number, category: string): Group[] {
     .map(g => ({ ...g,
       ...(category === 'Flat' && g.title === 'Boundaries' ? { title: 'Boundaries of Apartment', note: 'The four apartment-level property boundaries. Enter the individual flat boundaries separately below.' } : {}),
       fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
-        && !(step === 3 && (['bearingHNo', 'bltNo'].includes(f.id) || (['Part open place', 'Demolished'].includes(category) && f.id === 'nearHNo'))))
+        && !(step === 3 && (f.id === 'bltNo' || (f.id === 'bearingHNo' && category !== 'Residential') || (['Part open place', 'Demolished'].includes(category) && f.id === 'nearHNo'))))
       .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
         ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' }
         : f.id === 'bearingHNo' && category === 'Flat' ? { ...f, label: 'Municipal H.Nos.' } : f) }))
