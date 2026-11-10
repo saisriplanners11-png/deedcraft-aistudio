@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
-  ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip,
+  ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip, omitBlankScheduleFields,
   validateSaleDeedTemplate, MAX_CUSTOM_TEMPLATE_BYTES, type DeedTemplateSource,
 } from './docx';
 import { ALL_FIELDS, newStructureDetail } from './fields';
@@ -11,6 +11,30 @@ import { newPayment } from './payments';
 import { loadSaleDeedTemplate } from './template';
 
 describe('empty Word text runs', () => {
+  it('omits blank identifiers across runs while retaining the entered identifier and formatting', () => {
+    const p = '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>All that the house, in plot no.</w:t></w:r><w:r><w:t>&lt;Plot No.&gt; &amp; Survey No/s.&lt;Survey No.&gt;, situated at Test.</w:t></w:r></w:p>';
+    const text = (xml: string) => xml.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const surveyOnly = omitBlankScheduleFields(p, { 'Plot No.': '', 'Survey No.': '42' });
+    expect(text(surveyOnly)).not.toMatch(/plot no|&/i);
+    expect(text(surveyOnly)).toContain('Survey No/s.<Survey No.>');
+    expect(surveyOnly).toContain('<w:b/>');
+    const neither = text(omitBlankScheduleFields(p, { 'Plot No.': ' ', 'Survey No.': '' }));
+    expect(neither).not.toMatch(/plot no|survey|&|,\s*,/i);
+  });
+
+  it('removes empty labelled rows but preserves a mixed row and zero values', () => {
+    const row = '<w:tr><w:tc><w:p><w:r><w:t>Survey No/s.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>&lt;Survey No.&gt;</w:t></w:r></w:p></w:tc></w:tr>';
+    expect(omitBlankScheduleFields(row, { 'Survey No.': '' })).toBe('');
+    expect(omitBlankScheduleFields(row, { 'Survey No.': '0' })).toBe(row);
+    expect(omitBlankScheduleFields(row, { 'Survey No.': '42' })).toBe(row);
+  });
+
+  it('omits missing descriptive fields and their units without dropping neighbouring values', () => {
+    const p = '<w:p><w:r><w:t>All that a Flat No.&lt;Flat No.&gt; in &lt;Floor No.&gt; Floor, Car Parking area &lt;Car Parking Area&gt; sq.fts, situated at ‘&lt;Locality&gt;’ locality of &lt;Village&gt; Village, &lt;Mandal&gt; Mandal, District:&lt;District&gt;, Pin Code:&lt;Pin Code&gt;.</w:t></w:r></w:p>';
+    const result = omitBlankScheduleFields(p, { 'Flat No.': '', 'Floor No.': '', 'Car Parking Area': '', Locality: '', Village: 'Town', Mandal: '', District: '', 'Pin Code': '' });
+    expect(result).not.toMatch(/Flat No\.|Floor|Car Parking|sq\.fts|locality|Mandal|District:|Pin Code:/);
+    expect(result).toContain('&lt;Village&gt; Village');
+  });
   it('keeps self-closing text nodes well formed when replacing later text', () => {
     const paragraph = '<w:p><w:r><w:t xml:space="preserve" /></w:r><w:r><w:t>share of &lt;Share&gt;</w:t></w:r></w:p>';
     const result = replaceRunText(paragraph, /<Share>/, () => '100%');
@@ -29,6 +53,19 @@ describe('sale deed template merge', () => {
   });
 
   afterAll(() => { globalThis.fetch = originalFetch; });
+
+  it('omits blank plot and survey wording in previews and actual Word downloads', async () => {
+    for (const variant of ['IF OPEN PLOT', 'IF OPEN PLACE', 'IF HOUSE', 'IF FLAT']) {
+      const state = { ...initialState, form: { ...initialState.form, extentSqYards: '200', village: 'Sample Village', locality: 'Sample Locality', plotNo: '', surveyNo: '' } };
+      const values = mergeValues(state);
+      const preview = await scheduleText(variant, values);
+      expect(preview).not.toMatch(/plot\s+nos?\.|survey\s+no/i);
+      expect(preview).toContain('Sample Village');
+      const result = await fillSaleDeed(values, variant, rewritesFor(state));
+      const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+      expect(text.slice(text.indexOf('SCHEDULE OF PROPERTY'))).not.toMatch(/plot\s+nos?\.|survey\s+no/i);
+    }
+  });
 
   async function customizedTemplate(edit: (xml: string) => string): Promise<Uint8Array> {
     const original = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
@@ -213,7 +250,8 @@ describe('sale deed template merge', () => {
     const state = { ...initialState, category: 'Open Place' };
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text).toContain('All that the open place, admeasuring');
+    expect(text).toContain('All that the open place,');
+    expect(text).not.toContain('admeasuring a total area of square yards');
     expect(text).not.toContain('Vacant Land Tax/Assessment');
     expect(text).not.toContain('L.R.S.-2020 Application');
   });
@@ -913,7 +951,7 @@ describe('sale deed template merge', () => {
     expect(preview).not.toContain('Passbook No. T19130081677');
   });
 
-  it('renders three house floors in the schedule and original Annexure I-A without an added table', async () => {
+  it('renders house floors in the original Annexure I-A and prints compound wall length separately', async () => {
     const form = Object.fromEntries(ALL_FIELDS.map(field => [field.id, field.type === 'date' ? '2026-01-02' : '1']));
     form.roofMaterial = 'R.C.C. Building & Shed Structure';
     form.constructionDescription = 'Framed with pillars & columns only';
@@ -926,6 +964,7 @@ describe('sale deed template merge', () => {
       { ...newStructureDetail(), floorNo: 'Ground', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '5', builtUpAreaSqFt: '700' },
       { ...newStructureDetail(), floorNo: 'Floor No. 1', structureType: 'Other / Custom Structure', customStructureType: 'Stone masonry', stage: 'Semi-Finished', buildingAge: '3', builtUpAreaSqFt: '750' },
       { ...newStructureDetail(), floorNo: 'Floor No. 2', structureType: 'R.C.C. Building', stage: 'Finished', buildingAge: '2', builtUpAreaSqFt: '800' },
+      { ...newStructureDetail(), structureType: 'Compound Wall', runningFeet: '40.5' },
     ];
     const state = { ...initialState, deedType: 'Sale', category: 'Residential', draft: 'Outright Absolute Sale Deed', form, structureDetailsBySchedule: { primary: { totalFloors: '3', rows } } };
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
@@ -939,6 +978,8 @@ describe('sale deed template merge', () => {
     expect(text).toContain('First Floor\nStone masonry\nSemi-Finished\n3 Years\n750 Sq.Ft.');
     expect(text).toContain('Second Floor\nR.C.C. Building\nFinished\n2 Years\n800 Sq.Ft.');
     expect(text).toContain('TOTAL\n2250 Sq.Ft.');
+    expect(text).toContain('Compound Wall: 40.5 R.Fts.');
+    expect(text).not.toMatch(/40\.5\s+Sq\.Ft\./);
     expect(text).toContain("33' Road");
     expect(text).toContain('House of Gudla Babu');
     expect(text).toContain("26' Road");

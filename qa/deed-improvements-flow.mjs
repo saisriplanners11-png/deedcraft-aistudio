@@ -17,6 +17,13 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const state = rt.sampleState((candidateVariant === 'sale-deed-by-gpa-holder' ? 'gpa-' : candidateVariant === 'sale-through-existing-agpa' ? 'agpa-' : 'ordinary-') + property);
   Object.assign(state, { deedType, draft });
   Object.assign(state.form, { stampPaperMargin: margin, giftRelationship: 'daughter', poaRelationship: 'son' });
+  Object.assign(state.form, { dimensionNorth: '21 ft', dimensionSouth: '22 ft', dimensionEast: '41 ft', dimensionWest: '42 ft' });
+  if (property === 'house-finished') {
+    const details = state.structureDetailsBySchedule.primary;
+    const rows = margin === '100' ? [['Ground', '101.5']] : [['Ground', '101.5'], ['First Floor', '212'], ['Second Floor', '303']];
+    details.rows = rows.map(([floorNo, builtUpAreaSqFt], index) => ({ ...details.rows[0], id: 'floor-' + index, floorNo, builtUpAreaSqFt }));
+    details.totalFloors = String(rows.length);
+  }
   // One vendor and two vendees test independent agreement on both sides.
   state.additionalClaimants = [{ id: 'second-buyer', docNames: [], values: { ...state.form, claimantName: 'SECOND BUYER' } }];
   state.linkRecordsBySchedule = { primary: [{ id: 'nala', docNames: [], values: { linkOption: 'nala', nalaOrderNo: 'NALA-42', nalaExtent: '00-02' } }] };
@@ -31,11 +38,20 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   const text = await rt.docxToText(bytes), label = `${candidateVariant} ${property} ${margin}`;
   assert.deepEqual(result.unmapped, [], label);
+  assert.match(text, /Dimensions\s+North: 21 ft\s+South: 22 ft\s+East: 41 ft\s+West: 42 ft/, label);
+  if (property === 'house-finished') {
+    assert.match(text, /Ground Floor: 101\.5 Sq\. Ft\./, label);
+    if (margin === '100') {
+      assert.doesNotMatch(text, /First Floor/, label);
+      assert.match(text, /Total Plinth Area: 101\.5 Sq\. Ft\./, label);
+    } else {
+      assert.match(text, /First Floor: 212 Sq\. Ft\.; Second Floor: 303 Sq\. Ft\.; Total Plinth Area: 616\.5 Sq\. Ft\./, label);
+    }
+  }
   const tops = [...xml.matchAll(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)].map(section => section[0].match(/w:top="(\d+)"/)?.[1]);
   assert.equal(tops[0], ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' })[margin], label);
   assert(!tops.slice(1).includes('8352') && !tops.slice(1).includes('8640'), label + ': continuation margins');
-  if (instrumentId === 'gift' && candidateVariant !== 'municipal-gift') assert.doesNotMatch(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent:/i, label);
-  else assert.match(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent: 242 Sq\. Yards\./, label);
+  assert.doesNotMatch(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent:/i, label);
   assert.doesNotMatch(text, /\b(?:Vendor|Vendee|Executant|Principal|Attorney|First Party|Second Party)\/s\b|\bhas\/have\b|\bis\/are\b|\bI\/We\b/i, label);
   if (candidateVariant === 'municipal-gift') { assert.match(text, /SAMPLE PURCHASER/, label); assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner/, label); }
   if (instrumentId === 'sale') { assert.match(text, /Vendor has agreed/, label); assert.match(text, /Vendees have agreed/, label); }

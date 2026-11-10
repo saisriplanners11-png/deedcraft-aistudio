@@ -5,7 +5,7 @@ import { downloadWord2007DeedDocx } from './guided-reference-plan/src/utils/deed
 import { SAMPLE_TEMPLATES } from './guided-reference-plan/src/components/SavedPlansModal';
 
 vi.mock('file-saver', () => ({ saveAs: vi.fn() }));
-vi.mock('./exact-reference-plan/src/utils/capturePlan', () => ({
+vi.mock('./guided-reference-plan/src/utils/capturePlan', () => ({
   capturePlan: vi.fn(async () => ({
     width: 1, height: 1,
     toDataURL: () => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { capturePlan } from '../../exact-reference-plan/src/utils/capturePlan';
+import { capturePlan } from './utils/capturePlan';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PlanDocument, ValidationIssue } from './types';
 import { calculateSqMtrs, validatePlanDocument, generateLegalDescription, rotateBoundariesByQuarterTurns } from './utils/dimensionUtils';

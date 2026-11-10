@@ -2,7 +2,6 @@ import type { PlanDocument as GuidedPlanDocument } from './guided-reference-plan
 import type { Draft } from './source-draft';
 import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
-import type { PlanDocument as ExactPlanDocument } from './exact-reference-plan/src/types';
 import type { DeedTemplateSource } from './docx';
 import type { GenerationManifest } from './deed-compiler';
 import type { TemplatePin } from './template-library-types';
@@ -10,6 +9,7 @@ import type { TemplatePin } from './template-library-types';
 export type SavedDeed = {
   id: string;
   updatedAt: string;
+  name?: string;
   claimantNames: string[];
   deedType: string;
   draft: Draft;
@@ -17,8 +17,6 @@ export type SavedDeed = {
   planDrafts: Record<string, PlanDocument>;
   guidedPlanDrafts?: Record<string, GuidedPlanDocument>;
   guidedPlanSelectedSvgs?: Record<string, string>;
-  exactPlanDrafts?: Record<string, ExactPlanDocument>;
-  exactPlanSelectedSvgs?: Record<string, string>;
   referencePlanDrafts: Record<string, ReferencePlanDocument>;
   selectedPlanSvgs: Record<string, string>;
   extraPartyRecords: { executant: string[]; claimant: string[] };

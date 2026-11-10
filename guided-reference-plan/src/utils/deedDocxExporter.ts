@@ -1,6 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, HeadingLevel, ImageRun } from 'docx';
 import { saveAs } from 'file-saver';
-import { capturePlan } from '../../../exact-reference-plan/src/utils/capturePlan';
+import { capturePlan } from './capturePlan';
 import { PlanDocument } from '../types';
 import { generateLegalDescription, formatDimensionDisplay, sanitizeRoadBoundaryString } from './dimensionUtils';
 

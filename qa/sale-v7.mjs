@@ -27,7 +27,7 @@ for (const [id, label, category, stage] of rt.saleMatrixCases) {
   assert.doesNotMatch(text, /holding an undivided share of 100%/, id);
   assert.match(text, /-10-2026/, id);
   assert.equal(text.includes('SAMPLE ATTORNEY'), !id.startsWith('ordinary-'), id);
-  assert.equal(text.includes('AUTHORITY SRO'), !id.startsWith('ordinary-'), id);
+  assert.equal(text.includes(id.startsWith('gpa-') ? 'Authority SRO' : 'AUTHORITY SRO'), !id.startsWith('ordinary-'), id);
   assert.equal(text.includes('Stamp Duty of Rs.50,000 adjusted'), id.startsWith('agpa-'), id);
   if (id.startsWith('gpa-')) assert.doesNotMatch(text, /A\.G\.P\.A\. Document|Agreement of Sale Cum General Power of Attorney Holder/i, id);
   const annexure = /ANNEXURE/.test(text);
@@ -54,6 +54,7 @@ async function render(state, selectedSource = source, filename) {
   return rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
 }
 const multi = rt.sampleState('gpa-plot');
+multi.deedType = 'Sale';
 multi.additionalExecutants = [{ id: 'second-principal', docNames: [], values: { ...multi.form, executantName: 'SECOND PRINCIPAL' } }];
 multi.additionalClaimants = [{ id: 'second-buyer', docNames: [], values: { ...multi.form, claimantName: 'SECOND BUYER' } }];
 multi.saleAuthority.attorneys.push({ id: 'second-attorney', principalIds: ['second-principal'], values: { ...multi.saleAuthority.attorneys[0].values, Name: 'SECOND ATTORNEY' } });
@@ -61,10 +62,10 @@ multi.vendorSharesBySchedule = { primary: { primary: '50', 'second-principal': '
 multi.vendeeSharesBySchedule = { primary: { primary: '50', 'second-buyer': '50' } };
 assert.deepEqual(rt.saleAuthorityErrors(multi), []);
 let text = await render(multi, source, 'linked-multiple-attorneys');
-assert.match(text, /SECOND ATTORNEY \(representing SECOND PRINCIPAL\)/);
-assert.match(text, /SAMPLE ATTORNEY \(representing SAMPLE VENDOR\)/);
+assert.match(text, /SECOND ATTORNEY \(for SECOND PRINCIPAL\)/);
+assert.match(text, /SAMPLE ATTORNEY \(for SAMPLE VENDOR\)/);
 assert.match(text, /SECOND BUYER/);
-assert.equal((text.match(/the Principal owner\/s being alive/g) || []).length, 1);
+assert.equal((text.match(/the Principal owners? being alive/gi) || []).length, 1);
 const bad = structuredClone(multi);
 bad.saleAuthority.attorneys[0].principalIds = ['deleted-principal'];
 assert(rt.saleAuthorityErrors(bad).some(error => /removed principal/.test(error)));

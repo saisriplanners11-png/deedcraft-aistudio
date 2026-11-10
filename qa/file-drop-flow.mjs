@@ -109,7 +109,7 @@ try {
   await expect(page.getByText(/Revision uploaded\. Review its validation report/)).toBeVisible();
   assert.equal(revisions, 1, 'Shared template drop must upload exactly once');
 
-  for (const editor of ['reference-plan', 'exact-reference-plan']) {
+  for (const editor of ['reference-plan', 'guided-reference-plan']) {
     await page.goto(base + '/' + editor + '/index.html');
     const sample = await page.evaluate(async editor => {
       const module = await import('/' + editor + '/src/components/SavedPlansModal.tsx');

@@ -1,7 +1,8 @@
 import { releaseBindingErrors, releasedExtent, releasedSquareMetres, releasedTotal, releaseShareLabel, type ReleasePartyShare } from './release';
 import { ENCLOSURE_RECITALS, type EnclosureRecords, type EnclosureRecitalKind } from './enclosure-records';
 import { partyWording } from './party-wording';
-import { municipalCouncilRecital } from './municipal-gift';
+import { municipalCouncilRecital, uniqueMunicipalLinks } from './municipal-gift';
+import { LINK_ISSUING_AUTHORITIES, linkEnclosureValues } from './link-enclosure';
 import { partyPronouns } from './party-pronouns';
 import { reconveyanceBindingErrors, reconveyanceAmounts, mortgageInterestTotal, mortgagePaise } from './reconveyance';
 import { deedDate as deedDateForReconveyance } from './deed-format';
@@ -27,7 +28,8 @@ import type { InstrumentId } from './instruments';
 import { loadSaleDeedTemplate, loadTemplate } from './template';
 import { releaseGate } from './legal-registry';
 import { titleAmendmentValues, type TitleAmendmentKind } from './title-amendments';
-import { ALL_FIELDS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
+import { isCompoundWall, structureMeasurement } from './house-valuation';
+import { ALL_FIELDS, PROPERTY_DIRECTIONS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
 import { flatVariant } from './flat-options';
 import { loadLibraryBytes } from './template-library-client';
 import type { TemplatePin } from './template-library-types';
@@ -909,12 +911,19 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   const pronounValues = Object.fromEntries(['Executant Gender', 'Claimant Gender', 'Attorney Gender', 'Ownership Vendor Count', 'Ownership Vendee Count', 'Authority Attorney Count'].map(key => [key, values.get(norm(key)) || '']));
   partyPronouns(plainText(p), pronounValues, (find, replacement) => { p = replaceRunText(p, find, () => replacement); });
   }
+  const linkNumber = angleTags(p).find(tag => /^(?:Link Doct\.No\.|(?:Rectification|Supplemental) Deed No\.)$/i.test(tag.trim()) && values.get(norm(tag)));
+  if (linkNumber && values.get(norm('Link Authority')) === LINK_ISSUING_AUTHORITIES[1]) {
+    p = replaceRunText(p, /office of the Sub[- ]Registrar,/i, () => 'office of the Tahsildar & Jt. Sub-Registrar,');
+  }
   p = removeEmptyFields(p, values, missing);
   p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
     return values.get(norm(name)) || '';
   });
-  return replaceRunText(p, /\uE000/g, () => '    ');
+  const filled = replaceRunText(p, /\uE000/g, () => '    ');
+  return linkNumber ? boldMarkedRunText(replaceRunText(filled,
+    /\b(?:Tahsildar & Jt\. Sub[- ]Registrar|Sub[- ]Registrar)\b/gi,
+    match => '\uE210' + match[0] + '\uE211')) : filled;
 }
 
 /** Remove direct bold styling while preserving the template's fonts and size. */
@@ -1269,7 +1278,11 @@ async function selectSaleOpening(body: string, values: Record<string, string>): 
     paragraph = replaceRunText(paragraph, /<Sub Registrar>/gi, () => '<Authority SRO>');
     paragraph = replaceRunText(paragraph, /<Sub Registrar Code>/gi, () => '<Authority SRO Code>');
     // Explicit links remain visible when several principals appoint different attorneys.
-    return /<Represented Principals>/i.test(plainText(paragraph)) ? paragraph : replaceRunText(paragraph, /<ATTORNEY NAME>/i, () => '<ATTORNEY NAME> (representing <Represented Principals>)');
+    if (!/<Represented Principals>/i.test(plainText(paragraph))) {
+      paragraph = replaceRunText(paragraph, /<ATTORNEY NAME>/i, () => '<ATTORNEY NAME> (representing <Represented Principals>)');
+    }
+    return mode === 'gpa' ? replaceRunText(paragraph, /<[^<>]+>|\brepresenting\b/gi,
+      match => match[0].startsWith('<') ? match[0] : 'for') : paragraph;
   });
   let resultBody = chunks.slice(0, starts[0]).join('') + opening + chunks.slice(flow).join('');
   // The ordinary opening owns the source's footer relationship. The other
@@ -1327,23 +1340,26 @@ export async function scheduleText(
   vendorShares?: VendeeShare[],
   templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE,
 ): Promise<string> {
-  const bin = values['Release Variant'] && templateSource.kind === 'built-in' ? await loadTemplate('release-deed-v1') : await templateBytes(templateSource);
+  const builtInVersion = values['Release Variant'] ? 'release-deed-v1' : values['Reconveyance Draft'] ? 'reconveyance-deed-v1' : undefined;
+  const bin = builtInVersion && templateSource.kind === 'built-in' ? await loadTemplate(builtInVersion) : await templateBytes(templateSource);
   if (values['Release Variant']) {
     const entries = await readZip(bin);
     const xml = normalizeReleaseSource(new TextDecoder().decode(entries.find(e=>e.name==='word/document.xml')!.data));
     const block = releaseParts(xml).blocks.get(variant);
     if (!block) throw new Error('Unsupported Release property variant.');
-    return (releasePropertyBlock(block, { variant, values, structureDetails }, values).match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).map(plainText).filter(Boolean).join('\n');
+    return (releasePropertyBlock(block, { variant, values, structureDetails }, values, true).match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).map(plainText).filter(Boolean).join('\n');
   }
   if ((templateSource.kind === 'library' && templateSource.versionId.startsWith('reconveyance-')) || values['Reconveyance Draft']) {
     const entries = await readZip(bin);
     const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
     const parts = reconveyanceParts(xml);
-    const names: Record<string,string> = { 'IF HOUSE': 'IF FINISHED HOUSE', 'IF HOUSE SEMI FINISHED': 'IF SEMI FINISHED HOUSE', 'IF DIMOLISHED HOUSE': 'IF DEMOLISHED HOUSE', 'IF FLAT SEMI FINISHED': 'IF SEMI FINISHED FLAT', 'IF FLAT FINISHED': 'IF FINISHED FLAT' };
-    const block = parts.blocks.get(names[variant] || variant);
+    const block = parts.blocks.get(RECONVEYANCE_SCHEDULE_VARIANTS[variant] || variant);
     if (!block) throw new Error('Unsupported Reconveyance property variant.');
-    const missing = new Set<string>();
-    return prepareLandmarkBlock(block, values, variant).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, new Map(Object.entries(values).map(([key,value]) => [norm(key),value])), missing, [])).split(/<\/w:p>/).map(plainText).filter(Boolean).join('\n');
+    const schedule = { variant, values: { ...values }, structureDetails };
+    const prepared = prepareReconveyanceSchedule(block, schedule);
+    const bindings = new Map(Object.entries(schedule.values).map(([key, value]) => [norm(key), value]));
+    return (prepared.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
+      .map(paragraph => plainText(fillParagraph(reconveyanceProperCase(paragraph), bindings, new Set(), []))).filter(Boolean).join('\n');
   }
   const entries = await readZip(bin);
   const doc = entries.find(e => e.name === 'word/document.xml');
@@ -1396,9 +1412,12 @@ export async function scheduleText(
   const selected = markConsiderationRows(children.slice(start, stop).map(c => body.slice(c.start, c.end)).join(''));
   const withEvidence = prepareLandmarkBlock(addOwnershipShareParagraphs(['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant)
     ? prepareHouseBlock(selected, values, structureDetails)
-    : prepareNonHouseIdentifiers(selected, variant, values), vendorShares, vendeeShares), values, variant);
+    : prepareNonHouseIdentifiers(selected, variant, values), vendorShares, vendeeShares), values, variant, values['Sale Document Mode'] !== 'gpa');
   return (withEvidence.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [])
-    .map(paragraph => plainText(fillParagraph(paragraph, values_, missing, [])).trim())
+    .map(paragraph => {
+      const filled = fillParagraph(values['Sale Document Mode'] === 'gpa' ? omitSaleGpaNalaText(paragraph) : paragraph, values_, missing, []);
+      return plainText(filled).trim();
+    })
     .filter(Boolean)
     .join('\n\n').replace(/\uE100[^\uE101]*\uE101/g, '');
 }
@@ -1475,8 +1494,45 @@ function addPartySignatureLines(body: string, values: Map<string, string>, rewri
 }
 
 /** Fill the source house layout without adding a second table after Annexure I-A. */
+function addCompoundWallMeasurements(block: string, details?: StructureDetails): string {
+  const measurements = (details?.rows || []).filter(isCompoundWall).map(structureMeasurement)
+    .map(value => value.trim().replace(/,/g, '')).filter(Boolean);
+  if (!measurements.length) return block;
+  let added = false;
+  return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph);
+    if (added || !/^\s*All that the\b/i.test(text)) return paragraph;
+    added = true;
+    const wall = measurements.map(value => 'Compound Wall: ' + value + ' R.Fts.').join('; ');
+    const boundaryIntro = /\band bounded\b/i;
+    return boundaryIntro.test(text)
+      ? replaceRunText(paragraph, boundaryIntro, match => `(${wall}) ${match[0]}`)
+      : paragraph + paragraphLike(paragraph, wall);
+  });
+}
+
+function housePlinthDescription(block: string, details?: StructureDetails): string {
+  const floors = (details?.rows || []).flatMap(row => {
+    if (isCompoundWall(row) || !row.floorNo.trim()) return [];
+    const area = row.builtUpAreaSqFt.replace(/,/g, '').trim();
+    if (!area || !Number.isFinite(Number(area)) || Number(area) < 0) return [];
+    const floor = row.floorNo.trim();
+    const label = /^(?:ground|first|second|third|fourth|fifth)$/i.test(floor) ? floor[0].toUpperCase() + floor.slice(1).toLowerCase() + ' Floor' : floor;
+    return [{ label, area }];
+  });
+  const total = Number(floors.reduce((sum, floor) => sum + Number(floor.area), 0).toFixed(10));
+  const floorDetails = floors.map(floor => floor.label + ': ' + floor.area + ' Sq. Ft.').join('; ');
+  const sourceFloors = /,?\s*having a plinth area(?: of)?[\s\S]*?consisting of\s*(?:<Floors> Floor\/s|Ground Floor\s*[:,]\s*<[^<>]+>\s*square feets?\s*First Floor\s*[:,]\s*<[^<>]+>\s*square feets?)/i;
+  return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (!/^\s*All that\b/i.test(plainText(paragraph))) return paragraph;
+    const summary = floors.length ? floorDetails + '; Total Plinth Area: ' + total + ' Sq. Ft.' : '';
+    if (sourceFloors.test(plainText(paragraph))) return replaceRunText(paragraph, sourceFloors, () => summary ? ', ' + summary : '');
+    return summary ? paragraph + paragraphLike(paragraph, summary, 'left') : paragraph;
+  });
+}
+
 function prepareHouseBlock(block: string, values: Record<string, string>, details?: StructureDetails): string {
-  const rows = details?.rows || [];
+  const rows = (details?.rows || []).filter(row => !isCompoundWall(row));
   const floorRows = rows.filter(row => row.floorNo.trim());
   const floorName = (name: string) => {
     const number = name.match(/^Floor(?: No\.)?\s+(\d+)$/i);
@@ -1488,14 +1544,9 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     row.structureType === 'Other / Custom Structure' ? row.customStructureType || values['Roof Material'] || ''
       : STRUCTURE_TYPE_OPTIONS.includes(row.structureType) ? values['Roof Material'] || ''
         : row.structureType || values['Roof Material'] || '';
-  const filled = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
+  const filled = housePlinthDescription(block, details).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
     let paragraph = original;
-    if (/^\s*All that the\b/i.test(text) && /having a plinth area[\s\S]*consisting of Ground Floor/i.test(text)) {
-      const colon = /Ground Floor:/i.test(text);
-      const floors = floorRows.map(floor => `${floorName(floor.floorNo)}${colon ? ':' : ','} ${floor.builtUpAreaSqFt ? floor.builtUpAreaSqFt.replace(/,/g, '') + ' square feet' : 'area not supplied'}`).join('; ');
-      paragraph = replaceRunText(paragraph, /having a plinth area[\s\S]*?(?=\s+in plot no\.)/i, () => floors ? `consisting of ${floors}${colon ? ',' : ''}` : '');
-    }
     // Keep the house schedule opening and floor-table heading with their content.
     if (/SCHEDULE OF PROPERTY|Description of the property hereby sold|^\s*All that the\b|BUILDING\s*\/\s*FLOOR DETAILS/i.test(text) && !/<w:keepNext\b/.test(paragraph)) {
       paragraph = /<w:pPr(?:\s[^>]*)?>/.test(paragraph)
@@ -1505,15 +1556,6 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
     if (text.includes('<Nature of House>') && /roof house/i.test(text)) {
       paragraph = replaceRunText(paragraph, /<Nature of House>\s+roof house/gi,
         () => values['Nature of House'] ? '<Nature of House>' : 'house');
-    }
-    if (/^\s*All that the\b/i.test(text) && /<Plinth Area>/i.test(text)) {
-      const floorSummary = rows.filter(row => row.floorNo).map(row => {
-        const parts = [structureName(row), row.builtUpAreaSqFt ? `${row.builtUpAreaSqFt.replace(/,/g, '')} square feet` : ''].filter(Boolean);
-        return `${floorName(row.floorNo)}${parts.length ? ` (${parts.join(', ')})` : ''}`;
-      }).join(', ');
-      paragraph = replaceRunText(paragraph,
-        /,?\s*having a plinth area of <\s*Plinth Area\s*> square feets consisting of (?:<Floors> Floor\/s|Ground Floor: <Ground Floor Area> square feets First Floor: <First Floor Area> square feets)/i,
-        () => floorSummary ? `, consisting of ${floorSummary}` : '');
     }
     if (/^\s*:\s*<Nature Of House>\s*$/i.test(text)) {
       return replaceRunText(paragraph, /<Nature Of House>/i, () => '<Roof Material>');
@@ -1585,7 +1627,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
   });
   // Older compatible templates use an Annexure item 4 with separate number,
   // description and value cells. Preserve their floor-row behavior too.
-  return withFloorTable.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+  return addCompoundWallMeasurements(withFloorTable.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
     if (!/Total built-up area of the property/i.test(plainText(row))) return row;
     if (!floorRows.length) return replaceRunText(row, /<Plinth Area>\s*sq\.fts/i, () => '');
     const cellPattern = /<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g;
@@ -1612,7 +1654,7 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
       });
       return keepRowTogether(floorRow);
     }).join('');
-  });
+  }), details);
 }
 
 /** Recite identifiers the non-house template variants leave out of their description. */
@@ -1642,14 +1684,89 @@ function prepareNonHouseIdentifiers(block: string, variant: string, values: Reco
 }
 
 /** Add a supplied landmark wherever a source schedule/valuation omits its slot. */
-function prepareLandmarkBlock(block: string, values: Record<string, string>, variant: string): string {
+function addPropertyDimensions(block: string, values: Record<string, string>): string {
+  const dimensions = PROPERTY_DIRECTIONS.flatMap(side => {
+    const value = values[side + ' Dimension']?.trim();
+    return value ? [side + ': ' + value] : [];
+  });
+  const paragraphs = [...block.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
+  const lastBoundary = topLevelChildren(block).filter(({ start, end }) =>
+    /<\s*West Boundary(?: of (?:Apartment|Flat))?\s*>/i.test(plainText(block.slice(start, end)))).at(-1);
+  if (dimensions.length && lastBoundary) {
+    const sample = paragraphs.find(match => /^\s*All that\b/i.test(plainText(match[0])))?.[0] || '<w:p/>';
+    const lines = [keepWithNext(paragraphLike(sample, 'Dimensions', 'left')), ...dimensions.map(line => paragraphLike(sample, line, 'left'))];
+    block = block.slice(0, lastBoundary.end) + lines.join('') + block.slice(lastBoundary.end);
+  }
+  return block;
+}
+
+/** Remove only empty property bindings, before substitution loses their identity. */
+export function omitBlankScheduleFields(block: string, values: Record<string, string>): string {
+  const propertyTags = new Set(ALL_FIELDS.filter(field => field.ph && !/^(executant|claimant|principal|attorney)/i.test(field.id)).flatMap(field => typeof field.ph === 'string' ? [field.ph] : field.ph || []).map(norm));
+  for (const tag of ['Nature of House', 'Roof Material', 'Construction Description', 'Type of structure', 'Plinth Area', 'Total Land Extent', 'Municipal House Nos.', 'ULB', 'VILLAGE', 'V.L.T.No.', 'V.L.T. No.', 'Age of House', 'Floors', 'Structure Type', 'Building Age', 'Total Built-up Area']) propertyTags.add(norm(tag));
+  const bindings = new Map(Object.entries(values).map(([key, value]) => [norm(key), value]));
+  const empty = (tag: string) => propertyTags.has(norm(tag)) && bindings.has(norm(tag)) && !bindings.get(norm(tag))?.trim();
+  block = block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
+    const tags = angleTags(row);
+    return tags.length && tags.every(empty) ? '' : row;
+  });
+  block = block.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => /<w:tr(?:\s|>)/.test(table) ? table : '');
+  return block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const tags = angleTags(paragraph).filter(empty);
+    if (!tags.length) return paragraph;
+    if (angleTags(paragraph).every(empty) && !/\bAll that\b|\bsituated\b|\bhouse\b|\bFlat\b/i.test(plainText(paragraph))) return '<w:p/>';
+    for (const tag of tags) {
+      const slot = `<\\s*${escapeRegExp(tag)}\\s*>`;
+      const key = norm(tag).replace(/[^a-z0-9]/g, '');
+      if (key === 'plotno') paragraph = replaceRunText(paragraph, new RegExp(`open\\s+plot\\s+no\\.\\s*${slot}`, 'gi'), () => 'open plot');
+      if (['nearhno', 'landmarkhno'].includes(key)) paragraph = replaceRunText(paragraph, new RegExp(`situated\\s+(?:near\\s*/\\s*adjacent|near|adjacent)\\s+H\\.?\\s*No\\.?\\s*${slot}\\s*(?:of|at)?`, 'gi'), () => 'situated at ');
+      const phrases: Record<string, string> = {
+        extentinsqyards: `(?:,?\\s*admeasuring\\s+(?:a\\s+)?total\\s+area\\s+of\\s*)?${slot}\\s*(?:square\\s+yards|sq\\.?\\s*yds\\.?|sq\\.?\\s*yards)`,
+        extentinsqmeters: `(?:\\s*equivalent\\s+to\\s*)?${slot}\\s*(?:square\\s+meters|sq\\.?\\s*meters)`,
+        plintharea: `(?:having\\s+a\\s+plinth\\s+area\\s+of\\s*|(?:Ground|First)\\s+Floor\\s*:\\s*)?${slot}\\s*(?:square\\s+fee?ts?|sq\\.?\\s*fts?\\.?)`,
+        builtuparea: `(?:having\\s+a\\s+built\\s*up\\s+area\\s+of\\s*)?${slot}\\s*(?:square\\s+fee?ts?|sq\\.?\\s*fts?\\.?)(?:\\s*,?\\s*\\(including common area\\))?`,
+        carparkingarea: `(?:and\\s+)?Car\\s+Parking\\s+area\\s*${slot}\\s*(?:sq\\.?\\s*fts?\\.?|square\\s+feet)`,
+        uds: `(?:together\\s+with\\s+)?undivided\\s+share\\s+of\\s+land\\s*${slot}\\s*(?:Sq\\.?\\s*yds\\.?|square\\s+yards)`,
+        totallandextent: `out\\s+of\\s*${slot}\\s*Sq\\.?\\s*yds\\.?`,
+        locality: `(?:of\\s+)?[‘“"']?${slot}[’”"']?\\s*locality(?:\\s+of)?`,
+        village: `(?:Within\\s+the\\s+jurisdictional\\s+limits\\s+of\\s+the\\s+)?(?:Competent\\s+Local\\s+Authority|Municipal(?:ity|\\s+Corporation)|Gram\\s+Panchayat)\\s*,\\s*${slot}`,
+      };
+      if (phrases[key]) paragraph = replaceRunText(paragraph, new RegExp(phrases[key], 'gi'), () => '');
+      const labels: Record<string, string> = {
+        'plotno': '(?:in\\s+)?plot\\s+nos?\\.?',
+        'plotnos': '(?:in\\s+)?plot\\s+nos?\\.?',
+        'surveyno': '(?:in\\s+)?survey\\s+no(?:/s|s)?\\.?',
+        'nearhno': '(?:(?:near\\s*/\\s*adjacent|near|adjacent|bearing)\\s+)?H\\.?(?:ouse)?\\s*No\\.?',
+        'bearinghno': '(?:bearing\\s+)?H\\.?\\s*No\\.?',
+        'landmarkhno': '(?:near|adjacent)\\s+H\\.?\\s*No\\.?',
+        'flatno': 'Flat\\s+No\\.?',
+        'floorno': 'in',
+        'pincode': 'Pin\\s*Code\\s*:',
+        'district': 'District\\s*:',
+        'subregistrar': 'Registration\\s+Sub-District\\s*:',
+        'districtregistrar': '(?:and\\s+within\\s+the\\s+)?Registration\\s+District\\s*:',
+        'apartmentcomplexname': '(?:in\\s+the\\s+complex\\s+known\\s+as|of)',
+      };
+      const label = labels[key] || escapeRegExp(tag);
+      paragraph = replaceRunText(paragraph, new RegExp(`(?:${label})\\s*[‘“"']?${slot}[’”"']?(?:\\s+${key === 'floorno' ? 'Floor' : key === 'nearhno' ? '\\(PART\\)' : '(?!)'})?`, 'gi'), () => '');
+      paragraph = replaceRunText(paragraph, new RegExp(`[‘“"']?${slot}[’”"']?(?:\\s+(?:Village|Mandal|locality|roof))?`, 'gi'), () => '');
+    }
+    paragraph = replaceRunText(paragraph, /,\s*&\s*(?=(?:in\s+)?Survey)/gi, () => ', in ');
+    for (let pass = 0; pass < 3; pass++) paragraph = replaceRunText(paragraph, /,\s*(?:&\s*)?,|\s+&\s*(?=,)|\b(?:in|of|situated(?:\s+at)?)\s*(?=,)|,\s*(?=\.)|\s{2,}/gi, match => /\s{2,}/.test(match[0]) && !match[0].includes(',') ? ' ' : match[0].includes(',') ? ',' : '');
+    return paragraph;
+  });
+}
+
+function prepareLandmarkBlock(block: string, values: Record<string, string>, variant: string, includeNalaExtent = true): string {
+  block = addPropertyDimensions(block, values);
+  block = omitBlankScheduleFields(block, values);
   const valuationLandmark = ['IF OPEN PLACE', 'IF OPEN PLOT'].includes(variant) && values['Landmark Valuation Enabled'] !== 'false';
   if (!valuationLandmark) block = block.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
     if (!/Total\s+Market\s+Value|estimate\s+M\.V\.|PARTICULARS[\s\S]*DETAILS/i.test(plainText(table))) return table;
     return table.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row =>
       /^\s*(?:\d+[.)]?\s*)?(?:near(?:\s*\/\s*adjacent)?|adjacent)\s+(?:house\s*no\.?|h\.?\s*no\.?)/i.test(plainText(row)) ? '' : row);
   });
-  if (values['NALA Converted Extent']) block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+  if (includeNalaExtent && values['NALA Converted Extent']) block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     if (!/^\s*All that\b/i.test(plainText(paragraph))) return paragraph;
     return replaceRunText(paragraph, /[\s\S]+/, match => match[0] + ' NALA converted extent: ' + values['NALA Converted Extent'] + ' Sq. Yards.');
   });
@@ -1969,7 +2086,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     let block = blocks.get(variant);
     if (!block) throw new Error(`No Agreement of Sale Cum GPA schedule is available for ${variant}.`);
     block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant) ? prepareHouseBlock(block, schedule.values, schedule.structureDetails) : prepareNonHouseIdentifiers(block, variant, schedule.values);
-    block = prepareLandmarkBlock(block, schedule.values, variant);
+    block = prepareLandmarkBlock(block, schedule.values, variant, false);
     block = addOwnershipShareParagraphs(block, schedule.vendorShares, schedule.vendeeShares);
     if (schedules.length > 1) block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${index + 1}`);
     const record = { ...schedule.values };
@@ -2051,6 +2168,25 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
   document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
+}
+
+const GPA_SCHEDULE_EMPHASIS = /^(?:Extent in Sq\.yards|Extent in Sq\.Meters|Extent|Area|Total Land Extent|UDS|Built-up Area|Plinth Area|Ground Floor Area|First Floor Area|Car Parking Area|Village|Survey No\.)$/i;
+
+function omitSaleGpaNalaText(paragraph: string): string {
+  return replaceRunText(paragraph, /\s*\(?NALA Converted(?: extent\s*:\s*(?:<NALA Converted Extent>|[\d,.]+)\s*(?:Sq\.?\s*Yards?|square yards?)\.?)?\)?|<NALA Converted Extent>/gi, () => '');
+}
+
+// The merge places each marked value in one text run. Split that run so
+// adjacent source wording keeps its original formatting.
+function boldMarkedRunText(paragraph: string): string {
+  return paragraph.replace(/(<w:r(?:\s[^>]*)?>)(<w:rPr(?:\s[^>]*)?>(?:(?!<\/w:rPr>)[\s\S])*<\/w:rPr>)?(<w:t(?:\s[^>]*)?>)([^<]*[\uE210\uE211][^<]*)(<\/w:t><\/w:r>)/g,
+    (_, run, properties = '', _textTag, text, end) => {
+      const bold = properties
+        ? properties.replace(/<w:b(?:\s[^>]*)?\/>/g, '').replace(/<w:rPr(?:\s[^>]*)?>/, (tag: string) => tag + '<w:b/>')
+        : '<w:rPr><w:b/></w:rPr>';
+      return text.split(/\uE210([^\uE211]*)\uE211/g).map((part: string, index: number) =>
+        part ? run + (index % 2 ? bold : properties) + '<w:t xml:space="preserve">' + part + end : '').join('');
+    }).replace(/[\uE210\uE211]/g, '');
 }
 
 export async function fillSaleDeed(
@@ -2175,16 +2311,22 @@ export async function fillSaleDeed(
       block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(schedule.variant)
         ? prepareHouseBlock(block, schedule.values, schedule.structureDetails)
         : prepareNonHouseIdentifiers(block, schedule.variant, schedule.values);
-      block = prepareLandmarkBlock(block, schedule.values, schedule.variant);
       block = addOwnershipShareParagraphs(block, schedule.vendorShares, schedule.vendeeShares);
-      block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p =>
-          fillParagraph(
+      block = prepareLandmarkBlock(block, schedule.values, schedule.variant, false);
+      const gpa = values['Sale Document Mode'] === 'gpa';
+      if (gpa) for (const [key, value] of scheduleValues) {
+        if (value && GPA_SCHEDULE_EMPHASIS.test(key)) scheduleValues.set(key, '\uE210' + value + '\uE211');
+      }
+      block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+          const p = gpa ? omitSaleGpaNalaText(paragraph) : paragraph;
+          const filled = fillParagraph(
             landmarkRelation
               ? replaceRunText(p, /near\/adjacent(?=\s+H\.No\.)/gi, () => landmarkRelation)
               : p,
             scheduleValues, missing, [],
-          )
-        );
+          );
+          return gpa ? boldMarkedRunText(filled) : filled;
+        });
       // Supporting evidence fills existing fields; the template wording is unchanged.
       if (selected.length > 1) {
         block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${scheduleIndex + 1}`);
@@ -2508,18 +2650,31 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   const claimantParagraph = replaceRunText(donorParagraph, /Executant/gi, match => match[0] === match[0].toUpperCase() ? 'CLAIMANT' : 'Claimant')
     .replace('</w:p>', '<w:r><w:t xml:space="preserve"> (Hereinafter called the &quot;DONEE/S&quot;) of the OTHER PART.</w:t></w:r></w:p>');
   opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /Represented by its Commissioner/i.test(plainText(paragraph)) ? claimantParagraph : paragraph);
-  // Repeat the source title recital for every linked deed, keeping its donor definition once.
+  const fillLinkRecital = (paragraph: string, record: Record<string, string>) => {
+    return fill(paragraph, record);
+  };
+  // Repeat the source title recital for each distinct registration.
+
   opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     if (!/Whereas the donor\/s.*title holder/i.test(plainText(paragraph))) return paragraph;
-    const records = schedules.flatMap(schedule => schedule.titleLinkRecords?.length ? schedule.titleLinkRecords : [schedule.titleValues || schedule.values]);
-    return records.map((record, index) => fill(index < records.length - 1 ? replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '') : paragraph, record)).join('');
+    const records = uniqueMunicipalLinks(schedules.flatMap(schedule => schedule.titleLinkRecords?.length
+      ? schedule.titleLinkRecords : [schedule.titleValues || schedule.values]), {
+      number: 'Link Doct.No.', date: 'Link Doct.Date', office: 'Sub Registrar', code: 'Sub Registrar Code',
+    });
+    return records.map((record, index) => fillLinkRecital(
+      index < records.length - 1 ? replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '') : paragraph, record,
+    )).join('');
   });
   opening = opening.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     const kind = plainText(paragraph).trim().match(/^(Rectification|Supplemental) Deed:/i)?.[1].toLowerCase() as 'rectification' | 'supplemental' | undefined;
     if (!kind) return paragraph;
     const suffix = plainText(paragraph).match(/\s*\(Hereinafter called[\s\S]*$/i)?.[0] || '';
     const prototype = suffix ? replaceRunText(paragraph, /\s*\(Hereinafter called[\s\S]*$/i, () => '') : paragraph;
-    return schedules.flatMap(schedule => schedule.amendmentRecords?.[kind] || []).map(record => fill(prototype, record)).join('')
+    const label = kind === 'rectification' ? 'Rectification Deed' : 'Supplemental Deed';
+    const records = uniqueMunicipalLinks(schedules.flatMap(schedule => schedule.amendmentRecords?.[kind] || []), {
+      number: label + ' No.', date: label + ' Date', office: label + ' SRO', code: label + ' SRO Code',
+    });
+    return records.map(record => fillLinkRecital(prototype, record)).join('')
       + (suffix ? paragraphLike(paragraph, suffix.trim()) : '');
   });
   opening = fill(opening, values, partyRewrites);
@@ -2536,7 +2691,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   }
   const selected = schedules.map((schedule, index) => {
     let block = prepareNonHouseIdentifiers(blocks.get(schedule.variant)!, schedule.variant, schedule.values);
-    block = prepareLandmarkBlock(block, schedule.values, schedule.variant);
+    block = prepareLandmarkBlock(block, schedule.values, schedule.variant, false);
     if (schedules.length > 1) block = block.replace('SCHEDULE OF PROPERTY', `SCHEDULE OF PROPERTY - ${index + 1}`);
     block = addOwnershipShareParagraphs(block, schedule.vendorShares, undefined).replace(/The vendors convey/gi, 'The Donors gift');
     return fill(block, schedule.values);
@@ -2624,7 +2779,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     block = ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant) ? prepareHouseBlock(block, schedule.values, schedule.structureDetails) : prepareNonHouseIdentifiers(block, variant, schedule.values);
     if (variant === 'IF HOUSE SEMI FINISHED') block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => /^\s*All that the\b/i.test(plainText(paragraph)) && !/semi.finished/i.test(plainText(paragraph)) ? replaceRunText(paragraph, /All that the\s+/i, () => 'All that the semi-finished ') : paragraph);
     const { 'NALA Converted Extent': omittedNalaExtent, ...giftScheduleValues } = schedule.values;
-    block = prepareLandmarkBlock(block, giftScheduleValues, variant);
+    block = prepareLandmarkBlock(block, giftScheduleValues, variant, false);
     block = block.replace(/property hereby sold/gi, 'property hereby gifted');
     // Gift is without monetary consideration, including every annexure variant.
     block = block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row => {
@@ -2688,6 +2843,11 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
 
 // Reconveyance uses its own source sections and never enters Sale/Gift rendering.
 const RECONVEYANCE_BLOCKS = ['IF OPEN PLACE','IF OPEN PLOT','IF DEMOLISHED HOUSE','IF PART OPEN PLACE','IF FINISHED HOUSE','IF SEMI FINISHED HOUSE','IF SEMI FINISHED FLAT','IF FINISHED FLAT'];
+const RECONVEYANCE_SCHEDULE_VARIANTS: Record<string, string> = {
+  'IF OPEN PLACE': 'IF OPEN PLACE', 'IF OPEN PLOT': 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE': 'IF DEMOLISHED HOUSE',
+  'IF PART OPEN PLACE': 'IF PART OPEN PLACE', 'IF HOUSE': 'IF FINISHED HOUSE', 'IF HOUSE SEMI FINISHED': 'IF SEMI FINISHED HOUSE',
+  'IF FLAT SEMI FINISHED': 'IF SEMI FINISHED FLAT', 'IF FLAT FINISHED': 'IF FINISHED FLAT',
+};
 function reconveyanceParts(xml: string) {
   const start = xml.indexOf('<w:body>') + 8, end = xml.lastIndexOf('</w:body>');
   const body = xml.slice(start, end);
@@ -2735,6 +2895,38 @@ export async function validateReconveyanceTemplate(bytes: Uint8Array): Promise<T
   } catch (error: any) { errors.push(error.message); }
   return { valid: !errors.length, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
 }
+function reconveyanceNames(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).map(([key, value]) =>
+    [key, /^(?:(?:Executant|Claimant|Vendor|Vendee|Donor|Donee|Releasor|Releasee)(?: Relation)? Name|Bank Name|Registration Name)$/i.test(key)
+      ? value.toLocaleUpperCase('en-IN') : value]));
+}
+
+function reconveyanceProperCase(paragraph: string): string {
+  // Preserve template bindings and identity abbreviations while changing source wording.
+  return replaceRunText(paragraph, /<[^<>]+>|\bwitnesses\/s\b|\b[A-Za-z]{2,}\b/gi, match => {
+    const word = match[0];
+    if (word.startsWith('<') || ['PAN', 'DOB', 'PIN', 'UID', 'SRO'].includes(word)) return word;
+    if (/^witnesses\/s$/i.test(word)) return 'Witnesses';
+    if (/^vendors?$/i.test(word)) return /s$/i.test(word) ? 'Releasors' : 'Releasor';
+    if (/^vendees?$/i.test(word)) return /s$/i.test(word) ? 'Releasees' : 'Releasee';
+    if (/^releasers?$/i.test(word)) return /s$/i.test(word) ? 'Releasors' : 'Releasor';
+    return /^[A-Z]{2,}$/.test(word) ? word[0] + word.slice(1).toLowerCase() : word;
+  });
+}
+
+function prepareReconveyanceSchedule(block: string, schedule: ScheduleMerge): string {
+  const { variant, values, structureDetails } = schedule;
+  if (variant.startsWith('IF FLAT') && values.UDS) values['Extent in Sq.Meters'] = (Number(values.UDS.replace(/,/g, '')) * 0.836127).toFixed(2);
+  block = prepareLandmarkBlock(block, values, variant, false);
+  if (['IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(variant) && values['Survey No.'] &&
+      !angleTags(block).some(tag => norm(tag) === norm('Survey No.'))) {
+    block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+      replaceRunText(paragraph, /square meters,/i, () => 'square meters, in Survey No/s.<Survey No.>,'));
+  }
+  if (['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant)) block = housePlinthDescription(block, structureDetails);
+  return ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant) ? addCompoundWallMeasurements(block, structureDetails) : block;
+}
+
 export async function fillReconveyanceDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
   const bank = values['Mortgage Party Mode'] === 'bank-to-person';
   if (!bank && values['Mortgage Party Mode'] !== 'person-to-person') throw new Error('Select the mortgage party mode.');
@@ -2757,7 +2949,7 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   const missing = new Set<string>();
   const total = formatDeedAmount(amounts.total);
   const interestText = formatDeedAmount(amounts.interest);
-  const merged = { ...values, 'Market of Value Rs./-': total, 'Total Amount': total, 'Principal Amount': formatDeedAmount(amounts.principal), 'Intrest Amount': interestText, 'Interest Amount': interestText, 'DEPOSITE OF TITLE DEED/MORTGAGE DEED': values['Reconveyance Draft'] === 'title-deed' ? 'DEPOSIT OF TITLE DEEDS' : 'MORTGAGE DEED' };
+  const merged = { ...reconveyanceNames(values), 'Market of Value Rs./-': total, 'Total Amount': total, 'Principal Amount': formatDeedAmount(amounts.principal), 'Intrest Amount': interestText, 'Interest Amount': interestText, 'DEPOSITE OF TITLE DEED/MORTGAGE DEED': values['Reconveyance Draft'] === 'title-deed' ? 'Deposit Of Title Deeds' : 'Mortgage Deed' };
   const fill = (block: string, record: Record<string, string>, rules: Rewrite[] = []) => block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
     paragraph = replaceRunText(paragraph, /DD-MM-YYYY/g, () => '<Date>');
     if (record['Bank Releasor'] === 'true' && /<BANK NAME>/i.test(plainText(paragraph))) {
@@ -2766,15 +2958,20 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
       if (hasRepresentatives && !identity.test(plainText(paragraph))) throw new Error('The bank opening needs its representative identity clause to print the saved representative details.');
       paragraph = replaceRunText(paragraph, identity, () => hasRepresentatives ? ', <Bank Representative Details>, ' : ', ');
     }
+    paragraph = reconveyanceProperCase(paragraph);
     const filled = fillParagraph(paragraph, new Map(Object.entries(record).map(([key, value]) => [norm(key), value])), missing, rules);
-    return replaceRunText(filled, /\b(near|adjacent)\s+H\.No\.\s*/gi, match => match[1].toLowerCase() + ' house No.');
+    const roles = replaceRunText(filled, /\(Hereinafter called the "(Vendor|Vendee)(\/s|s)?"\) of the (one|other) part\./gi, match => {
+      const role = match[1].toLowerCase() === 'vendor' ? 'Releasor' : 'Releasee';
+      return `(Hereinafter called the "${role}${match[2]?.toLowerCase() || ''}") of the ${match[3].toLowerCase()} part.`;
+    });
+    return replaceRunText(roles, /\b(near|adjacent)\s+H\.No\.\s*/gi, match => match[1].toLowerCase() + ' house No.');
   });
   const mortgage = (record: import('./reconveyance').MortgageRecord) => {
     const v = record.values;
     if (!v.linkDocNo || !deedDateForReconveyance(v.linkDocDate) || !v.linkSro || !v.linkSroCode || mortgagePaise(v.mortgageAmount || '') === null) throw new Error('Complete each mortgage number, date, amount, SRO and SRO code.');
-    return { ...merged, 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': formatDeedAmount(v.mortgageAmount), 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
+    return { ...merged, ...linkEnclosureValues(v), 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': formatDeedAmount(v.mortgageAmount), 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
   };
-  let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank ? parts.person : parts.common).join(''), merged, rewrites.filter(rule => rule.partyRole));
+  let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank ? parts.person : parts.common).join(''), merged, rewrites.filter(rule => rule.partyRole).map(rule => ({ ...rule, records: rule.records?.map(reconveyanceNames) })));
   let common = parts.chunks.slice(parts.common, parts.first).map(chunk => {
     const text = plainText(chunk);
     if (/WHEREAS, the Releasee\/s had further created/.test(text)) return records.slice(1).map(record => fill(chunk, mortgage(record))).join('');
@@ -2782,24 +2979,12 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
     if (values['Reconveyance Draft'] !== 'title-deed') chunk = replaceRunText(chunk, /Memoranda of Deposit of Title Deeds/g, () => 'Mortgage Deeds');
     return fill(chunk, merged);
   }).join('');
-  const variants: Record<string, string> = { 'IF OPEN PLACE':'IF OPEN PLACE','IF OPEN PLOT':'IF OPEN PLOT','IF DIMOLISHED HOUSE':'IF DEMOLISHED HOUSE','IF PART OPEN PLACE':'IF PART OPEN PLACE','IF HOUSE':'IF FINISHED HOUSE','IF HOUSE SEMI FINISHED':'IF SEMI FINISHED HOUSE','IF FLAT SEMI FINISHED':'IF SEMI FINISHED FLAT','IF FLAT FINISHED':'IF FINISHED FLAT' };
   const properties = schedules.map(schedule => {
     if (schedule.values['Property Category'] && !['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'].includes(schedule.values['Property Category'])) throw new Error('Unsupported Reconveyance property category.');
-    const block = parts.blocks.get(variants[schedule.variant]);
+    const block = parts.blocks.get(RECONVEYANCE_SCHEDULE_VARIANTS[schedule.variant]);
     if (!block) throw new Error(`Unsupported Reconveyance property variant: ${schedule.variant}`);
-    const propertyValues: Record<string,string> = { ...merged, ...schedule.values };
-    if (schedule.variant.startsWith('IF FLAT') && propertyValues.UDS) propertyValues['Extent in Sq.Meters'] = (Number(propertyValues.UDS.replace(/,/g, '')) * 0.836127).toFixed(2);
-    let propertyBlock = prepareLandmarkBlock(block, propertyValues, schedule.variant);
-    if (['IF DIMOLISHED HOUSE','IF PART OPEN PLACE'].includes(schedule.variant) && propertyValues['Survey No.'] && !angleTags(propertyBlock).some(tag => norm(tag) === norm('Survey No.'))) propertyBlock = propertyBlock.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => replaceRunText(paragraph, /square meters,/i, () => 'square meters, in Survey No/s.<Survey No.>,'));
-    const rows = schedule.structureDetails?.rows || [];
-    propertyBlock = propertyBlock.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
-      for (const [floor, pattern] of [['Ground', /Ground Floor:\s*<\s*Plinth Area>/gi], ['First', /First Floor:\s*<\s*Plinth Area>/gi]] as const) {
-        const area = rows.find(row => row.floorNo.toLowerCase().includes(floor.toLowerCase()))?.builtUpAreaSqFt;
-        if (area) paragraph = replaceRunText(paragraph, pattern, match => match[0].replace(/<[^>]+>/, area));
-      }
-      return paragraph;
-    });
-    return fill(propertyBlock, propertyValues);
+    const propertyValues: Record<string,string> = { ...merged, ...reconveyanceNames(schedule.values) };
+    return fill(prepareReconveyanceSchedule(block, { ...schedule, values: propertyValues }), propertyValues);
   }).join('');
   let closing = fill(parts.chunks.slice(parts.closing).join(''), merged);
   // Keep the source's attestation, signature table and both witness lines together.
@@ -2810,7 +2995,7 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
     if (closingIndex++ >= lastContent) return paragraph;
     return paragraph.includes('<w:pPr>') ? paragraph.replace('<w:pPr>', '<w:pPr><w:keepNext/><w:keepLines/>') : paragraph.replace(/(<w:p(?:\s[^>]*)?>)/, '$1<w:pPr><w:keepNext/><w:keepLines/></w:pPr>');
   });
-  const output = xml.slice(0, parts.start) + opening + common + properties + closing + xml.slice(parts.end);
+  const output = xml.slice(0, parts.start) + (opening + common + properties + closing).replace(/<w:(?:caps|smallCaps)\b[^>]*\/>/g, '') + xml.slice(parts.end);
   if (/<\s*(?:IF |BANK NAME|Principal Amount|Intrest Amount)/.test(plainText(output))) throw new Error('Unresolved Reconveyance conditional or amount binding.');
   entry.data = new TextEncoder().encode(output);
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing], unmapped: [] };
@@ -2903,7 +3088,7 @@ function releaseWording(p:string, sellers:number,buyers:number,values:Record<str
   replace(/SIGN\/S OF THE/g,'SIGNATURE'+(sellers===1&&buyers===1?'':'S')+' OF THE');
   return p;
 }
-function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Record<string,string>):string {
+function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Record<string,string>, preview = false):string {
   const shares=JSON.parse(values['Release Releasor Shares']||'[]') as ReleasePartyShare[];
   const allocations=JSON.parse(values['Release Recipient Shares']||'[]') as ReleasePartyShare[];
   const total=releasedTotal(shares,values['Release Legacy Share']);
@@ -2914,7 +3099,7 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
   const yardKey=schedule.variant.includes('FLAT')?'Shared UDS':'Shared Sq.yards';
   aggregate['Shared Extent in Sq.Meters']=releasedSquareMetres(values[schedule.variant.includes('FLAT')?'UDS':'Extent in Sq.yards']||'',total);
   if(schedule.variant.includes('FLAT') && values.UDS) aggregate['Extent in Sq.Meters']=(Number(values.UDS.replace(/,/g,''))*0.836127).toFixed(2);
-  block=prepareLandmarkBlock(block,aggregate,schedule.variant);
+  block=prepareLandmarkBlock(block,aggregate,schedule.variant,preview);
   block=block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g,row=>{
     const tags=angleTags(row);
     if(tags.some(t=>/^Shared /i.test(t)) && !total) return '';
@@ -2922,8 +3107,9 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
   });
   const sample=(block.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).find(p=>/^THE RELEASOR\/S HAS\/HAVE RELEASED/i.test(plainText(p).trim()))!;
   const perPerson=shares.filter(p=>p.share.trim());
-  const rows=schedule.structureDetails?.rows||[];
+  const rows=(schedule.structureDetails?.rows||[]).filter(row=>!isCompoundWall(row));
   if (schedule.variant === 'IF HOUSE' || schedule.variant === 'IF HOUSE SEMI FINISHED') {
+    block = housePlinthDescription(block, schedule.structureDetails);
     block=block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g,row=>{
       const text=plainText(row);
       if(/In First Floor/i.test(text) && /<Shared Plinth Area>/i.test(text)) return '';
@@ -2951,16 +3137,9 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
       }).join('')+allocations.filter(a=>a.share.trim()).map(a=>paragraphLike(p,`${a.name}: received share ${releaseShareLabel(a.share)} of the Schedule Property.`)).join('');
     }
     if(!total) p=replaceRunText(p,/undivided\s*<Share>\s*/gi,()=> '');
-    if(/^All that the .*roof house/i.test(plainText(p))) {
-      if(rows.length) p=replaceRunText(p,/consisting of Ground Floor:\s*<\s*Plinth Area>\s*square feets\s*First Floor:\s*<\s*Plinth Area>\s*square feets/i,()=> 'consisting of '+rows.filter(r=>r.builtUpAreaSqFt.trim()).map(r=>r.floorNo+' Floor: '+r.builtUpAreaSqFt+' square feets').join(', '));
-      for(const [floor,pattern] of [['Ground',/Ground Floor:\s*<\s*Plinth Area>\s*square feets/gi],['First',/First Floor:\s*<\s*Plinth Area>\s*square feets/gi]] as const) {
-        const area=rows.find(r=>r.floorNo.toLowerCase().includes(floor.toLowerCase()))?.builtUpAreaSqFt||'';
-        p=replaceRunText(p,pattern,()=>area?`${floor} Floor: ${area} square feets`:'');
-      }
-    }
     return fillReleaseParagraph(p,aggregate,[]);
   });
-  return block;
+  return ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(schedule.variant) ? addCompoundWallMeasurements(block, schedule.structureDetails) : block;
 }
 function fillReleaseParagraph(p:string,values:Record<string,string>,rules:Rewrite[],missing=new Set<string>()):string {
   p=replaceRunText(p,/DD-MM-YYYY/g,()=>'<Date>');

@@ -3,6 +3,7 @@ import { orderedEnclosureIds } from './enclosure-records';
 import { acreGuntasToSqYards } from './land-area';
 import { titleAmendmentKind } from './title-amendments';
 import { normalizeWorkflowStep } from './workflow-steps';
+import { houseStructureTotal, isHouseCategory } from './house-valuation';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_PTIN_PAIR_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
@@ -14,7 +15,7 @@ import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './i
 import type { TemplateFieldCandidate, TemplateFieldValues } from './template-fields';
 import type { JurisdictionLookupState } from './registration-location-state';
 
-export const EXTRACTION_VERSION = 'evidence-v11-final-flat-options';
+export const EXTRACTION_VERSION = 'evidence-v12-link-parties';
 export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned' | 'party-person';
 export type Candidate = {
   id: string; field: string; value: string; role: Role; record: string;
@@ -112,7 +113,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
   // Legacy removed plan steps reopen in the original editor; v2 keeps the added step.
   if (action.type === 'load') {
-    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step > 10 && action.draft.workflowVersion !== 2 ? 10 : action.draft.step);
+    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step);
     return migratePartyPeople(step === action.draft.step && action.draft.workflowVersion === 2
       ? action.draft : { ...action.draft, step, workflowVersion: 2 });
   }
@@ -242,52 +243,58 @@ export function resolveDraft(draft: Draft) {
   const groups: Record<string, Evidence[]> = {};
   const unassigned: Evidence[] = [];
   const all: Evidence[] = [];
-  // A prior registered deed recites ITS OWN vendor and vendee, not the parties to
-  // today's sale — the buyer of that earlier deed is usually today's seller, and
-  // its seller is a stranger to this transaction. The model is asked to mark
-  // that recital historical and re-attribute the roles, but does not reliably do
-  // so (a plain VENDOR/VENDEE paragraph reads as straightforwardly current).
-  // Any source that also yields link/title-deed evidence has its party
-  // candidates held back as unassigned instead, so a name from a decade-old
-  // deed can never silently become today's executant or claimant; the popup
-  // lets the drafter confirm the real current parties from their own ID proof.
-  // This only needs the source to be RECOGNIZABLE as a link deed, not for its
-  // own registration particulars to have survived the separate two-read
-  // agreement check — a noisy scan can easily fail that consensus on one field
-  // while still being unmistakably a registered title deed, and this guard
-  // must not depend on an unrelated extraction succeeding.
+  // Only the dedicated Step 2 read may project the uploaded instrument's
+  // original roles. Mixed/general uploads keep the existing historical guard.
   const linkSourceIds = new Set(
     draft.sources.filter(s => (s.result?.candidates || []).some(c => c.role === 'link')).map(s => s.id)
   );
-  for (const source of draft.sources) for (const candidate of source.result?.candidates || []) {
-    if (candidate.status !== 'accepted') continue;
-    const c: Evidence = { ...candidate, sourceId: source.id, sourceName: source.name, sourceRevision: source.revision, id: `${source.id}:${source.revision}:${candidate.id}` };
-    if (linkSourceIds.has(source.id)) {
-      if (c.role === 'executant' || c.role === 'claimant') {
-        c.role = 'unassigned';
-        c.field = c.field.replace(/^(executant|claimant)/, 'party');
+  for (const source of draft.sources) {
+    const readings = source.result?.candidates || [];
+    const isLinkParty = (c: Candidate) => source.profile === 'phase1:linkDoc' && source.assignment?.role === 'link'
+      && c.id.startsWith('link-party:') && (c.role === 'executant' || c.role === 'claimant')
+      && c.field.startsWith(c.role) && !c.historical && c.status === 'accepted';
+    const namedParties = new Set(readings.filter(c => isLinkParty(c) && [c.role + 'Name', c.role + 'EntityName'].includes(c.field))
+      .map(c => JSON.stringify([c.role, c.record])));
+    for (const candidate of readings) {
+      if (candidate.status !== 'accepted') continue;
+      const c: Evidence = { ...candidate, sourceId: source.id, sourceName: source.name, sourceRevision: source.revision, id: `${source.id}:${source.revision}:${candidate.id}` };
+      if (isLinkParty(candidate)) {
+        if (!namedParties.has(JSON.stringify([candidate.role, candidate.record]))) continue;
+        if (candidate.role === 'executant' && draft.instrumentId !== 'reconveyance') continue;
+        c.role = candidate.role === 'claimant' ? 'executant' : 'claimant';
+        c.field = c.role + candidate.field.slice(candidate.role.length);
+        c.record = 'link-party:' + encodeURIComponent(JSON.stringify([source.assignment!.record, candidate.role, candidate.record]));
+        if (CURRENT_STATE_ONLY.test(c.field)) c.historical = true;
+      } else if (linkSourceIds.has(source.id)) {
+        if (c.role === 'executant' || c.role === 'claimant') {
+          c.role = 'unassigned';
+          c.field = c.field.replace(/^(executant|claimant)/, 'party');
+        }
+        // The link deed's own age/mobile/occupation and its own consideration,
+        // stamp value and execution date describe THAT transaction, not
+        // today's — even once a drafter confirms its buyer as today's seller,
+        // those specific facts must still be re-supplied from a current source.
+        if (CURRENT_STATE_ONLY.test(c.field)) c.historical = true;
       }
-      // The link deed's own age/mobile/occupation and its own consideration,
-      // stamp value and execution date describe THAT transaction, not
-      // today's — even once a drafter confirms its buyer as today's seller,
-      // those specific facts must still be re-supplied from a current source.
-      if (CURRENT_STATE_ONLY.test(c.field)) c.historical = true;
+      if (
+        (c.role === 'unassigned' || c.role === source.assignment?.role) && source.assignment &&
+        (!source.assignment.fromRecord || source.assignment.fromRecord === candidate.record)
+      ) {
+        c.role = source.assignment.role; c.record = source.assignment.record;
+        c.field = c.field.replace(/^party/, c.role);
+      }
+      if (draft.gpaExecutantsReplaced && c.role === 'executant') continue;
+      all.push(c);
     }
-    if (
-      (c.role === 'unassigned' || c.role === source.assignment?.role) && source.assignment &&
-      (!source.assignment.fromRecord || source.assignment.fromRecord === candidate.record)
-    ) {
-      c.role = source.assignment.role; c.record = source.assignment.record;
-      c.field = c.field.replace(/^party/, c.role);
-    }
-    if (draft.gpaExecutantsReplaced && c.role === 'executant') continue;
-    all.push(c);
   }
   const aliases = new Map<string, string>();
   const local = new Map<string, Evidence[]>();
   for (const c of all) { const key = `${c.sourceId}|${c.role}|${c.record}`; local.set(key, [...(local.get(key) || []), c]); }
   for (const [key, items] of local) {
     const first = items[0]; const source = draft.sources.find(s => s.id === first.sourceId)!;
+    if ((first.role === 'executant' || first.role === 'claimant') && first.record.startsWith('link-party:') && first.id.includes(':link-party:')) {
+      aliases.set(key, first.record); continue;
+    }
     if (source.assignment?.role === 'link' && first.role === 'property' && first.record === 'primary') {
       aliases.set(key, source.assignment.propertyRecord || 'primary'); continue;
     }
@@ -405,6 +412,12 @@ export function appStateFor(draft: Draft): AppState {
     .filter((id, index, all) => all.indexOf(id) === index);
   const byPropertyId = new Map(extractedProperties.map(record => [record.id, record]));
   const properties = propertyIds.map(id => byPropertyId.get(id) || ({ id, values: {}, docNames: [] }));
+  for (const property of properties) {
+    const fields = property.values;
+    if (!isHouseCategory(fields.category)) continue;
+    const total = houseStructureTotal(draft.structureDetailsBySchedule[property.id], fields.localAuthorityType || '', fields.roofMaterial);
+    if (total) property.values = { ...fields, structValue: total };
+  }
   const transaction = forRole('property').find(r => r.id === 'transaction');
   const sellers = forRole('executant'); const buyers = forRole('claimant');
   const linkValues = forRole('link');
@@ -462,6 +475,12 @@ export function appStateFor(draft: Draft): AppState {
     if (!(side === 'executant' && draft.gpaExecutantsReplaced)) defaultIfUnset(`${side}Relation`, 'S/O');
   }
   for (const field of ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation']) derived[field] = values[fieldKey('property', 'primary', field)] || '';
+  if (draft.instrumentId === 'reconveyance' && primarySeller?.id.startsWith('link-party:') && primarySeller.values.executantPartyType === 'Bank') {
+    for (const [field, sourceField] of Object.entries({ bankName: 'executantEntityName', bankBranch: 'executantEntityBranchOffice', officialDesignation: 'executantSignatoryDesignation' })) {
+      if (!(fieldKey('property', 'primary', field) in values)) derived[field] = primarySeller.values[sourceField] || '';
+    }
+    if (!(fieldKey('property', 'primary', 'mortgagePartyMode') in values)) derived.mortgagePartyMode = 'bank-to-person';
+  }
   const partyDefaults = (side: 'executant' | 'claimant', values: Record<string, string>) => ({
     ...values,
     [`${side}PartyType`]: values[`${side}PartyType`] || (side === 'executant' && saleDocumentForVariant(draft.variantId) !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual'),

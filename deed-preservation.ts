@@ -1,7 +1,7 @@
 import type { InstrumentId } from './instruments';
 
 /** Independent of Word assets: updating a draft never changes these rules. */
-export const DEED_PRESERVATION_VERSION = '2026-11-09.3';
+export const DEED_PRESERVATION_VERSION = '2026-11-10.8';
 export type PreservationProfile = 'release' | 'reconveyance' | 'sale' | 'gift' | 'municipal-gift' | 'agreement_of_sale' | 'power_of_attorney';
 
 export function preservationProfileFor(instrument: InstrumentId, variant = ''): PreservationProfile {

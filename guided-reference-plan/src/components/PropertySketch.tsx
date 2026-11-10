@@ -1,6 +1,6 @@
 import React from 'react';
 import { BoundaryDimensions, PropertyDetails, HouseDetails } from '../types';
-import { formatDimensionDisplay, getRoadLabelForSide, parseDimensionToNumber, getUprightAngle, parseDimension, isRoadSegment, sanitizeRoadBoundaryString } from '../utils/dimensionUtils';
+import { convertDimension, formatDimensionDisplay, getRoadLabelForSide, parseDimensionToNumber, getUprightAngle, parseDimension, isRoadSegment, sanitizeRoadBoundaryString } from '../utils/dimensionUtils';
 
 interface PropertySketchProps {
   property: PropertyDetails;
@@ -113,10 +113,14 @@ export const PropertySketch: React.FC<PropertySketchProps> = ({
 
   // Raw or normalized values - parsed safely with full support for feet-inches like 68'-0"
   const isMeters = boundaries.dimensionUnit === 'Metres';
-  const nVal = parseDimensionToNumber(northDim.raw || northDim.normalized, isMeters, 40);
-  const sVal = parseDimensionToNumber(southDim.raw || southDim.normalized, isMeters, 40);
-  const eVal = parseDimensionToNumber(eastDim.raw || eastDim.normalized, isMeters, 60);
-  const wVal = parseDimensionToNumber(westDim.raw || westDim.normalized, isMeters, 60);
+  const sideLength = (dimension: typeof northDim, fallback: number) => {
+    const parsed = parseDimension(dimension.raw || dimension.normalized, dimension.unit);
+    return parsed.normalized > 0 ? convertDimension(parsed, isMeters ? 'Metres' : 'Feet').normalized : fallback;
+  };
+  const nVal = sideLength(northDim, 40);
+  const sVal = sideLength(southDim, 40);
+  const eVal = sideLength(eastDim, 60);
+  const wVal = sideLength(westDim, 60);
 
   // Check active road sides
   const hasNorthRoad = roadSides.includes('North') || isRoadSegment(northBoundary) || Boolean(boundaries.northSegments?.some(s => isRoadSegment(s.name)));

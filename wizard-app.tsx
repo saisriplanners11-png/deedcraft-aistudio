@@ -1,14 +1,16 @@
 import { ReleaseFields } from './release-fields';
 import { releaseErrors } from './release';
 import { orderedEnclosureIds } from './enclosure-records';
-import { isMinorParty } from './minor-parties';
+import { guardianIds, isMinorParty } from './minor-parties';
 import { resolveSroSelection } from './sro-directory';
 import { normalizePropertyPlaceName, titleCasePlaceName } from './place-names';
 import { titleAmendmentKind, titleAmendmentLabel } from './title-amendments';
 import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
 import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
+import { LINK_ISSUING_AUTHORITIES } from './link-enclosure';
 import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
+import { HOUSE_ROOFS, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
 import { formatDeedAmount, formatMoneyInput } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
@@ -17,7 +19,7 @@ import { isEntity, partyDisplayName, representativeDesignationOptions } from './
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
-import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PROPERTY_DIMENSIONS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
 import { FileDropZone } from './file-drop-zone';
@@ -59,9 +61,6 @@ import { PaymentCard, AddPayment } from './paymentui';
 import { GuidedReferenceStep } from './guided-reference-step';
 import { guidedPlanFromDraft } from './guided-reference-integration';
 import type { PlanDocument as GuidedPlanDocument } from './guided-reference-plan/src/types';
-import { ExactReferenceStep } from './exact-reference-step';
-import { exactPlanFromDraft } from './exact-reference-integration';
-import type { PlanDocument as ExactPlanDocument } from './exact-reference-plan/src/types';
 import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
 import './wizard-app.css';
@@ -89,7 +88,7 @@ import { EMPTY_LOOKUP } from './registration-location-state';
 // upload-extraction.ts's own apiQueue/pageQueue.
 const fileQueue = new WorkQueue(10);
 const ACCEPT = '.pdf,.docx,.txt,.md,image/jpeg,image/png,image/webp,image/gif';
-function StructureDetailsTable({ value, defaultRoof, onChange, onNotice }: { value: StructureDetails; defaultRoof: string; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
+function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNotice }: { value: StructureDetails; defaultRoof: string; authority: string; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
   const total = Number(details.totalFloors);
   const ordinalFloor = (floor: number) => {
@@ -101,38 +100,46 @@ function StructureDetailsTable({ value, defaultRoof, onChange, onNotice }: { val
     return `Floor ${floor}`;
   };
   const floorOptions = ['Cellar', 'Foundation', 'Ground', 'Mezzanine floor', 'Parking', ...Array.from({ length: Number.isInteger(total) && total > 0 ? total : 0 }, (_, i) => ordinalFloor(i + 1))];
-  const patchRow = (id: string, patch: Record<string, string>) => onChange({ ...details, rows: details.rows.map(row => row.id === id ? { ...row, ...patch } : row) });
+  const patchRow = (id: string, patch: Partial<StructureDetails['rows'][number]>) => onChange({ ...details, rows: details.rows.map(row => row.id === id ? { ...row, ...patch } : row) });
   const setTotal = (next: string) => {
-    if (next !== '' && (!/^\d+$/.test(next) || Number(next) < details.rows.length)) {
-      onNotice(`Total Floors cannot be lower than the ${details.rows.length} entered structure detail row${details.rows.length === 1 ? '' : 's'}. Remove rows first.`);
+    if (next !== '' && (!/^\d+$/.test(next) || Number(next) < 1)) {
+      onNotice('Enter a positive whole number for Total Floors.');
       return;
     }
     onChange({ ...details, totalFloors: next });
   };
-  const canAdd = Number.isInteger(total) && total > details.rows.length;
+  const roofOptions = [...HOUSE_ROOFS, ...ROOF_NATURE_OPTIONS];
+  const grandTotal = houseStructureTotal(details, authority, defaultRoof);
   const selectedRoof = (row: StructureDetails['rows'][number]) =>
     row.structureType && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
-      ? ROOF_NATURE_OPTIONS.includes(row.structureType) ? row.structureType : 'Other / Custom Structure'
-      : defaultRoof ? ROOF_NATURE_OPTIONS.includes(defaultRoof) ? defaultRoof : 'Other / Custom Structure' : '';
+      ? roofOptions.includes(row.structureType) ? row.structureType : 'Other / Custom Structure'
+      : defaultRoof ? roofOptions.includes(defaultRoof) ? defaultRoof : 'Other / Custom Structure' : '';
   const customRoof = (row: StructureDetails['rows'][number]) => row.structureType === 'Other / Custom Structure'
-    ? row.customStructureType : row.structureType && !ROOF_NATURE_OPTIONS.includes(row.structureType) && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
-      ? row.structureType : !row.structureType && !ROOF_NATURE_OPTIONS.includes(defaultRoof) ? defaultRoof : '';
+    ? row.customStructureType : row.structureType && !roofOptions.includes(row.structureType) && !STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
+      ? row.structureType : !row.structureType && !roofOptions.includes(defaultRoof) ? defaultRoof : '';
   return <Section title="Structure Details" aside={<span style={{ fontSize: 11, color: C.muted }}>Annexure I-A</span>}>
     <div className="structure-table-scroll" role="region" aria-label="Structure details table" tabIndex={0} style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{['Total Floors*', 'Floor No.*', 'Nature of Roof*', 'Stage*', 'Building Age*', 'Built-up area (Sq. Ft.)*', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
-        <tbody>{details.rows.map((row, index) => <tr key={row.id}>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Nature of Roof" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{ROOF_NATURE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom nature of roof" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select value={row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" value={row.builtUpAreaSqFt} onChange={event => patchRow(row.id, { builtUpAreaSqFt: event.target.value })} style={{ width: 112, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><button type="button" className="gold" aria-label="Add structure row" disabled={!canAdd} onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button><IconButton label={`Delete structure row ${index + 1}`} onClick={() => onChange({ ...details, rows: details.rows.length > 1 ? details.rows.filter(item => item.id !== row.id) : [newStructureDetail()] })} style={{ marginLeft: 6 }} /></td>
-        </tr>)}</tbody>
+      <table style={{ width: '100%', minWidth: 1160, borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead><tr>{['Total Floors*', 'Floor No.*', 'Nature of Roof*', 'Stage*', 'Building Age*', 'Measurement', 'Rate (₹)', 'Total Value (₹)', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
+        <tbody>{details.rows.map((row, index) => {
+          const wall = isCompoundWall(row);
+          const unit = structureUnit(row);
+          const amount = houseStructurePaise(row, authority, defaultRoof);
+          return <tr key={row.id}>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" aria-label="Total floors" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Floor number" disabled={wall} value={wall ? '' : row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Nature of Roof" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, rateOverride: undefined, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{roofOptions.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom nature of roof" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Stage" disabled={wall} value={wall ? '' : row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" aria-label="Building age" disabled={wall} value={wall ? '' : row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><label><span>{unit}</span><input aria-label={`Measurement (${unit})`} type="number" min="0" step="any" value={structureMeasurement(row)} onChange={event => patchRow(row.id, { [wall ? 'runningFeet' : 'builtUpAreaSqFt']: event.target.value })} style={{ width: 100, padding: 6, border: `1px solid ${C.goldLight}` }} /></label></td>
+          <td style={{ padding: 8 }}><label><span>Per {unit}</span><input aria-label={`Rate (₹ per ${unit})`} inputMode="decimal" value={formatMoneyInput(houseStructureRate(row, authority, defaultRoof))} onChange={event => patchRow(row.id, { rateOverride: event.target.value.replace(/,/g, '') })} style={{ width: 100, padding: 6 }} /></label></td>
+          <td style={{ padding: 8 }}><input aria-label="Total Value (₹)" readOnly value={amount === null ? '' : formatDeedAmount(structureAmount(amount))} style={{ width: 100, padding: 6 }} /></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><button type="button" className="gold" aria-label="Add structure row" onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button><IconButton label={`Delete structure row ${index + 1}`} onClick={() => onChange({ ...details, rows: details.rows.length > 1 ? details.rows.filter(item => item.id !== row.id) : [newStructureDetail()] })} style={{ marginLeft: 6 }} /></td>
+        </tr>})}</tbody>
       </table>
     </div>
-    <p style={{ margin: '10px 0 0', fontSize: 11, color: C.muted }}>Add up to the declared Total Floors. Each Floor No. may be used more than once.</p>
+    <p style={{ margin: '10px 0 0', fontSize: 11, color: C.muted }}>Add one row per structure. A floor may have more than one structure.</p>
+    <p><strong>Grand total: {grandTotal ? `₹${formatDeedAmount(grandTotal)}` : '—'}</strong></p>
   </Section>;
 }
 
@@ -380,6 +387,7 @@ function TitlePointCard({ option, record, ordinal, form, onField, onUpload, sour
     if (active) void loadTitleAmendmentTemplates(instrument, variant, templateSource).then(value => { if (current) { setTemplates(value); setPreviewLoaded(true); } }).catch(error => { if (current) setPreviewError(error instanceof Error ? error.message : 'Could not load the selected Word recital.'); });
     return () => { current = false; };
   }, [active, instrument, variant, templateSource]);
+  const showLinkEnclosure = option.id === 'linkDoc' || !!kind;
   const label = kind ? titleAmendmentLabel(kind) : option.id === 'linkDoc' ? 'Registered Deed' : option.id === 'permissions' ? 'House Permission' : option.label;
   return <section className="panel link-record" aria-label={`${label} ${ordinal || 1}`} data-record-id={record} data-title-point={option.id} data-title-amendment={kind}>
     <div className="document-card-heading"><span className="document-card-icon"><FileText size={20} aria-hidden="true" /></span><div><h2>{label}{ordinal ? ` ${ordinal}` : ''}</h2><p>Upload pages for this record, or enter its details. Use Add another for a separate document.</p></div><span className="document-source-count">{sources.length ? `${sources.length} source${sources.length === 1 ? '' : 's'}` : 'Manual / upload'}</span></div>
@@ -392,6 +400,15 @@ function TitlePointCard({ option, record, ordinal, form, onField, onUpload, sour
       ['LRS Proceeding', 'lrsProceedingNo', 'lrsProceedingDate'],
     ].map(([title, ...ids]) => <FieldGroup key={title} group={{ placementSection: 'link-' + option.id, step: 1, title, note: '', fields: visibleFields.filter(field => ids.includes(field.id)) }} form={form} setField={onField} />)
       : <FieldGroup group={{ placementSection: 'link-' + option.id, step: 1, title: kind ? label + ' details' : option.label, note: kind ? 'Details of this amendment to the original link/title deed.' : option.note, fields: visibleFields }} form={form} setField={onField} />}
+    {showLinkEnclosure && <div className="deed-field-grid">
+      <label className="deed-field"><span>Document issuing authority</span>
+        <select value={form.municipalLinkAuthority} onChange={event => onField('municipalLinkAuthority', event.target.value)}>
+          <option value="">Select issuing authority</option>
+          {LINK_ISSUING_AUTHORITIES.map(authority => <option key={authority}>{authority}</option>)}
+        </select>
+      </label>
+
+    </div>}
     {kind && <div className="notice title-amendment-preview" aria-label="Applicable deed recital">
       <strong role="status">{titleAmendmentLabel(kind)} recital selected</strong>
       <p>This record’s document number, date, Sub-Registrar Office and SRO code fill this recital automatically.</p>
@@ -520,7 +537,14 @@ function PartyRecordCard({
       {personList()}
     </> : <>
       <div className="party-identity-upload"><ScopedSectionUpload label="party identity" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} /></div>
-      {(isMinorParty(Object.fromEntries(Object.entries(resolved.values).filter(([key]) => key.startsWith(role + '|' + record + '|')).map(([key, value]) => [key.split('|')[2], value])), role) || partyType.startsWith('Guardian')) && <Section title="Minor / guardian representation">
+      {role === 'claimant' && (partyType === 'Minor' || isMinorParty(ownParty?.values || {}, role)) && <Section title="Assigned guardians">
+        <p>Add each guardian as another claimant with Party type Guardian, then select them here. Each guardian’s details are entered on their own card.</p>
+        {partyRecords(state, 'claimant').map((party, index) => ({ ...party, id: index ? party.id : state.primaryClaimantId || 'primary' })).filter(party => party.id !== record && (party.values.claimantPartyType || '').startsWith('Guardian')).map(party => <label className="entity-same-address" key={party.id}><input type="checkbox" checked={guardianIds(ownParty?.values || {}).includes(party.id)} onChange={event => { const ids = guardianIds(ownParty?.values || {}); edit(role, record, 'claimantGuardianIds', (event.target.checked ? [...ids, party.id] : ids.filter(id => id !== party.id)).join(',')); }} />{party.values.claimantName || 'Unnamed guardian'}</label>)}
+        {guardianIds(ownParty?.values || {}).length > 0 && <button type="button" className="quiet" onClick={() => edit(role, record, 'claimantGuardianIds', '')}>Clear assigned guardians</button>}
+        {!partyRecords(state, 'claimant').some(party => (party.values.claimantPartyType || '').startsWith('Guardian')) && <p>No Guardian claimants yet. Use Add blank claimant below.</p>}
+      </Section>}
+      {role === 'claimant' && partyType.startsWith('Guardian') && <FieldGroup group={{ step, title: 'Guardian relationship', fields: ALL_FIELDS.filter(field => field.id === 'claimantGuardianRelationship') }} form={ownParty?.values || {}} setField={(id, value) => edit(role, record, id, value)} />}
+      {role === 'executant' && (isMinorParty(Object.fromEntries(Object.entries(resolved.values).filter(([key]) => key.startsWith(role + '|' + record + '|')).map(([key, value]) => [key.split('|')[2], value])), role) || partyType.startsWith('Guardian')) && <Section title="Minor / guardian representation">
         <p>{partyType.startsWith('Guardian') ? 'The party particulars identify the guardian. Enter the represented minor and the guardian’s relationship below.' : 'The minor remains the party. Enter the guardian’s identity and relationship. Minor executants require court permission for this deed.'}</p>
         {!partyType.startsWith('Guardian') && <ScopedSectionUpload label="guardian Aadhaar / ID" busy={busy} onUpload={files => upload(files, { role, record }, ('guardian:' + role) as ExtractionProfile)} />}
         <FieldGroup group={{ step, title: role === 'executant' ? 'Guardian and court permission' : 'Guardian details', fields: ALL_FIELDS.filter(field => field.id.startsWith(role) && ((partyType.startsWith('Guardian') ? field.id === role + 'GuardianRelationship' || field.id.includes('Ward') : field.id.includes('Guardian')) || (role === 'executant' && field.id.includes('Court')))) }} form={Object.fromEntries(ALL_FIELDS.filter(field => field.id.startsWith(role)).map(field => [field.id, resolved.values[fieldKey(role, record, field.id)] || '']))} setField={(id, value) => edit(role, record, id, value)} />
@@ -543,15 +567,20 @@ function AddPartyRecord({ noun, onAdd }: { noun: string; onAdd: (files: File[]) 
   </FileDropZone>;
 }
 
-function PartyShareFields({ role, record, parties, schedules, shares, dispatch }: {
+function PartyShareFields({ role, record, parties, schedules, shares, manual, dispatch }: {
   role: 'executant' | 'claimant'; record: string; parties: string[];
-  schedules: { id: string }[]; shares: VendeeSharesBySchedule; dispatch: React.Dispatch<Action>;
+  schedules: ReturnType<typeof scheduleRecords>; shares: VendeeSharesBySchedule; manual: Draft['manual']; dispatch: React.Dispatch<Action>;
 }) {
   const side = role === 'executant' ? 'Vendor' : 'Vendee';
   return <>{schedules.map((schedule, index) => {
     const value = shares[schedule.id]?.[record] || '';
-    const invalid = !!value.trim() && vendeeShareCents(value) === null;
-    return <label className="field" key={schedule.id}>
+    const cents = vendeeShareCents(value);
+    const invalid = !!value.trim() && cents === null;
+    const total = Number(schedule.values.extentSqYards?.replace(/,/g, ''));
+    const computed = cents !== null && total > 0 && Number.isFinite(total)
+      ? String(Number((total * cents / 10000).toFixed(4))) : '';
+    const key = fieldKey(role, record, 'shareExtentSqYards:' + schedule.id);
+    return <React.Fragment key={schedule.id}><label className="field">
       <span>Share percentage (%) {schedules.length > 1 ? '— Schedule ' + (index + 1) : '(optional)'}</span>
       <input type="text" inputMode="decimal" value={value}
         aria-label={'Schedule ' + (index + 1) + ' ' + side + ' ' + (parties.indexOf(record) + 1) + ' undivided share percent'}
@@ -560,7 +589,17 @@ function PartyShareFields({ role, record, parties, schedules, shares, dispatch }
           ? { type: 'vendor-share', scheduleId: schedule.id, executantId: record, value: event.target.value }
           : { type: 'vendee-share', scheduleId: schedule.id, claimantId: record, value: event.target.value })} />
       <small>{invalid ? 'Enter a percentage greater than 0 and no more than 100, with up to two decimal places.' : 'Leave blank to omit the share clause from the document.'}</small>
-    </label>;
+    </label>
+    {cents !== null && <div className="field">
+      <label>
+        <span>Share extent (Sq. Yards){schedules.length > 1 ? ' — Schedule ' + (index + 1) : ''}</span>
+        <input type="number" min="0" step="any" value={manual[key] ?? computed}
+          onChange={event => dispatch({ type: 'manual', key, value: event.target.value })} />
+      </label>
+      {manual[key] !== undefined && <button type="button" className="quiet"
+        onClick={() => dispatch({ type: 'choose', key, candidateId: '' })}>Use calculated extent</button>}
+    </div>}
+    </React.Fragment>;
   })}</>;
 }
 
@@ -674,8 +713,6 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
   const [guidedPlanDrafts, setGuidedPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
   const [guidedPlanSelectedSvgs, setGuidedPlanSelectedSvgs] = useState<Record<string, string>>({});
-  const [exactPlanDrafts, setExactPlanDrafts] = useState<Record<string, ExactPlanDocument>>({});
-  const [exactPlanSelectedSvgs, setExactPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
   const [sourceFiles, setSourceFiles] = useState<Record<string, File[]>>({});
   const [selectedPlanSvgs, setSelectedPlanSvgs] = useState<Record<string, string>>({});
@@ -733,16 +770,17 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
-    || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(exactPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
     id: draft.id,
+    name: savedDeeds.find(deed => deed.id === draft.id)?.name,
     updatedAt: new Date().toISOString(),
     claimantNames: [...new Set(partyRecords(state, 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean))],
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
-    planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
+    planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
     templateMode, customTemplate, libraryTemplate: (isRelease || isReconveyance || generalPoa || agreementSaleGpa || draft.instrumentId === 'gift') && templateMode === 'built-in' ? bundledTemplatePin(bundledVersion) : libraryTemplate, generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
@@ -768,7 +806,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, exactPlanDrafts, exactPlanSelectedSvgs, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
   async function refreshPublishedTemplate() {
     try {
       const listing = await listTemplates();
@@ -817,7 +855,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       field?.focus(); field?.scrollIntoView({ block: 'center' });
     }));
   };
-  const visibleSavedDeeds = savedDeeds.filter(deed => [deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const visibleSavedDeeds = savedDeeds.filter(deed => [deed.name, deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
     if (role === 'property' && field === 'stampPaperMargin') record = 'transaction';
@@ -1063,7 +1101,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPendingReviews([]); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setExactPlanDrafts({}); setExactPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
+    setPendingReviews([]); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
     setLibraryTemplate(null); setGenerationManifest(null);
@@ -1112,8 +1150,6 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     setReferencePlanDrafts(deed.referencePlanDrafts || {});
     setGuidedPlanDrafts(deed.guidedPlanDrafts || {});
     setGuidedPlanSelectedSvgs(deed.guidedPlanSelectedSvgs || {});
-    setExactPlanDrafts(deed.exactPlanDrafts || {});
-    setExactPlanSelectedSvgs(deed.exactPlanSelectedSvgs || {});
     setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
     setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
     setTemplateMode(deed.templateMode || 'built-in');
@@ -1124,8 +1160,23 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     setLibraryView(false);
   }
 
+  function duplicateSaved(deed: SavedDeed, displayName: string) {
+    const copy = structuredClone(deed);
+    copy.id = crypto.randomUUID();
+    copy.draft.id = copy.id;
+    copy.name = `Copy of ${displayName}`;
+    copy.updatedAt = new Date().toISOString();
+    copy.generationManifest = null;
+    void persist(copy).catch(() => {});
+  }
+
+  function renameSaved(deed: SavedDeed) {
+    const name = window.prompt('Rename saved document', deed.name)?.trim();
+    if (name && name !== deed.name) void persist({ ...deed, name }).catch(() => {});
+  }
+
   async function removeSaved(deed: SavedDeed) {
-    if (!window.confirm(`Delete ${deed.claimantNames.join(', ') || 'Unnamed deed'}? This removes the saved deed and its uploaded files.`)) return;
+    if (!window.confirm(`Delete ${deed.name || deed.claimantNames.join(', ') || 'Unnamed deed'}? This removes the saved deed and its uploaded files.`)) return;
     try {
       await saveQueue.current.catch(() => {});
       await deleteDeed(deed.id);
@@ -1304,11 +1355,12 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       {savedDeeds.length > 0 && <GettingStartedGuide />}
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}
-      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? presentation ? <presentation.Library deeds={visibleSavedDeeds} templateLabel={deed => { const status = savedTemplateStatus(deed, latestTemplate); return status.label + (status.earlier ? ' · Updating to current default' : ''); }} onOpen={openSaved} onRemove={deed => void removeSaved(deed)} /> : <div className="saved-deeds-list">{visibleSavedDeeds.map(deed =>
-        <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
-          <div><h2>{(partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ')) || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
-          <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
-        </article>)}
+      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? presentation ? <presentation.Library deeds={visibleSavedDeeds} templateLabel={deed => { const status = savedTemplateStatus(deed, latestTemplate); return status.label + (status.earlier ? ' · Updating to current default' : ''); }} onOpen={openSaved} onDuplicate={duplicateSaved} onRename={renameSaved} onRemove={deed => void removeSaved(deed)} /> : <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
+        const name = deed.name || partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`;
+        return <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
+          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
+          <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><button type="button" onClick={() => duplicateSaved(deed, name)}>Duplicate This Document</button>{deed.name && <button type="button" onClick={() => renameSaved(deed)}>Rename</button>}<IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
+        </article>; })}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
     </main> : <div className="shell">
       {presentation ? <presentation.Navigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={[...new Set([...notices.map(notice => notice.step), ...(Object.entries(draft.jurisdictionLookups || {}).some(([propertyId, lookup]) => lookup.needsReview?.some(field => !!resolved.values[fieldKey('property', propertyId, field)])) ? [2] : [])])]} title={deedDefinition.label} onNavigate={goto} /> : <><div className="mobile-step-picker"><label htmlFor="mobile-step">Drafting workspace</label><select id="mobile-step" value={step} onChange={e => goto(Number(e.target.value))}><option value={-1}>Overview</option>{workflowSteps.map(s => <option key={s.id} value={s.id}>{workflowSteps.indexOf(s) + 1}. {s.label}</option>)}</select></div>
@@ -1488,7 +1540,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             const related = sectionRecords(option.id);
             return <React.Fragment key={option.id}>
               {related.map((record, index) => {
-                const form = Object.fromEntries(option.fields.map(field => [field.id, resolved.values[fieldKey('link', record, field.id)] || '']));
+                const form = Object.fromEntries([...option.fields.map(field => field.id), 'municipalLinkAuthority', 'municipalLinkEnclosure'].map(field => [field, resolved.values[fieldKey('link', record, field)] || '']));
                 if (option.id === 'houseTax' && !form.bltNo) form.bltNo = resolved.values[fieldKey('link', record, 'assessmentPtinNo')] || '';
                 const ensureRecord = () => {
                   if (!resolved.values[fieldKey('link', record, 'linkOption')]) {
@@ -1547,6 +1599,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               ...group,
               fields: group.fields.filter(field => !(isFinishedHouse(record.category, record.values.houseStage) && ['nearAdjacent', 'nearHNo'].includes(field.id))),
             })).filter(group => group.fields.length);
+            const boundaries = propertyGroups.map(group => group.title.startsWith('Boundaries')).lastIndexOf(true);
+            propertyGroups.splice(boundaries + 1, 0, PROPERTY_DIMENSIONS);
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
               <ScheduleTypeControl municipal={municipalGift} scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
@@ -1556,9 +1610,10 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} groupsOverride={propertyGroups} resolved={resolved} edit={edit}
                 fallbackValues={{ bearingHNo: record.values.bearingHNo || '' }} />
 
-              {['Residential', 'Commercial'].includes(record.category) && <StructureDetailsTable
+              {isHouseCategory(record.category) && <StructureDetailsTable
                 value={state.structureDetailsBySchedule[id] || newStructureDetails()}
                 defaultRoof={record.values.roofMaterial || ''}
+                authority={record.values.localAuthorityType || ''}
                 onChange={value => dispatch({ type: 'structure-details', propertyId: id, value })}
                 onNotice={setMessage}
               />}
@@ -1575,10 +1630,11 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             {propertyRecords.map((record, index) => <div key={record.id} style={index ? { marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.rule}` } : undefined}>
               {propertyRecords.length > 1 && <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {index + 1}{record.category ? ` — ${record.category}` : ''}</h3>}
               <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit}
+                renderField={isHouseCategory(record.category) ? (field, value, change) => field.id === 'structValue' ? <input aria-label={field.label} inputMode="decimal" readOnly={!!houseStructureTotal(state.structureDetailsBySchedule[record.id], record.values.localAuthorityType || '', record.values.roofMaterial)} value={formatMoneyInput(record.values.structValue ?? value)} onChange={event => change(event.target.value.replace(/,/g, ''))} /> : undefined : undefined}
                 groupsOverride={isReconveyance ? groupsForStep(4, record.category).map(group => ({
                   ...group, title: 'Stamp paper details', note: '', telugu: undefined,
                   fields: group.fields.filter(field => ['stampPaperMargin', 'stampValue'].includes(field.id)),
-                })) : undefined} />
+                })) : isHouseCategory(record.category) ? groupsForStep(4, record.category).map(group => ({ ...group, fields: group.fields.map(field => field.id === 'structValue' ? { ...field, label: 'Market Value of Structure Valuation (₹)', hint: 'Calculated from priced structure rows when available.' } : field) })) : undefined} />
             </div>)}
           </section>
           {isReconveyance ? null : draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
@@ -1647,7 +1703,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                 shareFields={<>
                   {isRelease && <p>Existing ownership percentages (optional). Enter the rights released or received separately in Release particulars.</p>}
                   <PartyShareFields role={role} record={record} parties={records} schedules={propertyRecords}
-                    shares={(role === 'executant' ? draft.vendorSharesBySchedule : draft.vendeeSharesBySchedule) || {}} dispatch={dispatch} />
+                    shares={(role === 'executant' ? draft.vendorSharesBySchedule : draft.vendeeSharesBySchedule) || {}} manual={draft.manual} dispatch={dispatch} />
                 </>}
                 label={all.length > 1 ? `${noun} ${i + 1}` : isReconveyance ? noun : undefined}
                 onDelete={() => clearPartyRecord(role, record)}
@@ -1723,24 +1779,10 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
 
         {step === 10 && <section className="panel reference-plan-step">
           <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
-          <ExactReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId}
-            seed={exactPlanFromDraft(state, activePropertyId)} doc={exactPlanDrafts[activePropertyId]}
-            selected={!!exactPlanSelectedSvgs[activePropertyId] && exactPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]}
-            onChange={doc => {
-              setExactPlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
-              if (exactPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]) {
-                setSelectedPlanSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
-              }
-              setExactPlanSelectedSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
-              setDownload(null);
-            }}
-            onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setExactPlanSelectedSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
-        </section>}
-
-        {step === 11 && <section className="panel reference-plan-step">
-          <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
           <GuidedReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId}
             seed={guidedPlanFromDraft(state, activePropertyId)} doc={guidedPlanDrafts[activePropertyId]}
+            enteredDeedDimensions={PROPERTY_DIMENSIONS.fields
+              .filter(field => Object.hasOwn(resolved.values, fieldKey('property', activePropertyId, field.id))).map(field => field.id)}
             selected={!!guidedPlanSelectedSvgs[activePropertyId] && guidedPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]}
             onChange={doc => {
               setGuidedPlanDrafts(old => ({ ...old, [activePropertyId]: doc }));

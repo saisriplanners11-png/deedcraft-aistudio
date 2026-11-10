@@ -129,6 +129,28 @@ describe('source-backed drafts', () => {
     expect(state.structureDetailsBySchedule.primary).toEqual(primary);
     expect(state.structureDetailsBySchedule.second).toEqual(secondary);
   });
+  it('recalculates each house valuation from its ULB, measurement and saved rate overrides', () => {
+    const rcc = { ...newStructureDetail(), structureType: 'R.C.C.', builtUpAreaSqFt: '100' };
+    const tin = { ...newStructureDetail(), structureType: 'Tin Shed', builtUpAreaSqFt: '10', rateOverride: '800' };
+    const wall = { ...newStructureDetail(), structureType: 'Compound Wall', builtUpAreaSqFt: '999', runningFeet: '40.5', rateOverride: '200.01' };
+    const tiled = { ...newStructureDetail(), structureType: 'Tiled Roof', builtUpAreaSqFt: '20' };
+    let draft = draftReducer(newDraft(), { type: 'add-property', id: 'second' });
+    const set = (key: string, value: string) => { draft = draftReducer(draft, { type: 'manual', key, value }); };
+    set('property|primary|category', 'Residential');
+    set('property|primary|localAuthorityType', 'Municipal Corporation');
+    set('property|primary|structValue', '123');
+    set('property|second|category', 'Residential');
+    set('property|second|localAuthorityType', 'Gram Panchayat');
+    draft = draftReducer(draft, { type: 'structure-details', propertyId: 'primary', value: { totalFloors: '1', rows: [rcc, tin, wall] } });
+    draft = draftReducer(draft, { type: 'structure-details', propertyId: 'second', value: { totalFloors: '1', rows: [tiled] } });
+    expect(appStateFor(draft).form.structValue).toBe('151100.41');
+    expect(appStateFor(draft).additionalSchedules[0].values.structValue).toBe('15000');
+    set('property|primary|localAuthorityType', 'Gram Panchayat');
+    expect(appStateFor(JSON.parse(JSON.stringify(draft))).form.structValue).toBe('126100.41');
+    draft = draftReducer(draft, { type: 'structure-details', propertyId: 'primary', value: { totalFloors: '1', rows: [{ ...rcc, builtUpAreaSqFt: '10' }, tin] } });
+    expect(appStateFor(draft).form.structValue).toBe('19000');
+    expect(resolveDraft(draft).values['property|primary|structValue']).toBe('123');
+  });
   it('keeps vendee shares by schedule and removes them with a deleted claimant', () => {
     let draft = newDraft();
     draft = draftReducer(draft, { type: 'add-property', id: 'second' });

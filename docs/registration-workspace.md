@@ -22,7 +22,7 @@ Use **Dashboard version** in the header to choose **Classic** or **Registration 
 | 8. Claimant Details | Existing repeated party forms and identity uploads | Existing recipient/entity/guardian uploads, shares and personal data |
 | 9. Reverify | Existing grouped outstanding details and configured template fields | Existing validation, issue navigation and candidate confirmation |
 | 10. Generate Deed | Existing readiness, template selection and export actions | Existing Word compiler, template assets, margins, wording and download policy |
-| 11. Property Plan | Existing optional editor and exports | Existing property-specific exact-reference plan implementation |
+| 11. Property Plan | Existing optional editor and exports | Property-specific guided plan generator |
 | 12. Property Plan — New Generator | Additional optional guided plan editor | Independent per-schedule drafts/library; shared explicit attachment selection |
 | Templates | Shared library and field configuration with portal styling | Existing immutable versions, publication, configured extraction and field placement |
 | Additional template fields | Existing inline slots and fallback sections on the same steps | Existing field contract, repeated records, source reading and template review |

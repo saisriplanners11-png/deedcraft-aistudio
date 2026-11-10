@@ -72,10 +72,10 @@ for (const [instrumentId, variantId, deedType, draft, file, mode] of modes) {
     assert.match(sections[0], /w:top="8640"/, context);
     for (const section of sections.slice(1)) assert.doesNotMatch(section, /w:top="(?:9600|8640)"/, context);
     if (regularGift) { assert.doesNotMatch(text, /following undivided shares|NALA converted extent:|30%|20%/i, context); assert.match(text, /WHEREAS the Donees are the friends of the Donor\./); }
-    else { assert.match(text, /NALA converted extent: 242 Sq\. Yards\./, context); assert.match(text, /30%/, context); }
+    else { assert.doesNotMatch(text, /NALA converted extent:/i, context); assert.match(text, /30%/, context); }
     if (!municipal) assert.match(text, /7,65,432/, context);
     else { assert.match(text, /Mixed Village/); assert.doesNotMatch(text, /Represented by its Commissioner|MUNICIPAL COUNCIL, SIRCILLA|FAMILY MEMBER|ANNEXURE/); }
-    if (instrumentId === 'sale' && mode !== 'ordinary') { assert.match(text, /AUTH-42/); assert.match(text, /AUTHORITY SRO/); }
+    if (instrumentId === 'sale' && mode !== 'ordinary') { assert.match(text, /AUTH-42/); assert.match(text, mode === 'gpa' ? /Authority SRO/ : /AUTHORITY SRO/); }
     if (instrumentId === 'sale' && property.startsWith('flat')) { assert.match(text, /DGPA-42/); assert.match(text, /ALLOTMENT-42/); assert(text.indexOf('DGPA-42') < text.indexOf('after duly satisfying')); }
     if (instrumentId === 'agreement_of_sale') { assert.doesNotMatch(text, /<WITHOUT POSSESSION>/); assert.match(text, variantId === 'with-possession' ? /WITH POSSESSION/ : /WITHOUT POSSESSION/); }
     if (instrumentId === 'agreement_of_sale' || instrumentId === 'power_of_attorney') { assert.match(text, /FINGERPRINTS AS PER SECTION 32A/); assert.match(text, /SIGNATURES OF WITNESSES/); }

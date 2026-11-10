@@ -22,17 +22,34 @@ for (const mode of ['gpa', 'agpa']) {
   assert.deepEqual(draft.saleAuthority, before.saleAuthority);
   const restored = rt.appStateFor(draft);
   const state = { ...sample, ...restored, form: { ...sample.form, ...restored.form }, saleAuthority: restored.saleAuthority };
+  if (mode === 'gpa') {
+    state.saleAuthority.attorneys[0].values.Name = 'Agent One';
+    Object.assign(state.form, { extentSqYards: '242', village: 'DEMO VILLAGE', surveyNo: '443/8' });
+  }
   const render = async template => {
     const schedules = rt.scheduleMergesFor(state);
+    if (mode === 'gpa') schedules[0].values['NALA Converted Extent'] = '42';
     const result = await rt.fillSaleDeed(rt.mergeValues(state), schedules[0].variant, rt.rewritesFor(state), schedules, template);
     assert.deepEqual(result.unmapped, []);
-    return rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const bytes = new Uint8Array(await result.blob.arrayBuffer());
+    const text = await rt.docxToText(bytes);
+    if (mode === 'gpa') {
+      const xml = new TextDecoder().decode((await rt.readZip(bytes)).find(entry => entry.name === 'word/document.xml').data);
+      const schedule = xml.slice(xml.indexOf('SCHEDULE OF PROPERTY'), xml.lastIndexOf('DECLARATION'));
+      const runs = schedule.match(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g) || [];
+      for (const value of ['242', 'Demo Village', '443/8']) {
+        assert(runs.some(run => run.includes('>' + value + '</w:t>') && /<w:b\s*\/>/.test(run)), value + ' should be bold');
+      }
+      assert.doesNotMatch(text, /\brepresenting\b|NALA Converted/i);
+    }
+    return text;
   };
   for (const template of [source, { kind: 'built-in' }]) {
     const text = await render(template);
-    for (const expected of ['OWNER ONE', 'OWNER TWO', 'AGENT ONE', 'AGENT TWO', 'OWNER PARENT ONE', 'AGENT PARENT TWO', '333344445555', '555566667777', 'MANUAL OWNER VILLAGE', 'AGENT VILLAGE TWO', 'AUTH-42', 'AUTHORITY SRO']) assert(text.includes(expected), `${mode}: missing ${expected}`);
-    assert.match(text, /AGENT ONE \(representing OWNER ONE\)/);
-    assert.match(text, /AGENT TWO \(representing OWNER TWO\)/);
+    for (const expected of ['OWNER ONE', 'OWNER TWO', 'AGENT ONE', 'AGENT TWO', 'OWNER PARENT ONE', 'AGENT PARENT TWO', '333344445555', '555566667777', 'MANUAL OWNER VILLAGE', 'AGENT VILLAGE TWO', 'AUTH-42', mode === 'gpa' ? 'Authority SRO' : 'AUTHORITY SRO']) assert(text.includes(expected), `${mode}: missing ${expected}`);
+    const association = mode === 'gpa' ? 'for' : 'representing';
+    assert(text.includes('AGENT ONE (' + association + ' OWNER ONE)'));
+    assert(text.includes('AGENT TWO (' + association + ' OWNER TWO)'));
     const declaration = text.slice(text.lastIndexOf('DECLARATION'));
     assert(declaration.includes(mode === 'gpa' ? 'G.P.A. HOLDER OF' : 'A.G.P.A. HOLDER OF'));
     assert(declaration.includes('OWNER ONE, OWNER TWO'));

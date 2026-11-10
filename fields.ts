@@ -55,6 +55,8 @@ export type StructureDetail = {
   stage: string;
   buildingAge: string;
   builtUpAreaSqFt: string;
+  runningFeet?: string;
+  rateOverride?: string;
 };
 
 export type StructureDetails = { totalFloors: string; rows: StructureDetail[] };
@@ -133,6 +135,7 @@ const party = (side: 'executant' | 'claimant'): Field[] => {
     { id: k('RelativeName'), label: "Father's / relative's name", span: 2 },
     { id: k('Age'), label: 'Age', ph: `${P} Age`, type: 'number', hint: 'Calculated from date of birth to today.' },
     { id: k('Dob'), label: 'Date of birth', ph: `${P} Dob`, type: 'date' },
+    ...(side === 'claimant' ? [{ id: k('GuardianIds'), label: 'Linked guardians', hidden: true }] : []),
     { id: k('GuardianRelationship'), label: 'Guardian relationship to minor', type: 'select', options: ['Father', 'Mother', 'Grandfather', 'Grandmother', 'Brother', 'Sister', 'Court-appointed Guardian', 'Other'], allowCustom: true },
     ...['Name', 'Relation', 'RelativeName', 'Dob', ...(side === 'claimant' ? ['Occupation'] : []), 'Aadhaar', ...(side === 'claimant' ? ['Pan'] : []), 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => ({ id: k('Guardian' + suffix), label: 'Guardian ' + (({ Name: 'full name', RelativeName: 'father’s / relative’s name', Dob: 'date of birth', Aadhaar: 'Aadhaar number', HNo: 'house no.', PinCode: 'PIN code' } as Record<string, string>)[suffix] || suffix), ...(suffix === 'Dob' ? { type: 'date' as const } : {}) })),
     { id: k('WardName'), label: 'Represented minor’s full name' },
@@ -306,7 +309,7 @@ export const GROUPS: Group[] = [
         hint: 'Door/house number of a neighbouring property used as a landmark in the boundary description — not the subject property\'s own number (see Bearing H.No.).' },
       { id: 'landmarkHNo', label: 'Near / adjacent landmark house number', ph: 'Landmark House No.', only: ['Demolished', 'Part open place'],
         hint: 'Neighbouring house used as a landmark; keep the subject property house number in its separate field.' },
-      { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot', 'Open Place'],
+      { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot'],
         hint: 'Vacant Land Tax / assessment number, exactly as printed in the local-body record.' },
       { id: 'locality', label: 'Locality', ph: 'Locality' },
       { id: 'localAuthorityType', label: 'ULB / municipality', ph: 'Local Authority Type', type: 'select', options: LOCAL_AUTHORITY_OPTIONS },
@@ -531,7 +534,15 @@ export const LINK_OPTIONS: LinkOption[] = [
 export const TITLE_SECTION_IDS = ['linkDoc', 'rectificationDeed', 'supplementalDeed', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions'] as const;
 
 /** Flat list of every field, in step order. De-duplicated: `linkDoc`'s core four are the same fields already in GROUPS. */
+export const PROPERTY_DIRECTIONS = ['North', 'South', 'East', 'West'] as const;
+export const PROPERTY_DIMENSIONS: Group = {
+  step: 3, title: 'Dimensions', cols: 2,
+  note: 'Enter each side in feet and inches, or include the unit for metres.',
+  fields: PROPERTY_DIRECTIONS.map(side => ({ id: 'dimension' + side, label: side + ' dimension' })),
+};
+
 export const RECONVEYANCE_FIELDS: Field[] = [
+  ...PROPERTY_DIMENSIONS.fields,
   { id: 'principalOverride', label: 'Principal Amount (₹)', type: 'money' },
   { id: 'interestAmount', label: 'Interest Amount (₹)', type: 'money', ph: 'Intrest Amount' },
   { id: 'mortgagePartyMode', label: 'Mortgage party mode', type: 'select', options: ['bank-to-person','person-to-person'] },
@@ -557,6 +568,7 @@ export function groupsForStep(step: number, category: string): Group[] {
     .map(g => ({ ...g,
       ...(category === 'Flat' && g.title === 'Boundaries' ? { title: 'Boundaries of Apartment', note: 'The four apartment-level property boundaries. Enter the individual flat boundaries separately below.' } : {}),
       fields: g.fields.filter(f => !f.hidden && (!f.only || f.only.includes(category))
+        && !(step === 3 && category === 'Open Place' && f.id === 'plotNo')
         && !(step === 3 && (f.id === 'bltNo' || (f.id === 'bearingHNo' && category !== 'Residential') || (['Part open place', 'Demolished'].includes(category) && f.id === 'nearHNo'))))
       .map(f => f.id === 'nearHNo' && ['Demolished', 'Part open place'].includes(category)
         ? { ...f, label: 'Subject property H.No.', hint: 'House number of the dismantled house or partly open property described in the schedule.' }

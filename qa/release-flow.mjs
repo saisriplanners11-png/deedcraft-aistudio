@@ -8,6 +8,7 @@ await mkdir('tmp/release/qa',{recursive:true});
 for(const property of ['plot','open','part','dismantled','house-finished','house-semi','flat-finished','flat-semi']) {
   const state=rt.sampleState('ordinary-'+property); state.deedType='Release'; state.draft='Co-owner Release';
   Object.assign(state.form,{totalPropertyValue:'1200000',consid:'400000',nearAdjacent:'near',executantGender:'Male',claimantGender:'Female'});
+  Object.assign(state.form, { dimensionNorth: '21 ft', dimensionSouth: '22 ft', dimensionEast: '41 ft', dimensionWest: '42 ft' });
   state.payments[0].amount='400000';
   state.releaseData={releasedBySchedule:{primary:{primary:'1/3'}}};
   const compiled=rt.compileDeed({instrumentId:'release',variantId:'co-owner-release',snapshotHash:'qa',values:rt.mergeValues(state),schedules:rt.scheduleMergesFor(state),rewrites:rt.rewritesFor(state),unresolvedWarnings:[]});
@@ -17,6 +18,8 @@ for(const property of ['plot','open','part','dismantled','house-finished','house
   assert.equal((text.match(/THE DETAILS OF TOTAL PROPERTY/g)||[]).length,1);
   assert.ok(!/<[^>]+>|DD-MM-YYYY|Vendee\/s|Vendor\/s|SIGN\/S|HAS\/HAVE|HIS\/HER/.test(text),text);
   assert.ok(text.includes('1/3'));
+  assert.match(text, /Dimensions\s+North: 21 ft\s+South: 22 ft\s+East: 41 ft\s+West: 42 ft/, property);
+  if (property.startsWith('house-')) assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./, property);
   await writeFile(`tmp/release/qa/${property}.docx`,output);
   if(property==='plot') await writeFile('tmp/release/qa/plot.txt',text);
 }

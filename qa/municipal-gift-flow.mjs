@@ -52,6 +52,26 @@ const text = await rt.docxToText(new Uint8Array(await multiple.blob.arrayBuffer(
 for (const title of ['TITLE-111', 'TITLE-222', 'TITLE-333', 'SECOND-SURVEY']) assert.ok(text.includes(title), title);
 assert.equal((text.match(/Hereinafter called the .Donor/g) || []).length, 1);
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
+const shared = stateFor('ordinary-plot');
+shared.additionalSchedules = state.additionalSchedules;
+const firstLink = shared.linkRecordsBySchedule.primary[0].values;
+firstLink.municipalLinkAuthority = 'Tahsildar & Joint Sub-Registrar Office';
+shared.linkRecordsBySchedule['property-2'] = [{ id: 'duplicate', docNames: [], values: {
+  ...firstLink, linkSro: 'title office', municipalLinkEnclosure: 'Certified copy of the above link deed enclosed.',
+} }];
+const sharedText = await rt.docxToText(new Uint8Array(await (await render(shared)).blob.arrayBuffer()));
+assert.equal((sharedText.match(/TITLE-111/g) || []).length, 1);
+assert.doesNotMatch(sharedText, /Certified copy of the above link deed enclosed|Enclosure:/);
+assert.match(sharedText, /Tahsildar & Jt\. Sub-Registrar, Title Office/);
+assert.equal((sharedText.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
+
+shared.linkRecordsBySchedule['property-2'][0].values.municipalLinkAuthority = 'Sub-Registrar Office (SRO)';
+await assert.rejects(() => render(shared), /conflicting issuing authority/);
+Object.assign(shared.linkRecordsBySchedule['property-2'][0].values, {
+  linkSro: 'OTHER TITLE OFFICE', linkSroCode: '222', municipalLinkAuthority: 'Sub-Registrar Office (SRO)', municipalLinkEnclosure: '',
+});
+const separateText = await rt.docxToText(new Uint8Array(await (await render(shared)).blob.arrayBuffer()));
+assert.equal((separateText.match(/TITLE-111/g) || []).length, 2);
 state.additionalSchedules[0].values.village = 'OTHER VILLAGE';
 assert.match(await rt.docxToText(new Uint8Array(await (await render(state)).blob.arrayBuffer())), /Other Village/);
 await assert.rejects(() => render(stateFor('ordinary-flat-finished')), /supports open place/);
@@ -104,3 +124,40 @@ for (const version of ['v1', 'v2', 'v3']) {
  assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner|FAMILY MEMBER|ANNEXURE/);
 }
 console.log('PASS: Municipal v1, v2 and v3 custom sources retain entered recipients and remain separate from regular Gift.');
+
+for (const [instrumentId, variantId, deedType, draft] of [
+  ['sale', 'outright-absolute-sale-deed', 'Sale', 'Outright Absolute Sale Deed'],
+  ['gift', 'family-gift', 'Gift', 'Gift Settlement Family'],
+  ['power_of_attorney', 'general-power-of-attorney', 'GPA/Power of Attorney', 'General Power of Attorney'],
+  ['agreement_of_sale', 'with-possession', 'Agreement of Sale Cum GPA', 'With Possession'],
+  ['release', 'co-owner-release', 'Release', 'Co-owner Release'],
+  ['reconveyance', 'title-deed', 'Deed Of Reconvayance', 'TITLE DEED'],
+]) {
+  const sample = stateFor('ordinary-plot');
+  Object.assign(sample, { deedType, draft, releaseData: { releasedBySchedule: { primary: { primary: '1/3' } } } });
+  Object.assign(sample.form, { giftRelationship: 'daughter', totalPropertyValue: '1200000', bankName: 'Sample Bank', bankBranch: 'Central', officialDesignation: 'Manager', mortgagePartyMode: 'bank-to-person', interestAmount: '25' });
+  const [first] = sample.linkRecordsBySchedule.primary;
+  Object.assign(first.values, {
+    linkOption: 'linkDoc', mortgageAmount: '100000',
+    municipalLinkAuthority: 'Tahsildar & Joint Sub-Registrar Office',
+    municipalLinkEnclosure: 'Certified enclosure for the first link only.',
+  });
+  sample.linkRecordsBySchedule.primary.push({ id: 'second', docNames: [], values: {
+    ...first.values, linkDocNo: 'SECOND-555', municipalLinkAuthority: '', municipalLinkEnclosure: '',
+  } });
+  const compiled = rt.compileDeed({ instrumentId, variantId, snapshotHash: 'link-authority', values: rt.mergeValues(sample),
+    schedules: rt.scheduleMergesFor(sample), rewrites: rt.rewritesFor(sample), unresolvedWarnings: [] });
+  const { result } = await rt.renderArtifact(compiled, 'docx');
+  const bytes = new Uint8Array(await result.blob.arrayBuffer());
+  const output = await rt.docxToText(bytes);
+  const xml = new TextDecoder().decode((await rt.readZip(bytes)).find(entry => entry.name === 'word/document.xml').data);
+  for (const designation of ['Sub-Registrar', 'Tahsildar &amp; Jt. Sub-Registrar']) {
+    const runs = [...xml.matchAll(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g)].map(match => match[0]).filter(run => run.includes('>' + designation + '<'));
+    assert(runs.length, instrumentId + ': ' + designation);
+    assert(runs.every(run => /<w:b\s*\/>/.test(run)), instrumentId + ': bold ' + designation);
+  }
+  assert.doesNotMatch(output, /Certified enclosure for the first link only|Enclosure:/, instrumentId);
+  assert.equal((output.match(/Tahsildar & Jt\. Sub-Registrar/g) || []).length, 1, instrumentId);
+  assert.match(output, /SECOND-555/, instrumentId);
+}
+console.log('PASS: all deed renderers retain source recitals with the selected office designation and omit enclosure text.');

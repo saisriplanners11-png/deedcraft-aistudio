@@ -13,6 +13,8 @@ export type SavedDeedsPresentationProps = {
   deeds: SavedDeed[];
   templateLabel: (deed: SavedDeed) => string;
   onOpen: (deed: SavedDeed) => void;
+  onDuplicate: (deed: SavedDeed, displayName: string) => void;
+  onRename: (deed: SavedDeed) => void;
   onRemove: (deed: SavedDeed) => void;
 };
 export type JurisdictionPresentationProps = {

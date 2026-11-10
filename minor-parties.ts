@@ -89,3 +89,34 @@ export function minorGuardianRecital(values: Record<string, string>, side: strin
   if (side === 'executant' && v('CourtOrderNo')) parts.push('acting under permission of ' + v('CourtName') + ', order ' + v('CourtOrderNo') + ' dated ' + deedDate(v('CourtOrderDate')));
   return parts.join(', ');
 }
+
+/** Explicit stable claimant IDs; names and array positions never establish links. */
+export function guardianIds(values: Record<string, string>): string[] {
+  return [...new Set((values.claimantGuardianIds || '').split(',').map(id => id.trim()).filter(Boolean))];
+}
+export function linkedClaimantRepresentation(values: Record<string, string>, records: { id: string; values: Record<string, string> }[]): { errors: string[]; recital: string } {
+  if (!values.claimantGuardianIds && (values.claimantGuardianName || values.claimantWardName)) return { errors: minorPartyErrors(values, 'claimant'), recital: minorGuardianRecital(values, 'claimant') };
+  if ((values.claimantPartyType || '').startsWith('Guardian') && !values.claimantWardName) {
+    const age = ageFrom(values.claimantDob || '');
+    return { errors: age === '' || Number(age) < 18 ? ['Enter a valid adult date of birth for the guardian.'] : [], recital: '' };
+  }
+  if (!isMinorParty(values, 'claimant')) return { errors: [], recital: '' };
+  const ids = guardianIds(values);
+  const errors: string[] = [];
+  const age = ageFrom(values.claimantDob || '');
+  if (age === '' || Number(age) >= 18) errors.push('Enter a valid date of birth below 18 years for the minor.');
+  if (!ids.length) errors.push('Assign at least one Guardian claimant to this minor.');
+  const recitals: string[] = [];
+  for (const id of ids) {
+    const guardian = records.find(record => record.id === id)?.values;
+    if (!guardian || !(guardian.claimantPartyType || '').startsWith('Guardian')) {
+      errors.push('An assigned guardian was removed or changed party type. Select a Guardian claimant.');
+      continue;
+    }
+    const view = { ...values };
+    for (const suffix of [...CLAIMANT_IDENTITY, 'Relationship'] as const) view['claimantGuardian' + suffix] = guardian['claimant' + (suffix === 'Relationship' ? 'GuardianRelationship' : suffix)] || '';
+    errors.push(...minorPartyErrors(view, 'claimant'));
+    recitals.push(minorVendeeGuardianRecital(view).replace(/^is under guardianship of/, 'Under the Guardianship of'));
+  }
+  return { errors: [...new Set(errors)], recital: recitals.join('; ') };
+}

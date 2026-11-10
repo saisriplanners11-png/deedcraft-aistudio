@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanDocument } from './guided-reference-plan/src/types';
-import { applyExactRefresh, exactRefreshFields, isExactPlan } from './exact-reference-integration';
+import { syncGuidedDeedBoundaries, applyGuidedRefresh, guidedRefreshFields, isGuidedPlan } from './guided-reference-integration';
 
-export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, selected, onChange, onUse }: {
-  draftId: string; scheduleId: string; seed: PlanDocument; doc?: PlanDocument; selected: boolean;
+export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDeedDimensions, selected, onChange, onUse }: {
+  draftId: string; scheduleId: string; seed: PlanDocument; doc?: PlanDocument; enteredDeedDimensions?: readonly string[]; selected: boolean;
   onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
@@ -11,12 +11,26 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, selected, 
   const [review, setReview] = useState(false);
   const [checked, setChecked] = useState<string[]>([]);
   const [error, setError] = useState('');
-  const latest = useRef({ seed, doc, onChange, onUse }); latest.current = { seed, doc, onChange, onUse };
+  const deedSides = enteredDeedDimensions && JSON.stringify([seed.boundaries, enteredDeedDimensions]);
   const currentDoc = doc || seed;
-  const changes = useMemo(() => exactRefreshFields(currentDoc, seed), [currentDoc, seed]);
+  const lastDeedSides = useRef<string | undefined>(undefined);
+  const latest = useRef({ seed, doc, onChange, onUse }); latest.current = { seed, doc, onChange, onUse };
+  const changes = useMemo(() => guidedRefreshFields(currentDoc, seed), [currentDoc, seed]);
   const sendSeed = (next = latest.current.doc || latest.current.seed) => frame.current?.contentWindow?.postMessage({
     type: 'deedcraft:guided-plan-seed', draftId, scheduleId, sessionId, doc: next,
   }, window.location.origin);
+  useEffect(() => {
+    if (!deedSides || lastDeedSides.current === deedSides) return;
+    lastDeedSides.current = deedSides;
+    const current = latest.current.doc;
+    if (!current) return;
+    const next = syncGuidedDeedBoundaries(current, latest.current.seed, enteredDeedDimensions);
+    if (next !== current) {
+      latest.current = { ...latest.current, doc: next };
+      latest.current.onChange(next);
+      sendSeed(next);
+    }
+  }, [deedSides]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       const data = event.data;
@@ -26,7 +40,7 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, selected, 
         if (!latest.current.doc) latest.current.onChange(latest.current.seed);
         sendSeed();
       }
-      if (data.type === 'deedcraft:guided-plan-change' && isExactPlan(data.doc)
+      if (data.type === 'deedcraft:guided-plan-change' && isGuidedPlan(data.doc)
         && JSON.stringify(data.doc) !== JSON.stringify(latest.current.doc || latest.current.seed)) latest.current.onChange(data.doc);
       if (data.type === 'deedcraft:guided-plan-use' && typeof data.png === 'string'
         && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data.png)
@@ -55,7 +69,7 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, selected, 
         {field.label}: {JSON.stringify(field.before) || 'blank'} → {JSON.stringify(field.after) || 'blank'}
       </label>; })}
       <button disabled={!checked.length} onClick={() => {
-        const next = applyExactRefresh(currentDoc, changes.filter(field => checked.includes(field.path.join('.'))));
+        const next = applyGuidedRefresh(currentDoc, changes.filter(field => checked.includes(field.path.join('.'))));
         onChange(next); sendSeed(next); setReview(false);
       }}>Apply selected deed facts to plan</button>
     </div>}

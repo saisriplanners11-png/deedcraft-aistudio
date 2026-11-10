@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
+import { linkedClaimantRepresentation, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
 import { partyDisplayName } from './party-entities';
 import { ageFrom } from './party-age';
 
@@ -37,5 +37,32 @@ describe('minor vendee guardianship wording', () => {
     expect(minorGuardianRecital(saved, 'claimant')).toContain('her natural Grand Father ADULT GUARDIAN');
     expect(partyDisplayName(saved, 'claimant')).toBe('WARD CHILD');
     expect(JSON.stringify(saved)).toBe(before);
+  });
+});
+
+
+describe('separate guardian claimant links', () => {
+  const adult = (id: string, name: string) => ({ id, values: { claimantPartyType: 'Guardian', claimantName: name, claimantDob: '1980-01-01', claimantGuardianRelationship: 'Mother', claimantAadhaar: '123456789012' } });
+  it('maps multiple guardians by stable ID without mixing minor identities', () => {
+    const records = [adult('g1', 'ADULT ONE'), adult('g2', 'ADULT TWO')];
+    const minor = { claimantPartyType: 'Minor', claimantName: 'CHILD ONE', claimantDob: '2016-01-01', claimantGuardianIds: 'g2,g1,g2' };
+    const before = JSON.stringify(minor);
+    const result = linkedClaimantRepresentation(minor, records);
+    expect(result.errors).toEqual([]);
+    expect(result.recital.match(/Under the Guardianship of/g)).toHaveLength(2);
+    expect(result.recital.indexOf('ADULT TWO')).toBeLessThan(result.recital.indexOf('ADULT ONE'));
+    expect(JSON.stringify(minor)).toBe(before);
+    const second = linkedClaimantRepresentation({ ...minor, claimantName: 'CHILD TWO', claimantGuardianIds: 'g1' }, records);
+    expect(second.recital).toContain('ADULT ONE');
+    expect(second.recital).not.toContain('ADULT TWO');
+  });
+  it('rejects deleted guardians and changed capacities without falling back to another adult', () => {
+    const minor = { claimantPartyType: 'Minor', claimantDob: '2016-01-01', claimantGuardianIds: 'g1' };
+    expect(linkedClaimantRepresentation(minor, [adult('g2', 'OTHER')]).errors.join()).toContain('removed');
+    expect(linkedClaimantRepresentation(minor, [{ ...adult('g1', 'CHANGED'), values: { ...adult('g1', 'CHANGED').values, claimantPartyType: 'Individual' } }]).recital).toBe('');
+    expect(linkedClaimantRepresentation({ ...minor, claimantGuardianIds: '' }, []).errors.join()).toContain('Assign');
+  });
+  it('validates a separate adult guardian without requiring embedded ward details', () => {
+    expect(linkedClaimantRepresentation(adult('g1', 'ADULT').values, []).errors).toEqual([]);
   });
 });

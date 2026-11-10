@@ -36,7 +36,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
-import { capturePlan } from '../../../exact-reference-plan/src/utils/capturePlan';
+import { capturePlan } from '../utils/capturePlan';
 
 interface SketchVerificationWorkspaceProps {
   initialPlan?: StructuredGeometryPlan | null;

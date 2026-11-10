@@ -16,7 +16,7 @@ for (const [name, variant, mode, count, property] of [
   const {result}=await rt.renderArtifact(compiled,'docx');
   const bytes=new Uint8Array(await result.blob.arrayBuffer());
   const text=await rt.docxToText(bytes);
-  assert.ok(text.includes('RECONVEYANCE'));
+  assert.ok(text.includes('Reconveyance'));
   assert.equal((text.match(/additional mortgage/g)||[]).length,count-1);
   assert.ok(!text.includes('<IF '));
   await writeFile(`tmp/reconveyance/qa/${name}.docx`,bytes);

@@ -41,7 +41,7 @@ try {
       assert.match(text, /_{16}/, 'Signature writing lines required');
       assert.doesNotMatch(text, /<[^<>]+>/, 'Unfilled template tags');
       if (state.saleDocument !== 'ordinary') {
-        for (const value of ['SAMPLE ATTORNEY', 'AUTH-42', 'AUTHORITY SRO']) assert(text.includes(value), `${id}: missing ${value}`);
+        for (const value of ['SAMPLE ATTORNEY', 'AUTH-42', id.startsWith('gpa-') ? 'Authority SRO' : 'AUTHORITY SRO']) assert(text.includes(value), `${id}: missing ${value}`);
         assert.match(text, state.saleDocument === 'agpa' ? /A\.G\.P\.A\. HOLDER OF/ : /G\.P\.A\. HOLDER OF/);
       }
       console.log('PASS live ' + id);

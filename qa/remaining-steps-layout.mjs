@@ -22,10 +22,10 @@ try {
     if (page.viewportSize().width <= 900) await page.locator('#mobile-step').selectOption(String(step));
     else await page.locator('.rail-step').nth(step).click();
     await page.locator(`.workflow-step-${step}`).waitFor();
-    if (step === 10) await page.frameLocator('iframe[title="Property Plan — Exact Reference"]').locator('#input-survey-no').waitFor();
+    if (step === 10) await page.frameLocator('iframe[title="Property Plan — New Generator"]').locator('#btn-app-library').waitFor();
   };
   await page.locator('.rail-step').first().click();
-  await page.getByLabel('What is this property?').selectOption('Residential');
+  await page.getByLabel('What is this property?').selectOption('Residential:Finished');
   const capture = async name => page.screenshot({ path: fileURLToPath(new URL(name, out)), fullPage: true });
   await go(4);
   await page.getByRole('textbox', { name: /sale consideration/i }).fill('1000000');
@@ -37,7 +37,7 @@ try {
     await go(step);
     await capture(`step${step + 1}-desktop.png`);
   }
-  const frame = page.frameLocator('iframe[title="Property Plan — Exact Reference"]');
+  const frame = page.frameLocator('iframe[title="Property Plan — New Generator"]');
   await frame.locator('#input-survey-no').waitFor();
   await frame.locator('#input-survey-no').fill('PLAN/123');
   await page.getByRole('button', { name: 'Review and refresh from deed', exact: true }).click();

@@ -4,7 +4,7 @@ import { PropertySketch } from './PropertySketch';
 import { generateLegalDescription, rotateBoundariesByQuarterTurns, parseDimension } from '../utils/dimensionUtils';
 import { Printer, Download, Edit3, AlertTriangle, CheckCircle2, Copy, FileCheck, RefreshCw, FileText, RotateCw, Compass, Split, Sparkles } from 'lucide-react';
 import jsPDF from 'jspdf';
-import { capturePlan } from '../../../exact-reference-plan/src/utils/capturePlan';
+import { capturePlan } from '../utils/capturePlan';
 import { Document, Packer, Paragraph, ImageRun } from 'docx';
 import { saveAs } from 'file-saver';
 import { downloadWord2007DeedDocx } from '../utils/deedDocxExporter';

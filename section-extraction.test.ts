@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, profileFields, requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
-import { appStateFor, newDraft, type Candidate, type SourceResult } from './source-draft';
+import { appStateFor, newDraft, resolveDraft, type Candidate, type SourceResult } from './source-draft';
 
-const api = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce:false, step2Gate: undefined as Promise<void> | undefined }));
+const api = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce:false, step2Gate: undefined as Promise<void> | undefined, extraReads: [] as Record<string, unknown>[] }));
 vi.mock('./claude', () => ({
   EXTRACT_MODEL: 'read', VISION_MODEL: 'verify', VERIFY_MODEL: 'verify', readableError: (e: Error) => e,
   getClient: () => ({ messages: { create: async (body: any) => {
@@ -23,7 +23,7 @@ vi.mock('./claude', () => ({
           return { stop_reason: 'max_tokens', content: [] };
         }
         const values: Record<string,string> = { linkDocNo: '1263/2016', linkDocType: 'Sale Deed', linkDocDate: '2016-02-27', sro: 'SIRCILLA SRO', district: 'RAJANNA SIRCILLA', mandal: 'SIRCILLA', village: 'KOTHAPETA', locality: 'LAKSHMI NAGAR', plotNo: '16', extentSqYards: '157.22', boundaryNorth: 'ROAD', boundarySouth: 'PLOT 15', boundaryEast: 'PLOT 17', boundaryWest: 'OPEN LAND', govtRate: '1200', structValue: '0' };
-        input = { candidates: fields.filter((f: string) => values[f]).map((field: string) => ({ field, value: values[field], role: field.startsWith('link') ? 'link' : 'property', record: 'primary', page: 1, quote: values[field], region: 'Source label', historical: false, handwritten: false })), plan: null, notes: [] };
+        input = { candidates: fields.filter((f: string) => values[f]).map((field: string) => ({ field, value: values[field], role: field.startsWith('link') ? 'link' : 'property', record: 'primary', page: 1, quote: values[field], region: 'Source label', historical: false, handwritten: false })).concat(api.extraReads.filter(candidate => fields.includes(candidate.field))), plan: null, notes: [] };
       }
       return { stop_reason: 'end_turn', content: [{ type: 'tool_use', name: 'record_transcription', input }] };
     } finally { api.active--; }
@@ -31,9 +31,38 @@ vi.mock('./claude', () => ({
 }));
 
 const pages = (count: number) => Array.from({length: count}, (_,i) => ({number:i+1,region:`Page ${i+1}`,parts:[{type:'text' as const,text:`source page ${i+1}`}]}));
-beforeEach(() => { api.calls=[]; api.active=0; api.peak=0; api.truncateOnce=false; api.transientOnce=false; api.step2Gate=undefined; });
+beforeEach(() => { api.calls=[]; api.active=0; api.peak=0; api.truncateOnce=false; api.transientOnce=false; api.step2Gate=undefined; api.extraReads=[]; });
 
 describe('shared document section extraction', () => {
+  it('projects the original parties by instrument while retaining their independent evidence', async () => {
+    const fact = (role: string, record: string, field: string, value: string, historical = false) =>
+      ({ role, record, field: role + field, value, page: 1, quote: value, region: 'Opening', historical, handwritten: false });
+    api.extraReads = [
+      fact('executant', 'old-seller', 'Name', 'Original Seller'),
+      fact('claimant', 'buyer-one', 'Name', 'Shared Name'),
+      fact('claimant', 'buyer-one', 'HNo', '1-1'),
+      fact('claimant', 'buyer-two', 'Name', 'Shared Name'),
+      fact('claimant', 'buyer-two', 'HNo', '2-2'),
+      fact('claimant', 'older-title', 'Name', 'Historical Owner', true),
+      fact('claimant', 'unmatched', 'HNo', '3-3'),
+    ];
+    const result = await extractSections(pages(1), [], new AbortController().signal, () => {}, undefined, 'phase1:linkDoc');
+    const draft = newDraft();
+    draft.sources = [{ id: 'link', revision: 0, name: 'Title deed', hash: 'test', status: 'done',
+      profile: 'phase1:linkDoc', assignment: { role: 'link', record: 'title', propertyRecord: 'primary' }, result }];
+    const sale = appStateFor(draft);
+    expect(sale.form.executantName).toBe('SHARED NAME');
+    expect(sale.form.executantHNo).toBe('1-1');
+    expect(sale.additionalExecutants.map(r => r.values.executantHNo)).toEqual(['2-2']);
+    expect(sale.form.claimantName).toBeFalsy();
+    draft.manual['claimant|primary|claimantName'] = 'Manual Buyer';
+    expect(appStateFor(draft).form.claimantName).toBe('MANUAL BUYER');
+    const reconveyance = appStateFor({ ...draft, manual: {}, instrumentId: 'reconveyance' });
+    expect(reconveyance.form.claimantName).toBe('ORIGINAL SELLER');
+    expect(reconveyance.form.executantHNo).toBe('1-1');
+    expect(result.candidates.find(c => c.value === 'Original Seller')?.role).toBe('executant');
+    expect(result.candidates.find(c => c.value === 'Shared Name')?.role).toBe('claimant');
+  });
   it('prepares several land and LRS documents for one merged card in order', async () => {
     const files = [
       Object.assign(new Blob(['V.L.T. No. VLT-101'], { type: 'text/plain' }), { name: 'vacant-tax.txt' }),
@@ -69,6 +98,91 @@ describe('shared document section extraction', () => {
     expect(boundary?.value).toBe('SIRCILLA ROAD');
   });
 
+
+  it('keeps PTIN, vacant-land tax and receipt evidence separate in every upload profile', async () => {
+    const quote = 'H.No.6-2-24; P.T.I. No. 001105008210; V.L.T. No. 0077; Assessment No. 0099; Receipt No. 0248; Demand No. 0310';
+    const read = (field: string, value: string, profile: Parameters<typeof cleanCandidate>[3], evidence = quote) =>
+      cleanCandidate({ field, value, role: 'link', record: 'primary', quote: evidence, region: 'Tax details', historical: false, handwritten: false }, 1, 0, profile);
+    for (const profile of ['phase1:linkDoc', 'property-schedule', 'general'] as const) {
+      expect(read('bltNo', '001105008210', profile)).toMatchObject({ role: 'property', value: '001105008210' });
+      expect(read('assessmentPtinNo', '0077', profile)).toMatchObject({ role: 'property', value: '0077' });
+      expect(read('assessmentPtinNo', '001105008210', profile)).toBeNull();
+      expect(read('bltNo', '0077', profile)).toBeNull();
+    }
+    for (const profile of ['phase1:landLayoutLrs', 'phase1:vacantTax'] as const) {
+      expect(read('vltNo', '0077', profile)).toMatchObject({ role: 'link', value: '0077' });
+      expect(read('vltNo', '001105008210', profile)).toBeNull();
+      expect(read('vltNo', '0099', profile)).toBeNull();
+    }
+    for (const profile of ['phase1:houseTax', 'phase1:assessment'] as const) {
+      expect(profileFields(profile)).not.toContain('assessmentPtinNo');
+      expect(read('bltNo', '001105008210', profile)).toMatchObject({ role: 'link', value: '001105008210' });
+      expect(read('bltNo', '0099', profile)).toBeNull();
+      expect(read('bltNo', '0099', profile, 'Assessment No. 0099')).toMatchObject({ value: '0099' });
+      expect(read('bltNo', '0099', profile, 'Vacant Land Tax Assessment No. 0099')).toBeNull();
+      expect(read('bltNo', '0248', profile)).toBeNull();
+      expect(read('bltNo', '0310', profile)).toBeNull();
+      expect(read('houseTaxReceiptNo', '001105008210', profile)).toBeNull();
+      expect(read('houseTaxReceiptNo', '0248', profile)).toMatchObject({ value: '0248' });
+    }
+
+    const pairs = read('housePtinPairs', JSON.stringify([
+      { houseNo: '6-2-24', ptin: '0077' },
+      { ptin: '001105008210' },
+    ]), 'phase1:linkDoc');
+    expect(JSON.parse(pairs!.value)).toMatchObject([
+      { houseNo: '6-2-24', ptin: '' },
+      { houseNo: '', ptin: '001105008210' },
+    ]);
+
+    api.extraReads = [
+      { field: 'bltNo', value: '001105008210', quote },
+      { field: 'assessmentPtinNo', value: '0077', quote },
+      { field: 'assessmentPtinNo', value: '001105008210', quote },
+      { field: 'bltNo', value: '9999', quote: 'PTIN No. 9999' },
+    ].map(read => ({ ...read, role: 'link', record: 'primary', page: 1, region: 'Tax details', historical: false, handwritten: false }));
+    const source = { ...pages(1)[0], text: quote, parts: [{ type: 'text' as const, text: quote }] };
+    const result = await extractSections([source], [], new AbortController().signal, () => {}, undefined, 'phase1:linkDoc');
+    expect(result.candidates.filter(candidate => ['bltNo', 'assessmentPtinNo'].includes(candidate.field))).toHaveLength(2);
+
+    const draft = newDraft();
+    draft.manual['property|secondary|category'] = 'Part open place';
+    draft.sources = [{
+      id: 'tax-link', name: 'Link deed', hash: 'test', revision: 0, status: 'done', profile: 'phase1:linkDoc',
+      assignment: { role: 'link', record: 'title', propertyRecord: 'secondary' },
+      result,
+    }];
+    const { values } = resolveDraft(draft);
+    expect(values['property|secondary|bltNo']).toBe('001105008210');
+    expect(values['property|secondary|assessmentPtinNo']).toBe('0077');
+    expect(values['property|primary|bltNo']).toBeUndefined();
+  });
+
+  it('preserves full survey subdivisions from the source quote and selected property upload', async () => {
+    const survey = '30/1/1/1/1/1/1/1/1/1/2';
+    const read = (value: string, quote: string) => ({
+      field: 'surveyNo', value, quote, role: 'property', record: 'primary', page: 1,
+      region: 'Schedule', historical: true, handwritten: false,
+    });
+    for (const number of ['30', '30/1', survey, '030 / 01 / 01A']) {
+      expect(cleanCandidate(read(number.replace(/ /g, ''), 'Survey No. ' + number), 1, 0)?.value).toBe(number);
+    }
+    expect(cleanCandidate(read('30/1', 'Sy. No. ' + survey), 1, 0)?.value).toBe(survey);
+    expect(cleanCandidate(read('30/1, 31/2', 'Sy. Nos. 30/1, 31/2'), 1, 0)?.value).toBe('30/1, 31/2');
+    expect(cleanCandidate(read('30/1', 'Plot No. 30/1/2'), 1, 0)?.value).toBe('30/1');
+
+    api.extraReads = [read('30/1', 'Sy. No. 30/1')];
+    const text = 'Sy. No. ' + survey + ', measuring 157 sq. yards.';
+    const source = { ...pages(1)[0], text, parts: [{ type: 'text' as const, text }] };
+    const result = await extractSections([source], [], new AbortController().signal, () => {}, undefined, 'phase1:linkDoc');
+    const draft = newDraft();
+    draft.sources = [{
+      id: 'survey-link', name: 'Link deed', hash: 'survey', revision: 0, status: 'done', profile: 'phase1:linkDoc',
+      assignment: { role: 'link', record: 'title', propertyRecord: 'secondary' }, result,
+    }];
+    expect(resolveDraft(draft).values['property|secondary|surveyNo']).toBe(survey);
+  });
+
   it('uses independent original-image confirmation for every Step 2 upload type', () => {
     for (const profile of ['phase1:houseTax', 'phase1:titleDeed', 'phase1:nala', 'phase1:permissions'] as const) {
       expect(requiresFullVisualConfirmation(profile)).toBe(true);
@@ -88,7 +202,7 @@ describe('shared document section extraction', () => {
   it('recovers a transient provider failure without losing the document details',async()=>{
     const sections=sectionFields('phase1:linkDoc');
     const scheduleFieldCount=sections.filter(s=>['step3','step4','step5'].includes(s.id)).reduce((n,s)=>n+s.fields.length,0);
-    const expectedChunks=1+Math.ceil(scheduleFieldCount/10);
+    const expectedChunks=2+Math.ceil(scheduleFieldCount/10);
     api.transientOnce=true;
     const result=await extractSections(pages(3),[],new AbortController().signal,()=>{},undefined,'phase1:linkDoc');
     // Whichever chunk's first attempt eats the injected 500 retries once and
@@ -123,7 +237,7 @@ describe('shared document section extraction', () => {
     // The opening remains fast, while a scan with no native text gets a bounded
     // all-later-pages schedule pass so a schedule on page 5/20/81 is not lost.
     expect(api.calls.filter(c=>c.tools[0].input_schema.properties.pages)).toHaveLength(0);
-    const calls=api.calls.filter(c=>c.tools[0].input_schema.properties.candidates);
+    const calls=api.calls.filter(c=>c.tools[0].input_schema.properties.candidates && !c.tools[0].input_schema.properties.candidates.items.properties.field.enum.includes('executantName'));
     expect(calls.every(c=>c.model==='read')).toBe(true);
     expect(calls.every(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum.length<=10)).toBe(true);
     expect(api.peak).toBeGreaterThan(1);
@@ -248,7 +362,7 @@ describe('shared document section extraction', () => {
       expect(sectionFields(profile)).toHaveLength(1);
       expect(sectionFields(profile)[0].id).toBe('step2');
     }
-    expect(sectionFields('phase1:linkDoc').map(section => section.id)).toEqual(['step2', 'step3', 'step4', 'step5']);
+    expect(sectionFields('phase1:linkDoc').map(section => section.id)).toEqual(['step2', 'link-parties', 'step3', 'step4', 'step5']);
   });
 
   it('creates an identity extraction worker for Aadhaar/party uploads', () => {

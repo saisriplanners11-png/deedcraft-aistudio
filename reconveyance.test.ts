@@ -1,4 +1,4 @@
-import { newPartyRepresentative } from './fields';
+import { newPartyRepresentative, newStructureDetail } from './fields';
 import { describe, expect, it } from 'vitest';
 import { mortgagePaise, reconveyanceAmounts } from './reconveyance';
 
@@ -25,7 +25,7 @@ describe('Reconveyance repayment amounts', () => {
 
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { docxToText, fillReconveyanceDeed, readZip, validateReconveyanceTemplate, writeZip, replaceRunText, type DeedTemplateSource } from './docx';
+import { docxToText, fillReconveyanceDeed, readZip, scheduleText, validateReconveyanceTemplate, writeZip, replaceRunText, type DeedTemplateSource } from './docx';
 import { sampleState } from './template-runtime';
 import { mergeValues, scheduleMergesFor, rewritesFor } from './merge';
 import { appStateFor, draftReducer, fieldKey, newDraft } from './source-draft';
@@ -35,6 +35,7 @@ import { stepsFor } from './workflow-steps';
 import { compileDeed, renderArtifact } from './deed-compiler';
 import { DEED_DEFINITIONS } from './instruments';
 import { cleanCandidate, profileFields, sectionFields } from './upload-extraction';
+import { guidedPlanFromDraft, syncGuidedDeedBoundaries } from './guided-reference-integration';
 
 const bytes = new Uint8Array(await readFile(new URL('./reconveyance-deed-template-v1.docx', import.meta.url)));
 const source: DeedTemplateSource = { kind: 'custom', bytes, hash: 'test', name: 'reconveyance.docx', validation: await validateReconveyanceTemplate(bytes) };
@@ -50,6 +51,47 @@ async function generate(state: ReturnType<typeof mortgageState>) {
   return (await renderArtifact(compiled, 'docx')).result;
 }
 describe('Reconveyance source rendering and workflow', () => {
+  it('prints selected plinth areas, uppercase party names and the four dimensions below the boundaries', async () => {
+    const state = mortgageState(1, 'person-to-person', false, 'ordinary-house-finished');
+    Object.assign(state.form, {
+      executantName: 'Mixed Case Releasor', claimantName: 'Mixed Case Releasee',
+      boundaryNorth: 'North Road', boundarySouth: 'South Plot',
+      boundaryEast: 'East Lane', boundaryWest: 'West Plot',
+      dimensionNorth: '21 ft', dimensionSouth: '22 ft', dimensionEast: '41 ft', dimensionWest: '42 ft',
+    });
+    const floor = (floorNo: string, builtUpAreaSqFt: string) => ({ ...newStructureDetail(), floorNo, builtUpAreaSqFt });
+    const rows = [floor('Ground', '100.2')];
+    state.structureDetailsBySchedule.primary = { totalFloors: '1', rows };
+    const read = async () => docxToText(new Uint8Array(await (await generate(state)).blob.arrayBuffer()));
+    const single = await read();
+    expect(single).toContain('Ground Floor: 100.2 Sq. Ft.; Total Plinth Area: 100.2 Sq. Ft.');
+    expect(single).not.toContain('First Floor');
+    expect(single).toContain('MIXED CASE RELEASOR');
+    expect(single).toContain('MIXED CASE RELEASEE');
+    expect(single).not.toMatch(/\b(?:vendors?|vendees?)\b/i);
+    expect(single).toMatch(/West Plot\.\s+Dimensions\s+North: 21 ft\s+South: 22 ft\s+East: 41 ft\s+West: 42 ft/);
+    rows.push(floor('First Floor', '200.1'), floor('Second Floor', '333.7'));
+    expect(await read()).toContain('Ground Floor: 100.2 Sq. Ft.; First Floor: 200.1 Sq. Ft.; Second Floor: 333.7 Sq. Ft.; Total Plinth Area: 634 Sq. Ft.');
+    const schedule = scheduleMergesFor(state)[0];
+    const preview = await scheduleText(schedule.variant, schedule.values, undefined, schedule.structureDetails, undefined, undefined, source);
+    expect(preview).toContain('Total Plinth Area: 634 Sq. Ft.');
+    expect(preview).toContain('Dimensions\nNorth: 21 ft');
+
+    const seed = guidedPlanFromDraft(state, 'primary');
+    expect(seed.boundaries).toMatchObject({
+      northBoundary: 'North Road', northDim: { raw: '21 ft', normalized: 21 },
+      southBoundary: 'South Plot', southDim: { raw: '22 ft', normalized: 22 },
+      eastBoundary: 'East Lane', eastDim: { raw: '41 ft', normalized: 41 },
+      westBoundary: 'West Plot', westDim: { raw: '42 ft', normalized: 42 },
+    });
+    const oldWest = { raw: '50 ft', normalized: 50, unit: 'Feet' as const };
+    const savedPlan = { ...seed, boundaries: { ...seed.boundaries, northBoundary: 'Old road', westDim: oldWest, mapRotation: 90 } };
+    expect(syncGuidedDeedBoundaries(savedPlan, seed).boundaries).toMatchObject({ northBoundary: 'North Road', mapRotation: 90 });
+    expect(syncGuidedDeedBoundaries(savedPlan, seed, ['dimensionNorth']).boundaries.westDim).toEqual(oldWest);
+    state.form.dimensionWest = '';
+    const cleared = guidedPlanFromDraft(state, 'primary');
+    expect(syncGuidedDeedBoundaries(savedPlan, cleared, ['dimensionWest']).boundaries.westDim.raw).toBe('');
+  });
   it('registers the exact immutable source and accepts its bindings', () => {
     expect(createHash('sha256').update(bytes).digest('hex')).toBe('313d04bd3de1eb11949e6c9e3721ae5073250c43ea969330168b8801a98ba62b');
     expect(source.kind === 'custom' && source.validation.errors).toEqual([]);
@@ -61,7 +103,7 @@ describe('Reconveyance source rendering and workflow', () => {
       const state = mortgageState(count,mode,title);
       const result = await generate(state);
       const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-      expect(text).toContain('DEED OF RECONVEYANCE');
+      expect(text).toContain('Deed Of Reconveyance');
       expect(text).toContain(`Value of Rs.${repaymentFor(state).total}`);
       expect(text).toMatch(/interest of Rs\.0(?![.][0-9])/);
       expect(text.match(/additional mortgage/g)?.length || 0).toBe(count - 1);
@@ -77,7 +119,7 @@ describe('Reconveyance source rendering and workflow', () => {
     const state=mortgageState(1,'bank-to-person',true,property==='house-finished' ? 'ordinary-house-finished' : property==='house-semi' ? 'ordinary-house-semi' : property);
     const result=await generate(state);
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text.match(/SCHEDULE OF PROPERTY/g)).toHaveLength(1);
+    expect(text.match(/Schedule Of Property/g)).toHaveLength(1);
     expect(text).not.toMatch(/<IF |<[^>]+>/);
     const original=await readZip(bytes), generated=await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     for(const entry of original.filter(e=>e.name!=='word/document.xml')) expect(generated.find(e=>e.name===entry.name)?.data).toEqual(entry.data);
@@ -136,7 +178,7 @@ it('orders mortgages by displayed property order and renders multiple schedules'
   const primary=state.linkRecordsBySchedule.primary;
   state.linkRecordsBySchedule={second:[second],primary};
   const output=await generate(state), text=await docxToText(new Uint8Array(await output.blob.arrayBuffer()));
-  expect(text.match(/SCHEDULE OF PROPERTY/g)).toHaveLength(2);
+  expect(text.match(/Schedule Of Property/g)).toHaveLength(2);
   expect(text.indexOf('DOC-1')).toBeLessThan(text.indexOf('DOC-2'));
   expect(text).toContain('open plot no.22'); expect(text).toContain('Value of Rs.300.20');
 });
