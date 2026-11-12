@@ -15,7 +15,7 @@ try {
  });
  await page.reload();await page.getByRole('button',{name:'Continue / Edit'}).click();
  const close=page.getByRole('button',{name:'Close',exact:true});if(await close.isVisible())await close.click();
- await page.locator('.rail-step').filter({hasText:'08'}).click();
+ await page.locator('.registration-steps button').filter({hasText:'Claimant'}).click();
  await page.getByRole('heading',{name:'Assigned guardians',exact:true}).first().waitFor();
  assert.equal(await page.getByLabel('Guardian full name',{exact:true}).count(),0);
  assert.equal(await page.getByLabel('Represented minor’s full name',{exact:true}).count(),0);

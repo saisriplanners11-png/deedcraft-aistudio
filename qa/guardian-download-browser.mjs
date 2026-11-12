@@ -17,7 +17,7 @@ try{for(const instrument of ['sale','gift'])for(const side of ['executant','clai
    await dialog.getByRole('button',{name:'Cancel'}).click();
    await page.getByRole('button',{name:'Complete guardian details',exact:true}).click();
    await page.getByLabel(/^Aadhaar number/).fill('123456789012');
-   await page.locator('.rail-step').filter({hasText:'Generate Deed'}).click();
+   await page.locator('.registration-steps button').filter({has:page.getByText('Generate',{exact:true})}).click();
  }
  try{const downloading=page.waitForEvent('download',{timeout:15000});await button.click();if(await dialog.isVisible())await dialog.getByRole('button',{name:'Download Anyway'}).click();const download=await downloading;const text=await rt.docxToText(new Uint8Array(await readFile(await download.path())));assert(text.includes(type==='Minor'?'GUARDIAN PARENT':'REPRESENTED CHILD'));if(side==='executant')assert(text.includes('COURT-42'));console.log('PASS',instrument,side,type,'download',text.includes('COURT-42')?'court included':'no court recital');}
  catch(error){console.log('FAILED',instrument,side,type,error.message,(await page.locator('body').innerText()).slice(-2500));throw error;}assert.deepEqual(errors,[]);await page.close();

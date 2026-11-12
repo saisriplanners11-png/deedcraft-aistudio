@@ -17,7 +17,7 @@ try {
   await page.route('**/api/templates/versions/*/download', route => route.fulfill({ body: bytes, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.getByRole('button', { name: 'Create your first deed' }).click();
-  await page.locator('.rail-step').first().click();
+  await page.locator('.registration-steps button').first().click();
   await page.getByLabel('What is this property?').selectOption('Residential');
   const instrument = page.locator('.setup-fields select').first();
   await instrument.selectOption('gift');
@@ -29,7 +29,7 @@ try {
   assert.equal(rects[0].width, rects[1].width);
   const capture = async name => page.screenshot({ path: fileURLToPath(new URL(name, out)), fullPage: true });
   await capture('step1-desktop.png');
-  await page.locator('.rail-step').nth(1).click();
+  await page.locator('.registration-steps button').nth(1).click();
   await capture('step2-empty-desktop.png');
   await page.getByRole('button', { name: '+ Add / upload document', exact: true }).click();
   await capture('step2-picker-desktop.png');
@@ -43,8 +43,8 @@ try {
   for (const width of [320, 375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const step of [0, 1]) {
-      if (width <= 900) await page.locator('#mobile-step').selectOption(String(step));
-      else await page.locator('.rail-step').nth(step).click();
+      if (width <= 767) await page.locator('#mobile-step').selectOption(String(step));
+      else await page.locator('.registration-steps button').nth(step).click();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `Step ${step + 1} overflows at ${width}px`);
       const controls = await page.locator('.setup-step select,.documents-step .deed-field input').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().toJSON()));
       assert(controls.every(rect => rect.width > 80 && rect.height >= 36));

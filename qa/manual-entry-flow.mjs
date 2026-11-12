@@ -21,7 +21,7 @@ async function scenario(name, category, { titles = false, extraLink = false, par
   const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 950 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  const step = async (number) => page.locator('.rail-step').nth(number - 1).click();
+  const step = async (number) => page.locator('.registration-steps button').nth(number - 1).click();
   const fill = async (scope, label, value, index = 0) => {
     let input = label === 'Deed execution date' ? scope.locator('input[type="date"]') : scope.getByLabel(label, { exact: true });
     if (!(await input.count())) input = scope.locator('label').filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i') }).locator('input, select, textarea');

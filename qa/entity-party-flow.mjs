@@ -35,7 +35,7 @@ try {
   });
   await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).click();
   const close = async () => { const button = page.getByRole('button', { name: 'Close', exact: true }); if (await button.isVisible()) await button.click(); };
-  const step = async n => { await close(); await page.locator('.rail-step').filter({ hasText: n }).click(); };
+  const step = async n => { await close(); await page.getByRole('navigation', { name: 'Deed steps' }).getByRole('button', { name: new RegExp('^' + Number(n) + ' ') }).click(); };
   const payload = (marker, values) => ({ name: marker + '.txt', mimeType: 'text/plain', buffer: Buffer.from(marker + '\n' + Object.entries(values).map(([k,v]) => `${k}: ${v}`).join('\n')) });
   const idle = async () => { await page.waitForFunction(() => !document.querySelector('.document-upload[aria-busy="true"]')); await close(); };
   for (const [side, nav] of [['executant', '07'], ['claimant', '08']]) {

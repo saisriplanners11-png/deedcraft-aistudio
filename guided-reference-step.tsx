@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanDocument } from './guided-reference-plan/src/types';
 import { syncGuidedDeedBoundaries, applyGuidedRefresh, guidedRefreshFields, isGuidedPlan } from './guided-reference-integration';
 
-export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDeedDimensions, selected, onChange, onUse }: {
+export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDeedDimensions, selected, onChange, onUse, theme = 'light' }: {
   draftId: string; scheduleId: string; seed: PlanDocument; doc?: PlanDocument; enteredDeedDimensions?: readonly string[]; selected: boolean;
-  onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void;
+  onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void; theme?: 'light' | 'dark';
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
@@ -16,6 +16,10 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDee
   const lastDeedSides = useRef<string | undefined>(undefined);
   const latest = useRef({ seed, doc, onChange, onUse }); latest.current = { seed, doc, onChange, onUse };
   const changes = useMemo(() => guidedRefreshFields(currentDoc, seed), [currentDoc, seed]);
+  const sendTheme = () => frame.current?.contentWindow?.postMessage({
+    type: 'deedcraft:guided-plan-theme', draftId, scheduleId, sessionId, theme,
+  }, window.location.origin);
+  useEffect(() => sendTheme(), [theme]);
   const sendSeed = (next = latest.current.doc || latest.current.seed) => frame.current?.contentWindow?.postMessage({
     type: 'deedcraft:guided-plan-seed', draftId, scheduleId, sessionId, doc: next,
   }, window.location.origin);
@@ -75,6 +79,6 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDee
     </div>}
     <iframe className="plan-workspace-frame" ref={frame} title="Property Plan — New Generator"
       src={`/guided-reference-plan/index.html?draftId=${encodeURIComponent(draftId)}&scheduleId=${encodeURIComponent(scheduleId)}&sessionId=${sessionId}`}
-      onLoad={() => sendSeed()} style={{ display: 'block', width: '100%', minHeight: 900, height: 'calc(100vh - 170px)', border: 0, background: '#f1f5f9' }} />
+      onLoad={() => { sendSeed(); sendTheme(); }} style={{ display: 'block', width: '100%', minHeight: 900, height: 'calc(100vh - 170px)', border: 0, background: 'var(--dc-ground)' }} />
   </>;
 }

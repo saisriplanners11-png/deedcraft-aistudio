@@ -109,6 +109,7 @@ const INITIAL_BLANK_PLAN: PlanDocument = {
 };
 
 export default function App() {
+  const [workspaceTheme, setWorkspaceTheme] = useState<'light' | 'dark'>('light');
   // App Mode: 'deed-plan' for Deed Document Preparation
   const [appMode, setAppMode] = useState<'sketch-digitizer' | 'deed-plan'>('deed-plan');
 
@@ -127,6 +128,7 @@ export default function App() {
       const data = event.data;
       if (event.origin !== window.location.origin || event.source !== window.parent
         || data?.draftId !== bridgeContext.draftId || data?.scheduleId !== bridgeContext.scheduleId || data?.sessionId !== bridgeContext.sessionId) return;
+      if (data.type === 'deedcraft:guided-plan-theme' && (data.theme === 'light' || data.theme === 'dark')) setWorkspaceTheme(data.theme);
       if (data.type === 'deedcraft:guided-plan-seed' && data.doc?.property && data.doc?.boundaries && Array.isArray(data.doc.executant) && Array.isArray(data.doc.claimant)) {
         setDoc(data.doc); setBridgeSeeded(true);
       }
@@ -457,7 +459,7 @@ export default function App() {
   };
 
   return (
-    <div className="guided-plan-workspace min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
+    <div data-theme={workspaceTheme} className="guided-plan-workspace min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
       {/* Top Application Bar */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">

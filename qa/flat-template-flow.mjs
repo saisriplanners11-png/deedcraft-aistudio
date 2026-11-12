@@ -22,7 +22,7 @@ try {
   });
   await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).click();
   const close = async () => { const button = page.getByRole('button', { name: 'Close', exact: true }); if (await button.isVisible()) await button.click(); };
-  const step = async n => { await close(); await page.locator('.rail-step').filter({ hasText: n }).click(); };
+  const step = async n => { await close(); await page.getByRole('navigation', { name: 'Deed steps' }).getByRole('button', { name: new RegExp('^' + Number(n) + ' ') }).click(); };
   const type = () => page.getByLabel('What is this property?');
   await step('01');
   assert.equal(await type().inputValue(), '');

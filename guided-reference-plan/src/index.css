@@ -123,3 +123,42 @@
 }
 
 
+
+/* Workspace controls only. Printable plan descendants retain their own styles. */
+@media screen {
+  .guided-plan-workspace {
+    --plan-surface:#fff; --plan-ground:#f3f6fa; --plan-ink:#172b40; --plan-muted:#52677b;
+    --plan-line:#d7e1eb; --plan-accent:#087f82; --plan-accent-soft:#eaf7f7; --plan-on-accent:#fff;
+    background:var(--plan-ground); font-family:'Segoe UI',Roboto,Arial,sans-serif;
+  }
+  .guided-plan-workspace[data-theme=dark] {
+    color-scheme:dark; --plan-surface:#182b3d; --plan-ground:#101e2c; --plan-ink:#e7eff7;
+    --plan-muted:#b5c7d7; --plan-line:#3d5267; --plan-accent:#72d8d0; --plan-accent-soft:#203e46; --plan-on-accent:#102b36;
+  }
+  .guided-plan-workspace>header { background:#10283f; color:#fff; border-color:#3d5267; box-shadow:none; }
+  .guided-plan-workspace>header>div { max-width:none; height:auto; min-height:76px; padding:14px 24px; flex-wrap:wrap; gap:12px; }
+  .guided-plan-workspace>header h1 { color:#fff; }
+  .guided-plan-workspace>main { max-width:none; padding:24px; }
+  .guided-plan-workspace :is(button,input,select,textarea):not(#printable-plan-document *) {
+    font-family:inherit; min-height:44px; border-radius:8px; max-width:100%;
+  }
+  .guided-plan-workspace :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not(#printable-plan-document *) {
+    color:var(--plan-ink); background:var(--plan-surface); border:1px solid var(--plan-line); padding:10px 12px;
+  }
+  .guided-plan-workspace :is(button,input,select,textarea,a,summary):focus-visible { outline:3px solid var(--plan-accent); outline-offset:3px; }
+  .guided-plan-workspace button:not(#printable-plan-document *) { cursor:pointer; }
+  .guided-plan-workspace button:disabled { cursor:not-allowed; }
+  .guided-plan-workspace :is(.bg-white,.bg-slate-50,.bg-slate-100):not(#printable-plan-document, #printable-plan-document *) { background-color:var(--plan-surface); border-color:var(--plan-line); }
+  .guided-plan-workspace :is(.text-slate-900,.text-slate-800,.text-slate-700):not(#printable-plan-document, #printable-plan-document *) { color:var(--plan-ink); }
+  .guided-plan-workspace :is(.text-slate-600,.text-slate-500,.text-slate-400):not(#printable-plan-document, #printable-plan-document *) { color:var(--plan-muted); }
+  .guided-plan-workspace button:is(.bg-indigo-600,.bg-indigo-500,.bg-blue-600,.bg-slate-900,.bg-emerald-600):not(#printable-plan-document *) { background:var(--plan-accent); color:var(--plan-on-accent); border-color:var(--plan-accent); }
+  .guided-plan-workspace>header button { background:#203d55!important; color:#fff!important; border:1px solid #567084; }
+  .guided-plan-workspace>header :is(.text-slate-500,.text-slate-400) { color:#c4d2df; }
+}
+@media screen and (max-width:639px) {
+  .guided-plan-workspace>main, .guided-plan-workspace>header>div { padding:12px; }
+  .guided-plan-workspace :is(input,select,textarea):not(#printable-plan-document *) { font-size:16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .guided-plan-workspace *, .guided-plan-workspace *::before, .guided-plan-workspace *::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
+}

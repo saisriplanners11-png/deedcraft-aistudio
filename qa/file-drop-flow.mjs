@@ -77,9 +77,9 @@ try {
   await page.route('**/api/anthropic/**', route => route.fulfill({ status: 503, json: { error: { message: 'Synthetic test: AI disabled' } } }));
   await page.goto(base);
   await page.getByRole('button', { name: 'Create your first deed' }).click();
-  await page.locator('.rail-step').first().click();
+  await page.locator('.registration-steps button').first().click();
   await page.locator('.setup-fields select').nth(1).selectOption('sale-deed-by-gpa-holder');
-  await page.locator('.rail-step').nth(6).click();
+  await page.locator('.registration-steps button').nth(6).click();
   await drop(page.locator('.authority-uploads').first(), [{ name: 'gpa.txt', type: 'text/plain' }]);
   await expect(page.getByRole('link', { name: 'gpa.txt', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Add attorney', exact: true }).click();
@@ -94,7 +94,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: new URL('authority-mobile.png', folder).pathname.replace(/^\/([A-Za-z]:)/, '$1'), fullPage: true });
   await page.setViewportSize({ width: 1360, height: 1000 });
-  await page.locator('.rail-step').nth(9).click();
+  await page.locator('.registration-steps button').nth(9).click();
   await page.locator('.template-choices input[type=radio]').nth(1).check();
   await drop(page.locator('.custom-template'), [{ name: 'custom-v9.docx', base64: bytes.toString('base64') }]);
   await expect(page.locator('.template-status.valid')).toContainText('custom-v9.docx');

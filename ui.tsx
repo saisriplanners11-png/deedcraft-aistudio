@@ -111,7 +111,7 @@ export function Input({
   const shown = field.id === 'flatStage' ? flatStage(formatted) || formatted : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? formatted.slice(0, 7) : formatted;
 
   return (
-    <FieldContainer className="deed-field" style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
+    <FieldContainer className="deed-field" data-span={field.type === 'textarea' ? 'full' : span > 1 ? 'wide' : undefined} style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
       <span style={css('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
         <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.mutedSoft}`)}>
           {field.label}

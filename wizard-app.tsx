@@ -73,6 +73,8 @@ import './finish-workflow.css';
 import './property-party-polish.css';
 import './workspace-density.css';
 import './friendly-workspace.css';
+import './registration-workspace.css';
+import { RegistrationNavigation } from './registration-navigation';
 import { ScreenGuide, GettingStartedGuide } from './screen-guide';
 import { DocumentUpload, ReviewIssues } from './workflow-ui';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
@@ -1384,7 +1386,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
-  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app${showFieldHelp ? ' show-field-help' : ''}${presentation ? ` ${presentation.name}` : ''}`} data-theme={theme}>
+  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app modern-workspace${showFieldHelp ? ' show-field-help' : ''}${presentation ? ` ${presentation.name}` : ''}`} data-theme={theme}>
     {downloadWarning && downloadWarning.draftId === draft.id && downloadWarning.revision === draft.revision && downloadWarning.templateKey === templateKey &&
         <dialog className="download-warning-dialog" ref={element => { if (element && !element.open) element.showModal(); }}
           onCancel={() => setDownloadWarning(null)} aria-labelledby="download-warning-title">
@@ -1427,19 +1429,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         </article>; })}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
     </main> : <div className="shell">
-      {presentation ? <presentation.Navigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={[...new Set([...notices.map(notice => notice.step), ...(Object.entries(draft.jurisdictionLookups || {}).some(([propertyId, lookup]) => lookup.needsReview?.some(field => !!resolved.values[fieldKey('property', propertyId, field)])) ? [2] : [])])]} title={deedDefinition.label} onNavigate={goto} /> : <><div className="mobile-step-picker"><label htmlFor="mobile-step">Drafting workspace</label><select id="mobile-step" value={step} onChange={e => goto(Number(e.target.value))}><option value={-1}>Overview</option>{workflowSteps.map(s => <option key={s.id} value={s.id}>{workflowSteps.indexOf(s) + 1}. {s.label}</option>)}</select></div>
-      <nav className="rail" aria-label="Deed steps"><div className="rail-heading">YOUR WORKSPACE</div><div className="rail-draft-meta"><FileText size={20} aria-hidden="true" /><div><strong>{deedDefinition.label}</strong><span>{workflowSteps.filter(s => s.id <= 8 && vm.doneIds.includes(s.id)).length} of {workflowSteps.filter(s => s.id <= 8).length} drafting steps complete</span></div></div>
-        <button className={`rail-overview${step === -1 ? ' active' : ''}`} aria-current={step === -1 ? 'page' : undefined} onClick={() => goto(-1)}><LayoutGrid size={18} aria-hidden="true" /> Overview</button>
-        {[1, 2, 3, 4].map(phase => <div className="rail-phase" key={phase}>
-          <span className="rail-phase-label">{['', 'Setup & sources', !hasPaymentStep(state.deedType) ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][phase]}</span>
-          {workflowSteps.filter(s => s.phase === phase).map(s => (
-            <button key={s.id} className={`rail-step${step === s.id ? ' active' : ''}${vm.doneIds.includes(s.id) ? ' done' : ''}`} aria-current={step === s.id ? 'step' : undefined} onClick={() => goto(s.id)}>
-              <b>{String(workflowSteps.indexOf(s) + 1).padStart(2, '0')}</b>
-              <span><em>{s.label}{vm.doneIds.includes(s.id) && <><Check size={13} aria-hidden="true" /><span className="sr-only"> · Complete</span></>}</em><small>{s.sub}</small></span>
-            </button>
-          ))}
-        </div>)}
-      </nav></>}
+      <RegistrationNavigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={[...new Set([...notices.map(notice => notice.step), ...(Object.entries(draft.jurisdictionLookups || {}).some(([propertyId, lookup]) => lookup.needsReview?.some(field => !!resolved.values[fieldKey('property', propertyId, field)])) ? [2] : [])])]} title={deedDefinition.label} onNavigate={goto} />
 
       <main id="workspace-main" tabIndex={-1} className="stage">
         {storageError && <p className="notice" role="alert">{storageError}</p>}
@@ -1848,7 +1838,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
 
         {step === 10 && <section className="panel reference-plan-step">
           <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
-          <GuidedReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId}
+          <GuidedReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
             seed={guidedPlanFromDraft(state, activePropertyId)} doc={guidedPlanDrafts[activePropertyId]}
             enteredDeedDimensions={PROPERTY_DIMENSIONS.fields
               .filter(field => Object.hasOwn(resolved.values, fieldKey('property', activePropertyId, field.id))).map(field => field.id)}
