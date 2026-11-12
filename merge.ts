@@ -1,8 +1,8 @@
 import { releaseValues, releaseScheduleValues } from './release';
 import { enclosureRecordsFor } from './enclosure-records';
 import { claimantRepresentationForOutput, isMinorParty, linkedClaimantRepresentation, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
-import { executionDeedDate } from './deed-format';
-import { formatDeedAmount } from './deed-money';
+import { deedMobile, executionDeedDate } from './deed-format';
+import { formatDeedAmount, stampPaperValue, stampSheetCount } from './deed-money';
 import { acreGuntasToSqYards } from './land-area';
 import { PROPERTY_DIRECTIONS } from './fields';
 import { reconveyanceValues } from './reconveyance';
@@ -54,7 +54,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
     for (const field of ALL_FIELDS.filter(field => field.id.startsWith('claimant'))) form[field.id] = primaryRecipient[field.id] || '';
   }
   const f = withDerived(minorClaimantValues(form));
-  const out: Record<string, string> = { 'Stamp Paper Margin': f.stampPaperMargin || 'Legacy' };
+  const out: Record<string, string> = { 'Stamp Paper Margin': f.stampPaperMargin || 'Legacy', 'Stamp Paper Count': String(stampSheetCount(f.stampPaperCount)) };
   out['Landmark Valuation Enabled'] = String(['Open Place', 'Vacant Plot'].includes(state.category));
   if (isMunicipalGift(state)) { out.ULB = localAuthorityName(f.localAuthorityType || ''); out.VILLAGE = normalizePropertyPlaceName('village', f.village || ''); }
   const nalaArea = acreGuntasToSqYards(f.nalaExtent || '');
@@ -70,6 +70,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
     const names = Array.isArray(field.ph) ? field.ph : [field.ph];
     let value = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, f[field.id] ?? ''));
     if (field.type === 'date') value = deedDate(value);
+    if (field.type === 'tel') value = deedMobile(value);
     if (field.type === 'money') value = formatDeedAmount(value);
     if (field.type === 'number' && /^(?:extentSq|udsSq|superBuiltUpAreaSq|parkingAreaSq)/.test(field.id)) value = value.replace(/,/g, '');
     for (const n of names) out[n] = value;
@@ -167,9 +168,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
     for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
   }
 
-  // The non-judicial stamp paper value is supplied by the user. It is not the
-  // calculated statutory duty and therefore must never be derived from value.
-  out['Stamp of Rs/-'] = formatDeedAmount(f.stampValue || '');
+  out['Stamp of Rs/-'] = formatDeedAmount(stampPaperValue(f));
 
   // The template has a single set of instrument placeholders, so the largest
   // payment is the one printed there; the full list is recited in the receipt

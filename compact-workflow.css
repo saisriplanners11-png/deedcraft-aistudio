@@ -25,6 +25,7 @@
 .wizard-app .workflow-step .deed-section>div:first-child h2{font:600 14px/1.5 'IBM Plex Sans',sans-serif!important;margin:0}
 .wizard-app .workflow-step .deed-section>div:last-child{padding:0!important;min-width:0}
 .wizard-app .deed-field-grid,.wizard-app .workflow-step .payment-fields{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px!important;align-items:start}
+@media(min-width:760px){.wizard-app .workflow-step .deed-field-grid.stamp-paper-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
 .wizard-app .deed-field{grid-column:span 1!important;gap:6px!important}
 .wizard-app .deed-field:has(textarea){grid-column:1/-1!important}
 .wizard-app .deed-field>span:first-child{min-height:18px;align-items:flex-start!important}

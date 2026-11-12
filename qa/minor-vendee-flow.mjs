@@ -86,7 +86,7 @@ for (const [instrumentId, variantId, deedType, mode, file] of cases) {
       assert(paragraph.includes(`Under the Guardianship of ${index === 1 ? 'her' : 'his'} natural Grand ${guardian === 1 ? 'Father' : 'Mother'} GUARDIAN PERSON ${guardian} S/O ELDER ${guardian}`));
       assert(paragraph.includes(guardian === 1 ? 'occu:Agriculture' : 'occu:Engineer'));
       assert(paragraph.includes(`GUARDIAN-HOUSE-${guardian}`));
-      assert(paragraph.includes(guardian === 1 ? 'Cell No:9000000001, Aadhaar No:555566667777' : 'Cell No:9000000002, Aadhaar No:666677778888'));
+      assert(paragraph.includes(guardian === 1 ? 'Cell No:90000 00001, Aadhaar No:555566667777' : 'Cell No:90000 00002, Aadhaar No:666677778888'));
       assert(!paragraph.includes('GUARDIAN PERSON ' + (guardian === 1 ? 2 : 1)));
       if (shared) assert.match(paragraph, /representing the minors at Points 1 and 2/);
     }

@@ -1,11 +1,12 @@
 import { releaseErrors } from './release';
 import type { ReleaseData } from './release';
 import { isMinorParty, linkedClaimantRepresentation, minorPartyErrors } from './minor-parties';
+import { isMobileNumber, MOBILE_NUMBER_ERROR } from './deed-format';
 import { ageFrom, todayISO } from './party-age';
 import { acreGuntasToSqYards } from './land-area';
 import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isBankReconveyance, reconveyanceErrors } from './reconveyance';
-import { formatDeedAmount } from './deed-money';
+import { formatDeedAmount, stampPaperValue } from './deed-money';
 import { isEntity, entityRequiredFields, activePartyFields, partyDisplayName } from './party-entities';
 import { flatStage, flatLabel, isFinishedHouse } from './flat-options';
 // Derives everything the UI shows from what the user has actually entered.
@@ -330,7 +331,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     if (['plotNo', 'surveyNo', 'nearHNo', 'landmarkHNo', 'bearingHNo'].includes(id) && !has(f[id])) return;
     if (id === 'nearAdjacent' && !has(f.nearHNo) && !has(f.landmarkHNo)) return;
     if (id === 'plotNo' && state.category === 'Open Place') return;
-    if (!has(f[id]) && !missing.some(item => item.id === id)) {
+    if (!has(id === 'stampValue' ? stampPaperValue(f) : f[id]) && !missing.some(item => item.id === id)) {
       missing.push({ id, label: displayLabel(id), reason, source, step });
     }
   };
@@ -383,7 +384,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     ['boundaryWest', 'All four property boundaries are required.', 'Link deed or property plan'],
     ['govtRate', 'Market value and stamp duty require the basic rate.', 'Government basic-value record'],
     ['consid', 'The sale deed must state the consideration.', 'Sale agreement or payment proof'],
-    ['stampValue', 'The deed header states the face value of the stamp paper.', 'Stamp paper or manual entry'],
+    ['stampValue', 'The deed header states the total stamp paper value.', 'Stamp denomination and number of stamps'],
   ].forEach(([id, reason, source]) => add(id, reason, source));
 
   if (['Vacant Plot', 'Open Place', 'Agricultural land', 'Demolished', 'Part open place'].includes(state.category)) {
@@ -426,6 +427,18 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id;
       const step = side === 'executant' ? 6 : 7;
       const entity = isEntity(values, side);
+      const capacity = values[side + 'PartyType'] || '';
+      const mobileFields = entity ? activePartyFields(values, side).filter(field => field.endsWith('Mobile')) : [
+        side + 'Mobile',
+        ...(isMinorParty(values, side) ? [side + 'GuardianMobile'] : []),
+        ...(capacity.startsWith('Guardian') ? [side + 'WardMobile'] : []),
+      ];
+      for (const field of mobileFields) {
+        if (values[field]?.trim() && !isMobileNumber(values[field])) {
+          const label = `${side === 'executant' ? 'Executant' : 'Claimant'} ${index + 1}: ${fieldLabel(field)}`;
+          missing.push({ id: `${side}-${id}-${field}-invalid`, label, reason: `${label}. ${MOBILE_NUMBER_ERROR}`, source: 'Party details', step });
+        }
+      }
       const required = entity ? entityRequiredFields(side, values[side + 'PartyType'] as PartyType) : ['Name', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'HNo', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => side + suffix);
       if (isMinorParty(values, side) || (values[side + 'PartyType'] || '').startsWith('Guardian')) {
         const occupationIndex = required.indexOf(side + 'Occupation'); if (occupationIndex >= 0) required.splice(occupationIndex, 1);
@@ -439,6 +452,12 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       if (entity) {
         const people = state.partyPeopleByParty?.[side + '|' + id];
         if (!people?.representatives.length) missing.push({ id: side + '-' + id + '-representatives', label: 'Authorised representative required', reason: 'Add a person authorised to represent this organisation.', source: 'Authorization or resolution.', step });
+        for (const [i, person] of (people?.representatives || []).entries()) {
+          if (person.mobile.trim() && !isMobileNumber(person.mobile)) {
+            const label = `Representative ${i + 1}: Mobile number`;
+            missing.push({ id: person.id + '-mobile-invalid', label, reason: `${label}. ${MOBILE_NUMBER_ERROR}`, source: 'Representative details', step });
+          }
+        }
         for (const [i, person] of (people?.representatives || []).entries()) for (const field of ['name', 'relation', 'relationName', 'designation', 'dob', 'mobile', 'hNo', 'village', 'mandal', 'district', 'state', 'pinCode'] as const) {
           if (!person[field]) missing.push({ id: person.id + '-' + field, label: 'Representative ' + (i + 1) + ': ' + field, reason: 'Complete the representative particulars.', source: 'ID / authorization or manual entry.', step });
         }
@@ -769,7 +788,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
   const stepIsDone = (id: number) => {
     if (placed.some(instance => placementStepIndex(instance.field.placement) === id && instance.error)) return false;
     if (id === 0) return !!(state.deedType && state.category && state.draft);
-    if (id === 4 && state.deedType === 'Deed Of Reconvayance') return !reconveyanceErrors(state).length && !!f.stampValue;
+    if (id === 4 && state.deedType === 'Deed Of Reconvayance') return !reconveyanceErrors(state).length && !!stampPaperValue(f);
     if (id === 5) return payMatched;
     if (id === 3) return !!state.scheduleText;
     if (id === 6 || id === 7) return !generationBlockers(state).some(item => item.step === id);
@@ -855,7 +874,7 @@ export function buildViewModel(state: AppState, setState: (patch: Partial<AppSta
     dutyRows,
     dutyINR: state.deedType === 'Deed Of Reconvayance' ? '' : money(dutyN),
     dutyWords: state.deedType === 'Deed Of Reconvayance' ? '' : words(dutyN),
-    stampValueINR: money(f.stampValue),
+    stampValueINR: money(stampPaperValue(f)),
     scheduleCount: 1 + state.additionalSchedules.length,
     linkDocumentCount: 1 + state.additionalLinkDocuments.length,
     executantCount: 1 + state.additionalExecutants.length,

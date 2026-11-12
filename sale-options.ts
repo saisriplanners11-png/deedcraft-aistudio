@@ -1,5 +1,6 @@
 import { ageFrom, deedDate, partyRecords, scheduleRecords, vendeeShareCents, type AppState } from './logic';
 import { flatStage } from './flat-options';
+import { deedMobile, isMobileNumber, MOBILE_NUMBER_ERROR } from './deed-format';
 
 export const SALE_DOCUMENT_OPTIONS = [
   { id: 'ordinary', label: 'Ordinary Sale' },
@@ -34,7 +35,10 @@ export function authorityPartyValues(values: Record<string, string>, prefix: 'Pr
   const result: Record<string, string> = {};
   result[prefix === 'Principal' ? 'Executant Gender' : 'Attorney Gender'] = values.Gender || '';
   const suffixes: Record<string, string> = { Name: 'NAME', Age: 'Age', Dob: 'Dob', Occupation: 'Occupation', HNo: 'H.No.', Locality: 'Locality', Village: 'Village', Mandal: 'Mandal', District: 'District', State: 'State', PinCode: 'Pin Code', Aadhaar: 'Adhar Number', Mobile: 'Cell.No.', Pan: 'PAN' };
-  for (const [field, tag] of Object.entries(suffixes)) result[`${prefix} ${tag}`] = field === 'Dob' ? deedDate(values[field] || '') : values[field] || '';
+  for (const [field, tag] of Object.entries(suffixes)) {
+    const value = values[field] || '';
+    result[`${prefix} ${tag}`] = field === 'Dob' ? deedDate(value) : field === 'Mobile' ? deedMobile(value) : value;
+  }
   result[`${prefix} Age`] = values.Dob ? ageFrom(values.Dob) : values.Age || '';
   result[`${prefix.toUpperCase()} RELATION NAME`] = [values.Relation, values.RelativeName].filter(Boolean).join(' ');
   return result;
@@ -57,6 +61,7 @@ export function saleAuthorityErrors(state: AppState): string[] {
   }
   if (!authority.attorneys.length) errors.push('Add at least one attorney.');
   for (const [index, attorney] of authority.attorneys.entries()) {
+    if (attorney.values.Mobile?.trim() && !isMobileNumber(attorney.values.Mobile)) errors.push(`Attorney ${index + 1}: ${MOBILE_NUMBER_ERROR}`);
     if (attorney.values.SharePercentage?.trim() && vendeeShareCents(attorney.values.SharePercentage) === null) errors.push(`Attorney ${index + 1}: enter a share percentage greater than 0 and no more than 100, with up to two decimal places.`);
     const missing = Object.entries(required).filter(([key]) => !attorney.values[key]?.trim()).map(([, label]) => label);
     if (missing.length) errors.push(`Attorney ${index + 1}: enter ${missing.join(', ')}.`);

@@ -14,6 +14,17 @@ export function formatDeedAmount(value: string): string {
   return formatMoneyInput(withWhole.replace(/\.0*$/, ''));
 }
 
+export function stampSheetCount(count = ''): number {
+  return /^\d{1,3}$/.test(count) ? Math.max(1, Number(count)) : 1;
+}
+
+export function stampPaperValue(form: Record<string, string>): string {
+  const { stampPaperMargin, stampPaperCount, stampValue } = form;
+  return ['100', '50', '20'].includes(stampPaperMargin)
+    ? String(Number(stampPaperMargin) * stampSheetCount(stampPaperCount))
+    : stampValue || '';
+}
+
 /** Currency values use integer paise; blank and malformed amounts stay unresolved. */
 export function moneyPaise(value: string): bigint | null {
   const input = value.trim();

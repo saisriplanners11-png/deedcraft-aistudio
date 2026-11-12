@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0.32in !important;
+  }
+
+  html, body {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Reset all parent wrappers so they don't constrain width to 1280px desktop */
+  #root,
+  #root > div,
+  main,
+  .space-y-6,
+  .print-canvas-wrapper {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    float: none !important;
+  }
+
+  /* Hide app navigation, buttons, edit toolbars during print */
+  header, nav, aside, button, .print\:hidden {
+    display: none !important;
+  }
+
+  /* Main A4 Deed document frame with outer solid line of double-border */
+  #printable-plan-document {
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    border: 3.5px solid #000000 !important;
+    padding: 3.5px !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    /* Exactly extend A4 document down to 0.32in from bottom edge of sheet: 297mm - 0.65in */
+    height: calc(297mm - 0.65in) !important;
+    min-height: calc(297mm - 0.65in) !important;
+    max-height: calc(297mm - 0.65in) !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    color: #000000 !important;
+    background-color: #ffffff !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Inner line of the legal double border */
+  .plan-double-border-inner {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    border: 1.2px solid #000000 !important;
+    padding: 8px 12px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    flex: 1 1 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #printable-plan-document * {
+    color: #000000 !important;
+    border-color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+
+
+/* Workspace controls only. Printable plan descendants retain their own styles. */
+@media screen {
+  .guided-plan-workspace {
+    --plan-surface:#fff; --plan-ground:#f3f6fa; --plan-ink:#172b40; --plan-muted:#52677b;
+    --plan-line:#d7e1eb; --plan-accent:#087f82; --plan-accent-soft:#eaf7f7; --plan-on-accent:#fff;
+    background:var(--plan-ground); font-family:'Segoe UI',Roboto,Arial,sans-serif;
+  }
+  .guided-plan-workspace[data-theme=dark] {
+    color-scheme:dark; --plan-surface:#182b3d; --plan-ground:#101e2c; --plan-ink:#e7eff7;
+    --plan-muted:#b5c7d7; --plan-line:#3d5267; --plan-accent:#72d8d0; --plan-accent-soft:#203e46; --plan-on-accent:#102b36;
+  }
+  .guided-plan-workspace>header { background:#10283f; color:#fff; border-color:#3d5267; box-shadow:none; }
+  .guided-plan-workspace>header>div { max-width:none; height:auto; min-height:76px; padding:14px 24px; flex-wrap:wrap; gap:12px; }
+  .guided-plan-workspace>header h1 { color:#fff; }
+  .guided-plan-workspace>main { max-width:none; padding:24px; }
+  .guided-plan-workspace :is(button,input,select,textarea):not(#printable-plan-document *) {
+    font-family:inherit; min-height:44px; border-radius:8px; max-width:100%;
+  }
+  .guided-plan-workspace :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not(#printable-plan-document *) {
+    color:var(--plan-ink); background:var(--plan-surface); border:1px solid var(--plan-line); padding:10px 12px;
+  }
+  .guided-plan-workspace :is(button,input,select,textarea,a,summary):focus-visible { outline:3px solid var(--plan-accent); outline-offset:3px; }
+  .guided-plan-workspace button:not(#printable-plan-document *) { cursor:pointer; }
+  .guided-plan-workspace button:disabled { cursor:not-allowed; }
+  .guided-plan-workspace :is(.bg-white,.bg-slate-50,.bg-slate-100):not(#printable-plan-document, #printable-plan-document *) { background-color:var(--plan-surface); border-color:var(--plan-line); }
+  .guided-plan-workspace :is(.text-slate-900,.text-slate-800,.text-slate-700):not(#printable-plan-document, #printable-plan-document *) { color:var(--plan-ink); }
+  .guided-plan-workspace :is(.text-slate-600,.text-slate-500,.text-slate-400):not(#printable-plan-document, #printable-plan-document *) { color:var(--plan-muted); }
+  .guided-plan-workspace button:is(.bg-indigo-600,.bg-indigo-500,.bg-blue-600,.bg-slate-900,.bg-emerald-600):not(#printable-plan-document *) { background:var(--plan-accent); color:var(--plan-on-accent); border-color:var(--plan-accent); }
+  .guided-plan-workspace>header button { background:#203d55!important; color:#fff!important; border:1px solid #567084; }
+  .guided-plan-workspace>header :is(.text-slate-500,.text-slate-400) { color:#c4d2df; }
+}
+@media screen and (max-width:639px) {
+  .guided-plan-workspace>main, .guided-plan-workspace>header>div { padding:12px; }
+  .guided-plan-workspace :is(input,select,textarea):not(#printable-plan-document *) { font-size:16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .guided-plan-workspace *, .guided-plan-workspace *::before, .guided-plan-workspace *::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
+}

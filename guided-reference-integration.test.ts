@@ -60,16 +60,17 @@ describe('guided plan workspace', () => {
     expect(SAMPLE_TEMPLATES.every(isGuidedPlan)).toBe(true);
   });
 
-  it('routes saved plan steps to the guided editor', () => {
+  it('restores the current plan step and routes legacy plans to the original guided editor', () => {
     const saved = { ...newDraft(), step: 11, manual: { 'property|primary|surveyNo': 'RETAIN/123' } };
-    expect(draftReducer(newDraft(), { type: 'load', draft: saved })).toMatchObject({ ...saved, step: 10 });
+    expect(draftReducer(newDraft(), { type: 'load', draft: saved })).toMatchObject(saved);
     const legacy = { ...saved, workflowVersion: undefined };
     const restored = draftReducer(newDraft(), { type: 'load', draft: legacy });
     expect(restored.step).toBe(10);
     expect(restored.manual).toEqual(saved.manual);
-    expect(stepsFor('sale').slice(-2).map(step => step.id)).toEqual([9, 10]);
-    expect(stepsFor('gift').slice(-2).map(step => step.id)).toEqual([9, 10]);
+    expect(stepsFor('sale').slice(-3).map(step => step.id)).toEqual([9, 10, 11]);
+    expect(stepsFor('gift').slice(-3).map(step => step.id)).toEqual([9, 10, 11]);
     expect(adjacentWorkflowStep('sale', 9, 1)).toBe(10);
     expect(adjacentWorkflowStep('sale', 10, -1)).toBe(9);
+    expect(adjacentWorkflowStep('sale', 10, 1)).toBe(11);
   });
 });

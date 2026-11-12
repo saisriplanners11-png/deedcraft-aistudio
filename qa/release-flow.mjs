@@ -7,6 +7,7 @@ const validation=await rt.validateReleaseTemplate(bytes); assert.deepEqual(valid
 await mkdir('tmp/release/qa',{recursive:true});
 for(const property of ['plot','open','part','dismantled','house-finished','house-semi','flat-finished','flat-semi']) {
   const state=rt.sampleState('ordinary-'+property); state.deedType='Release'; state.draft='Co-owner Release';
+  if (property === 'plot') Object.assign(state.form, { stampPaperMargin: '100', stampPaperCount: '2' });
   Object.assign(state.form,{totalPropertyValue:'1200000',consid:'400000',nearAdjacent:'near',executantGender:'Male',claimantGender:'Female'});
   Object.assign(state.form, { dimensionNorth: '21 ft', dimensionSouth: '22 ft', dimensionEast: '41 ft', dimensionWest: '42 ft' });
   state.payments[0].amount='400000';
@@ -21,7 +22,12 @@ for(const property of ['plot','open','part','dismantled','house-finished','house
   assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, property);
   if (property.startsWith('house-')) assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./, property);
   await writeFile(`tmp/release/qa/${property}.docx`,output);
-  if(property==='plot') await writeFile('tmp/release/qa/plot.txt',text);
+  if (property === 'plot') {
+    const document = (await rt.readZip(output)).find(entry => entry.name === 'word/document.xml');
+    const xml = new TextDecoder().decode(document.data);
+    assert.deepEqual([...xml.matchAll(/<w:pgMar\b[^>]*w:top="(\d+)"/g)].slice(0, 3).map(match => match[1]), ['8352', '8352', '1080']);
+    await writeFile('tmp/release/qa/plot.txt', text);
+  }
 }
 console.log('Release source validation and all eight property downloads passed.');
 

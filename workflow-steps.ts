@@ -5,6 +5,10 @@ export const hasPaymentStep = (instrument: string) => !['gift', 'reconveyance', 
 // Keep persisted step IDs stable while presenting only applicable sections.
 export const stepsFor = (instrument: string) => STEPS.filter(step => hasPaymentStep(instrument) || step.id !== 5).map(step => ['release','reconveyance','deed of reconvayance'].includes((instrument || '').toLowerCase()) ? { ...step, ...(step.id === 4 && !['release'].includes((instrument || '').toLowerCase()) ? { label: 'Market Value', sub: 'Valuation and repayment totals' } : step.id === 6 ? { label: 'Releasor' } : step.id === 7 ? { label: 'Releasee' } : {}) } : step);
 export const normalizeWorkflowStep = (instrument: string, step: number) => !hasPaymentStep(instrument) && step === 5 ? 6 : Math.min(step, STEPS.length - 1);
+export const CURRENT_WORKFLOW_VERSION = 3;
+export const normalizeSavedWorkflowStep = (instrument: string, step: number, version?: number) =>
+  normalizeWorkflowStep(instrument, version !== CURRENT_WORKFLOW_VERSION && step >= 10 ? 10 : step);
+
 export function adjacentWorkflowStep(instrument: string, step: number, direction: -1 | 1): number {
   const steps = stepsFor(instrument);
   return direction === 1

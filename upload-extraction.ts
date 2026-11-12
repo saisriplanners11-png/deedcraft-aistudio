@@ -187,7 +187,7 @@ function profileInstruction(profile: ExtractionProfile) {
     : base;
 }
 function allowedByProfile(candidate: Candidate, profile: ExtractionProfile) {
-  if (!profileFields(profile).includes(candidate.field) || candidate.field === 'stampPaperMargin' || candidate.field.endsWith('CourtOrderPermitsExecution')) return false;
+  if (!profileFields(profile).includes(candidate.field) || ['stampPaperMargin', 'stampPaperCount'].includes(candidate.field) || candidate.field.endsWith('CourtOrderPermitsExecution')) return false;
   if (profile.startsWith('phase1:') && historicalTransactionFields.has(candidate.field)) return false;
   // Aadhaar age text is a point-in-time print. The dashboard derives a fresh,
   // user-editable age from its DOB instead of accepting that stale value.

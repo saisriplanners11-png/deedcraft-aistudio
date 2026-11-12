@@ -11,7 +11,7 @@ describe('minor vendee guardianship wording', () => {
     expect(recital).toContain('is under guardianship of her natural Grand Father GUARDIAN ONE S/O ELDER ONE');
     expect(recital).toContain(`Aged ${ageFrom(child.claimantGuardianDob)} years (DOB:01-01-1967), occu:Agriculture`);
     expect(recital).toContain('R/o H.No.6-8, Guardian Locality, Guardian Village Village, Guardian Mandal Mandal, Dist:Guardian District, State:Telangana, Pin Code:505303');
-    expect(recital).toContain('Cell No:9000000001, Aadhaar No:111122223333');
+    expect(recital).toContain('Cell No:90000 00001, Aadhaar No:111122223333');
     expect(minorPartyErrors(child, 'claimant')).toEqual([]);
   });
 

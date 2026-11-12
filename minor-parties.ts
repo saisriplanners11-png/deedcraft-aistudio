@@ -1,5 +1,5 @@
 import { ageFrom } from './party-age';
-import { deedDate } from './deed-format';
+import { deedDate, deedMobile } from './deed-format';
 import type { AppState } from './logic';
 
 
@@ -33,7 +33,8 @@ function minorVendeeGuardianRecital(values: Record<string, string>): string {
   if (v('Occupation')) parts.push('occu:' + v('Occupation'));
   const address = [v('HNo') ? 'H.No.' + v('HNo') : '', v('Locality'), v('Village') ? v('Village') + ' Village' : '', v('Mandal') ? v('Mandal') + ' Mandal' : '', v('District') ? 'Dist:' + v('District') : '', v('State') ? 'State:' + v('State') : '', v('PinCode') ? 'Pin Code:' + v('PinCode') : ''].filter(Boolean).join(', ');
   if (address) parts.push('R/o ' + address);
-  if (v('Mobile')) parts.push('Cell No:' + v('Mobile'));
+  const mobile = deedMobile(v('Mobile'));
+  if (mobile) parts.push('Cell No:' + mobile);
   if (v('Aadhaar')) parts.push('Aadhaar No:' + v('Aadhaar'));
   if (v('Pan')) parts.push('PAN:' + v('Pan'));
   return parts.join(', ');
@@ -86,7 +87,8 @@ export function minorGuardianRecital(values: Record<string, string>, side: strin
   const address = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(key => v('Guardian' + key)).filter(Boolean).join(', ');
   if (address) parts.push('R/o ' + address);
   if (v('GuardianAadhaar')) parts.push('Aadhaar No. ' + v('GuardianAadhaar'));
-  if (v('GuardianMobile')) parts.push('Mobile No. ' + v('GuardianMobile'));
+  const mobile = deedMobile(v('GuardianMobile'));
+  if (mobile) parts.push('Mobile No. ' + mobile);
   if (side === 'executant' && v('CourtOrderNo')) parts.push('acting under permission of ' + v('CourtName') + ', order ' + v('CourtOrderNo') + ' dated ' + deedDate(v('CourtOrderDate')));
   return parts.join(', ');
 }

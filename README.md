@@ -6,7 +6,7 @@ Create a sale deed through an 11-step wizard, covering deed setup, supporting do
 
 The output uses the supplied sale-deed Word template by default. A reviewed plan explicitly selected in the Property Plan step is appended to the deed; the separate combined plan PDF uses that plan or an unambiguous verified source plan for each schedule. On the Generate Deed step, a drafter may instead upload a compatible tagged `.docx` derived from the downloadable starter template. Clause wording, numbering, formatting, schedule variants, declaration and signatures come from the selected template. Supporting records populate existing fields; they do not add paragraphs. New drafts contain no sample parties, properties, dimensions, stamp values or payments.
 
-**Property Plan — New Generator** is the sole plan step. It prefills current deed facts per schedule, supports selective refresh, and saves guided edits and library entries. “Use this plan in deed” attaches one rendered plan per schedule. Standalone print, PDF and Word exports are available. See [new generator source](guided-reference-plan/REFERENCE.md).
+**Property Plan — New Generator** and **Property Plan — Latest Generator** are optional plan steps. Both prefill current deed facts per schedule, support selective refresh, and save their own edits and library entries. “Use this plan in deed” attaches one rendered plan per schedule. Standalone print, PDF and Word exports are available. See [Step 11 source](guided-reference-plan/REFERENCE.md) and [Step 12 source](latest-reference-plan/REFERENCE.md).
 
 ## Current template refresh
 

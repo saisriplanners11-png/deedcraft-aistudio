@@ -47,6 +47,9 @@ describe('source-backed drafts', () => {
       expect(restored.manual).toEqual(saved.manual);
       expect(restored.revision).toBe(saved.revision);
     }
+    const latest = { ...newDraft(), step: 11 };
+    expect(draftReducer(newDraft(), { type: 'load', draft: latest }).step).toBe(11);
+    expect(draftReducer(newDraft(), { type: 'load', draft: { ...latest, workflowVersion: 2 } }).step).toBe(10);
     const saved = { ...newDraft(), step: 3 };
     expect(draftReducer(newDraft(), { type: 'load', draft: saved }).step).toBe(3);
   });

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
-  ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip, omitBlankScheduleFields,
+  appendRegistrationPlans, ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip, omitBlankScheduleFields, removeSourceTypingStamp,
   validateSaleDeedTemplate, MAX_CUSTOM_TEMPLATE_BYTES, type DeedTemplateSource,
 } from './docx';
 import { ALL_FIELDS, newStructureDetail } from './fields';
@@ -495,7 +495,7 @@ describe('sale deed template merge', () => {
     const state={...initialState,form:{...initialState.form,executantName:'First',executantMobile:'9876543210'},additionalExecutants:[{id:'second',docNames:[],values:{executantName:'Second'}}]};
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text.match(/9876543210/g)).toHaveLength(1);
+    expect(text.match(/98765 43210/g)).toHaveLength(1);
     expect(text).toMatch(/SECOND,[\s\S]*\(Hereinafter called the "VENDORS?"\)/);
     expect(text).not.toMatch(/SECOND,[\s\S]*Cell No:/);
   });
@@ -522,7 +522,7 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text).toContain('BY Nagar, Sircilla Village');
-    expect(text).toContain('Cell No: 9876543210');
+    expect(text).toContain('Cell No: 98765 43210');
     expect(text).toContain('PAN: ABCDE1234F');
   });
 
@@ -614,6 +614,8 @@ describe('sale deed template merge', () => {
     form.claimantName = 'Purchaser Name';
     form.executantAadhaar = '1111 1111 1111';
     form.claimantAadhaar = '2222 2222 2222';
+    form.executantMobile = '9876543210';
+    form.claimantMobile = '9866270006';
     form.roofMaterial = 'R.C.C.';
     form.constructionDescription = 'Framed with pillars & columns only';
     const payment = { ...newPayment('cheque'), amount: '100000', refNo: '123456', bank: 'Test Bank', branch: 'Main', date: '2026-01-02', payer: 'Purchaser Name', payee: 'Vendor Name' };
@@ -635,25 +637,33 @@ describe('sale deed template merge', () => {
     expect(signatures).not.toContain('PURCHASER NAME');
   });
 
-  it('appends the optional Prepared By line after witnesses only when selected', async () => {
+  it('prints the entered typing stamp after the last attached plan only when selected', async () => {
     const values = mergeValues(initialState);
     const omitted = await fillSaleDeed(values, 'IF OPEN PLOT');
-    const omittedText = await docxToText(new Uint8Array(await omitted.blob.arrayBuffer()));
-    expect(omittedText).not.toContain('Gundlapelli Sampath');
+    const plans = [{ schedule: 1, png: new Uint8Array([137, 80, 78, 71]) }];
+    const withoutStamp = await appendRegistrationPlans(omitted.blob, plans);
+    expect(await docxToText(new Uint8Array(await withoutStamp.arrayBuffer()))).not.toContain('Typed By:');
 
-    const included = await fillSaleDeed({ ...values, 'Include Prepared By': '1' }, 'IF OPEN PLOT');
-    const includedText = await docxToText(new Uint8Array(await included.blob.arrayBuffer()));
-    expect(includedText).toContain('Prepared By:');
-    expect(includedText).toContain('Gundlapelli Sampath (98662 70006)');
-    expect(includedText.indexOf('Gundlapelli Sampath')).toBeGreaterThan(includedText.indexOf('WITNESSES:'));
+    const included = await appendRegistrationPlans(omitted.blob, plans, { name: 'a & b', mobile: '9866270006', place: 'Sircilla' });
+    const includedText = await docxToText(new Uint8Array(await included.arrayBuffer()));
+    expect(includedText).toContain('A & B');
+    expect(includedText).toContain('Sircilla. ☎ 98662 70006.');
+    expect(includedText.indexOf('Typed By:')).toBeGreaterThan(includedText.indexOf('PLAN FOR REGISTRATION'));
+    expect(includedText).not.toContain('Gundlapelli Sampath');
 
-    const entries = await readZip(new Uint8Array(await included.blob.arrayBuffer()));
+    const entries = await readZip(new Uint8Array(await included.arrayBuffer()));
     const document = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
-    const preparedByParagraph = document.match(/<w:p(?:\s[^>]*)?>[\s\S]*?Prepared By:[\s\S]*?<\/w:p>/)?.[0] || '';
-    expect(preparedByParagraph).toContain('<w:keepLines/>');
-    expect(preparedByParagraph).toContain('<w:tab w:val="left" w:pos="4800"/>');
-    expect(preparedByParagraph).toContain('<w:jc w:val="left"/>');
-    expect(preparedByParagraph).not.toContain('<w:jc w:val="both"/>');
+    expect(document).toContain('A &amp; B');
+    const stampTable = document.slice(document.lastIndexOf('<w:tbl>'), document.lastIndexOf('</w:tbl>'));
+    expect(stampTable).toContain('<w:tblW w:w="3250" w:type="pct"/><w:jc w:val="right"/>');
+    expect(stampTable).toContain('Typed By:');
+    expect(stampTable).toContain('the partie/s are accepted.');
+    expect(await appendRegistrationPlans(omitted.blob, [], { name: 'A & B', mobile: '98662700060' })).toBe(omitted.blob);
+  });
+
+  it('removes source attribution while preserving its section boundary and signatures', () => {
+    const source = '<w:body><w:p><w:r><w:t>Witnesses</w:t></w:r></w:p><w:p><w:pPr><w:sectPr><w:type w:val="nextPage"/></w:sectPr></w:pPr><w:r><w:t>Prepared By: Old Name</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Typed By: Old Name</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body>';
+    expect(removeSourceTypingStamp(source)).toBe('<w:body><w:p><w:r><w:t>Witnesses</w:t></w:r></w:p><w:p><w:pPr><w:sectPr><w:type w:val="nextPage"/></w:sectPr></w:pPr></w:p></w:body>');
   });
 
   it('recites each payment amount instead of assigning the combined total to the cheque', async () => {

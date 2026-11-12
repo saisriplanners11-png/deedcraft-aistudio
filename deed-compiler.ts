@@ -4,7 +4,7 @@ import type { InstrumentId } from './instruments';
 import { definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
 import { bindTemplateFields, type TemplateFieldData } from './template-field-values';
-import { readZip, writeZip } from './docx';
+import { readZip, removeSourceTypingStamp, writeZip } from './docx';
 import { sha256 } from './template-library-client';
 import { canonicalContract } from './template-fields';
 import { DEED_PRESERVATION_VERSION, preservationProfileFor } from './deed-preservation';
@@ -78,16 +78,21 @@ export async function renderArtifact(
     : compiled.snapshot.instrumentId === 'gift'
     ? await fillGiftDeed({ ...binding.values, 'Gift Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource, compiled.allowIncomplete)
     : await fillSaleDeed(binding.values, first.variant, binding.rewrites, binding.schedules, templateSource);
-  if (binding.markers.length) {
+  {
     const entries = await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     const document = entries.find(entry => entry.name === 'word/document.xml')!;
     let xml = new TextDecoder().decode(document.data);
+    const originalXml = xml;
+    xml = removeSourceTypingStamp(xml);
     for (const marker of binding.markers) {
       const encoded = marker.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       if (!xml.includes(encoded)) throw new Error('A configured field was discarded by a generated section. Move its placeholder to a standalone paragraph in the template.');
       xml = xml.split(encoded).join('');
     }
-    document.data = new TextEncoder().encode(xml); result.blob = new Blob([await writeZip(entries) as any], { type: result.blob.type });
+    if (xml !== originalXml) {
+      document.data = new TextEncoder().encode(xml);
+      result.blob = new Blob([await writeZip(entries) as any], { type: result.blob.type });
+    }
   }
   const schemaHash = templateSource.kind === 'library' ? templateSource.schemaHash : templateSource.kind === 'custom' ? await sha256(new TextEncoder().encode(canonicalContract(templateSource.fieldContract))) : undefined;
   const templateHash = templateSource.kind === 'custom' ? await sha256(templateSource.bytes) : templateSource.kind === 'library' ? templateSource.hash : undefined;

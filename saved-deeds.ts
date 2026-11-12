@@ -15,6 +15,8 @@ export type SavedDeed = {
   draft: Draft;
   sourceFiles: Record<string, File[]>;
   planDrafts: Record<string, PlanDocument>;
+  latestPlanDrafts?: Record<string, GuidedPlanDocument>;
+  latestPlanSelectedSvgs?: Record<string, string>;
   guidedPlanDrafts?: Record<string, GuidedPlanDocument>;
   guidedPlanSelectedSvgs?: Record<string, string>;
   referencePlanDrafts: Record<string, ReferencePlanDocument>;

@@ -1,5 +1,5 @@
 import { ageFrom } from './party-age';
-import { deedDate } from './deed-format';
+import { deedDate, deedMobile } from './deed-format';
 import { partyEntityFields, type PartyRepresentative, type PartyPeople, type PartyType } from './fields';
 
 export type PartySide = 'executant' | 'claimant';
@@ -71,6 +71,7 @@ export function representativeRecital(p: PartyRepresentative): string {
   if (address) text.push('R/o ' + address);
   if (p.aadhaar) text.push('Aadhaar No. ' + p.aadhaar);
   if (p.pan) text.push('PAN No. ' + p.pan);
-  if (p.mobile) text.push('Mobile No. ' + p.mobile);
+  const mobile = deedMobile(p.mobile);
+  if (mobile) text.push('Mobile No. ' + mobile);
   return text.filter(Boolean).join(', ');
 }

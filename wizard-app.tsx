@@ -11,10 +11,10 @@ import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from 
 import { LINK_ISSUING_AUTHORITIES } from './link-enclosure';
 import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
 import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, houseValuationStage, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
-import { formatDeedAmount, formatMoneyInput } from './deed-money';
+import { formatDeedAmount, formatMoneyInput, stampPaperValue } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
-import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
+import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeSavedWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -56,7 +56,8 @@ import { buildViewModel, generationBlockers, partyRecords, scheduleRecords, uppe
 import { housePtinPairsForSources, newPropertyHousePtinPair, propertyHousePtinPairsForEditor, serializePropertyHousePtinPairs, type PropertyHousePtinPair } from './property-house-ptin';
 import { planPdf, planPng, registrationPlanSvg } from './registration-plan';
 import { paymentPatchError, type Payment } from './payments';
-import { C, Section, FieldGroup, Button, Empty, ExtractDialog, type ProgressStep } from './ui';
+import { C, Section, FieldGroup, Button, Empty, ExtractDialog, Input, type ProgressStep } from './ui';
+import { deedMobile, isMobileNumber } from './deed-format';
 import { PaymentCard, AddPayment } from './paymentui';
 import { GuidedReferenceStep } from './guided-reference-step';
 import { guidedPlanFromDraft } from './guided-reference-integration';
@@ -315,8 +316,9 @@ function RecordFieldGroup({
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
-      : (['executionDate', 'stampPaperMargin'].includes(f.id) ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
+      : (['executionDate', 'stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(f.id) ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
         ?? resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
+  if ('stampValue' in form) form.stampValue = stampPaperValue(form);
   return <PlacementRecord scope={role} id={record}>
     {groups.map(g => (
       <FieldGroup
@@ -719,6 +721,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
+  const [latestPlanDrafts, setLatestPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
+  const [latestPlanSelectedSvgs, setLatestPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [guidedPlanDrafts, setGuidedPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
   const [guidedPlanSelectedSvgs, setGuidedPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
@@ -731,8 +735,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const [validatingTemplate, setValidatingTemplate] = useState(false);
   const templateInput = useRef<HTMLInputElement>(null);
   const templateValidationRevision = useRef(0);
-  const [download, setDownload] = useState<{ revision: number; draftId: string; templateKey: string; docx?: Blob; pdf?: Blob; filename: string } | null>(null);
-  const [downloadWarning, setDownloadWarning] = useState<{ kind: 'word' | 'pdf'; reasons: string[]; draftId: string; revision: number; templateKey: string } | null>(null);
+  const [download, setDownload] = useState<{ revision: number; draftId: string; templateKey: string; docx?: Blob; telugu?: Blob; pdf?: Blob; filename: string } | null>(null);
+  const [downloadWarning, setDownloadWarning] = useState<{ kind: 'word' | 'telugu' | 'pdf'; reasons: string[]; draftId: string; revision: number; templateKey: string } | null>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
   const resolved = useMemo(() => resolveDraft(draft), [draft]);
   const isRelease = draft.instrumentId === 'release';
@@ -775,11 +779,11 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v1:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v11'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v2:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v11'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
-    || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(latestPlanDrafts).length || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
     id: draft.id,
@@ -789,7 +793,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
-    planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
+    planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
     templateMode, customTemplate, libraryTemplate: (isRelease || isReconveyance || generalPoa || agreementSaleGpa || draft.instrumentId === 'gift') && templateMode === 'built-in' ? bundledTemplatePin(bundledVersion) : libraryTemplate, generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
@@ -815,7 +819,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
   async function refreshPublishedTemplate() {
     try {
       const listing = await listTemplates();
@@ -867,7 +871,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const visibleSavedDeeds = savedDeeds.filter(deed => [deed.name, deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
-    if (role === 'property' && field === 'stampPaperMargin') record = 'transaction';
+    if (role === 'property' && ['stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(field)) record = 'transaction';
+    if (field === 'stampPaperCount' && value && !/^\d{1,3}$/.test(value)) return;
     const sro = resolveSroSelection(field, value);
     if (sro) {
       dispatch({ type: 'manual', key: fieldKey(role, record, sro.nameField), value: sro.name });
@@ -1110,7 +1115,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPendingReviews([]); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
+    setPendingReviews([]); setLatestPlanDrafts({}); setLatestPlanSelectedSvgs({}); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
     setLibraryTemplate(null); setGenerationManifest(null);
@@ -1157,6 +1162,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     setSourceFiles(deed.sourceFiles || {});
     setPlanDrafts(deed.planDrafts || {});
     setReferencePlanDrafts(deed.referencePlanDrafts || {});
+    setLatestPlanDrafts(deed.latestPlanDrafts || {});
+    setLatestPlanSelectedSvgs(deed.latestPlanSelectedSvgs || {});
     setGuidedPlanDrafts(deed.guidedPlanDrafts || {});
     setGuidedPlanSelectedSvgs(deed.guidedPlanSelectedSvgs || {});
     setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
@@ -1197,6 +1204,19 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
+  const isLatestPlanStep = step === 11;
+  const activePlanDraft = (isLatestPlanStep ? latestPlanDrafts : guidedPlanDrafts)[activePropertyId];
+  const activePlanSelection = (isLatestPlanStep ? latestPlanSelectedSvgs : guidedPlanSelectedSvgs)[activePropertyId];
+  const isActivePlanSelected = !!activePlanSelection && activePlanSelection === selectedPlanSvgs[activePropertyId];
+  const setActivePlanDrafts = isLatestPlanStep ? setLatestPlanDrafts : setGuidedPlanDrafts;
+  const setActivePlanSelections = isLatestPlanStep ? setLatestPlanSelectedSvgs : setGuidedPlanSelectedSvgs;
+  const setOtherPlanSelections = isLatestPlanStep ? setGuidedPlanSelectedSvgs : setLatestPlanSelectedSvgs;
+  const omitActivePlanSelection = (old: Record<string, string>) => {
+    if (!(activePropertyId in old)) return old;
+    const next = { ...old };
+    delete next[activePropertyId];
+    return next;
+  };
   const propertyRecords = scheduleRecords(state);
   const combinedMarketStatus: LinkStageStatus = (() => {
     const states = propertyRecords.map(record => linkStageStatus('step5', record.id));
@@ -1228,12 +1248,21 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const activeScheduleMerge = scheduleMerges[activePropertyIndex];
   const claimantIds = partyRecordIds('claimant');
   const executantIds = partyRecordIds('executant');
-  async function generate(kind: 'word' | 'pdf', confirmedReasons?: string[]) {
+  const includeTypingStamp = draft.manual.includePreparedBy === 'true';
+  const typingName = (draft.manual.typingStampName || '').toLocaleUpperCase('en-IN');
+  const typingMobile = (draft.manual.typingStampMobile || '').trim();
+  const typingStamp = includeTypingStamp && typingName.trim() && isMobileNumber(typingMobile)
+    ? { name: typingName.trim(), mobile: typingMobile, place: draft.manual.typingStampPlace || '' }
+    : undefined;
+
+  async function generate(kind: 'word' | 'telugu' | 'pdf', confirmedReasons?: string[]) {
     const allowIncomplete = confirmedReasons !== undefined;
+    const isWord = kind !== 'pdf';
     const reasons = [...new Set([
       ...(confirmedReasons || []),
       ...notices.map(item => item.reason),
-      ...(kind === 'word' ? [
+      ...(isWord ? [
+        ...(includeTypingStamp && !typingStamp ? ['Enter the name and a 10-digit mobile number to include the Typed By stamp.'] : []),
         ...deedRelease.reasons, ...authorityErrors, ...templateFieldErrors, ...minorDownloadErrors.split('\n').filter(Boolean),
         ...(!templateReady ? [...(customTemplate?.validation.errors || ['No compatible custom Word template is selected.']), 'The download will try the default template for this deed.'] : []),
       ] : previews.map(preview => preview.error).filter(Boolean)),
@@ -1245,9 +1274,9 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       const templateSource = templateReady ? activeTemplateSource : BUILT_IN_TEMPLATE_SOURCE;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
-      if (kind === 'word' && !artifact.docx) {
-        const deedValues = { ...mergeValues(state), 'Include Prepared By': snapshot.manual.includePreparedBy === 'true' ? '1' : '' };
-        const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, saleAuthority: snapshot.saleAuthority, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
+      if (isWord && !artifact.docx) {
+        const deedValues = mergeValues(state);
+        const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, typingStamp, saleAuthority: snapshot.saleAuthority, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
         const render = async (source: DeedTemplateSource) => renderArtifact(compileDeed({
           instrumentId: snapshot.instrumentId, variantId: snapshot.variantId, snapshotHash: inputSnapshotHash, values: deedValues,
           schedules: scheduleMerges, rewrites: rewritesFor(state),
@@ -1265,7 +1294,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           try { return [{ schedule: plan.schedule, png: await planPng(plan.svg) }]; }
           catch (error) { if (!allowIncomplete) throw error; return []; }
         })).then(pages => pages.flat());
-        artifact = { ...artifact, docx: await appendRegistrationPlans(merged.blob, reviewed) };
+        artifact = { ...artifact, docx: await appendRegistrationPlans(merged.blob, reviewed, typingStamp) };
         const outputHash = await sha256(new Uint8Array(await artifact.docx.arrayBuffer()));
         if (current.current.id === snapshot.id && current.current.revision === snapshot.revision) setGenerationManifest({ ...manifest, outputHash });
       }
@@ -1279,28 +1308,51 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         const pdf = await planPdf(pngs);
         artifact = { ...artifact, pdf };
       }
+      if (kind === 'telugu' && !artifact.telugu) {
+        const { translateDeedToTelugu } = await import('./telugu-deed');
+        const identities = Object.entries(resolved.values).flatMap(([key, value]) =>
+          /^(executant|claimant|party-person|link|payment)\|/.test(key) && /(?:name|address|aadhaar|pan|phone|mobile|account|sro|village|mandal|district|locality|bank|branch|reference)$/i.test(key)
+            ? [value] : []);
+        if (typingStamp) identities.push(typingStamp.name, deedMobile(typingStamp.mobile), typingStamp.place);
+        artifact = { ...artifact, telugu: await translateDeedToTelugu(artifact.docx!, identities) };
+        if (current.current.id !== snapshot.id || current.current.revision !== snapshot.revision
+          || activeTemplateKeyRef.current !== templateKey) {
+          setMessage('The deed changed during translation. Download the Telugu copy again for the current draft.');
+          return;
+        }
+      }
       setDownload(artifact);
+      if (kind === 'telugu') {
+        saveBlob(artifact.telugu!, artifact.filename.replace(/\.docx$/i, '-Telugu.docx'));
+        setMessage('Downloaded the Telugu Word draft. Compare the translation with the English deed before signing or registration.');
+        return;
+      }
       saveBlob(kind === 'word' ? artifact.docx! : artifact.pdf!, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
       const outstandingCount = reasons.length + templateFieldResolution.instances.filter(instance => !instance.value).length;
       setMessage(outstandingCount ? `Downloaded an incomplete draft with ${outstandingCount} outstanding items. Review and complete it before signing or registration.` : 'Downloaded using the current verified and manually entered details.');
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (!allowIncomplete) {
+      if (kind === 'telugu') {
+        setMessage(`Telugu Word download could not be prepared: ${reason}`);
+      } else if (!allowIncomplete) {
         warn([...reasons, reason]);
       } else if (kind === 'word') {
         const { Document, Packer, Paragraph } = await import('docx');
         const fields = new Map([...ALL_FIELDS, ...PERSON_FIELDS, ...RECONVEYANCE_FIELDS].map(field => [field.id, field.label]));
+        const stampTotal = formatDeedAmount(stampPaperValue(state.form));
         const details = Object.entries(resolved.values).flatMap(([key, value]) => {
           const [role, record, field] = key.split('|');
           const label = fields.get(field);
-          return label && value.trim() ? [new Paragraph({ text: `${role} ${record} / ${label}: ${value}` })] : [];
+          const printed = /(?:mobile|phone)$/i.test(field) ? deedMobile(value) : value;
+          return label && field !== 'stampValue' && printed.trim() ? [new Paragraph({ text: `${role} ${record} / ${label}: ${printed}` })] : [];
         });
+        if (stampTotal) details.push(new Paragraph({ text: `Stamp paper value (₹): ${stampTotal}` }));
         const blob = await Packer.toBlob(new Document({ sections: [{ children: [
           new Paragraph({ text: `${deedDefinition.label} — Incomplete draft details`, heading: 'Heading1' }),
           new Paragraph('The deed template could not be rendered. Review and complete the draft before use.'),
           ...[...new Set([...reasons, reason])].map(text => new Paragraph(text)), ...details,
         ] }] }));
-        saveBlob(blob, deedFilename(state).replace(/\.docx$/, '-incomplete-details.docx'));
+        saveBlob(await appendRegistrationPlans(blob, [], typingStamp), deedFilename(state).replace(/\.docx$/, '-incomplete-details.docx'));
         setMessage('Downloaded the entered details as a Word file because the deed template could not be rendered.');
       } else {
         setMessage(`Download could not be prepared: ${reason}`);
@@ -1393,6 +1445,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <h2 id="download-warning-title">Review download issues</h2>
           <ul>{downloadWarning.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
           {downloadWarning.kind === 'word' && <p>If the selected template cannot be rendered, the download will use the deed’s default template when available or include the entered details for review.</p>}
+          {downloadWarning.kind === 'telugu' && <p>The Telugu copy requires a renderable Word deed and uses the app’s AI service to translate the deed text.</p>}
           <button type="button" autoFocus onClick={() => setDownloadWarning(null)}>Cancel</button>
           <button type="button" className="primary" onClick={() => {
             const { kind, reasons } = downloadWarning;
@@ -1424,7 +1477,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? presentation ? <presentation.Library deeds={visibleSavedDeeds} templateLabel={deed => { const status = savedTemplateStatus(deed, latestTemplate); return status.label + (status.earlier ? ' · Updating to current default' : ''); }} onOpen={openSaved} onDuplicate={duplicateSaved} onRename={renameSaved} onRemove={deed => void removeSaved(deed)} /> : <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
         const name = deed.name || partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`;
         return <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
-          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
+          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeSavedWorkflowStep(deed.draft.instrumentId, deed.draft.step, deed.draft.workflowVersion)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
           <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><button type="button" onClick={() => duplicateSaved(deed, name)}>Duplicate This Document</button>{deed.name && <button type="button" onClick={() => renameSaved(deed)}>Rename</button>}<IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
         </article>; })}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
@@ -1462,12 +1515,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             <div><span className="metric-icon"><CircleCheck size={20} aria-hidden="true" /></span><strong>{workflowSteps.filter(s => s.id <= 8 && vm.doneIds.includes(s.id)).length}<span> / {workflowSteps.filter(s => s.id <= 8).length}</span></strong><span>Drafting steps complete</span></div>
             <div><span className="metric-icon"><ListChecks size={20} aria-hidden="true" /></span><strong>{vm.openCount}</strong><span>Readiness checks open</span></div>
           </div>
-          <div className="dashboard-details"><details className="dashboard-section document-options"><summary>Document preferences <span>Optional formatting</span></summary>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <input type="checkbox" checked={draft.manual.includePreparedBy === 'true'} onChange={event => dispatch({ type: 'manual', key: 'includePreparedBy', value: event.target.checked ? 'true' : '' })} />
-              <span><b>Include Prepared By line</b><small style={{ display: 'block' }}>Adds “Prepared By: Gundlapelli Sampath (98662 70006)” after the witness signatures.</small></span>
-            </label>
-          </details>
+          <div className="dashboard-details">
           <section className="dashboard-section" aria-label="Party summaries"><h2>Parties and representatives</h2>{(['executant', 'claimant'] as const).flatMap(side => partyRecords(state, side).map((party, index) => {
             const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id;
             const count = state.partyPeopleByParty?.[partyKey(side, id)]?.representatives.length || 0;
@@ -1677,9 +1725,13 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <div className="add-document-row property-add-card"><span><House size={17} aria-hidden="true" />More than one property?</span><button type="button" className="primary" onClick={addProperty}>+ Add another property</button></div>
         </LinkStageGate>}
 
-        {step === 4 && !isRelease && <LinkStageGate status={isReconveyance ? null : combinedMarketStatus} loading="Extracting market value from the property documents…">
-          <section className="panel"><h2>{isReconveyance ? 'Stamp paper' : 'Combined market value'}</h2>
-            {!isReconveyance && <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link')} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} />}
+        {step === 4 &&
+          <RecordFieldGroup role="property" record="primary" step={4} category={propertyRecords[0]?.category || ''} resolved={resolved} edit={edit}
+            groupsOverride={GROUPS.filter(group => group.fields.some(field => field.id === 'stampPaperMargin'))} />}
+
+        {step === 4 && !isRelease && !isReconveyance && <LinkStageGate status={combinedMarketStatus} loading="Extracting market value from the property documents…">
+          <section className="panel"><h2>Combined market value</h2>
+            <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link')} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} />
             {propertyRecords.map((record, index) => <div key={record.id} style={index ? { marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.rule}` } : undefined}>
               {propertyRecords.length > 1 && <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {index + 1}{record.category ? ` — ${record.category}` : ''}</h3>}
               <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit}
@@ -1689,14 +1741,12 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                   {draft.manual[fieldKey('property', record.id, STRUCTURE_VALUATION_OVERRIDE)]?.trim() && <button type="button" className="quiet"
                     onClick={() => edit('property', record.id, STRUCTURE_VALUATION_OVERRIDE, '')}>Use calculated valuation</button>}
                 </div> : undefined : undefined}
-                groupsOverride={isReconveyance ? groupsForStep(4, record.category).map(group => ({
-                  ...group, title: 'Stamp paper details', note: '', telugu: undefined,
-                  fields: group.fields.filter(field => ['stampPaperMargin', 'stampValue'].includes(field.id)),
-                })) : isHouseCategory(record.category) ? groupsForStep(4, record.category).map(group => ({ ...group, fields: group.fields.map(field => field.id === 'structValue' ? { ...field, label: 'Structure Valuation (₹)', hint: 'Uses the total of priced structure rows. Enter an amount to override it.' } : field) })) : undefined} />
+                groupsOverride={groupsForStep(4, record.category).filter(group => !group.fields.some(field => field.id === 'stampPaperMargin'))
+                  .map(group => isHouseCategory(record.category) ? { ...group, fields: group.fields.map(field => field.id === 'structValue' ? { ...field, label: 'Structure Valuation (₹)', hint: 'Uses the total of priced structure rows. Enter an amount to override it.' } : field) } : group)} />
             </div>)}
-            {!isReconveyance && <div aria-live="polite"><h3>Total Consideration MV</h3><strong>{vm.persayINR || 'Enter the land extent and basic rate for each schedule.'}</strong></div>}
+            <div aria-live="polite"><h3>Total Consideration MV</h3><strong>{vm.persayINR || 'Enter the land extent and basic rate for each schedule.'}</strong></div>
           </section>
-          {isReconveyance ? null : draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
+          {draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
             <h2>Consideration value</h2>
             <p>The agreed sale consideration for this deed. Calculated market value remains available for validation and duty calculations.</p>
             <strong style={{ fontSize: 22, color: C.ink }}>{vm.considINR || 'Enter sale consideration'}</strong>
@@ -1818,10 +1868,23 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               <small>Per-deed custom templates are checked locally and are not sent to the extraction AI. Publish shared revisions from Dashboard → Templates. Compatibility checks do not legally approve customer-authored wording.</small>
             </FileDropZone>}
           </div>
+          <div className="template-picker">
+            <label className="typing-stamp-toggle">
+              <input type="checkbox" checked={includeTypingStamp} onChange={event => dispatch({ type: 'manual', key: 'includePreparedBy', value: event.target.checked ? 'true' : '' })} />
+              <span><b>Include Typed By stamp</b><small>Prints at the end of the Word deed.</small></span>
+            </label>
+            {includeTypingStamp && <div className="typing-stamp-fields">
+              <label>Name<input type="text" autoCapitalize="characters" value={typingName} onChange={event => dispatch({ type: 'manual', key: 'typingStampName', value: event.target.value.toLocaleUpperCase('en-IN') })} /></label>
+              <label>Place (optional)<input type="text" value={draft.manual.typingStampPlace || ''} onChange={event => dispatch({ type: 'manual', key: 'typingStampPlace', value: event.target.value })} /></label>
+              <Input field={{ id: 'typingStampMobile', label: 'Mobile number', type: 'tel' }} value={draft.manual.typingStampMobile || ''} onChange={value => dispatch({ type: 'manual', key: 'typingStampMobile', value })} />
+            </div>}
+          </div>
           <h3 className="export-section-title">2. Download your files</h3>
           <div className="export-options" aria-busy={exporting}>
             <article className="export-card export-word"><div className="export-file-icon"><FileDown size={25} aria-hidden="true" /></div><div><span className="export-format">WORD DOCUMENT · .DOCX</span><h3>Editable deed</h3><p>Open in Microsoft Word to review the wording and finish any write-in details.</p></div>
               <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate)} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
+              <button type="button" aria-describedby="telugu-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate)} onClick={() => generate('telugu')}>Download Telugu Word deed (.docx)</button>
+              <small id="telugu-download-state">తెలుగు దస్తావేజు · AI translation of the deed text. Review it against the English copy before use.</small>
               <small id="word-download-state">{minorDownloadErrors || (exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Checking the custom template.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'The custom Word template has compatibility issues.' : templateFieldErrors.length || notices.length ? 'Review the outstanding details before using this draft.' : 'Read the generated deed before using it.')}</small>{minorDownloadErrors && <button type="button" className="quiet" onClick={() => goto(minorDownloadErrors.startsWith('Claimant') ? 7 : 6)}>Complete guardian details</button>}
             </article>
             <article className="export-card"><div className="export-file-icon"><MapIcon size={25} aria-hidden="true" /></div><div><span className="export-format">PROPERTY PLAN · PDF</span><h3>Plan for printing</h3><p>Download the property-plan PDF. This is a separate file from the Word deed.</p></div>
@@ -1836,22 +1899,25 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
 
         </section>}
 
-        {step === 10 && <section className="panel reference-plan-step">
+        {(step === 10 || step === 11) && <section className="panel reference-plan-step">
           <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
-          <GuidedReferenceStep key={`${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
-            seed={guidedPlanFromDraft(state, activePropertyId)} doc={guidedPlanDrafts[activePropertyId]}
+          <GuidedReferenceStep variant={isLatestPlanStep ? 'latest' : 'guided'} key={`${step}:${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
+            seed={guidedPlanFromDraft(state, activePropertyId)} doc={activePlanDraft}
             enteredDeedDimensions={PROPERTY_DIMENSIONS.fields
               .filter(field => Object.hasOwn(resolved.values, fieldKey('property', activePropertyId, field.id))).map(field => field.id)}
-            selected={!!guidedPlanSelectedSvgs[activePropertyId] && guidedPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]}
+            selected={isActivePlanSelected}
             onChange={doc => {
-              setGuidedPlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
-              if (guidedPlanSelectedSvgs[activePropertyId] === selectedPlanSvgs[activePropertyId]) {
-                setSelectedPlanSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
-              }
-              setGuidedPlanSelectedSvgs(old => { const next = { ...old }; delete next[activePropertyId]; return next; });
+              setActivePlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
+              if (isActivePlanSelected) setSelectedPlanSvgs(omitActivePlanSelection);
+              setActivePlanSelections(omitActivePlanSelection);
               setDownload(null);
             }}
-            onUse={svg => { setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg })); setGuidedPlanSelectedSvgs(old => ({ ...old, [activePropertyId]: svg })); setDownload(null); }} />
+            onUse={svg => {
+              setOtherPlanSelections(omitActivePlanSelection);
+              setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg }));
+              setActivePlanSelections(old => ({ ...old, [activePropertyId]: svg }));
+              setDownload(null);
+            }} />
         </section>}
 
         </div>}

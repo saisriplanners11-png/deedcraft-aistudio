@@ -2,7 +2,7 @@ import type { ReleaseData } from './release';
 import { orderedEnclosureIds } from './enclosure-records';
 import { acreGuntasToSqYards } from './land-area';
 import { titleAmendmentKind } from './title-amendments';
-import { normalizeWorkflowStep } from './workflow-steps';
+import { CURRENT_WORKFLOW_VERSION, normalizeSavedWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { houseStructureTotal, isHouseCategory, STRUCTURE_VALUATION_OVERRIDE } from './house-valuation';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
@@ -49,7 +49,7 @@ import { saleDocumentForVariant, type SaleAuthority } from './sale-options';
 
 export type Draft = {
   /** Distinguishes the added plan step from legacy removed plan-step IDs. */
-  workflowVersion?: 2;
+  workflowVersion?: 2 | typeof CURRENT_WORKFLOW_VERSION;
   /** Optional lookup metadata; canonical names remain in the existing property fields. */
   jurisdictionLookups?: Record<string, JurisdictionLookupState>;
   saleAuthority?: SaleAuthority;
@@ -78,7 +78,7 @@ export type Draft = {
   templateFieldReviews?: Record<string, 'accepted' | 'rejected'>;
 };
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const newDraft = (): Draft => ({ workflowVersion: 2, id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
+export const newDraft = (): Draft => ({ workflowVersion: CURRENT_WORKFLOW_VERSION, id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
   | { type: 'jurisdiction-lookup'; propertyId: string; value: JurisdictionLookupState }
   | { type: 'add-party'; role: 'executant' | 'claimant'; record: string }
@@ -111,11 +111,11 @@ export type Action =
 
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
-  // Legacy removed plan steps reopen in the original editor; v2 keeps the added step.
+  // Legacy plan positions reopen in Step 11; the current version can restore Step 12.
   if (action.type === 'load') {
-    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step);
-    return migratePartyPeople(step === action.draft.step && action.draft.workflowVersion === 2
-      ? action.draft : { ...action.draft, step, workflowVersion: 2 });
+    const step = normalizeSavedWorkflowStep(action.draft.instrumentId, action.draft.step, action.draft.workflowVersion);
+    return migratePartyPeople(step === action.draft.step && action.draft.workflowVersion === CURRENT_WORKFLOW_VERSION
+      ? action.draft : { ...action.draft, step, workflowVersion: CURRENT_WORKFLOW_VERSION });
   }
   if (action.type === 'step') return { ...draft, step: normalizeWorkflowStep(draft.instrumentId, action.step) };
   let next = draft;

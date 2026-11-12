@@ -24,3 +24,23 @@ export function executionDeedDate(value: string): string {
   const month = value.trim().match(/^(\d{4})-(0[1-9]|1[0-2])$/);
   return month && Number(month[1]) > 0 ? `__-${month[2]}-${month[1]}` : deedDate(value);
 }
+
+export const MOBILE_NUMBER_ERROR = 'Enter a 10-digit mobile number.';
+
+export function isMobileNumber(value: string): boolean {
+  return /^\d{10}$/.test(value.replace(/\s/g, ''));
+}
+
+export function groupedIdentityDigits(value: string, groupSize: number): string {
+  const digits = value.replace(/\s/g, '');
+  if (!/^\d+$/.test(digits)) return value;
+  const groups = [];
+  for (let index = 0; index < digits.length; index += groupSize) {
+    groups.push(digits.slice(index, index + groupSize));
+  }
+  return groups.join(' ');
+}
+
+export function deedMobile(value: string): string {
+  return isMobileNumber(value) ? groupedIdentityDigits(value, 5) : '';
+}

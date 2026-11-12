@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanDocument } from './guided-reference-plan/src/types';
 import { syncGuidedDeedBoundaries, applyGuidedRefresh, guidedRefreshFields, isGuidedPlan } from './guided-reference-integration';
 
-export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDeedDimensions, selected, onChange, onUse, theme = 'light' }: {
+export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDeedDimensions, selected, onChange, onUse, theme = 'light', variant = 'guided' }: {
   draftId: string; scheduleId: string; seed: PlanDocument; doc?: PlanDocument; enteredDeedDimensions?: readonly string[]; selected: boolean;
-  onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void; theme?: 'light' | 'dark';
+  onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void; theme?: 'light' | 'dark'; variant?: 'guided' | 'latest';
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
@@ -77,8 +77,8 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDee
         onChange(next); sendSeed(next); setReview(false);
       }}>Apply selected deed facts to plan</button>
     </div>}
-    <iframe className="plan-workspace-frame" ref={frame} title="Property Plan — New Generator"
-      src={`/guided-reference-plan/index.html?draftId=${encodeURIComponent(draftId)}&scheduleId=${encodeURIComponent(scheduleId)}&sessionId=${sessionId}`}
+    <iframe className="plan-workspace-frame" ref={frame} title={variant === 'latest' ? 'Property Plan — Latest Generator' : 'Property Plan — New Generator'}
+      src={`/${variant}-reference-plan/index.html?draftId=${encodeURIComponent(draftId)}&scheduleId=${encodeURIComponent(scheduleId)}&sessionId=${sessionId}`}
       onLoad={() => { sendSeed(); sendTheme(); }} style={{ display: 'block', width: '100%', minHeight: 900, height: 'calc(100vh - 170px)', border: 0, background: 'var(--dc-ground)' }} />
   </>;
 }

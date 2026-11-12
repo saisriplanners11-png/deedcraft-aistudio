@@ -98,8 +98,19 @@ describe('requested deed improvements', () => {
     for (const [key, value] of Object.entries({ 'claimant|primary|claimantDob': '2000-01-02', 'claimant|primary|claimantAge': '9', 'link|nala-1|nalaExtent': '00-02', 'link|nala-1|linkOption': 'nala', 'property|transaction|stampPaperMargin': '100' })) draft = draftReducer(draft, { type: 'manual', key, value });
     expect(resolveDraft(draft).values['claimant|primary|claimantAge']).toBe(ageFrom('2000-01-02'));
     expect(resolveDraft(draft).values['link|nala-1|convertedExtentText']).toBe('242');
-    expect(appStateFor(JSON.parse(JSON.stringify(draft))).form.stampPaperMargin).toBe('100');
+    draft = draftReducer(draft, { type: 'manual', key: 'property|transaction|stampPaperCount', value: '3' });
+    const reopened = appStateFor(JSON.parse(JSON.stringify(draft)));
+    expect(reopened.form.stampPaperMargin).toBe('100');
+    expect(mergeValues(reopened)['Stamp Paper Count']).toBe('3');
+    expect(mergeValues(reopened)['Stamp of Rs/-']).toBe('300');
     expect(acreGuntasToSqYards('00-02')).toBe(242); expect(acreGuntasToSqYards('1-02')).toBe(5082); expect(acreGuntasToSqYards('00-40')).toBeNull();
+  });
+  it.each([
+    ['100', '', '100'], ['50', '3', '150'], ['20', '3', '60'],
+    ['Legacy', '3', '25'], ['None', '3', '25'],
+  ])('resolves the Word stamp amount for denomination %s and count %s', (stampPaperMargin, stampPaperCount, expected) => {
+    const form = { ...initialState.form, stampPaperMargin, stampPaperCount, stampValue: '25' };
+    expect(mergeValues({ ...initialState, form })['Stamp of Rs/-']).toBe(expected);
   });
   it('keeps NALA conversion local to its schedule and retains the independently entered property extent', () => {
     const state = { ...initialState, form: { ...initialState.form, extentSqYards: '100' }, additionalLinkDocuments: [{ id: 'nala-1', values: { linkOption: 'nala', nalaOrderNo: 'N-1', nalaExtent: '00-02' }, docNames: [] }] };

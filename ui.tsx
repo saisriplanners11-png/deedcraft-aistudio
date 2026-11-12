@@ -10,6 +10,7 @@ import { normalizePropertyPlaceName } from './place-names';
 import type { Conflict, FieldEvidence } from './logic';
 import { DOC_KINDS, type DocKind } from './extract';
 import { formatMoneyInput } from './deed-money';
+import { groupedIdentityDigits, isMobileNumber, MOBILE_NUMBER_ERROR } from './deed-format';
 export { formatMoneyInput } from './deed-money';
 
 // Shared pieces of the deed-register look: rules and small caps, ink on cream,
@@ -94,6 +95,9 @@ export function Input({
 }) {
   const suggestionsId = React.useId();
   const helpId = React.useId();
+  const mobile = field.type === 'tel' || /(?:mobile|phone)$/i.test(field.id);
+  const aadhaar = /aadhaar$/i.test(field.id);
+  const invalidMobile = mobile && !!value.trim() && !isMobileNumber(value);
   const [blankExecutionDay, setBlankExecutionDay] = React.useState(false);
   const monthOnlyExecution = field.id === 'executionDate' && (blankExecutionDay || /^\d{4}-\d{2}$/.test(value));
   const FieldContainer = field.id === 'executionDate' ? 'div' : 'label';
@@ -151,6 +155,23 @@ export function Input({
           onChange={e => onChange(e.target.value)}
           style={css(`padding:7px 2px;border:0;border-bottom:1px solid ${C.goldLight};background:transparent;font-size:13.5px;color:${C.ink};outline:none;resize:vertical;font-family:inherit`)}
         />
+      ) : mobile || aadhaar ? (
+        <>
+          <input
+            type={mobile ? 'tel' : 'text'}
+            aria-label={field.ariaLabel || field.label}
+            aria-describedby={invalidMobile ? helpId : undefined}
+            aria-invalid={invalidMobile || undefined}
+            inputMode="numeric"
+            value={groupedIdentityDigits(shown, mobile ? 5 : 4)}
+            readOnly={readOnly}
+            onChange={event => {
+              const digits = event.target.value.replace(/\D/g, '');
+              if (digits.length <= (mobile ? 10 : 12)) onChange(digits);
+            }}
+          />
+          {invalidMobile && <small id={helpId}>{MOBILE_NUMBER_ERROR}</small>}
+        </>
       ) : field.type === 'money' ? (
         <input
           type="text"
@@ -169,6 +190,7 @@ export function Input({
       ) : (
         <input
           type={monthOnlyExecution ? 'month' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'month' ? 'month' : field.type === 'tel' ? 'tel' : 'text'}
+          {...(field.id === 'stampPaperCount' ? { min: 1, max: 999, placeholder: '1' } : {})}
           aria-label={field.ariaLabel || (field.id === 'executionDate' ? field.label : undefined)} aria-describedby={help && !conflict ? helpId : undefined}
           list={field.options?.length ? suggestionsId : undefined}
           value={shown}
@@ -285,7 +307,7 @@ export function FieldGroup({
       {group.note ? (
         <p style={css(`margin:0 0 16px;font-size:12px;color:${C.body};line-height:1.6;max-width:80ch`)}>{group.note}</p>
       ) : null}
-      <div className={groupAgreementRows ? 'flat-agreement-rows' : 'deed-field-grid'} style={css(`display:grid;grid-template-columns:repeat(${groupAgreementRows ? 1 : group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
+      <div className={groupAgreementRows ? 'flat-agreement-rows' : `deed-field-grid${visibleFields.some(field => field.id === 'stampPaperCount') ? ' stamp-paper-grid' : ''}`} style={css(`display:grid;grid-template-columns:repeat(${groupAgreementRows ? 1 : group.cols || 4},minmax(0,1fr));gap:16px 18px`)}>
         {groupAgreementRows ? <>
           {agreementRows.map(ids => <div key={ids[0]} className={`flat-agreement-row columns-${ids.length}`}>
             {renderFields(visibleFields.filter(field => ids.includes(field.id)))}

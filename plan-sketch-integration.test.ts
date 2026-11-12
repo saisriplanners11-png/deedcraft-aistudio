@@ -57,7 +57,7 @@ describe('reviewed registration plans in Word', () => {
   it('adds one image relationship and page per selected schedule', async () => {
     const enc = new TextEncoder();
     const original = await writeZip([
-      { name: 'word/document.xml', data: enc.encode('<w:document><w:body><w:p/><w:sectPr/></w:body></w:document>') },
+      { name: 'word/document.xml', data: enc.encode('<w:document><w:body><w:p><w:pPr><w:sectPr><w:pgMar w:top="8352"/></w:sectPr></w:pPr></w:p><w:p/><w:sectPr/></w:body></w:document>') },
       { name: 'word/_rels/document.xml.rels', data: enc.encode('<Relationships></Relationships>') },
       { name: '[Content_Types].xml', data: enc.encode('<Types></Types>') },
     ]);
@@ -69,6 +69,8 @@ describe('reviewed registration plans in Word', () => {
     const xml = new TextDecoder().decode(entries.find(e => e.name === 'word/document.xml')!.data);
     const rels = new TextDecoder().decode(entries.find(e => e.name === 'word/_rels/document.xml.rels')!.data);
     expect(xml.match(/PLAN FOR REGISTRATION/g)).toHaveLength(2);
+    expect(xml).toContain('<w:pPr><w:sectPr><w:pgMar w:top="8352"/></w:sectPr></w:pPr>');
+    expect(xml.indexOf('PLAN FOR REGISTRATION')).toBeGreaterThan(xml.indexOf('</w:pPr>'));
     expect(xml.match(/<w:br w:type="page"\/>/g)).toHaveLength(2);
     expect(rels.match(/relationships\/image/g)).toHaveLength(2);
     expect(entries.some(e => e.name === 'word/media/deedcraft-plan-2.png')).toBe(true);

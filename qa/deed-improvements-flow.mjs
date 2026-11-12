@@ -16,7 +16,8 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   if (candidateVariant === 'municipal-gift' && property !== 'plot') continue;
   const state = rt.sampleState((candidateVariant === 'sale-deed-by-gpa-holder' ? 'gpa-' : candidateVariant === 'sale-through-existing-agpa' ? 'agpa-' : 'ordinary-') + property);
   Object.assign(state, { deedType, draft });
-  Object.assign(state.form, { stampPaperMargin: margin, giftRelationship: 'daughter', poaRelationship: 'son' });
+  const stampCount = margin === '100' ? (property === 'plot' ? 2 : 3) : margin === '50' ? 2 : 1;
+  Object.assign(state.form, { stampPaperMargin: margin, stampPaperCount: margin === 'None' ? '3' : String(stampCount), giftRelationship: 'daughter', poaRelationship: 'son' });
   Object.assign(state.form, { dimensionNorth: '21 ft', dimensionSouth: '22 ft', dimensionEast: '41 ft', dimensionWest: '42 ft' });
   if (property === 'house-finished') {
     const details = state.structureDetailsBySchedule.primary;
@@ -37,6 +38,9 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const bytes = new Uint8Array(await result.blob.arrayBuffer()), entries = await rt.readZip(bytes);
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   const text = await rt.docxToText(bytes), label = `${candidateVariant} ${property} ${margin}`;
+  if (candidateVariant !== 'municipal-gift' && margin !== 'None') {
+    assert.match(text, new RegExp(`Stamp of Rs\\s*\\.\\s*${Number(margin) * stampCount}\\b`, 'i'), label);
+  }
   assert.deepEqual(result.unmapped, [], label);
   assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, label);
   if (property === 'house-finished') {
@@ -49,8 +53,9 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
     }
   }
   const tops = [...xml.matchAll(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)].map(section => section[0].match(/w:top="(\d+)"/)?.[1]);
-  assert.equal(tops[0], ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' })[margin], label);
-  assert(!tops.slice(1).includes('8352') && !tops.slice(1).includes('8640'), label + ': continuation margins');
+  const stampTop = ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' })[margin];
+  assert.deepEqual(tops.slice(0, stampCount), Array(stampCount).fill(stampTop), label);
+  assert(tops.length > stampCount && !tops.slice(stampCount).some(top => top === '8352' || top === '8640'), label + ': continuation margins');
   assert.doesNotMatch(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent:/i, label);
   assert.doesNotMatch(text, /\b(?:Vendor|Vendee|Executant|Principal|Attorney|First Party|Second Party)\/s\b|\bhas\/have\b|\bis\/are\b|\bI\/We\b/i, label);
   if (candidateVariant === 'municipal-gift') { assert.match(text, /SAMPLE PURCHASER/, label); assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner/, label); }

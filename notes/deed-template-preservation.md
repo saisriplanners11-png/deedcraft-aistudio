@@ -76,6 +76,10 @@ An imported GPA/AGPA principal with no verified relation correctly remained unre
 
 12-11-2026 PTY-01/05, runtime 2026-11-12.3: render each explicitly linked guardian once under the last minor assigned that guardian. A shared recital identifies all minors the guardian represents by their numbered points. Guardian-only cards stay available for editing and validation. Word recipient numbering and recipient counts exclude linked guardian-only cards. The production build checks separate and shared guardians with built-in and custom sources.
 
+12-11-2026 COM-03, runtime 2026-11-12.4. The saved stamp count controls opening stamp sheets across instruments and compatible replacements. The selected denomination supplies the top margin and the independently entered rupee value supplies the existing Word bindings. The continuation retains normal page geometry.
+
+12-11-2026 COM-25, runtime 2026-11-12.5. Step 10 saves the optional typing stamp selection, name and mobile number per draft. Recognized source attribution is removed during Word generation, and the selected stamp is appended after the attached plans.
+
 ## Release integration — 07-11-2026
 
 `release-deed-v1` retains the original uploaded RELEASE DEED.docx bytes and SHA-256 d3077f53109780af91f60d77299737ce5f190198d8a46a126e03eb7237db33f1. Both existing Release variant IDs select it. Source normalization resolves known generic amendment slots to record-specific bindings and restores the missing RTGS reference slot; immutable bytes are unchanged. Eight schedules map to the existing property variants. Release has an independent renderer, validation profile and publication samples.
@@ -91,3 +95,9 @@ COM-19 (09-11-2026): Suggestions must not restrict the text printed for editable
 09-11-2026 House update (COM-10 and COM-16/17): retain partial tax identification in the existing source point, restore the schedule Bearing H.No. editor, and hide the finished-house landmark inputs. Runtime preservation version: 2026-11-09.2.
 
 COM-20 (09-11-2026): group currency with Indian commas and omit zero fractional parts in output. Preserve nonzero decimals, keep exact Reconveyance paise arithmetic, and leave area measurements and survey identifiers outside the money formatter. Runtime preservation version: 2026-11-09.3.
+
+12-11-2026 COM-25, runtime 2026-11-12.6. The typing stamp is right-aligned in a narrow block, and its statement wraps within the block.
+
+12-11-2026 COM-03, runtime 2026-11-12.7. Step 5 calculates the stamp paper value by multiplying the selected denomination by the stamp count. The same calculation feeds the Word binding. When the selection has no numeric denomination, retain the existing recorded value.
+
+12-11-2026 COM-25/26, runtime 2026-11-12.8. The stamp follows the supplied layout, with uppercase name, optional place and a validated mobile in 5+5 format. Party and representative mobile bindings apply the same ten-digit rule. Aadhaar digit grouping applies in dashboard inputs.
