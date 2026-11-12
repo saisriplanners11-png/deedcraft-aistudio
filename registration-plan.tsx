@@ -104,13 +104,14 @@ export async function planPng(svg: string): Promise<Uint8Array> {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export async function planPdf(pages: Uint8Array[]): Promise<Blob> {
+export async function planPdf(pages: (Uint8Array | null)[]): Promise<Blob> {
   const { PDFDocument } = await import('pdf-lib');
   const pdf = await PDFDocument.create();
   pdf.setTitle('Plan for Registration');
   for (const png of pages) {
     const page = pdf.addPage([595.28, 841.89]);
-    page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 595.28, height: 841.89 });
+    if (png) page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 595.28, height: 841.89 });
+    else page.drawText('Property plan unavailable for this schedule.', { x: 48, y: 770, size: 14 });
   }
   return new Blob([await pdf.save() as BlobPart], { type: 'application/pdf' });
 }

@@ -60,17 +60,18 @@ export function repaymentFor(state: AppState) {
   const amounts = reconveyanceAmounts(records, state.form.principalOverride || '', interest.interest);
   return { ...amounts, errors: [...amounts.errors, ...interest.errors] };
 }
-export const isBankReconveyance = (state: AppState) => state.deedType === 'Deed Of Reconvayance' && (state.draft === 'TITLE DEED' || state.form.mortgagePartyMode === 'bank-to-person');
+export const isBankReconveyance = (state: AppState) => state.deedType === 'Deed Of Reconvayance' && (
+  state.draft === 'TITLE DEED' || state.form.executantPartyType === 'Bank' || state.form.mortgagePartyMode === 'bank-to-person' ||
+  (state.form.mortgagePartyMode !== 'person-to-person' && !!state.form.bankName?.trim())
+);
 export function reconveyanceErrors(state: AppState): string[] {
   const errors = [...repaymentFor(state).errors];
-  if (state.form.executantPartyType === 'Bank' && !isBankReconveyance(state)) errors.push('Bank releasors require a bank-to-person draft. Choose an individual party for person-to-person.');
   const records = reconveyanceRecords(state);
   records.forEach((record, index) => {
     for (const field of ['linkDocNo','linkSro','linkSroCode']) if (!record.values[field]?.trim()) errors.push(`Mortgage ${index + 1}: complete ${field}.`);
     if (!deedDate(record.values.linkDocDate || '')) errors.push(`Mortgage ${index + 1}: enter a complete valid execution date.`);
   });
-  if (state.draft !== 'TITLE DEED' && !['bank-to-person','person-to-person'].includes(state.form.mortgagePartyMode || '')) errors.push('Select bank-to-person or person-to-person.');
-  if (state.draft === 'TITLE DEED' || state.form.mortgagePartyMode === 'bank-to-person') {
+  if (isBankReconveyance(state)) {
     for (const field of ['bankName','bankBranch','officialDesignation']) if (!state.form[field]?.trim()) errors.push(`Complete ${field} for the bank opening.`);
   }
   for (const schedule of [{ category: state.category, values: state.form }, ...state.additionalSchedules]) {
@@ -86,11 +87,11 @@ export function reconveyanceValues(state: AppState): Record<string, string> {
     'Principal Amount': formatDeedAmount(amount.principal), 'Intrest Amount': formatDeedAmount(amount.interest), 'Interest Amount': formatDeedAmount(amount.interest),
     'Total Amount': formatDeedAmount(amount.total), 'Market of Value Rs./-': formatDeedAmount(amount.total),
     'Reconveyance Draft': state.draft === 'TITLE DEED' ? 'title-deed' : 'mortgage-deed',
-    'Mortgage Party Mode': state.draft === 'TITLE DEED' ? 'bank-to-person' : state.form.mortgagePartyMode || '',
+    'Mortgage Party Mode': isBankReconveyance(state) ? 'bank-to-person' : 'person-to-person',
     'BANK NAME': state.form.bankName || '', Branch: state.form.bankBranch || '', Designation: state.form.officialDesignation || '',
     'Mortgage Records': JSON.stringify(reconveyanceRecords(state)),
     'Bank Representative Details': representatives.filter(person => person.name.trim()).map(representativeRecital).join('; '),
-    'Bank Releasor': isBankReconveyance(state) && state.form.executantPartyType === 'Bank' ? 'true' : '',
+    'Bank Releasor': isBankReconveyance(state) && (state.form.executantPartyType === 'Bank' || !state.form.executantName?.trim()) ? 'true' : '',
   };
 }
 

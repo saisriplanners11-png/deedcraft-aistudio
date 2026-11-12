@@ -24,6 +24,7 @@ export interface CompiledDeed {
   templateVersionId: string;
   ruleVersion?: string;
   templateSource?: DeedTemplateSource;
+  allowIncomplete?: boolean;
 }
 export interface GenerationManifest {
   preservationVersion?: string;
@@ -39,19 +40,19 @@ export interface GenerationManifest {
   packageHash?: string;
 }
 
-export function compileDeed(snapshot: DraftSnapshot, templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): CompiledDeed {
-  if (snapshot.values['Minor Representation Complete'] === 'false') throw new Error(snapshot.values['Minor Representation Errors'] || 'Complete minor guardian details and court permission for each minor executant before generating the deed.');
-  if (snapshot.instrumentId === 'reconveyance') {
+export function compileDeed(snapshot: DraftSnapshot, templateSource: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE, allowIncomplete = false): CompiledDeed {
+  if (!allowIncomplete && snapshot.values['Minor Representation Complete'] === 'false') throw new Error(snapshot.values['Minor Representation Errors'] || 'Complete minor guardian details and court permission for each minor executant before generating the deed.');
+  if (!allowIncomplete && snapshot.instrumentId === 'reconveyance') {
     const errors = reconveyanceBindingErrors(snapshot.values);
     if (errors.length) throw new Error(errors.join(' '));
   }
   const gate = releaseGate(snapshot.instrumentId, snapshot.variantId);
   if (!gate.ready || !gate.reference?.templateVersionId) throw new Error(gate.reasons.join(' '));
   preservationProfileFor(snapshot.instrumentId, snapshot.variantId);
-  if (snapshot.instrumentId === 'sale' && snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {
+  if (!allowIncomplete && snapshot.instrumentId === 'sale' && snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {
     for (const tag of ['G.P.A.Doct.No.', 'G.P.A.Doct.Date', 'Authority SRO', 'Authority SRO Code']) if (!snapshot.values[tag]) throw new Error('Complete the sale authority details before generating the deed.');
   }
-  return { snapshot, templateSource, templateVersionId: templateSource.kind === 'library' ? templateSource.versionId : templateSource.kind === 'custom' ? `custom:${templateSource.hash}` : gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
+  return { snapshot, templateSource, allowIncomplete, templateVersionId: templateSource.kind === 'library' ? templateSource.versionId : templateSource.kind === 'custom' ? `custom:${templateSource.hash}` : gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
 }
 
 export async function renderArtifact(
@@ -64,18 +65,18 @@ export async function renderArtifact(
   const first = compiled.snapshot.schedules[0];
   if (!first) throw new Error('At least one property schedule is required by the Sale template.');
   const binding = bindTemplateFields(templateSource.kind === 'built-in' ? undefined : templateSource.fieldContract, compiled.snapshot.templateFieldData || { records: [], values: {} }, compiled.snapshot.values, compiled.snapshot.schedules, compiled.snapshot.rewrites || []);
-  if (binding.errors.length) throw new Error(binding.errors.join(' '));
+  if (binding.errors.length && !compiled.allowIncomplete) throw new Error(binding.errors.join(' '));
   if (templateSource.kind !== 'built-in' && templateSource.fieldContract?.fields.length && !compiled.snapshot.templateFieldData) throw new Error('Template field values are missing from this draft snapshot.');
   const result = compiled.snapshot.instrumentId === 'release'
-    ? await fillReleaseDeed({ ...binding.values, 'Release Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)
+    ? await fillReleaseDeed({ ...binding.values, 'Release Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource, compiled.allowIncomplete)
     : compiled.snapshot.instrumentId === 'reconveyance'
-    ? await fillReconveyanceDeed(binding.values, binding.rewrites, binding.schedules, templateSource)
+    ? await fillReconveyanceDeed(binding.values, binding.rewrites, binding.schedules, templateSource, compiled.allowIncomplete)
     : compiled.snapshot.instrumentId === 'power_of_attorney'
-    ? await fillGeneralPoaDeed({ ...binding.values, 'Poa Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)
+    ? await fillGeneralPoaDeed({ ...binding.values, 'Poa Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource, compiled.allowIncomplete)
     : compiled.snapshot.instrumentId === 'agreement_of_sale'
     ? await fillAgreementSaleGpaDeed({ ...binding.values, 'Agreement Possession Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)
     : compiled.snapshot.instrumentId === 'gift'
-    ? await fillGiftDeed({ ...binding.values, 'Gift Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource)
+    ? await fillGiftDeed({ ...binding.values, 'Gift Variant': compiled.snapshot.variantId }, binding.rewrites, binding.schedules, templateSource, compiled.allowIncomplete)
     : await fillSaleDeed(binding.values, first.variant, binding.rewrites, binding.schedules, templateSource);
   if (binding.markers.length) {
     const entries = await readZip(new Uint8Array(await result.blob.arrayBuffer()));

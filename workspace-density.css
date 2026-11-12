@@ -155,7 +155,6 @@
 .wizard-app .gift-clause-preview p{margin:8px 0 0;font-family:Georgia,serif}
 .wizard-app [aria-label='Sale attorney details'] fieldset{min-width:0;padding:18px;margin:20px 0;border:1px solid var(--dc-rule);border-radius:10px}
 .wizard-app [aria-label='Sale attorney details'] legend{padding:0 8px;font-size:14px;font-weight:600;color:var(--dc-green)}
-.wizard-app .authority-uploads{padding:16px;background:var(--dc-ground);border:1px dashed var(--dc-control-border);border-radius:8px;overflow-wrap:anywhere}
 .wizard-app :is(button,input,select,textarea,summary):focus-visible{outline:3px solid var(--dc-green);outline-offset:3px;scroll-margin-block:80px}
 .wizard-app .stage-head p:last-child{font-size:14px;line-height:1.6}
 .wizard-app .overview-card-title{line-height:1.45;overflow-wrap:anywhere}

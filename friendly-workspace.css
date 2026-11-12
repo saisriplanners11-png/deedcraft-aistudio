@@ -61,7 +61,6 @@
 .wizard-app [aria-label='Sale attorney details'] fieldset{padding:12px;margin-block:12px}
 .wizard-app .attorney-empty{padding:12px;border:1px dashed var(--dc-control-border);border-radius:8px;background:var(--dc-ground);margin-block:12px;font-size:12px;color:var(--dc-ink)}
 .wizard-app .attorney-empty p{margin:5px 0 0}
-.wizard-app .authority-uploads{padding:12px}
 .wizard-app .navigation{padding:10px 12px;gap:12px;margin-top:16px}
 .wizard-app .navigation>span{display:flex;flex-direction:column;gap:3px;text-align:center;color:var(--dc-body)}
 .wizard-app .navigation>span strong{font-size:11px;font-weight:500}

@@ -18,7 +18,7 @@ for(const property of ['plot','open','part','dismantled','house-finished','house
   assert.equal((text.match(/THE DETAILS OF TOTAL PROPERTY/g)||[]).length,1);
   assert.ok(!/<[^>]+>|DD-MM-YYYY|Vendee\/s|Vendor\/s|SIGN\/S|HAS\/HAVE|HIS\/HER/.test(text),text);
   assert.ok(text.includes('1/3'));
-  assert.match(text, /Dimensions\s+North: 21 ft\s+South: 22 ft\s+East: 41 ft\s+West: 42 ft/, property);
+  assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, property);
   if (property.startsWith('house-')) assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./, property);
   await writeFile(`tmp/release/qa/${property}.docx`,output);
   if(property==='plot') await writeFile('tmp/release/qa/plot.txt',text);

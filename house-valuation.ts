@@ -1,7 +1,14 @@
-import { localAuthorityName, type StructureDetail, type StructureDetails } from './fields';
+import { localAuthorityName, STRUCTURE_TYPE_OPTIONS, type StructureDetail, type StructureDetails } from './fields';
 import { moneyPaise } from './deed-money';
 
-export const HOUSE_ROOFS = ['R.C.C.', 'Tin Shed', 'Tiled Roof', 'Compound Wall'];
+export const HOUSE_ROOFS = ['R.C.C.', 'Bangalore Tiles', 'Tin Shed', 'Tiled Roof', 'Compound Wall'];
+export const HOUSE_VALUATION_STAGES = [
+  { value: 'Foundation', label: 'Upto Foundation', percent: 25 },
+  { value: 'Upto Slab/Roof level', label: 'Upto Slab', percent: 65 },
+  { value: 'Semi-Finished', label: 'Upto Finishing', percent: 85 },
+  { value: 'Finished', label: 'Finished', percent: 100 },
+];
+export const STRUCTURE_VALUATION_OVERRIDE = 'structureValuationOverride';
 export const isHouseCategory = (category: string) => ['Residential', 'Commercial'].includes(category);
 export const isCompoundWall = (row: StructureDetail) => row.structureType === 'Compound Wall';
 export const structureMeasurement = (row: StructureDetail) => isCompoundWall(row) ? row.runningFeet || '' : row.builtUpAreaSqFt;
@@ -12,19 +19,33 @@ export function houseStructureRate(row: StructureDetail, authority: string, fall
   const localBody = localAuthorityName(authority);
   const rural = localBody === 'Gram Panchayat';
   if (!rural && !['Municipal Corporation', 'Municipal Council'].includes(localBody)) return '';
-  const roof = row.structureType || fallbackRoof;
-  if (/^R\.C\.C\.(?: Building| Roof House)?$/i.test(roof)) return rural ? '1100' : '1350';
-  if (/^(?:Tin Shed|Tiled Roof|Tiled House)$/i.test(roof)) return rural ? '750' : '900';
+  const roof = (!row.structureType || STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
+    ? fallbackRoof
+    : row.structureType === 'Other / Custom Structure' ? row.customStructureType || '' : row.structureType).trim();
+  if (/^R\.?\s*C\.?\s*C\.?(?: Building| Roof(?: House)?)?$/i.test(roof)) return rural ? '1100' : '1350';
+  if (/^(?:Tin Shed|Bangalore Tiles|Tiled Roof|Tiled House)$/i.test(roof)) return rural ? '750' : '900';
   return '';
+}
+
+export function houseValuationStage(value: string) {
+  const stage = value?.trim().toLowerCase();
+  return HOUSE_VALUATION_STAGES.find(option => option.value.toLowerCase() === stage || option.label.toLowerCase() === stage);
+}
+
+export function houseStagePercent(row: StructureDetail): number | null {
+  // Older priced rows without a stage were valued at full cost.
+  if (isCompoundWall(row) || !row.stage?.trim()) return 100;
+  return houseValuationStage(row.stage)?.percent ?? null;
 }
 
 export function houseStructurePaise(row: StructureDetail, authority: string, fallbackRoof = ''): bigint | null {
   const measurement = /^(\d+)(?:\.(\d*))?$/.exec(structureMeasurement(row).trim().replace(/,/g, ''));
   const rate = moneyPaise(houseStructureRate(row, authority, fallbackRoof));
-  if (!measurement || rate === null) return null;
+  const percent = houseStagePercent(row);
+  if (!measurement || rate === null || percent === null) return null;
   const fraction = measurement[2] || '';
-  const scale = 10n ** BigInt(fraction.length);
-  return (BigInt(measurement[1] + fraction) * rate + scale / 2n) / scale;
+  const scale = 100n * 10n ** BigInt(fraction.length);
+  return (BigInt(measurement[1] + fraction) * rate * BigInt(percent) + scale / 2n) / scale;
 }
 
 export function structureAmount(paise: bigint): string {

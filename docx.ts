@@ -29,7 +29,8 @@ import { loadSaleDeedTemplate, loadTemplate } from './template';
 import { releaseGate } from './legal-registry';
 import { titleAmendmentValues, type TitleAmendmentKind } from './title-amendments';
 import { isCompoundWall, structureMeasurement } from './house-valuation';
-import { ALL_FIELDS, PROPERTY_DIRECTIONS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
+import { ALL_FIELDS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
+import { pascalCaseBoundary } from './place-names';
 import { flatVariant } from './flat-options';
 import { loadLibraryBytes } from './template-library-client';
 import type { TemplatePin } from './template-library-types';
@@ -797,6 +798,10 @@ function removeEmptyFields(p: string, values: Map<string, string>, missing: Set<
   return p;
 }
 
+function boldDeedText(text: string): string {
+  return '\uE210' + text + '\uE211';
+}
+
 function fillParagraph(p: string, values: Map<string, string>, missing: Set<string>, rewrites: Rewrite[]): string {
   const landmark = values.get(norm('Near / Adjacent'))?.toLowerCase();
   if (landmark === 'near' || landmark === 'adjacent') {
@@ -916,14 +921,23 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     p = replaceRunText(p, /office of the Sub[- ]Registrar,/i, () => 'office of the Tahsildar & Jt. Sub-Registrar,');
   }
   p = removeEmptyFields(p, values, missing);
+  const isReconveyance = values.has(norm('Reconveyance Draft'));
+  p = replaceRunText(p, /<[^<>]+>|\b(?:Document Issuing Authority|(?:Tahsildar & Jt\. )?Sub[- ]Registrar(?: Office(?:\s*\(SRO\))?)?|Document (?:Number|No\.?)|SRO)\b\.?/gi,
+    match => match[0].startsWith('<') ? match[0] : boldDeedText(match[0]));
+  if (isReconveyance) {
+    p = replaceRunText(p, /<[^<>]+>|\b(?:loan amount(?: with interest)?|principal sum|interest(?= of Rs\.))\b/gi,
+      match => match[0].startsWith('<') ? match[0] : boldDeedText(match[0]));
+  }
   p = replaceRunText(p, /<([^<>]{2,60}?)>/g, match => {
     const name = match[1].trim();
-    return values.get(norm(name)) || '';
+    const value = values.get(norm(name)) || '';
+    if (!value) return '';
+    if (/^(?:North|South|East|West) Boundary(?: of (?:Apartment|Flat))?$/i.test(name)) return pascalCaseBoundary(value);
+    if (/^(?:(?:Link |(?:A\.)?G\.P\.A\.)Doct\.No\.|(?:Rectification Deed|Supplemental(?: Deed| Agreement)?|Development) (?:Doc(?:ument)? )?No\.?|(?:Sub[- ]Registrar(?: Office)?|(?:Authority|Development|Supplemental|Rectification Deed|Supplemental Deed) SRO)(?: Code)?|Document (?:Issuing Authority|Number|No\.?)|(?:Principal|Intrest|Interest|Mortgage) Amount)$/i.test(name)) return boldDeedText(value);
+    return value;
   });
   const filled = replaceRunText(p, /\uE000/g, () => '    ');
-  return linkNumber ? boldMarkedRunText(replaceRunText(filled,
-    /\b(?:Tahsildar & Jt\. Sub[- ]Registrar|Sub[- ]Registrar)\b/gi,
-    match => '\uE210' + match[0] + '\uE211')) : filled;
+  return boldMarkedRunText(filled);
 }
 
 /** Remove direct bold styling while preserving the template's fonts and size. */
@@ -1446,7 +1460,7 @@ export type ScheduleMerge = {
   vendeeShares?: VendeeShare[];
 };
 
-export type VendeeShare = { partyNumber: number; name: string; percentage: string };
+export type VendeeShare = { partyNumber: number; name: string; percentage: string; extentSqYards?: string };
 
 /** Place each side's ownership allocation inside its schedule, after the boundaries. */
 function addOwnershipShareParagraphs(block: string, vendorShares?: VendeeShare[], vendeeShares?: VendeeShare[]): string {
@@ -1463,7 +1477,7 @@ function addOwnershipShareParagraphs(block: string, vendorShares?: VendeeShare[]
     .find(chunk => /^\s*All that the\b/i.test(plainText(chunk)));
   const properties = description?.match(/<w:pPr(?:\s[^>]*)?>[\s\S]*?<\/w:pPr>/)?.[0] || '<w:pPr/>';
   const paragraph = (shares: VendeeShare[], side: 'vendors' | 'vendees') => {
-    const allocations = shares.map(share => `(${share.partyNumber}) ${share.name || '________________'} — ${share.percentage}%`).join('; ');
+    const allocations = shares.map(share => `(${share.partyNumber}) ${share.name || '________________'} — ${share.percentage}%${share.extentSqYards ? ` (${share.extentSqYards} Sq. Yards)` : ''}`).join('; ');
     const sentence = `The ${side} ${side === 'vendors' ? 'convey' : 'acquire'} this Schedule Property in the following undivided shares: ${allocations}.`;
     return `<w:p>${properties}<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">${escapeXml(sentence)}</w:t></w:r></w:p>`;
   };
@@ -1683,23 +1697,6 @@ function prepareNonHouseIdentifiers(block: string, variant: string, values: Reco
   });
 }
 
-/** Add a supplied landmark wherever a source schedule/valuation omits its slot. */
-function addPropertyDimensions(block: string, values: Record<string, string>): string {
-  const dimensions = PROPERTY_DIRECTIONS.flatMap(side => {
-    const value = values[side + ' Dimension']?.trim();
-    return value ? [side + ': ' + value] : [];
-  });
-  const paragraphs = [...block.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
-  const lastBoundary = topLevelChildren(block).filter(({ start, end }) =>
-    /<\s*West Boundary(?: of (?:Apartment|Flat))?\s*>/i.test(plainText(block.slice(start, end)))).at(-1);
-  if (dimensions.length && lastBoundary) {
-    const sample = paragraphs.find(match => /^\s*All that\b/i.test(plainText(match[0])))?.[0] || '<w:p/>';
-    const lines = [keepWithNext(paragraphLike(sample, 'Dimensions', 'left')), ...dimensions.map(line => paragraphLike(sample, line, 'left'))];
-    block = block.slice(0, lastBoundary.end) + lines.join('') + block.slice(lastBoundary.end);
-  }
-  return block;
-}
-
 /** Remove only empty property bindings, before substitution loses their identity. */
 export function omitBlankScheduleFields(block: string, values: Record<string, string>): string {
   const propertyTags = new Set(ALL_FIELDS.filter(field => field.ph && !/^(executant|claimant|principal|attorney)/i.test(field.id)).flatMap(field => typeof field.ph === 'string' ? [field.ph] : field.ph || []).map(norm));
@@ -1758,7 +1755,11 @@ export function omitBlankScheduleFields(block: string, values: Record<string, st
 }
 
 function prepareLandmarkBlock(block: string, values: Record<string, string>, variant: string, includeNalaExtent = true): string {
-  block = addPropertyDimensions(block, values);
+  block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    const text = plainText(paragraph);
+    if (/^\s*(?:boundary )?dimensions\s*:?\s*$/i.test(text)) return '';
+    return replaceRunText(paragraph, /(?:\b(?:North|South|East|West)\s*:\s*)?<\s*(?:North|South|East|West) Dimension\s*>/gi, () => '');
+  });
   block = omitBlankScheduleFields(block, values);
   const valuationLandmark = ['IF OPEN PLACE', 'IF OPEN PLOT'].includes(variant) && values['Landmark Valuation Enabled'] !== 'false';
   if (!valuationLandmark) block = block.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
@@ -2020,14 +2021,14 @@ export async function fillAgreementSaleGpaDeed(values: Record<string, string>, r
   return fillPropertyAuthorityDeed(values, rewrites, schedules, source, false);
 }
 
-export async function fillGeneralPoaDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
-  return fillPropertyAuthorityDeed(values, rewrites, schedules, source, true);
+export async function fillGeneralPoaDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE, allowIncomplete = false): Promise<MergeResult> {
+  return fillPropertyAuthorityDeed(values, rewrites, schedules, source, true, allowIncomplete);
 }
 
-async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource, generalPoa: boolean): Promise<MergeResult> {
+async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource, generalPoa: boolean, allowIncomplete = false): Promise<MergeResult> {
   if (!schedules.length) throw new Error('Add an Agreement of Sale Cum GPA property schedule.');
   if (generalPoa && !['general-power-of-attorney', 'general-power-of-attorney-family'].includes(values['Poa Variant'])) throw new Error('Choose a supported General Power of Attorney variant.');
-  if (generalPoa && (values['Poa Relationship Complete'] !== 'true' || !values['Poa Attorney Appointment'])) throw new Error('Choose the family relationship to principal(s) for every attorney.');
+  if (generalPoa && !allowIncomplete && (values['Poa Relationship Complete'] !== 'true' || !values['Poa Attorney Appointment'])) throw new Error('Choose the family relationship to principal(s) for every attorney.');
   if (!generalPoa && !['with-possession', 'without-possession'].includes(values['Agreement Possession Variant'])) throw new Error('Choose With Possession or Without Possession.');
   const bytes = source.kind === 'built-in' ? await loadTemplate(generalPoa ? 'general-poa-v3' : 'agreement-sale-gpa-v4') : await templateBytes(source);
   const validation = await (generalPoa ? validateGeneralPoaTemplate : validateAgreementSaleGpaTemplate)(bytes, source.kind === 'built-in' ? undefined : source.fieldContract);
@@ -2182,7 +2183,7 @@ function boldMarkedRunText(paragraph: string): string {
   return paragraph.replace(/(<w:r(?:\s[^>]*)?>)(<w:rPr(?:\s[^>]*)?>(?:(?!<\/w:rPr>)[\s\S])*<\/w:rPr>)?(<w:t(?:\s[^>]*)?>)([^<]*[\uE210\uE211][^<]*)(<\/w:t><\/w:r>)/g,
     (_, run, properties = '', _textTag, text, end) => {
       const bold = properties
-        ? properties.replace(/<w:b(?:\s[^>]*)?\/>/g, '').replace(/<w:rPr(?:\s[^>]*)?>/, (tag: string) => tag + '<w:b/>')
+        ? properties.replace(/<w:b(?:\s[^>]*)?\/>/g, '').replace(/<w:rPr(?:\s[^>]*)?>(?:\s*<w:(?:rStyle|rFonts)\b[^>]*\/>){0,2}/, (tag: string) => tag + '<w:b/>')
         : '<w:rPr><w:b/></w:rPr>';
       return text.split(/\uE210([^\uE211]*)\uE211/g).map((part: string, index: number) =>
         part ? run + (index % 2 ? bold : properties) + '<w:t xml:space="preserve">' + part + end : '').join('');
@@ -2609,11 +2610,11 @@ export async function validateMunicipalGiftTemplate(bytes: Uint8Array): Promise<
   return { valid: !errors.length, preservationVersion: DEED_PRESERVATION_VERSION, errors, detectedPlaceholders, omittedPlaceholders: [] };
 }
 
-async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource): Promise<MergeResult> {
+async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource, allowIncomplete: boolean): Promise<MergeResult> {
   if (!schedules.length) throw new Error('Add a Municipal Gift property schedule.');
   for (const schedule of schedules) {
     if (!['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(schedule.variant)) throw new Error('The Municipal Gift reference supports open place, plot, dismantled house and part open place only.');
-    if (!schedule.values.ULB?.trim() || !schedule.values.VILLAGE?.trim()) throw new Error('Complete the property ULB / municipality and village for each municipal schedule.');
+    if (!allowIncomplete && (!schedule.values.ULB?.trim() || !schedule.values.VILLAGE?.trim())) throw new Error('Complete the property ULB / municipality and village for each municipal schedule.');
   }
   const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId.startsWith('gift-municipal-') ? await loadLibraryBytes(source) : await loadTemplate('gift-municipal-v3');
   const validation = await validateMunicipalGiftTemplate(bytes);
@@ -2706,9 +2707,9 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
-export async function fillGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
-  if (values['Gift Variant'] === 'municipal-gift') return fillMunicipalGiftDeed(values, rewrites, schedules, source);
-  if (!values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
+export async function fillGiftDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE, allowIncomplete = false): Promise<MergeResult> {
+  if (values['Gift Variant'] === 'municipal-gift') return fillMunicipalGiftDeed(values, rewrites, schedules, source, allowIncomplete);
+  if (!allowIncomplete && !values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
   if (!schedules.length) throw new Error('Add a Gift property schedule.');
   const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v6') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v6');
   const validation = await validateGiftDeedTemplate(bytes);
@@ -2902,6 +2903,7 @@ function reconveyanceNames(values: Record<string, string>): Record<string, strin
 }
 
 function reconveyanceProperCase(paragraph: string): string {
+  if (/^\s*SCHEDULE OF THE PROPERTY\s*$/.test(plainText(paragraph))) return paragraph;
   // Preserve template bindings and identity abbreviations while changing source wording.
   return replaceRunText(paragraph, /<[^<>]+>|\bwitnesses\/s\b|\b[A-Za-z]{2,}\b/gi, match => {
     const word = match[0];
@@ -2916,6 +2918,8 @@ function reconveyanceProperCase(paragraph: string): string {
 
 function prepareReconveyanceSchedule(block: string, schedule: ScheduleMerge): string {
   const { variant, values, structureDetails } = schedule;
+  block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+    replaceRunText(paragraph, /^(\s*)Schedule of (?:the )?Property(\s*)$/i, match => match[1] + 'SCHEDULE OF THE PROPERTY' + match[2]));
   if (variant.startsWith('IF FLAT') && values.UDS) values['Extent in Sq.Meters'] = (Number(values.UDS.replace(/,/g, '')) * 0.836127).toFixed(2);
   block = prepareLandmarkBlock(block, values, variant, false);
   if (['IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(variant) && values['Survey No.'] &&
@@ -2927,17 +2931,17 @@ function prepareReconveyanceSchedule(block: string, schedule: ScheduleMerge): st
   return ['IF HOUSE', 'IF HOUSE SEMI FINISHED'].includes(variant) ? addCompoundWallMeasurements(block, structureDetails) : block;
 }
 
-export async function fillReconveyanceDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE): Promise<MergeResult> {
+export async function fillReconveyanceDeed(values: Record<string, string>, rewrites: Rewrite[], schedules: ScheduleMerge[], source: DeedTemplateSource = BUILT_IN_TEMPLATE_SOURCE, allowIncomplete = false): Promise<MergeResult> {
   const bank = values['Mortgage Party Mode'] === 'bank-to-person';
   if (!bank && values['Mortgage Party Mode'] !== 'person-to-person') throw new Error('Select the mortgage party mode.');
   if (values['Reconveyance Draft'] === 'title-deed' && !bank) throw new Error('TITLE DEED requires the bank opening.');
-  if (bank && ['BANK NAME','Branch','Designation'].some(key => !values[key]?.trim())) throw new Error('Complete bank name, branch and official designation.');
+  if (!allowIncomplete && bank && ['BANK NAME','Branch','Designation'].some(key => !values[key]?.trim())) throw new Error('Complete bank name, branch and official designation.');
   const records = JSON.parse(values['Mortgage Records'] || '[]') as import('./reconveyance').MortgageRecord[];
   const bindingErrors = reconveyanceBindingErrors(values);
-  if (bindingErrors.length) throw new Error(bindingErrors.join(' '));
+  if (!allowIncomplete && bindingErrors.length) throw new Error(bindingErrors.join(' '));
   const interest = mortgageInterestTotal(records, values['Intrest Amount'] ?? values['Interest Amount'] ?? '');
   const amounts = reconveyanceAmounts(records, values['Principal Amount'] || '', interest.interest);
-  if (amounts.errors.length) throw new Error(amounts.errors.join(' '));
+  if (!allowIncomplete && amounts.errors.length) throw new Error(amounts.errors.join(' '));
   if (!schedules.length) throw new Error('Add a property schedule.');
   const bytes = source.kind === 'built-in' ? await loadTemplate('reconveyance-deed-v1') : await templateBytes(source);
   const validation = await validateReconveyanceTemplate(bytes);
@@ -2968,14 +2972,14 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   });
   const mortgage = (record: import('./reconveyance').MortgageRecord) => {
     const v = record.values;
-    if (!v.linkDocNo || !deedDateForReconveyance(v.linkDocDate) || !v.linkSro || !v.linkSroCode || mortgagePaise(v.mortgageAmount || '') === null) throw new Error('Complete each mortgage number, date, amount, SRO and SRO code.');
+    if (!allowIncomplete && (!v.linkDocNo || !deedDateForReconveyance(v.linkDocDate) || !v.linkSro || !v.linkSroCode || mortgagePaise(v.mortgageAmount || '') === null)) throw new Error('Complete each mortgage number, date, amount, SRO and SRO code.');
     return { ...merged, ...linkEnclosureValues(v), 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': formatDeedAmount(v.mortgageAmount), 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
   };
   let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank ? parts.person : parts.common).join(''), merged, rewrites.filter(rule => rule.partyRole).map(rule => ({ ...rule, records: rule.records?.map(reconveyanceNames) })));
   let common = parts.chunks.slice(parts.common, parts.first).map(chunk => {
     const text = plainText(chunk);
     if (/WHEREAS, the Releasee\/s had further created/.test(text)) return records.slice(1).map(record => fill(chunk, mortgage(record))).join('');
-    if (/WHEREAS, the relevant instrument/.test(text)) return fill(chunk, mortgage(records[0]));
+    if (/WHEREAS, the relevant instrument/.test(text)) return records[0] ? fill(chunk, mortgage(records[0])) : '';
     if (values['Reconveyance Draft'] !== 'title-deed') chunk = replaceRunText(chunk, /Memoranda of Deposit of Title Deeds/g, () => 'Mortgage Deeds');
     return fill(chunk, merged);
   }).join('');
@@ -2987,6 +2991,8 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
     return fill(prepareReconveyanceSchedule(block, { ...schedule, values: propertyValues }), propertyValues);
   }).join('');
   let closing = fill(parts.chunks.slice(parts.closing).join(''), merged);
+  closing = closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
+    replaceRunText(paragraph, /^(\s*)(?:Sign|Sing)(?:ature)?s?(?:\/s)?\b[\s\S]*$/i, match => match[1] + 'SIGN/S'));
   // Keep the source's attestation, signature table and both witness lines together.
   const closingParagraphs = [...closing.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
   const lastContent = closingParagraphs.reduce((last, match, index) => plainText(match[0]).trim() ? index : last, -1);
@@ -3088,12 +3094,18 @@ function releaseWording(p:string, sellers:number,buyers:number,values:Record<str
   replace(/SIGN\/S OF THE/g,'SIGNATURE'+(sellers===1&&buyers===1?'':'S')+' OF THE');
   return p;
 }
-function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Record<string,string>, preview = false):string {
+function releaseShareWithExtent(share: string, values: Record<string, string>, variant: string): string {
+  const label = releaseShareLabel(share);
+  const area = releasedExtent(values[variant.includes('FLAT') ? 'UDS' : 'Extent in Sq.yards'] || '', share);
+  return label.endsWith('%') && area ? `${label} (${area} Sq. Yards)` : label;
+}
+
+function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Record<string,string>, preview = false, allowIncomplete = false):string {
   const shares=JSON.parse(values['Release Releasor Shares']||'[]') as ReleasePartyShare[];
   const allocations=JSON.parse(values['Release Recipient Shares']||'[]') as ReleasePartyShare[];
   const total=releasedTotal(shares,values['Release Legacy Share']);
-  for(const p of [...shares,...allocations]) if(p.share.trim() && !releasedTotal([{...p}])) throw new Error('Correct the released or received share for '+p.name+'.');
-  const aggregate={...values, Share:total};
+  for(const p of [...shares,...allocations]) if(!allowIncomplete && p.share.trim() && !releasedTotal([{...p}])) throw new Error('Correct the released or received share for '+p.name+'.');
+  const aggregate={...values, Share:releaseShareWithExtent(total, values, schedule.variant)};
   const areaKeys:Record<string,string>={'Shared Sq.yards':'Extent in Sq.yards','Shared UDS':'UDS','Shared Plinth Area':'Plinth Area','Shared Built-up Area':'Built-up Area','Shared Car Parking Area':'Car Parking Area'};
   for(const [target,source] of Object.entries(areaKeys)) aggregate[target]=releasedExtent(values[source]||'',total);
   const yardKey=schedule.variant.includes('FLAT')?'Shared UDS':'Shared Sq.yards';
@@ -3106,7 +3118,7 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
     return row;
   });
   const sample=(block.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[]).find(p=>/^THE RELEASOR\/S HAS\/HAVE RELEASED/i.test(plainText(p).trim()))!;
-  const perPerson=shares.filter(p=>p.share.trim());
+  const perPerson=shares.filter(p=>releasedTotal([p]));
   const rows=(schedule.structureDetails?.rows||[]).filter(row=>!isCompoundWall(row));
   if (schedule.variant === 'IF HOUSE' || schedule.variant === 'IF HOUSE SEMI FINISHED') {
     block = housePlinthDescription(block, schedule.structureDetails);
@@ -3121,7 +3133,7 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
     if(p===sample) {
       const records=perPerson.length ? perPerson : total?[{id:'legacy',name:'',share:total}]:[];
       return records.map(person=>{
-        const v={...aggregate,Share:releaseShareLabel(person.share)};
+        const v={...aggregate,Share:releaseShareWithExtent(person.share, values, schedule.variant)};
         for(const [target,source] of Object.entries(areaKeys)) v[target]=releasedExtent(values[source]||'',person.share);
         v['Shared Extent in Sq.Meters']=releasedSquareMetres(values[schedule.variant.includes('FLAT')?'UDS':'Extent in Sq.yards']||'',person.share);
         let paragraph=replaceRunText(p,/<Extent in Sq\.Meters>/g,()=>'<Shared Extent in Sq.Meters>');
@@ -3134,7 +3146,7 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
           paragraph=replaceRunText(paragraph,pattern,()=>shared?`${floor} Floor: ${shared} square feets`:'');
         }
         return fillReleaseParagraph(paragraph,v,[]);
-      }).join('')+allocations.filter(a=>a.share.trim()).map(a=>paragraphLike(p,`${a.name}: received share ${releaseShareLabel(a.share)} of the Schedule Property.`)).join('');
+      }).join('')+allocations.filter(a=>releasedTotal([a])).map(a=>paragraphLike(p,`${a.name}: received share ${releaseShareWithExtent(a.share, values, schedule.variant)} of the Schedule Property.`)).join('');
     }
     if(!total) p=replaceRunText(p,/undivided\s*<Share>\s*/gi,()=> '');
     return fillReleaseParagraph(p,aggregate,[]);
@@ -3146,8 +3158,8 @@ function fillReleaseParagraph(p:string,values:Record<string,string>,rules:Rewrit
   p=releaseWording(p,Number(values['Ownership Vendor Count']||1),Number(values['Ownership Vendee Count']||1),values);
   return fillParagraph(p,new Map(Object.entries(values).map(([k,v])=>[norm(k),v])),missing,rules);
 }
-export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewrite[],schedules:ScheduleMerge[],source:DeedTemplateSource=BUILT_IN_TEMPLATE_SOURCE):Promise<MergeResult> {
-  const errors=releaseBindingErrors(values); if(errors.length) throw new Error(errors.join(' '));
+export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewrite[],schedules:ScheduleMerge[],source:DeedTemplateSource=BUILT_IN_TEMPLATE_SOURCE,allowIncomplete=false):Promise<MergeResult> {
+  const errors=releaseBindingErrors(values); if(!allowIncomplete && errors.length) throw new Error(errors.join(' '));
   if(!schedules.length) throw new Error('Add a Release property schedule.');
   const bytes=source.kind==='built-in'?await loadTemplate('release-deed-v1'):await templateBytes(source);
   const validation=await validateReleaseTemplate(bytes,source.kind==='built-in'?EMPTY_FIELD_CONTRACT:source.fieldContract);
@@ -3155,7 +3167,7 @@ export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewr
   const entries=await readZip(bytes), entry=entries.find(e=>e.name==='word/document.xml')!;
   const xml=protectDeedTemplateSource(normalizeReleaseSource(new TextDecoder().decode(entry.data)), 'release'), parts=releaseParts(xml), missing=new Set<string>();
   assertEnclosureRepetition(xml,schedules); assertTitleAmendmentBindings(xml,schedules);
-  const allShares=schedules.map(s=>releasedTotal(JSON.parse(s.values['Release Releasor Shares']||'[]'),s.values['Release Legacy Share']));
+  const allShares=schedules.map(s=>releaseShareWithExtent(releasedTotal(JSON.parse(s.values['Release Releasor Shares']||'[]'),s.values['Release Legacy Share']),s.values,s.variant));
   const merged={...values,Share:allShares.length===1?allShares[0]:'','BETWEEN FAMILY MEMBERS/CO-OWNERS':values['Release Variant']==='family-release'?'BETWEEN FAMILY MEMBERS':'BETWEEN CO-OWNERS'};
   const partyRules=rewrites.filter(r=>r.partyRole).map(r=>({...r,finalSuffix:/\s*\(Hereinafter[\s\S]*$/i}));
   // Source payment samples have no numbering; retain all actual housing-loan payments.
@@ -3173,7 +3185,7 @@ export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewr
     if(!['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'].includes(s.values['Property Category'])) throw new Error('Unsupported Release property category.');
     const block=parts.blocks.get(s.variant); if(!block) throw new Error('Unsupported Release property variant '+s.variant);
     const v={...merged,...s.values};
-    return releasePropertyBlock(block,s,v);
+    return releasePropertyBlock(block,s,v,false,allowIncomplete);
   }).join('');
   let closing=parts.chunks.slice(parts.tail).join('');
   const sellers=JSON.parse(values['Release Releasor Names']||'[]') as string[],buyers=JSON.parse(values['Release Releasee Names']||'[]') as string[];

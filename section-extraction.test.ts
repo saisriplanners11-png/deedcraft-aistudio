@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, profileFields, requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
 import { appStateFor, newDraft, resolveDraft, type Candidate, type SourceResult } from './source-draft';
 
+it('retains source name qualifiers without absorbing separate identity details', () => {
+  const evidence = { role: 'claimant', region: 'Main parties', historical: false, handwritten: false };
+  expect(cleanCandidate({ ...evidence, field: 'claimantEntityName', value: 'IKF Bank Ltd', quote: 'IKF Bank Ltd (Finance Bank), represented by its manager' }, 1, 1)?.value)
+    .toBe('IKF Bank Ltd (Finance Bank)');
+  expect(cleanCandidate({ ...evidence, field: 'claimantName', value: 'Anil Kumar', quote: 'Anil Kumar (DOB: 01-01-1980)' }, 1, 2)?.value)
+    .toBe('Anil Kumar');
+  expect(cleanCandidate({ ...evidence, field: 'claimantPartyType', value: 'Bank', quote: 'IKF Bank Ltd' }, 1, 3)?.value)
+    .toBe('Bank');
+});
+
 const api = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce:false, step2Gate: undefined as Promise<void> | undefined, extraReads: [] as Record<string, unknown>[] }));
 vi.mock('./claude', () => ({
   EXTRACT_MODEL: 'read', VISION_MODEL: 'verify', VERIFY_MODEL: 'verify', readableError: (e: Error) => e,

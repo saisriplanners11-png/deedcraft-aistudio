@@ -1,5 +1,6 @@
 import { ageFrom } from './party-age';
 import { deedDate } from './deed-format';
+import type { AppState } from './logic';
 
 
 const CLAIMANT_IDENTITY = ['Name', 'Gender', 'Relation', 'RelativeName', 'Dob', 'Occupation', 'Aadhaar', 'Pan', 'Mobile', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'] as const;
@@ -94,7 +95,26 @@ export function minorGuardianRecital(values: Record<string, string>, side: strin
 export function guardianIds(values: Record<string, string>): string[] {
   return [...new Set((values.claimantGuardianIds || '').split(',').map(id => id.trim()).filter(Boolean))];
 }
-export function linkedClaimantRepresentation(values: Record<string, string>, records: { id: string; values: Record<string, string> }[]): { errors: string[]; recital: string } {
+
+export function claimantRepresentationForOutput(state: Pick<AppState, 'form' | 'primaryClaimantId' | 'additionalClaimants'>) {
+  const records = [{ id: state.primaryClaimantId || 'primary', values: state.form }, ...state.additionalClaimants];
+  const guardianRecordIds = new Set(records.filter(({ values }) =>
+    (values.claimantPartyType || '').startsWith('Guardian')).map(({ id }) => id));
+  const minorsByGuardian = new Map<string, string[]>();
+  for (const { id, values } of records) {
+    if (!isMinorParty(values, 'claimant') || guardianRecordIds.has(id)) continue;
+    for (const guardianId of guardianIds(values)) {
+      if (guardianRecordIds.has(guardianId)) {
+        const minors = minorsByGuardian.get(guardianId) || [];
+        minors.push(id);
+        minorsByGuardian.set(guardianId, minors);
+      }
+    }
+  }
+  return { records, recipients: records.filter(({ id, values }) => !minorsByGuardian.has(id) || values.claimantWardName), minorsByGuardian };
+}
+
+export function linkedClaimantRepresentation(values: Record<string, string>, records: { id: string; values: Record<string, string> }[], formatGuardian?: (id: string, recital: string) => string): { errors: string[]; recital: string } {
   if (!values.claimantGuardianIds && (values.claimantGuardianName || values.claimantWardName)) return { errors: minorPartyErrors(values, 'claimant'), recital: minorGuardianRecital(values, 'claimant') };
   if ((values.claimantPartyType || '').startsWith('Guardian') && !values.claimantWardName) {
     const age = ageFrom(values.claimantDob || '');
@@ -116,7 +136,9 @@ export function linkedClaimantRepresentation(values: Record<string, string>, rec
     const view = { ...values };
     for (const suffix of [...CLAIMANT_IDENTITY, 'Relationship'] as const) view['claimantGuardian' + suffix] = guardian['claimant' + (suffix === 'Relationship' ? 'GuardianRelationship' : suffix)] || '';
     errors.push(...minorPartyErrors(view, 'claimant'));
-    recitals.push(minorVendeeGuardianRecital(view).replace(/^is under guardianship of/, 'Under the Guardianship of'));
+    const recital = minorVendeeGuardianRecital(view).replace(/^is under guardianship of/, 'Under the Guardianship of');
+    const formatted = formatGuardian ? formatGuardian(id, recital) : recital;
+    if (formatted) recitals.push(formatted);
   }
   return { errors: [...new Set(errors)], recital: recitals.join('; ') };
 }

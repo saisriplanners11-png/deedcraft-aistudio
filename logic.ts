@@ -15,7 +15,7 @@ import { flatStage, flatLabel, isFinishedHouse } from './flat-options';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES, RULES } from './reference';
 import { placementStepIndex } from './template-placement';
 import type { TemplateFieldInstance } from './template-field-values';
-import { isCompoundWall, houseStructurePaise, houseStructureRate, structureMeasurement } from './house-valuation';
+import { isCompoundWall, houseStagePercent, houseStructurePaise, houseStructureRate, structureMeasurement } from './house-valuation';
 import { ALL_FIELDS, EMPTY_FORM, FLAT_BOUNDARY_FIELDS, FLAT_SCHEDULE_FIELDS, PROPERTY_DIMENSIONS, SCHEDULE_VARIANT, groupsForStep, type PartyPeople, type PartyType, type StructureDetails } from './fields';
 import type { DocKind } from './extract';
 import { newPayment, totalOf, netTotalOf, tdsTotalOf, recitalFor, type Payment } from './payments';
@@ -113,6 +113,7 @@ export type AppState = {
   additionalSchedules: ScheduleRecord[];
   vendeeSharesBySchedule?: VendeeSharesBySchedule;
   vendorSharesBySchedule?: VendeeSharesBySchedule;
+  shareExtentOverrides?: Record<string, string>;
   releaseData?: ReleaseData;
   /** Uploaded evidence recited only in the property schedule it supports. */
   supportingRecords: SupportingRecord[];
@@ -337,7 +338,7 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     const rows = details?.rows || [];
     const total = Number(details?.totalFloors);
     const valid = Number.isInteger(total) && total > 0 && rows.length > 0 && rows.every(row => isCompoundWall(row) ? !!structureMeasurement(row).trim() :
-      has(row.floorNo) && has(row.structureType) && has(row.stage) && has(row.buildingAge) && has(row.builtUpAreaSqFt) &&
+      has(row.floorNo) && has(row.structureType || values.roofMaterial) && has(row.stage) && has(row.buildingAge) && has(row.builtUpAreaSqFt) &&
       (row.structureType !== 'Other / Custom Structure' || has(row.customStructureType))
     );
     if (!valid) missing.push({
@@ -345,9 +346,12 @@ export function generationBlockers(state: AppState): MissingDetail[] {
       reason: 'Enter complete floor details and a running-foot measurement for each compound wall.',
       source: 'Property-tax record, plan, house document or manual entry.', step,
     });
+    if (state.deedType !== 'Deed Of Reconvayance' && rows.some(row => houseStagePercent(row) === null)) {
+      missing.push({ id: `structureStage-${label}`, label, reason: 'Choose a construction stage with a valuation percentage for each structure.', source: 'Structure Details', step });
+    }
     if (state.deedType !== 'Deed Of Reconvayance' && rows.some(row =>
       (isCompoundWall(row) || row.rateOverride !== undefined || houseStructureRate(row, values.localAuthorityType || '', values.roofMaterial)) &&
-      houseStructurePaise(row, values.localAuthorityType || '', values.roofMaterial) === null)) {
+      houseStagePercent(row) !== null && houseStructurePaise(row, values.localAuthorityType || '', values.roofMaterial) === null)) {
       missing.push({ id: `structureRate-${label}`, label, reason: 'Enter a valid measurement and rate for each priced structure, including compound walls.', source: 'Structure Details', step });
     }
   };
@@ -526,8 +530,8 @@ export function generationBlockers(state: AppState): MissingDetail[] {
     invalid('payment-total',total>Number(f.consid)?'Payments exceed final consideration.':'Payments must exactly equal final consideration before generation.',4);
   }
   if (state.deedType === 'Deed Of Reconvayance') {
-    const omitted = /govtRate|consid|structValue|structureDetails|bltNo|constructionDescription|taxesPerAnnum|annualRentalValue|tapConnectionNo|metersNo|payment/i;
-    const retained = missing.filter(item => !omitted.test(item.id) && item.step !== 5 && !(isBankReconveyance(state) && f.executantPartyType === 'Bank' && item.step === 6 && !item.id.startsWith('vendor-share-')));
+    const omitted = /govtRate|consid|structValue|structureDetails|bltNo|constructionDescription|taxesPerAnnum|annualRentalValue|tapConnectionNo|metersNo|payment|(?:vendor|vendee)-share-/i;
+    const retained = missing.filter(item => !omitted.test(item.id) && item.step !== 5 && !(isBankReconveyance(state) && (f.executantPartyType === 'Bank' || !f.executantName?.trim()) && item.step === 6));
     reconveyanceErrors(state).forEach((reason, index) => retained.push({ id: 'reconveyance-' + index, label: 'Reconveyance', reason, source: 'Mortgage documents or manual entry.', step: 4 }));
     return retained;
   }

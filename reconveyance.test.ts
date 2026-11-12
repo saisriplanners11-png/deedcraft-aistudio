@@ -51,7 +51,7 @@ async function generate(state: ReturnType<typeof mortgageState>) {
   return (await renderArtifact(compiled, 'docx')).result;
 }
 describe('Reconveyance source rendering and workflow', () => {
-  it('prints selected plinth areas, uppercase party names and the four dimensions below the boundaries', async () => {
+  it('prints selected plinth areas and Pascal Case boundaries while retaining dimensions for plans', async () => {
     const state = mortgageState(1, 'person-to-person', false, 'ordinary-house-finished');
     Object.assign(state.form, {
       executantName: 'Mixed Case Releasor', claimantName: 'Mixed Case Releasee',
@@ -69,13 +69,17 @@ describe('Reconveyance source rendering and workflow', () => {
     expect(single).toContain('MIXED CASE RELEASOR');
     expect(single).toContain('MIXED CASE RELEASEE');
     expect(single).not.toMatch(/\b(?:vendors?|vendees?)\b/i);
-    expect(single).toMatch(/West Plot\.\s+Dimensions\s+North: 21 ft\s+South: 22 ft\s+East: 41 ft\s+West: 42 ft/);
+    expect(single).toContain('WestPlot.');
+    expect(single).toContain('SCHEDULE OF THE PROPERTY');
+    expect(single).toContain('SIGN/S');
+    expect(single).not.toMatch(/Dimensions|North: 21 ft|Sign\/s of/i);
     rows.push(floor('First Floor', '200.1'), floor('Second Floor', '333.7'));
     expect(await read()).toContain('Ground Floor: 100.2 Sq. Ft.; First Floor: 200.1 Sq. Ft.; Second Floor: 333.7 Sq. Ft.; Total Plinth Area: 634 Sq. Ft.');
     const schedule = scheduleMergesFor(state)[0];
     const preview = await scheduleText(schedule.variant, schedule.values, undefined, schedule.structureDetails, undefined, undefined, source);
     expect(preview).toContain('Total Plinth Area: 634 Sq. Ft.');
-    expect(preview).toContain('Dimensions\nNorth: 21 ft');
+    expect(preview).toContain('WestPlot.');
+    expect(preview).not.toContain('Dimensions');
 
     const seed = guidedPlanFromDraft(state, 'primary');
     expect(seed.boundaries).toMatchObject({
@@ -119,7 +123,7 @@ describe('Reconveyance source rendering and workflow', () => {
     const state=mortgageState(1,'bank-to-person',true,property==='house-finished' ? 'ordinary-house-finished' : property==='house-semi' ? 'ordinary-house-semi' : property);
     const result=await generate(state);
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    expect(text.match(/Schedule Of Property/g)).toHaveLength(1);
+    expect(text.match(/SCHEDULE OF THE PROPERTY/g)).toHaveLength(1);
     expect(text).not.toMatch(/<IF |<[^>]+>/);
     const original=await readZip(bytes), generated=await readZip(new Uint8Array(await result.blob.arrayBuffer()));
     for(const entry of original.filter(e=>e.name!=='word/document.xml')) expect(generated.find(e=>e.name===entry.name)?.data).toEqual(entry.data);
@@ -178,7 +182,7 @@ it('orders mortgages by displayed property order and renders multiple schedules'
   const primary=state.linkRecordsBySchedule.primary;
   state.linkRecordsBySchedule={second:[second],primary};
   const output=await generate(state), text=await docxToText(new Uint8Array(await output.blob.arrayBuffer()));
-  expect(text.match(/Schedule Of Property/g)).toHaveLength(2);
+  expect(text.match(/SCHEDULE OF THE PROPERTY/g)).toHaveLength(2);
   expect(text.indexOf('DOC-1')).toBeLessThan(text.indexOf('DOC-2'));
   expect(text).toContain('open plot no.22'); expect(text).toContain('Value of Rs.300.20');
 });
@@ -229,7 +233,8 @@ it('keeps bank-only releasors separate from person-to-person identities', async 
   expect(representedText).toContain('09-05-1985');
   expect(representedText).toContain('R/o 17, Sample Village');
   state.draft=DEED_DEFINITIONS.reconveyance.variants[1].label;state.form.mortgagePartyMode='person-to-person';
-  expect(reconveyanceErrors(state).join(' ')).toContain('Bank releasors require');
+  expect(reconveyanceErrors(state)).toEqual([]);
+  expect(mergeValues(state)['Bank Releasor']).toBe('true');
 });
 it('preserves independently entered link interest through save/reopen', () => {
   let draft=draftReducer(newDraft(),{type:'instrument',instrumentId:'reconveyance'});

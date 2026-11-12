@@ -1,17 +1,14 @@
 import { GIFT_RELATIONSHIPS } from './gift-options';
 import { partyRecords, type AppState } from './logic';
 import { partyDisplayName } from './party-entities';
+import { claimantRepresentationForOutput } from './minor-parties';
 
 export const GENERAL_POA_VARIANTS = ['general-power-of-attorney', 'general-power-of-attorney-family'];
 export const POA_RELATIONSHIPS = GIFT_RELATIONSHIPS.filter(([id]) => id !== 'friend');
 export const isGeneralPoa = (instrument: string, variant: string) => instrument === 'power_of_attorney' && GENERAL_POA_VARIANTS.includes(variant);
 export const isFamilyPoa = (state: AppState) => state.draft === 'General Power of Attorney Family';
 
-// partyRecords deliberately picks only identity fields for the primary party.
-// Restore the independent, manually chosen GPA relationship for that record.
-const attorneysFor = (state: AppState) => partyRecords(state, 'claimant').map((record, index) => index ? record : {
-  ...record, values: { ...record.values, poaRelationship: state.form.poaRelationship || '', poaRelationshipCustom: state.form.poaRelationshipCustom || '' },
-});
+const attorneysFor = (state: AppState) => claimantRepresentationForOutput(state).recipients;
 
 export function poaRelationship(values: Record<string, string>): string {
   return values.poaRelationship === 'other' ? (values.poaRelationshipCustom || '').trim()

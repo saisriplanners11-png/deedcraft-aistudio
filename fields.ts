@@ -192,7 +192,7 @@ export const newPartyRepresentative = (): PartyRepresentative => ({
 
 /** Entity particulars feed the organisation recital; people are stored separately. */
 export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyType): Field[] => {
-  if (type === 'Bank' || type === 'Individual' || (PARTY_CAPACITY_OPTIONS as readonly string[]).includes(type)) return [];
+  if (type === 'Individual' || (PARTY_CAPACITY_OPTIONS as readonly string[]).includes(type)) return [];
   const k = (name: string) => `${side}${name}`;
   const common = [
     { id: k('EntityName'), label: 'Entity name (English)', span: 2 as const },
@@ -214,6 +214,7 @@ export const partyEntityFields = (side: 'executant' | 'claimant', type: PartyTyp
     { id: k('EntityBranchOffice'), label: 'Branch office address', type: 'textarea' as const, span: 2 as const },
     { id: k('SignatoryDesignation'), label: 'Legacy signatory designation', hidden: true, span: 2 as const },
   ];
+  if (type === 'Bank') return common.filter(field => !field.hidden);
   if (type === 'Firm / LLP') return [
     { id: k('FirmCin'), label: 'Corporation identification no. (if applicable)' },
     { id: k('FirmDin'), label: 'DIN (if applicable)' },
@@ -545,7 +546,6 @@ export const RECONVEYANCE_FIELDS: Field[] = [
   ...PROPERTY_DIMENSIONS.fields,
   { id: 'principalOverride', label: 'Principal Amount (₹)', type: 'money' },
   { id: 'interestAmount', label: 'Interest Amount (₹)', type: 'money', ph: 'Intrest Amount' },
-  { id: 'mortgagePartyMode', label: 'Mortgage party mode', type: 'select', options: ['bank-to-person','person-to-person'] },
   { id: 'bankName', label: 'Bank name', ph: 'BANK NAME' },
   { id: 'bankBranch', label: 'Branch', ph: 'Branch' },
   { id: 'officialDesignation', label: 'Official designation', ph: 'Designation' },

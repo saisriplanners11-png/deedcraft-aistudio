@@ -38,7 +38,7 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   const text = await rt.docxToText(bytes), label = `${candidateVariant} ${property} ${margin}`;
   assert.deepEqual(result.unmapped, [], label);
-  assert.match(text, /Dimensions\s+North: 21 ft\s+South: 22 ft\s+East: 41 ft\s+West: 42 ft/, label);
+  assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, label);
   if (property === 'house-finished') {
     assert.match(text, /Ground Floor: 101\.5 Sq\. Ft\./, label);
     if (margin === '100') {

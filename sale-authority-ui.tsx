@@ -5,14 +5,13 @@ import { findSro } from './sro-directory';
 import { PARTY_CAPACITY_OPTIONS } from './fields';
 import { IconButton } from './icon-button';
 import { extractAuthorityDocuments, extractAuthorityIdentity } from './authority-extraction';
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ExtractDialog, type ProgressStep } from './ui';
-import { FileDropZone } from './file-drop-zone';
+import { DocumentUpload } from './workflow-ui';
 import { partyRecords, vendeeShareCents, type AppState } from './logic';
 import { emptySaleAuthority, saleDocumentLabel, type SaleAuthority, type AuthorityDocument, type AuthorityPerson, type AuthorityExtraction } from './sale-options';
 
 function AuthorityUploads({ label, documents = [], onChange, onExtract }: { label: string; documents?: AuthorityDocument[]; onChange: (documents: AuthorityDocument[]) => void; onExtract: (files: File[], ids: string[]) => Promise<void> }) {
-  const id = useId();
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -22,8 +21,8 @@ function AuthorityUploads({ label, documents = [], onChange, onExtract }: { labe
   async function upload(files: File[]) {
     if (!files.length) return;
     setError('');
-    if (files.some(file => !/\.(pdf|docx|txt|md|jpe?g|png|webp|gif)$/i.test(file.name) || file.size > 20 * 1024 * 1024)) {
-      setError('Choose PDF, Word (.docx), text or image files, up to 20 MB each.');
+    if (files.some(file => file.size > 20 * 1024 * 1024)) {
+      setError('Choose files up to 20 MB each.');
       return;
     }
     setBusy(true);
@@ -41,13 +40,11 @@ function AuthorityUploads({ label, documents = [], onChange, onExtract }: { labe
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Upload failed. Please try again.'); }
     finally { setBusy(false); }
   }
-  return <FileDropZone className="authority-uploads" disabled={busy}>
-    <label className="field" htmlFor={id}><span>{label}</span></label>
-    <input id={id} type="file" multiple accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,.gif" disabled={busy} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void upload(files); }} />
-    {busy && <p role="status">Attaching and extracting documents…</p>}
+  return <>
+    <DocumentUpload label={label} busy={busy} onUpload={files => void upload(files)} />
     {error && <p role="alert">{error}</p>}
     {documents.length > 0 && <ul>{documents.map(document => <li key={document.id}><a href={document.dataUrl} download={document.name}>{document.name}</a> <small>({Math.ceil(document.size / 1024)} KB)</small> <IconButton disabled={busy} label={`Remove ${document.name}`} onClick={() => onChange(documents.filter(item => item.id !== document.id))} /></li>)}</ul>}
-  </FileDropZone>;
+  </>;
 }
 
 const fields = [
@@ -83,7 +80,6 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
       const retained = new Set([...(current.documents || []), ...current.attorneys.flatMap(attorney => attorney.documents || []), ...Object.values(current.personDocuments || {}).flat()].map(document => document.id));
       if (controller.signal.aborted || ids.some(id => !retained.has(id))) return;
       const updated = { ...current, extractions: [...(current.extractions || []).filter(item => !item.documentIds.some(id => ids.includes(id))), result] };
-      for (const [key, value] of Object.entries(result.details)) if (!String((updated as any)[key] || '').trim()) (updated as any)[key] = value;
       if (authorityUpload && (state.saleDocument === 'gpa' || state.saleDocument === 'agpa')) {
         const error = latest.current.onApplyGpa(updated, result);
         if (error) { latest.current.onChange({ ...current, extractions: updated.extractions }); setExtractionError(error); return; }
@@ -159,7 +155,7 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
       ['documentNo', 'Authority document number'], ['bookNumber', 'Authority book number'], ['documentDate', 'Authority document date'],
       ['sro', 'Authority Sub-Registrar Office'], ['sroCode', 'Authority SRO code'],
       ...(state.saleDocument === 'agpa' ? [['adjustedAmount', 'AGPA adjusted stamp-duty amount (₹)']] : []),
-    ] as [keyof SaleAuthority, string][]).map(([key, label]) => key === 'sro' || key === 'sroCode' ? <Input key={key} field={{ id: key, label }} value={(authority[key] as string) || ''} onChange={value => { const office = findSro(value); onChange(office ? { ...authority, sro: office.name, sroCode: office.code } : { ...authority, [key]: value }); }} /> : <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : 'text'} inputMode={key === 'adjustedAmount' ? 'decimal' : undefined} value={key === 'adjustedAmount' ? formatMoneyInput(authority.adjustedAmount || '') : (authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: key === 'adjustedAmount' ? event.target.value.replace(/,/g, '') : event.target.value })} /></label>)}</div>
+    ] as [keyof SaleAuthority, string][]).map(([key, label]) => key === 'sro' || key === 'sroCode' ? <Input key={key} field={{ id: key, label, ariaLabel: label }} value={(authority[key] as string) || ''} onChange={value => { const office = findSro(value); onChange(office ? { ...authority, sro: office.name, sroCode: office.code } : { ...authority, [key]: value }); }} /> : <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : 'text'} inputMode={key === 'adjustedAmount' ? 'decimal' : undefined} value={key === 'adjustedAmount' ? formatMoneyInput(authority.adjustedAmount || '') : (authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: key === 'adjustedAmount' ? event.target.value.replace(/,/g, '') : event.target.value })} /></label>)}</div>
   </section>
   {order.map(id => {
     const attorney = attorneyCards.find(card => card.key === id);
@@ -182,7 +178,9 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
   </>;
   function updateDocuments(value: SaleAuthority) {
     const retained = new Set([...(value.documents || []), ...value.attorneys.flatMap(attorney => attorney.documents || []), ...Object.values(value.personDocuments || {}).flat()].map(document => document.id));
-    onChange({ ...value, extractions: (value.extractions || []).filter(extraction => extraction.documentIds.every(id => retained.has(id))) });
+    const next = { ...value, extractions: (value.extractions || []).filter(extraction => extraction.documentIds.every(id => retained.has(id))) };
+    latest.current.authority = next;
+    onChange(next);
   }
   function update(id: string, key: string, value: string) {
     onChange({ ...authority, attorneys: authority.attorneys.map(item => item.id === id ? { ...item, values: { ...item.values, [key]: value } } : item) });

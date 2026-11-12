@@ -8,7 +8,17 @@ try{for(const instrument of ['sale','gift'])for(const side of ['executant','clai
  const repair=instrument==='sale'&&side==='claimant'&&type.startsWith('Guardian');if(repair)sample.form.claimantAadhaar='';
  await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5197');await page.getByRole('heading',{name:'Saved deeds',exact:true}).waitFor();
  await page.evaluate(async({form,instrument})=>{const{newDraft}=await import('/source-draft.ts');const{saveDeed}=await import('/saved-deeds.ts');const draft=newDraft();draft.step=9;draft.instrumentId=instrument;draft.variantId=instrument==='gift'?'family-gift':'outright-absolute-sale-deed';for(const[field,value]of Object.entries(form)){const role=field.startsWith('executant')?'executant':field.startsWith('claimant')?'claimant':'property';draft.manual[`${role}|${['consid','stampValue','executionDate'].includes(field)?'transaction':'primary'}|${field}`]=value;}draft.manual['property|primary|category']='Vacant Plot';await saveDeed({id:draft.id,updatedAt:new Date().toISOString(),claimantNames:['GUARDIAN QA'],deedType:instrument==='gift'?'Gift':'Sale',draft,sourceFiles:{},planDrafts:{},referencePlanDrafts:{},selectedPlanSvgs:{},extraPartyRecords:{executant:[],claimant:[]},templateMode:'built-in',customTemplate:null});},{form:sample.form,instrument});
- await page.reload();await page.getByRole('button',{name:'Continue / Edit'}).first().click();const button=page.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true});await button.waitFor();if(repair){assert.equal(await button.isDisabled(),true);assert.match(await page.locator('#word-download-state').innerText(),/Claimant 1: Enter guardian aadhaar/);await page.getByRole('button',{name:'Complete guardian details',exact:true}).click();await page.getByLabel(/^Aadhaar number/).fill('123456789012');await page.locator('.rail-step').filter({hasText:'Generate Deed'}).click();await button.waitFor();assert.equal(await button.isEnabled(),true);}
- try{const downloading=page.waitForEvent('download',{timeout:15000});await button.click();const download=await downloading;const text=await rt.docxToText(new Uint8Array(await readFile(await download.path())));assert(text.includes(type==='Minor'?'GUARDIAN PARENT':'REPRESENTED CHILD'));if(side==='executant')assert(text.includes('COURT-42'));console.log('PASS',instrument,side,type,'download',text.includes('COURT-42')?'court included':'no court recital');}
+ await page.reload();await page.getByRole('button',{name:'Continue / Edit'}).first().click();const button=page.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true});await button.waitFor();
+ const dialog=page.getByRole('dialog',{name:'Review download issues'});
+ if(repair){
+   assert.equal(await button.isEnabled(),true);
+   await button.click();
+   assert.match(await dialog.innerText(),/Claimant 1: Enter guardian aadhaar/);
+   await dialog.getByRole('button',{name:'Cancel'}).click();
+   await page.getByRole('button',{name:'Complete guardian details',exact:true}).click();
+   await page.getByLabel(/^Aadhaar number/).fill('123456789012');
+   await page.locator('.rail-step').filter({hasText:'Generate Deed'}).click();
+ }
+ try{const downloading=page.waitForEvent('download',{timeout:15000});await button.click();if(await dialog.isVisible())await dialog.getByRole('button',{name:'Download Anyway'}).click();const download=await downloading;const text=await rt.docxToText(new Uint8Array(await readFile(await download.path())));assert(text.includes(type==='Minor'?'GUARDIAN PARENT':'REPRESENTED CHILD'));if(side==='executant')assert(text.includes('COURT-42'));console.log('PASS',instrument,side,type,'download',text.includes('COURT-42')?'court included':'no court recital');}
  catch(error){console.log('FAILED',instrument,side,type,error.message,(await page.locator('body').innerText()).slice(-2500));throw error;}assert.deepEqual(errors,[]);await page.close();
 }}finally{await browser.close();}

@@ -6,7 +6,7 @@ const rt = await loadTemplateRuntime();
 const base = process.env.AUTHORITY_QA_BASE || 'http://127.0.0.1:5179';
 const real = process.env.AUTHORITY_QA_REAL === '1';
 const text = `SYNTHETIC GENERAL POWER OF ATTORNEY — QA ONLY. This GPA is registered as Document No. AUTH-QA-2026, Book 1, on 2026-10-01 at TEST SRO, code TEST-01. Principals: OWNER ONE, W/O PARENT ONE, age 45, occupation Business, residing at 1-1, SOURCE VILLAGE, TEST MANDAL, TEST DISTRICT, Telangana, PIN 500001. OWNER TWO, S/O PARENT TWO, age 46, occupation Business, residing at 2-2, SECOND VILLAGE, TEST MANDAL, TEST DISTRICT, Telangana, PIN 500002. Attorney / GPA holder: AGENT ONE, S/O AGENT PARENT, age 40, occupation Business, residing at 3-3, AGENT VILLAGE, TEST MANDAL, TEST DISTRICT, Telangana, PIN 500003. AGENT ONE explicitly represents both OWNER ONE and OWNER TWO. Witness: WITNESS PERSON, not a principal or attorney. All names and facts in this file are synthetic test data.`;
-const response = { kind: 'authority', details: { documentNo: 'AUTH-QA-2026', bookNumber: '1', documentDate: '2026-10-01', sro: 'TEST SRO', sroCode: 'TEST-01' }, people: [
+const response = { kind: 'authority', details: { documentNo: 'AUTH-QA-2026', bookNumber: '1', documentDate: '2026-10-01', sro: 'TEST SRO', sroCode: 'TEST-01', adjustedAmount: '12500.50' }, people: [
   { role: 'principal', values: { Name: 'OWNER ONE', Relation: 'W/O', RelativeName: 'PARENT ONE', Village: 'SOURCE VILLAGE' }, principalNames: [], quote: 'Principals: OWNER ONE, W/O PARENT ONE' },
   { role: 'principal', values: { Name: 'OWNER TWO', Relation: 'S/O', RelativeName: 'PARENT TWO', Village: 'SECOND VILLAGE' }, principalNames: [], quote: 'Principals: OWNER TWO, S/O PARENT TWO' },
   { role: 'attorney', values: { Name: 'AGENT ONE', Relation: 'S/O', RelativeName: 'AGENT PARENT', Village: 'AGENT VILLAGE' }, principalNames: ['OWNER ONE'], quote: 'Attorney / GPA holder: AGENT ONE. AGENT ONE explicitly represents both OWNER ONE and OWNER TWO.' },
@@ -17,7 +17,18 @@ const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 try {
   for (const mode of real ? ['gpa'] : ['gpa','agpa']) {
     const context = await browser.newContext(); const page = await context.newPage(); const errors = []; page.on('pageerror', error => errors.push(error.message)); let requests = 0;
-    if (!real) await page.route('**/api/anthropic/**', route => { requests++; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ id:'qa',type:'message',role:'assistant',model:'qa',content:[{type:'tool_use',id:'qa-tool',name:'record_authority',input:route.request().postData()?.includes('SYNTHETIC ID ONLY') ? {kind:'identity',details:{documentNo:'NOT-A-GPA'},people:[{role:'unknown',values:{Name:'AGENT ONE',Mobile:'9876543210'},quote:'SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.',principalNames:[]}],notes:[]} : response}],stop_reason:'tool_use',stop_sequence:null,usage:{input_tokens:1,output_tokens:1} }) }); });
+    if (!real) await page.route('**/api/anthropic/**', route => {
+      requests++;
+      const name = route.request().postDataJSON().tool_choice.name;
+      const input = name === 'record_authority' ? response : {
+        candidates: Object.entries({ personName: 'AGENT ONE', personMobile: '9876543210' }).map(([field, value]) => ({
+          field, value, role: 'party-person', record: 'primary', quote: 'SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.',
+          region: 'Printed identity details', page: 1, historical: false, handwritten: false,
+        })),
+        plan: null, notes: [],
+      };
+      return route.fulfill({ json: { id:'qa',type:'message',role:'assistant',model:'qa',content:[{type:'tool_use',id:'qa-tool',name,input}],stop_reason:'tool_use',stop_sequence:null,usage:{input_tokens:1,output_tokens:1} } });
+    });
     await page.goto(base); await page.getByRole('button',{name:'Create your first deed'}).waitFor();
     const draft = rt.newDraft(); draft.step=6;draft.variantId=rt.saleVariant(mode);draft.manual['executant|primary|executantVillage']='MANUAL VILLAGE';
     const saved={id:draft.id,updatedAt:new Date().toISOString(),claimantNames:[],deedType:'Sale',draft,sourceFiles:{},planDrafts:{},referencePlanDrafts:{},selectedPlanSvgs:{},extraPartyRecords:{executant:[],claimant:[]},templateMode:'built-in',customTemplate:null,libraryTemplate:null};
@@ -25,8 +36,12 @@ try {
     await page.reload(); await page.getByRole('button',{name:'Continue / Edit',exact:true}).click();
     const panel=page.getByRole('region',{name:'Sale authority details',exact:true});
     assert.match(await page.locator('.party-type-selector select').first().inputValue(),/^Principal/);
-    if(mode==='gpa') await panel.getByLabel('Upload GPA documents',{exact:true}).setInputFiles({name:'synthetic-gpa.txt',mimeType:'text/plain',buffer:Buffer.from(text)});
-    else {const transfer=await page.evaluateHandle(text=>{const data=new DataTransfer();data.items.add(new File([text],'synthetic-agpa.txt',{type:'text/plain'}));return data;},text);await panel.locator('.authority-uploads').first().dispatchEvent('drop',{dataTransfer:transfer});}
+    if(mode==='gpa') {
+      const chooser = page.waitForEvent('filechooser');
+      await panel.getByRole('button', { name: 'Choose file(s) or photo', exact: true }).click();
+      await (await chooser).setFiles({name:'synthetic-gpa.txt',mimeType:'text/plain',buffer:Buffer.from(text)});
+    }
+    else {const transfer=await page.evaluateHandle(text=>{const data=new DataTransfer();data.items.add(new File([text],'synthetic-agpa.txt',{type:'text/plain'}));return data;},text);await panel.locator('.document-upload').dispatchEvent('drop',{dataTransfer:transfer});}
     await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
     await panel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor({timeout:180000});
@@ -36,7 +51,8 @@ try {
     assert.equal(await page.locator('details[aria-label="Authority extraction review"]').getAttribute('open'),null);
     assert.equal(await page.locator('.party-record-card').first().evaluate(el => !!(document.querySelector('[aria-label="Sale authority details"]').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(el.compareDocumentPosition(document.querySelector('[aria-label="Executant 3 Attorney"]')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
     assert.equal(await panel.getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
-    for (const [label, value] of Object.entries({ 'Authority book number': '1', 'Authority document date': '2026-10-01', 'Authority Sub-Registrar Office': 'TEST SRO', 'Authority SRO code': 'TEST-01' })) assert.equal(await panel.getByLabel(label,{exact:true}).inputValue(),value);
+    for (const [label, value] of Object.entries({ 'Authority book number': '1', 'Authority document date': '2026-10-01', 'Authority Sub-Registrar Office': 'Test SRO', 'Authority SRO code': 'TEST-01' })) assert.equal(await panel.getByLabel(label,{exact:true}).inputValue(),value);
+    if (mode === 'agpa') assert.equal(await panel.getByLabel('AGPA adjusted stamp-duty amount (₹)', { exact: true }).inputValue(), '12,500.50');
     assert.equal(await attorneys.getByRole('region',{name:'Executant 3 Attorney',exact:true}).getByLabel(/^Full name/).inputValue(),'AGENT ONE');
     assert.equal(await page.locator('.party-record-card').first().getByLabel(/^Full name/).inputValue(),'OWNER ONE');
     assert.match(await page.locator('.party-type-selector select').first().inputValue(),/^Principal/);
@@ -54,10 +70,9 @@ try {
     if (!real) {
       const currentPanel=page.getByRole('region',{name:'Sale authority details',exact:true});
       await attorneys.getByLabel('Upload Attorney 3 identity / supporting documents',{exact:true}).setInputFiles({name:'agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
-      await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+      await page.getByRole('dialog').getByText('Verified identity details filled for the selected attorney.',{exact:true}).waitFor();
+      await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
       console.log('Attorney identity uploaded:',mode);
-      const identity=page.getByRole('group',{name:'AGENT ONE — extracted individual',exact:true}).last();await identity.getByText('Detected role: unknown',{exact:false}).waitFor();
-      await identity.getByLabel('Assign role for AGENT ONE',{exact:true}).selectOption('attorney');await identity.getByRole('button',{name:'Fill selected role',exact:true}).click();
       await page.waitForFunction(id=>new Promise(resolve=>{const request=indexedDB.open('deedcraft-saved-deeds',1);request.onsuccess=()=>{const db=request.result;const get=db.transaction('deeds').objectStore('deeds').get(id);get.onsuccess=()=>{db.close();resolve(get.result?.draft?.saleAuthority?.attorneys?.[0]?.values.Mobile==='9876543210');};};}),draft.id);
       assert.equal(await currentPanel.getByLabel('Authority document number',{exact:true}).inputValue(),'AUTH-QA-2026');
       await currentPanel.getByRole('button',{name:'Extract details from attached authority documents',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();await currentPanel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor();
@@ -73,7 +88,7 @@ try {
     if (!real) {
       await newAttorney.getByLabel('Upload Attorney 5 identity / supporting documents',{exact:true}).setInputFiles({name:'manual-agent-id.txt',mimeType:'text/plain',buffer:Buffer.from('SYNTHETIC ID ONLY: AGENT ONE, Mobile 9876543210.')});
       const reading = page.getByRole('dialog');
-      await reading.getByText('Found 1 people.',{exact:false}).waitFor();
+      await reading.getByText('The uploaded ID belongs to a different named person.',{exact:false}).waitFor();
       await reading.getByRole('button',{name:'Close',exact:true}).click();
     }
     await newAttorney.locator('.party-type-selector select').selectOption({label:'Principal (పవర్ ఆఫ్ అటార్నీ ఇచ్చేవారు)'});

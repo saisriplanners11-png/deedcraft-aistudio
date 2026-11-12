@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { appStateFor, draftReducer, newDraft, plansFor, resolveDraft, type Candidate, type Draft, type Source, WorkQueue } from './source-draft';
 import { cleanCandidate, cleanDrawing } from './upload-extraction';
-import { ageFrom, todayISO } from './logic';
+import { ageFrom, buildViewModel, todayISO } from './logic';
 import { newStructureDetail } from './fields';
+import { houseStructurePaise, STRUCTURE_VALUATION_OVERRIDE } from './house-valuation';
 import { parsePropertyHousePtinPairs, serializePropertyHousePtinPairs } from './property-house-ptin';
 
 const candidate = (field: string, value: string, patch: Partial<Candidate> = {}): Candidate => ({ id: field, field, value, role: 'executant', record: 'primary', quote: value, page: 1, region: 'Seller handwritten particulars', handwritten: true, historical: false, status: 'accepted', ...patch });
@@ -150,6 +151,38 @@ describe('source-backed drafts', () => {
     draft = draftReducer(draft, { type: 'structure-details', propertyId: 'primary', value: { totalFloors: '1', rows: [{ ...rcc, builtUpAreaSqFt: '10' }, tin] } });
     expect(appStateFor(draft).form.structValue).toBe('19000');
     expect(resolveDraft(draft).values['property|primary|structValue']).toBe('123');
+  });
+  it.each([
+    ['RCC', 1350], ['Bangalore Tiles', 900], ['Tin Shed', 900],
+  ] as const)('prices %s consistently across construction stages', (roof, rate) => {
+    const stages = [
+      ['Foundation', 'Foundation', 25], ['First Floor', 'Upto Slab/Roof level', 65],
+      ['Second Floor', 'Semi-Finished', 85], ['Ground', 'Finished', 100],
+    ] as const;
+    for (const [floorNo, stage, percent] of stages) {
+      const row = { ...newStructureDetail(), floorNo, stage, structureType: roof, builtUpAreaSqFt: '100' };
+      expect(houseStructurePaise(row, 'Municipal Council')).toBe(BigInt(rate * percent * 100));
+    }
+  });
+  it('keeps schedule overrides through reload and uses them in the combined market value', () => {
+    let draft = draftReducer(newDraft(), { type: 'add-property', id: 'second' });
+    const set = (record: string, field: string, value: string) => {
+      draft = draftReducer(draft, { type: 'manual', key: `property|${record}|${field}`, value });
+    };
+    for (const record of ['primary', 'second']) {
+      for (const [field, value] of Object.entries({ category: 'Residential', localAuthorityType: 'Municipal Corporation', roofMaterial: 'R.C.C. Roof House', extentSqYards: '100', govtRate: '1000' })) set(record, field, value);
+      const row = { ...newStructureDetail(), floorNo: 'First Floor', stage: 'Foundation', structureType: 'Framed with walls only', builtUpAreaSqFt: '100' };
+      draft = draftReducer(draft, { type: 'structure-details', propertyId: record, value: { totalFloors: '1', rows: [row] } });
+    }
+    const combined = () => buildViewModel(appStateFor(draft), () => {}).persayINR;
+    expect(combined()).toBe('₹2,67,500');
+    set('primary', STRUCTURE_VALUATION_OVERRIDE, '0');
+    set('second', STRUCTURE_VALUATION_OVERRIDE, '50000.50');
+    draft = JSON.parse(JSON.stringify(draft));
+    expect(appStateFor(draft).form.structValue).toBe('0');
+    expect(combined()).toBe('₹2,50,000.50');
+    set('second', STRUCTURE_VALUATION_OVERRIDE, '');
+    expect(combined()).toBe('₹2,33,750');
   });
   it('keeps vendee shares by schedule and removes them with a deleted claimant', () => {
     let draft = newDraft();

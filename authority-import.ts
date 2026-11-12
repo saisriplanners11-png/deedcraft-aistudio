@@ -107,6 +107,7 @@ export function applyGpaExtraction(draft: Draft, authority: import('./sale-optio
       principalIds: ids.filter((_, index) => holder.principalNames.some(name => nameKey(name) === nameKey(principals[index].values.Name))) };
   });
   for (const key of ['documentNo', 'bookNumber', 'documentDate', 'sro', 'sroCode'] as const) nextAuthority[key] = result.details[key] || '';
+  nextAuthority.adjustedAmount = authority.adjustedAmount?.trim() ? authority.adjustedAmount : result.details.adjustedAmount || '';
   return { ...draft, manual, gpaExecutantsReplaced: true, saleAuthority: nextAuthority, vendorSharesBySchedule: {},
     templateFieldValues: Object.fromEntries(Object.entries(draft.templateFieldValues || {}).map(([key, values]) => [key, Object.fromEntries(Object.entries(values).filter(([record]) => !record.startsWith('executant:')))])),
     choices: Object.fromEntries(Object.entries(draft.choices).filter(([key]) => !key.startsWith('executant|'))),

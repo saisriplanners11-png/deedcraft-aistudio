@@ -16,13 +16,15 @@ export function representativeDesignationOptions(partyType: string): string[] {
   }
 }
 
-export const isEntity = (values: Record<string, string>, side: PartySide) => ['Firm / LLP', 'Company', 'Society / Association', 'Society / Trust', 'Others / HUF'].includes(values[side + 'PartyType']);
+export const isEntity = (values: Record<string, string>, side: PartySide) => ['Bank', 'Firm / LLP', 'Company', 'Society / Association', 'Society / Trust', 'Others / HUF'].includes(values[side + 'PartyType']);
 export function partyDisplayName(values: Record<string, string>, side: PartySide): string {
   if (side === 'claimant' && (values.claimantPartyType || '').startsWith('Guardian') && values.claimantWardName) return values.claimantWardName;
-  const name = values[side + (isEntity(values, side) ? 'EntityName' : 'Name')] || '';
+  const name = values[side + (isEntity(values, side) ? 'EntityName' : 'Name')] ||
+    (values[side + 'PartyType'] === 'Bank' ? values[side + 'Name'] : '') || '';
   return isEntity(values, side) ? name.toLocaleUpperCase('en-IN') : name;
 }
 export function entityRequiredFields(side: PartySide, type: PartyType): string[] {
+  if (type === 'Bank') return [side + 'EntityName'];
   const suffixes = ['EntityName', 'EntityMobile', 'EntityNature', 'EntityAddress', 'EntityState', 'EntityDistrict', 'EntityMandal', 'EntityVillage', 'EntityHNo', 'EntityPinCode'];
   if (type === 'Society / Association' || type === 'Society / Trust') suffixes.push('SocietyRegistrationNo', 'SocietyRegistrationDate', 'SocietyClassification', 'SocietyRegisteredAct', 'SocietyRegistrarOffice', 'SocietyTenureFrom', 'SocietyTenureTo');
   else if (type === 'Firm / LLP' || type === 'Company') suffixes.push('EntityIdProof', 'EntityIdProofNo');
@@ -54,7 +56,7 @@ export function entityRecital(values: Record<string, string>, side: PartySide, p
   add('GSTIN ', firm ? v('FirmGstin') : '');
   add('acting under authorization ', company ? v('CompanyBoardResolution') : firm ? v('FirmAuthority') : society ? v('SocietyResolutionNo') : v('OtherAuthority'));
   const reps = people.representatives.map(representativeRecital);
-  parts.push('represented by\n' + (reps.join('\n') || '____'));
+  if (type !== 'Bank' || reps.length) parts.push('represented by\n' + (reps.join('\n') || '____'));
   return parts.join(', ');
 }
 

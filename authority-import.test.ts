@@ -90,12 +90,14 @@ describe('Automatic authority holders', () => {
     const owner = person('owner', 'principal', 'OWNER');
     const other = person('other', 'principal', 'OTHER', { Aadhaar: '222233334444' });
     const holder = { ...person('holder', 'attorney', 'AGENT', { Aadhaar: '333344445555', Mobile: '9121980426' }), principalNames: ['OWNER'] };
-    const read = { id: 'read', documentIds: ['doc'], details: {}, notes: [], people: [owner, other, holder, { ...holder, id: 'copy' }] };
+    const read = { id: 'read', documentIds: ['doc'], details: { adjustedAmount: '12500.50' }, notes: [], people: [owner, other, holder, { ...holder, id: 'copy' }] };
     const draft = applyGpaExtraction({ ...newDraft(), variantId }, { ...emptySaleAuthority(), extractions: [read] }, read);
     expect(draft.saleAuthority?.attorneys).toHaveLength(1);
     expect(draft.saleAuthority?.attorneys[0].values.Name).toBe('AGENT');
     expect(draft.saleAuthority?.attorneys[0].values.Mobile).toBe('9121980426');
     expect(draft.saleAuthority?.attorneys[0].principalIds).toEqual(['primary']);
+    expect(draft.saleAuthority?.adjustedAmount).toBe('12500.50');
+    expect(applyGpaExtraction(draft, { ...emptySaleAuthority(), adjustedAmount: '0' }, read).saleAuthority?.adjustedAmount).toBe('0');
     const restored = draftReducer(newDraft(), { type: 'load', draft: JSON.parse(JSON.stringify(draft)) });
     expect(restored.saleAuthority?.attorneys).toEqual(draft.saleAuthority?.attorneys);
     const unlinked = applyGpaExtraction(newDraft(), emptySaleAuthority(), { ...read, people: [owner, { ...holder, principalNames: [] }] });

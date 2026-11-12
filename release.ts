@@ -1,5 +1,6 @@
 import type { AppState } from './logic';
 import { partyDisplayName } from './party-entities';
+import { claimantRepresentationForOutput, minorClaimantValues } from './minor-parties';
 import { formatDeedAmount, moneyPaise as mortgagePaise } from './deed-money';
 
 export interface ReleaseData {
@@ -46,8 +47,10 @@ export function releasedSquareMetres(extent: string, share: string): string {
   return v ? releasedExtent(extent, `${v.n * 836127n}/${v.d * 1000000n}`) : '';
 }
 export function releaseParties(state: AppState, side: 'executant'|'claimant') {
-  const records=[{id:'primary',values:state.form},...(side==='executant'?state.additionalExecutants:state.additionalClaimants)];
-  return records.map((p,i)=>({ id: i ? p.id : (side==='executant'?state.primaryExecutantId:state.primaryClaimantId)||'primary', name:partyDisplayName(p.values,side), gender:p.values[side+'Gender']||'' }));
+  const records = side === 'claimant' ? claimantRepresentationForOutput(state).recipients
+    : [{ id: state.primaryExecutantId || 'primary', values: state.form }, ...state.additionalExecutants];
+  return records.map(({ id, values }) => ({ id, name: partyDisplayName(values, side),
+    gender: (side === 'claimant' ? minorClaimantValues(values) : values)[side + 'Gender'] || '' }));
 }
 export function releaseScheduleValues(state: AppState, scheduleId: string): Record<string,string> {
   const shares=(side:'executant'|'claimant')=>releaseParties(state,side).map(p=>({...p,share:(side==='executant'?state.releaseData?.releasedBySchedule:state.releaseData?.allocatedBySchedule)?.[scheduleId]?.[p.id]||''}));

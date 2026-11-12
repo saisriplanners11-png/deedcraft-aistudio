@@ -3,7 +3,7 @@ import { orderedEnclosureIds } from './enclosure-records';
 import { acreGuntasToSqYards } from './land-area';
 import { titleAmendmentKind } from './title-amendments';
 import { normalizeWorkflowStep } from './workflow-steps';
-import { houseStructureTotal, isHouseCategory } from './house-valuation';
+import { houseStructureTotal, isHouseCategory, STRUCTURE_VALUATION_OVERRIDE } from './house-valuation';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
 import { newPartyRepresentative, partyKey, personField, type PartyPeople, type PartyPeopleIds, ALL_FIELDS, EMPTY_FORM, HOUSE_PTIN_PAIR_CATEGORIES, newStructureDetails, type StructureDetails } from './fields';
@@ -415,7 +415,7 @@ export function appStateFor(draft: Draft): AppState {
   for (const property of properties) {
     const fields = property.values;
     if (!isHouseCategory(fields.category)) continue;
-    const total = houseStructureTotal(draft.structureDetailsBySchedule[property.id], fields.localAuthorityType || '', fields.roofMaterial);
+    const total = fields[STRUCTURE_VALUATION_OVERRIDE]?.trim() || houseStructureTotal(draft.structureDetailsBySchedule[property.id], fields.localAuthorityType || '', fields.roofMaterial);
     if (total) property.values = { ...fields, structValue: total };
   }
   const transaction = forRole('property').find(r => r.id === 'transaction');
@@ -457,6 +457,7 @@ export function appStateFor(draft: Draft): AppState {
   const unresolvedFields = Object.keys(conflicts).filter(key => {
     if (key in draft.manual) return false;
     const [role, record] = key.split('|');
+    if (role === 'property' && key.endsWith('|structValue') && properties.find(property => property.id === record)?.values.structValue) return false;
     if (role === 'party-person') return false; // person conflicts are resolved on that child only
     if (role === 'executant') return record === primarySeller?.id;
     if (role === 'claimant') return record === primaryBuyer?.id;
@@ -475,7 +476,7 @@ export function appStateFor(draft: Draft): AppState {
     if (!(side === 'executant' && draft.gpaExecutantsReplaced)) defaultIfUnset(`${side}Relation`, 'S/O');
   }
   for (const field of ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation']) derived[field] = values[fieldKey('property', 'primary', field)] || '';
-  if (draft.instrumentId === 'reconveyance' && primarySeller?.id.startsWith('link-party:') && primarySeller.values.executantPartyType === 'Bank') {
+  if (draft.instrumentId === 'reconveyance' && primarySeller?.values.executantPartyType === 'Bank') {
     for (const [field, sourceField] of Object.entries({ bankName: 'executantEntityName', bankBranch: 'executantEntityBranchOffice', officialDesignation: 'executantSignatoryDesignation' })) {
       if (!(fieldKey('property', 'primary', field) in values)) derived[field] = primarySeller.values[sourceField] || '';
     }
@@ -509,6 +510,7 @@ export function appStateFor(draft: Draft): AppState {
     structureDetailsBySchedule: Object.fromEntries(propertyIds.map(id => [id, draft.structureDetailsBySchedule[id] || newStructureDetails()])),
     vendeeSharesBySchedule: draft.vendeeSharesBySchedule || {},
     vendorSharesBySchedule: draft.vendorSharesBySchedule || {},
+    shareExtentOverrides: Object.fromEntries(Object.entries(draft.manual).filter(([key]) => key.includes('|shareExtentSqYards:'))),
     releaseData: draft.releaseData,
   };
 }

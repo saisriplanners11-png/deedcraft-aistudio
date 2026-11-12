@@ -16,6 +16,11 @@ for (const [name, variant, mode, count, property] of [
   const {result}=await rt.renderArtifact(compiled,'docx');
   const bytes=new Uint8Array(await result.blob.arrayBuffer());
   const text=await rt.docxToText(bytes);
+  const document = (await rt.readZip(bytes)).find(entry => entry.name === 'word/document.xml');
+  const xml = new TextDecoder().decode(document.data);
+  for (const label of ['1000/2025', 'Sample SRO 1', '1,00,000.10', '25.05']) {
+    assert.ok([...xml.matchAll(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)].some(([run]) => /<w:b\/>/.test(run) && run.includes('>' + label + '</w:t>')), label + ' is bold');
+  }
   assert.ok(text.includes('Reconveyance'));
   assert.equal((text.match(/additional mortgage/g)||[]).length,count-1);
   assert.ok(!text.includes('<IF '));

@@ -29,7 +29,7 @@ export function DocumentUpload({ label, busy = false, multiple = true, onUpload 
     onDrop={event => { event.preventDefault(); setDragging(false); receive(Array.from(event.dataTransfer.files)); }}>
     <div className="upload-symbol" aria-hidden="true">{busy ? <LoaderCircle size={24} className="dc-spin" /> : <FileUp size={24} />}</div>
     <div className="upload-copy"><strong>{busy ? 'Reading and verifying your document…' : label}</strong><p id={hintId}>{busy ? 'You can keep editing while verification runs.' : `Drop ${multiple ? 'files' : 'a file'} here or choose ${multiple ? 'documents' : 'a document'}. You can also enter details below.`}</p><small>PDF, Word, images or text</small></div>
-    <input ref={input} type="file" accept={ACCEPT} multiple={multiple} disabled={busy} hidden
+    <input ref={input} type="file" aria-label={label} accept={ACCEPT} multiple={multiple} disabled={busy} hidden
       onChange={event => { receive(Array.from(event.target.files || [])); event.target.value = ''; }} />
     <button type="button" className="gold" disabled={busy} aria-describedby={hintId} onClick={() => input.current?.click()}>Choose file(s) or photo</button>
     {error && <p className="upload-error" role="alert">{error}</p>}

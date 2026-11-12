@@ -7,6 +7,7 @@ The user's instruction on 28 October 2026 applies to every deed type: a new Word
 ## Common protections
 
 - Browser upload, server validation, publication/rollback and actual download use current preservation checks. Cached validation cannot bypass the download checks.
+- The dashboard can export an incomplete draft after the user confirms the reported issues with Download Anyway. It uses the selected compatible source where possible. If the selected source is incompatible it tries the same instrument's default. If no deed can be rendered, it exports a clearly labelled Word details draft. This confirmation applies only to that download and does not approve a template or clear validation issues.
 - Existing configured-field definitions and values are retained. A replacement missing their placeholders is rejected instead of silently trimming the field contract. An incompatible browser replacement keeps the previously valid custom source selected.
 - Complete party identities remain required, including split or combined addresses. Missing PAN slots are restored using each party's own binding. Party repeats retain guardian/ward/court details, capacities, entity representatives and selected genders through the existing merge layer.
 - Recognized fixed party percentages become bindings to the draft's optional percentages. Fixed allocation paragraphs are removed before property-specific allocations are regenerated. Regular Gift continues to omit party allocations altogether while retaining saved values and flat land UDS.
@@ -14,6 +15,7 @@ The user's instruction on 28 October 2026 applies to every deed type: a new Word
 - Fixed appended NALA extent examples are removed before the applicable schedule rule is applied. Regular Gift omits that added sentence; other supported deeds derive it from the property's entered records.
 - The selected stamp-paper margin remains authoritative. A replacement's large continuation margin is normalized before pagination, including Section 32A layout.
 - Total market-value and estimate rows resolve to the entered document value. Per-unit rates and property measurements retain their separate meanings.
+- House structure rows apply their own roof rate and construction-stage percentage. The schedule’s manual structure subtotal, when set, feeds the dashboard’s combined market value and duty calculation. The declared Word value continues to follow COM-02.
 - Source bytes, historical versions, styles and supporting package parts are retained. Normalization edits document content in memory before entered facts merge.
 
 ## Separate instrument protections
@@ -71,6 +73,8 @@ An imported GPA/AGPA principal with no verified relation correctly remained unre
 05-11-2026 SRC-06, runtime 2026-11-05.1: every Step 2 option uses repeated independent cards. Grouped tax/land cards no longer reuse or merge records. Source paragraph repeats retain each enclosure’s own values, dates and authority. Preserve legacy narrow cards, source assets, saved evidence, property isolation, H.No./PTIN handling and instrument-specific exceptions.
 
 05-11-2026 PTY-05, runtime 2026-11-05.2: minor-recipient output follows the user photo/voice note. Keep minor identity first and mark (MINOR) after age/DOB, followed by the selected guardianship wording and full guardian identity before the source definition. Both Minor and Guardian entry modes retain their saved fields; rendered ward identity never borrows the guardian address/Aadhaar. Include guardian occupation and entered PAN; preserve adult recipients, minor-executant court checks, immutable sources and source closing labels.
+
+12-11-2026 PTY-01/05, runtime 2026-11-12.3: render each explicitly linked guardian once under the last minor assigned that guardian. A shared recital identifies all minors the guardian represents by their numbered points. Guardian-only cards stay available for editing and validation. Word recipient numbering and recipient counts exclude linked guardian-only cards. The production build checks separate and shared guardians with built-in and custom sources.
 
 ## Release integration — 07-11-2026
 

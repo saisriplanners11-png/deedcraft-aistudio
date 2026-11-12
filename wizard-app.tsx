@@ -10,7 +10,7 @@ import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { LINK_ISSUING_AUTHORITIES } from './link-enclosure';
 import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
-import { HOUSE_ROOFS, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
+import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, houseValuationStage, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
 import { formatDeedAmount, formatMoneyInput } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
@@ -19,7 +19,7 @@ import { isEntity, partyDisplayName, representativeDesignationOptions } from './
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
-import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PROPERTY_DIMENSIONS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_STAGE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
+import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PROPERTY_DIMENSIONS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
 import { FileDropZone } from './file-drop-zone';
@@ -125,11 +125,13 @@ function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNoti
           const wall = isCompoundWall(row);
           const unit = structureUnit(row);
           const amount = houseStructurePaise(row, authority, defaultRoof);
+          const stage = houseValuationStage(row.stage);
+          const legacyStage = !wall && !!row.stage && !stage;
           return <tr key={row.id}>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" aria-label="Total floors" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Floor number" disabled={wall} value={wall ? '' : row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Nature of Roof" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, rateOverride: undefined, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{roofOptions.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom nature of roof" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Stage" disabled={wall} value={wall ? '' : row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{STRUCTURE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Stage" disabled={wall} value={wall ? '' : stage?.value ?? row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{legacyStage && <option value={row.stage}>{row.stage}</option>}{HOUSE_VALUATION_STAGES.map(option => <option key={option.value} value={option.value}>{option.label} ({option.percent}%)</option>)}</select>{legacyStage && <small>Choose a stage with a valuation percentage.</small>}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" aria-label="Building age" disabled={wall} value={wall ? '' : row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><label><span>{unit}</span><input aria-label={`Measurement (${unit})`} type="number" min="0" step="any" value={structureMeasurement(row)} onChange={event => patchRow(row.id, { [wall ? 'runningFeet' : 'builtUpAreaSqFt']: event.target.value })} style={{ width: 100, padding: 6, border: `1px solid ${C.goldLight}` }} /></label></td>
           <td style={{ padding: 8 }}><label><span>Per {unit}</span><input aria-label={`Rate (₹ per ${unit})`} inputMode="decimal" value={formatMoneyInput(houseStructureRate(row, authority, defaultRoof))} onChange={event => patchRow(row.id, { rateOverride: event.target.value.replace(/,/g, '') })} style={{ width: 100, padding: 6 }} /></label></td>
@@ -488,8 +490,8 @@ function PartyRecordCard({
   const state = appStateFor(draft);
   const ownParty = partyRecords(state, role).find((party, index) => (index ? party.id : (role === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary') === record);
   const partyType = (resolved.values[fieldKey(role, record, role + 'PartyType')] || (role === 'executant' && state.saleDocument !== 'ordinary' ? PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))! : 'Individual')) as PartyType;
-  const bankAllowed = role === 'executant' && isBankReconveyance(state);
-  const bankParty = bankAllowed && partyType === 'Bank';
+  const primaryMortgageExecutant = state.deedType === 'Deed Of Reconvayance' && role === 'executant' && record === (state.primaryExecutantId || 'primary');
+  const bankParty = primaryMortgageExecutant && isBankReconveyance(state) && (partyType === 'Bank' || !ownParty?.values.executantName);
   const entity = isEntity({ [role + 'PartyType']: partyType }, role);
   const people = peopleFor(draft, partyKey(role, record), resolved);
   const society = partyType === 'Society / Association' || partyType === 'Society / Trust';
@@ -521,9 +523,13 @@ function PartyRecordCard({
   };
   return <PlacementRecord scope={role} id={record}><section className="panel party-record-card">
     <div className="party-card-heading"><span className="record-heading-icon">{entity ? <Building2 size={21} aria-hidden="true" /> : <UserRound size={21} aria-hidden="true" />}</span><div><h2>{label || (role === 'executant' ? 'Executant' : 'Claimant')}</h2><p>{(entity ? entityForm[role + 'EntityName'] : resolved.values[fieldKey(role, record, role + 'Name')]) || (role === 'executant' ? 'Party transferring the property rights' : 'Party receiving the property rights')}</p></div><span className="record-kind">{partyType}</span></div>
-    <div className="party-type-selector"><FieldGroup group={{ step, title: 'Party type', fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType').map(field => bankAllowed ? { ...field, options: [...(field.options || []), 'Bank'] } : field) }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => onCapacityChange ? onCapacityChange(value) : edit(role, record, id, value)} /></div>
+    {!bankParty && partyType !== 'Bank' && <div className="party-type-selector"><FieldGroup group={{ step, title: 'Party type', fields: GROUPS.flatMap(g => g.fields).filter(f => f.id === role + 'PartyType') }} form={{ [role + 'PartyType']: partyType }} setField={(id, value) => onCapacityChange ? onCapacityChange(value) : edit(role, record, id, value)} /></div>}
     {relationshipFields}
-    {bankParty ? <><FieldGroup group={{ step, title: 'Bank details', fields: RECONVEYANCE_FIELDS.filter(field => ['bankName','bankBranch','officialDesignation'].includes(field.id)) }} form={state.form} setField={(id,value) => edit('property','primary',id,value)} />{personList()}</> : entity ? <>
+    {primaryMortgageExecutant && <FieldGroup group={{ step, title: 'Bank details', fields: RECONVEYANCE_FIELDS.filter(field => ['bankName','bankBranch','officialDesignation'].includes(field.id)) }} form={state.form} setField={(id,value) => {
+      edit('property','primary',id,value);
+      if (id === 'bankName' && state.form.mortgagePartyMode === 'person-to-person') edit('property','primary','mortgagePartyMode','');
+    }} />}
+    {bankParty ? <><ScopedSectionUpload label="bank or representative particulars" busy={busy} onUpload={onUpload} /><SourceFeedback sources={sources} />{personList()}</> : entity ? <>
       <Section title={society ? 'Society / association details' : partyType === 'Company' ? 'Company details' : 'Firm / entity details'}>
         <ScopedSectionUpload label="entity particulars" busy={busy} onUpload={files => upload(files, { role, record }, ('entity:' + role + ':' + partyType) as ExtractionProfile)} />
         <SourceFeedback sources={sources.filter(s => !s.profile?.startsWith('authorization:'))} />
@@ -724,6 +730,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const templateInput = useRef<HTMLInputElement>(null);
   const templateValidationRevision = useRef(0);
   const [download, setDownload] = useState<{ revision: number; draftId: string; templateKey: string; docx?: Blob; pdf?: Blob; filename: string } | null>(null);
+  const [downloadWarning, setDownloadWarning] = useState<{ kind: 'word' | 'pdf'; reasons: string[]; draftId: string; revision: number; templateKey: string } | null>(null);
   const state = useMemo(() => appStateFor(draft), [draft]);
   const resolved = useMemo(() => resolveDraft(draft), [draft]);
   const isRelease = draft.instrumentId === 'release';
@@ -1219,40 +1226,84 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const activeScheduleMerge = scheduleMerges[activePropertyIndex];
   const claimantIds = partyRecordIds('claimant');
   const executantIds = partyRecordIds('executant');
-  async function generate(kind: 'word' | 'pdf') {
+  async function generate(kind: 'word' | 'pdf', confirmedReasons?: string[]) {
+    const allowIncomplete = confirmedReasons !== undefined;
+    const reasons = [...new Set([
+      ...(confirmedReasons || []),
+      ...notices.map(item => item.reason),
+      ...(kind === 'word' ? [
+        ...deedRelease.reasons, ...authorityErrors, ...templateFieldErrors, ...minorDownloadErrors.split('\n').filter(Boolean),
+        ...(!templateReady ? [...(customTemplate?.validation.errors || ['No compatible custom Word template is selected.']), 'The download will try the default template for this deed.'] : []),
+      ] : previews.map(preview => preview.error).filter(Boolean)),
+    ])];
+    const warn = (issues: string[]) => setDownloadWarning({ kind, reasons: issues, draftId: draft.id, revision: draft.revision, templateKey });
+    if (reasons.length && !allowIncomplete) { warn(reasons); return; }
     const snapshot = draft; setExporting(true); setMessage('');
     try {
-      if (!deedRelease.ready) throw new Error(deedRelease.reasons.join(' '));
-      if (kind === 'word' && authorityErrors.length) throw new Error(authorityErrors.join(' '));
-      if (!templateReady) throw new Error('Upload a compatible custom Word template or choose the built-in template.');
-      if (kind === 'word' && shareBlockers.length) throw new Error('Correct the entered ownership percentages before downloading the Word deed');
-      if (kind === 'word' && templateFieldErrors.length) throw new Error(templateFieldErrors.join(' '));
-      const templateSource = activeTemplateSource;
+      const templateSource = templateReady ? activeTemplateSource : BUILT_IN_TEMPLATE_SOURCE;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
         ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
       if (kind === 'word' && !artifact.docx) {
         const deedValues = { ...mergeValues(state), 'Include Prepared By': snapshot.manual.includePreparedBy === 'true' ? '1' : '' };
         const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, saleAuthority: snapshot.saleAuthority, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
-        const compiled = compileDeed({ instrumentId: snapshot.instrumentId, variantId: snapshot.variantId, snapshotHash: inputSnapshotHash, values: deedValues, schedules: scheduleMerges, rewrites: rewritesFor(state), unresolvedWarnings: [...notices.map(item => item.reason), ...templateFieldResolution.instances.filter(instance => !instance.value).map(instance => `${instance.field.label}: write-in blank`)], templateFieldData: templateFieldResolution.data }, templateSource);
-        const { result: merged, manifest } = await renderArtifact(compiled, 'docx', templateSource);
+        const render = async (source: DeedTemplateSource) => renderArtifact(compileDeed({
+          instrumentId: snapshot.instrumentId, variantId: snapshot.variantId, snapshotHash: inputSnapshotHash, values: deedValues,
+          schedules: scheduleMerges, rewrites: rewritesFor(state),
+          unresolvedWarnings: [...reasons, ...templateFieldResolution.instances.filter(instance => !instance.value).map(instance => `${instance.field.label}: write-in blank`)],
+          templateFieldData: templateFieldResolution.data,
+        }, source, allowIncomplete), 'docx', source);
+        const { result: merged, manifest } = await render(templateSource).catch(error => {
+          if (!allowIncomplete || templateSource.kind !== 'custom') throw error;
+          reasons.push(`The selected Word template could not be rendered. Using the default template. ${error.message}`);
+          return render(BUILT_IN_TEMPLATE_SOURCE);
+        });
         const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
           selectedPlanSvgs[record.id] ? [{ schedule: index + 1, svg: selectedPlanSvgs[record.id] }] : []
-        ).map(async plan => ({ schedule: plan.schedule, png: await planPng(plan.svg) })));
+        ).map(async plan => {
+          try { return [{ schedule: plan.schedule, png: await planPng(plan.svg) }]; }
+          catch (error) { if (!allowIncomplete) throw error; return []; }
+        })).then(pages => pages.flat());
         artifact = { ...artifact, docx: await appendRegistrationPlans(merged.blob, reviewed) };
         const outputHash = await sha256(new Uint8Array(await artifact.docx.arrayBuffer()));
         if (current.current.id === snapshot.id && current.current.revision === snapshot.revision) setGenerationManifest({ ...manifest, outputHash });
       }
       if (kind === 'pdf' && !artifact.pdf) {
-        if (previews.some(p => p.error)) throw new Error(previews.find(p => p.error)!.error);
-        const pngs = await Promise.all(previews.map(p => planPng(p.svg)));
+        const pngs = await Promise.all(previews.map(async preview => {
+          try {
+            if (preview.error) throw new Error(preview.error);
+            return await planPng(preview.svg);
+          } catch (error) { if (!allowIncomplete) throw error; return null; }
+        }));
         const pdf = await planPdf(pngs);
         artifact = { ...artifact, pdf };
       }
       setDownload(artifact);
       saveBlob(kind === 'word' ? artifact.docx! : artifact.pdf!, kind === 'word' ? artifact.filename : artifact.filename.replace(/\.docx$/, '-plan.pdf'));
-      const outstandingCount = notices.length + templateFieldResolution.instances.filter(instance => !instance.value).length;
+      const outstandingCount = reasons.length + templateFieldResolution.instances.filter(instance => !instance.value).length;
       setMessage(outstandingCount ? `Downloaded an incomplete draft with ${outstandingCount} outstanding items. Review and complete it before signing or registration.` : 'Downloaded using the current verified and manually entered details.');
-    } catch (error: any) { setMessage(`Download could not be prepared: ${error.message}. Please retry.`); }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (!allowIncomplete) {
+        warn([...reasons, reason]);
+      } else if (kind === 'word') {
+        const { Document, Packer, Paragraph } = await import('docx');
+        const fields = new Map([...ALL_FIELDS, ...PERSON_FIELDS, ...RECONVEYANCE_FIELDS].map(field => [field.id, field.label]));
+        const details = Object.entries(resolved.values).flatMap(([key, value]) => {
+          const [role, record, field] = key.split('|');
+          const label = fields.get(field);
+          return label && value.trim() ? [new Paragraph({ text: `${role} ${record} / ${label}: ${value}` })] : [];
+        });
+        const blob = await Packer.toBlob(new Document({ sections: [{ children: [
+          new Paragraph({ text: `${deedDefinition.label} — Incomplete draft details`, heading: 'Heading1' }),
+          new Paragraph('The deed template could not be rendered. Review and complete the draft before use.'),
+          ...[...new Set([...reasons, reason])].map(text => new Paragraph(text)), ...details,
+        ] }] }));
+        saveBlob(blob, deedFilename(state).replace(/\.docx$/, '-incomplete-details.docx'));
+        setMessage('Downloaded the entered details as a Word file because the deed template could not be rendered.');
+      } else {
+        setMessage(`Download could not be prepared: ${reason}`);
+      }
+    }
     finally { setExporting(false); }
   }
 
@@ -1334,6 +1385,19 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
   return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app${showFieldHelp ? ' show-field-help' : ''}${presentation ? ` ${presentation.name}` : ''}`} data-theme={theme}>
+    {downloadWarning && downloadWarning.draftId === draft.id && downloadWarning.revision === draft.revision && downloadWarning.templateKey === templateKey &&
+        <dialog className="download-warning-dialog" ref={element => { if (element && !element.open) element.showModal(); }}
+          onCancel={() => setDownloadWarning(null)} aria-labelledby="download-warning-title">
+          <h2 id="download-warning-title">Review download issues</h2>
+          <ul>{downloadWarning.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+          {downloadWarning.kind === 'word' && <p>If the selected template cannot be rendered, the download will use the deed’s default template when available or include the entered details for review.</p>}
+          <button type="button" autoFocus onClick={() => setDownloadWarning(null)}>Cancel</button>
+          <button type="button" className="primary" onClick={() => {
+            const { kind, reasons } = downloadWarning;
+            setDownloadWarning(null);
+            void generate(kind, reasons);
+          }}>Download Anyway</button>
+        </dialog>}
     <ExtractDialog
       open={!!activeUpload}
       label={activeUpload?.label || 'Document'}
@@ -1476,7 +1540,6 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         </div>}
 
         {isRelease && [4,8].includes(step) && <ReleaseFields state={state} draft={draft} dispatch={dispatch} schedules={propertyRecords} onValue={(id,value)=>edit('property',propertyRecords[0]?.id||'primary',id,value)} />}
-        {isReconveyance && step === 0 && draft.variantId !== 'title-deed' && <section className="panel"><FieldGroup group={{ step: 0, title: 'Mortgage party mode', fields: RECONVEYANCE_FIELDS.filter(field => field.id === 'mortgagePartyMode') }} form={state.form} setField={(id,value) => edit('property','primary',id,value)} /></section>}
         {isReconveyance && [4,8].includes(step) && <section className="panel repayment-panel" aria-label="Reconveyance repayment">
           <header>
             <h2>Reconveyance repayment</h2>
@@ -1485,7 +1548,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <div className="repayment-breakdown">
             <div>
               <label className="field">
-                <span>Total Principal Amount (₹)</span>
+                <strong>Total Principal Amount (₹)</strong>
                 <input inputMode="decimal" aria-describedby="repayment-principal-source" value={repayment.overridden ? formatMoneyInput(state.form.principalOverride) : formatDeedAmount(repayment.principal)} onChange={event => edit('property','primary','principalOverride',event.target.value.replace(/,/g, ''))} />
               </label>
               <p id="repayment-principal-source">{repayment.overridden ? 'Manual principal' : 'Automatic principal'} · Link-document total ₹{formatDeedAmount(repayment.linkTotal) || '—'}</p>
@@ -1493,7 +1556,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             </div>
             <div>
               <label className="field">
-                <span>Total Interest Amount (₹)</span>
+                <strong>Total Interest Amount (₹)</strong>
                 <input readOnly aria-describedby="repayment-interest-source" value={formatDeedAmount(repayment.interest)} />
               </label>
               <p id="repayment-interest-source">Calculated from the mortgage records.</p>
@@ -1630,12 +1693,18 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             {propertyRecords.map((record, index) => <div key={record.id} style={index ? { marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.rule}` } : undefined}>
               {propertyRecords.length > 1 && <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {index + 1}{record.category ? ` — ${record.category}` : ''}</h3>}
               <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit}
-                renderField={isHouseCategory(record.category) ? (field, value, change) => field.id === 'structValue' ? <input aria-label={field.label} inputMode="decimal" readOnly={!!houseStructureTotal(state.structureDetailsBySchedule[record.id], record.values.localAuthorityType || '', record.values.roofMaterial)} value={formatMoneyInput(record.values.structValue ?? value)} onChange={event => change(event.target.value.replace(/,/g, ''))} /> : undefined : undefined}
+                renderField={isHouseCategory(record.category) ? (field, value) => field.id === 'structValue' ? <div>
+                  <input aria-label={field.label} inputMode="decimal" value={formatMoneyInput(record.values.structValue ?? value)}
+                    onChange={event => edit('property', record.id, STRUCTURE_VALUATION_OVERRIDE, event.target.value.replace(/,/g, ''))} />
+                  {draft.manual[fieldKey('property', record.id, STRUCTURE_VALUATION_OVERRIDE)]?.trim() && <button type="button" className="quiet"
+                    onClick={() => edit('property', record.id, STRUCTURE_VALUATION_OVERRIDE, '')}>Use calculated valuation</button>}
+                </div> : undefined : undefined}
                 groupsOverride={isReconveyance ? groupsForStep(4, record.category).map(group => ({
                   ...group, title: 'Stamp paper details', note: '', telugu: undefined,
                   fields: group.fields.filter(field => ['stampPaperMargin', 'stampValue'].includes(field.id)),
-                })) : isHouseCategory(record.category) ? groupsForStep(4, record.category).map(group => ({ ...group, fields: group.fields.map(field => field.id === 'structValue' ? { ...field, label: 'Market Value of Structure Valuation (₹)', hint: 'Calculated from priced structure rows when available.' } : field) })) : undefined} />
+                })) : isHouseCategory(record.category) ? groupsForStep(4, record.category).map(group => ({ ...group, fields: group.fields.map(field => field.id === 'structValue' ? { ...field, label: 'Structure Valuation (₹)', hint: 'Uses the total of priced structure rows. Enter an amount to override it.' } : field) })) : undefined} />
             </div>)}
+            {!isReconveyance && <div aria-live="polite"><h3>Total Consideration MV</h3><strong>{vm.persayINR || 'Enter the land extent and basic rate for each schedule.'}</strong></div>}
           </section>
           {isReconveyance ? null : draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
             <h2>Consideration value</h2>
@@ -1700,7 +1769,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                     {resolved.values[fieldKey(role, record, 'poaRelationship')] === 'other' && <label className="field"><span>Family relationship wording</span><input aria-label="Family relationship wording" required value={resolved.values[fieldKey(role, record, 'poaRelationshipCustom')] || ''} onChange={event => edit(role, record, 'poaRelationshipCustom', event.target.value)} /><small>Enter this attorney’s relationship to the listed principal(s).</small></label>}
                     {!poaRelationship({ poaRelationship: resolved.values[fieldKey(role, record, 'poaRelationship')] || '', poaRelationshipCustom: resolved.values[fieldKey(role, record, 'poaRelationshipCustom')] || '' }) && <p role="status" className="notice">Choose this attorney’s family relationship before generating the GPA.</p>}
                   </div>}
-                shareFields={<>
+                shareFields={!isReconveyance && <>
                   {isRelease && <p>Existing ownership percentages (optional). Enter the rights released or received separately in Release particulars.</p>}
                   <PartyShareFields role={role} record={record} parties={records} schedules={propertyRecords}
                     shares={(role === 'executant' ? draft.vendorSharesBySchedule : draft.vendeeSharesBySchedule) || {}} manual={draft.manual} dispatch={dispatch} />
@@ -1762,17 +1831,17 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <h3 className="export-section-title">2. Download your files</h3>
           <div className="export-options" aria-busy={exporting}>
             <article className="export-card export-word"><div className="export-file-icon"><FileDown size={25} aria-hidden="true" /></div><div><span className="export-format">WORD DOCUMENT · .DOCX</span><h3>Editable deed</h3><p>Open in Microsoft Word to review the wording and finish any write-in details.</p></div>
-              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady || authorityErrors.length > 0 || shareBlockers.length > 0 || templateFieldErrors.length > 0 || !!minorDownloadErrors} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
-              <small id="word-download-state">{minorDownloadErrors || (exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'Choose a compatible Word template to enable this download.' : shareBlockers.length > 0 ? 'Correct the invalid ownership percentages first.' : templateFieldErrors.length ? 'Correct the template field errors listed below.' : notices.length ? 'Incomplete draft: review the outstanding details before using it.' : 'Read the generated deed before using it.')}</small>{minorDownloadErrors && <button type="button" className="quiet" onClick={() => goto(minorDownloadErrors.startsWith('Claimant') ? 7 : 6)}>Complete guardian details</button>}
+              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate)} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
+              <small id="word-download-state">{minorDownloadErrors || (exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Checking the custom template.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'The custom Word template has compatibility issues.' : templateFieldErrors.length || notices.length ? 'Review the outstanding details before using this draft.' : 'Read the generated deed before using it.')}</small>{minorDownloadErrors && <button type="button" className="quiet" onClick={() => goto(minorDownloadErrors.startsWith('Claimant') ? 7 : 6)}>Complete guardian details</button>}
             </article>
             <article className="export-card"><div className="export-file-icon"><MapIcon size={25} aria-hidden="true" /></div><div><span className="export-format">PROPERTY PLAN · PDF</span><h3>Plan for printing</h3><p>Download the property-plan PDF. This is a separate file from the Word deed.</p></div>
-              <button aria-describedby="plan-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate) || !generationReady || !templateReady} onClick={() => generate('pdf')}>Download plan PDF</button>
-              <small id="plan-download-state">{exporting ? 'Preparing your files…' : !generationReady ? 'An approved reference is required before generation.' : !templateReady ? 'Choose a compatible template before generating files.' : templateMode === 'custom' && validatingTemplate ? 'Wait for the custom template check to finish.' : 'Check the property plan before printing.'}</small>
+              <button aria-describedby="plan-download-state" disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button>
+              <small id="plan-download-state">{exporting ? 'Preparing your files…' : 'Check the property plan before printing.'}</small>
             </article>
           </div>
           {message && <p className="export-feedback" role="status">{message}</p>}
           {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldResolution.instances.filter(instance => instance.error).map(instance => <li key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}>{instance.record.label}: {instance.error}{instance.field.placement && <button type="button" onClick={() => gotoTemplateField(instance)}>Go to field</button>}</li>)}</ul></div>}
-          {shareBlockers.length > 0 && <p className="notice" role="alert">Correct invalid ownership percentages before downloading the Word deed. Blank percentages are omitted. <button type="button" onClick={() => goto(-1)}>Review party details</button></p>}
+          {shareBlockers.length > 0 && <p className="notice" role="alert">Review the entered ownership percentages. Invalid and blank percentages are omitted. <button type="button" onClick={() => goto(-1)}>Review party details</button></p>}
           <details className="download-outstanding"><summary><AlertCircle size={17} aria-hidden="true" />{notices.length ? `${notices.length} details to review before using this draft` : 'Review the current readiness status'}</summary><ReviewIssues issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} compact /></details>
 
         </section>}

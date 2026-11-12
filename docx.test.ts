@@ -581,15 +581,15 @@ describe('sale deed template merge', () => {
     expect(variantFor('Flat')).toBe('IF FLAT');
     const text = await scheduleText('IF FLAT', mergeValues(state));
     for (const value of ['A-502', 'Semi-Finished', 'Sky Residency', '1250', '42', 'out of 1200 Sq.Yds.', '10-1-1, 10-1-2',
-      'Apartment North', 'Apartment South', 'Apartment East', 'Apartment West',
-      'Flat North', 'Flat South', 'Flat East', 'Flat West']) expect(text).toContain(value);
+      'ApartmentNorth', 'ApartmentSouth', 'ApartmentEast', 'ApartmentWest',
+      'FlatNorth', 'FlatSouth', 'FlatEast', 'FlatWest']) expect(text).toContain(value);
     expect(text).toContain('Boundaries of Apartment:');
     expect(text).toContain('Boundaries of Flat No.A-502 in 5 Floor:');
     const deed = await fillSaleDeed(mergeValues(state), 'IF FLAT');
     const deedText = await docxToText(new Uint8Array(await deed.blob.arrayBuffer()));
     expect(deedText).toContain('All that a Semi-Finished Flat No. A-502');
-    expect(deedText).toContain('North : Apartment North,');
-    expect(deedText).toContain('North : Flat North,');
+    expect(deedText).toContain('North : ApartmentNorth,');
+    expect(deedText).toContain('North : FlatNorth,');
     expect(deedText).not.toContain('<IF FLAT>');
   });
 
@@ -793,10 +793,10 @@ describe('sale deed template merge', () => {
     expect(opening).toContain('2. VENDOR TWO');
     expect(opening).toContain('1. PURCHASER ONE');
     expect(opening).toContain('2. PURCHASER TWO');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 55%; Schedule 2: 25%');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 45%; Schedule 2: 75%');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 60%; Schedule 2: 25%');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 40%; Schedule 2: 75%');
+    expect(opening).toContain('Holding Undivided Share of Schedule 1: 55% (0.55 Sq. Yards); Schedule 2: 25% (0.25 Sq. Yards)');
+    expect(opening).toContain('Holding Undivided Share of Schedule 1: 45% (0.45 Sq. Yards); Schedule 2: 75% (0.75 Sq. Yards)');
+    expect(opening).toContain('Holding Undivided Share of Schedule 1: 60% (0.6 Sq. Yards); Schedule 2: 25% (0.25 Sq. Yards)');
+    expect(opening).toContain('Holding Undivided Share of Schedule 1: 40% (0.4 Sq. Yards); Schedule 2: 75% (0.75 Sq. Yards)');
     const partyLines = opening.split('\n');
     for (const [first, last, closing] of [
       ['1. VENDOR ONE', '2. VENDOR TWO', '(Hereinafter called the "VENDORS") of the ONE PART.'],
@@ -814,11 +814,11 @@ describe('sale deed template merge', () => {
     }
     const first = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 1'), text.indexOf('SCHEDULE OF PROPERTY - 2'));
     const second = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 2'), text.indexOf('DECLARATION'));
-    expect(first).toContain('(1) PURCHASER ONE — 60%; (2) PURCHASER TWO — 40%');
-    expect(first).toContain('(1) VENDOR ONE — 55%; (2) VENDOR TWO — 45%');
+    expect(first).toContain('(1) PURCHASER ONE — 60% (0.6 Sq. Yards); (2) PURCHASER TWO — 40% (0.4 Sq. Yards)');
+    expect(first).toContain('(1) VENDOR ONE — 55% (0.55 Sq. Yards); (2) VENDOR TWO — 45% (0.45 Sq. Yards)');
     expect(first.indexOf('The vendors convey')).toBeLessThan(first.indexOf('The vendees acquire'));
-    expect(second).toContain('(1) PURCHASER ONE — 25%; (2) PURCHASER TWO — 75%');
-    expect(second).toContain('(1) VENDOR ONE — 25%; (2) VENDOR TWO — 75%');
+    expect(second).toContain('(1) PURCHASER ONE — 25% (0.25 Sq. Yards); (2) PURCHASER TWO — 75% (0.75 Sq. Yards)');
+    expect(second).toContain('(1) VENDOR ONE — 25% (0.25 Sq. Yards); (2) VENDOR TWO — 75% (0.75 Sq. Yards)');
     expect(first).not.toContain('PURCHASER ONE — 25%');
     expect(second).not.toContain('PURCHASER ONE — 60%');
     const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
@@ -980,10 +980,10 @@ describe('sale deed template merge', () => {
     expect(text).toContain('TOTAL\n2250 Sq.Ft.');
     expect(text).toContain('Compound Wall: 40.5 R.Fts.');
     expect(text).not.toMatch(/40\.5\s+Sq\.Ft\./);
-    expect(text).toContain("33' Road");
-    expect(text).toContain('House of Gudla Babu');
-    expect(text).toContain("26' Road");
-    expect(text).toContain('House of Adepu Krishahari');
+    expect(text).toContain("33'Road");
+    expect(text).toContain('HouseOfGudlaBabu');
+    expect(text).toContain("26'Road");
+    expect(text).toContain('HouseOfAdepuKrishahari');
     expect(text).toContain('ANNEXURE – 1A');
     expect(text).toContain('Nature of roof\n: R.C.C. Building & Shed Structure');
     expect(text).toContain('Type of structure\n: Framed with pillars & columns only');

@@ -34,7 +34,7 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const vendors of [1, 2]) fo
 const singleFlat = await render(rt.sampleState('ordinary-flat-finished'));
 assert.match(singleFlat, /undivided share of land/i, 'Flat land-area UDS is independent of party ownership allocation');
 const multiSchedule = await render(rt.sampleState('multiple'));
-assert.match(multiSchedule, /Schedule 1: 50%; Schedule 2: 50%/);
+assert.match(multiSchedule, /Schedule 1: 50% \(100 Sq\. Yards\); Schedule 2: 50% \(100 Sq\. Yards\)/);
 const entity = rt.sampleState('entity');
 assert.doesNotMatch(await render(entity), /holding\s+(?:an\s+)?undivided share of/i);
 console.log('PASS: independent vendor/vendee share clauses in 12 ordinary/GPA/AGPA combinations, saved single-party shares, multiple schedules, entities and flat land UDS.');

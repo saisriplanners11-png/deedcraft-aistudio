@@ -23,3 +23,11 @@ export function isPropertyPlaceNameField(field: string): boolean {
 export function normalizePropertyPlaceName(field: string, value: string): string {
   return isPropertyPlaceNameField(field) ? titleCasePlaceName(value) : value;
 }
+
+/** Keep boundary numbers and punctuation while joining capitalized words. */
+export function pascalCaseBoundary(value: string): string {
+  return value.trim().replace(/\p{L}[\p{L}\p{M}]*/gu, word => {
+    if (/^\p{Lu}\p{Ll}+\p{Lu}/u.test(word)) return word;
+    return word.toLocaleLowerCase('en-IN').replace(/^\p{L}/u, first => first.toLocaleUpperCase('en-IN'));
+  }).replace(/\s+/g, '');
+}
