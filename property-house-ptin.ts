@@ -14,15 +14,16 @@ export const newPropertyHousePtinPair = (): PropertyHousePtinPair => ({
 const cleanPart = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 
 /** Parse the schedule-scoped repeatable pair field. null means legacy/invalid data. */
-export function parsePropertyHousePtinPairs(value: string): PropertyHousePtinPair[] | null {
+export function parsePropertyHousePtinPairs(value: string, preserveSpacing = false): PropertyHousePtinPair[] | null {
   if (!value.trim()) return null;
+  const readPart = (part: unknown) => preserveSpacing && typeof part === 'string' ? part : cleanPart(part);
   try {
     const parsed: unknown = JSON.parse(value);
     if (!Array.isArray(parsed)) return null;
     return parsed.filter(row => row && typeof row === 'object').map((row: any, index) => ({
       id: cleanPart(row.id) || `imported-${index + 1}`,
-      houseNo: cleanPart(row.houseNo),
-      ptin: cleanPart(row.ptin),
+      houseNo: readPart(row.houseNo),
+      ptin: readPart(row.ptin),
     }));
   } catch {
     return null;
@@ -34,7 +35,7 @@ export function propertyHousePtinPairsForEditor(
   legacyHouseNo = '',
   legacyPtin = '',
 ): PropertyHousePtinPair[] {
-  const saved = parsePropertyHousePtinPairs(value);
+  const saved = parsePropertyHousePtinPairs(value, true);
   if (saved) return saved.length ? saved : [{ id: 'empty-house-ptin-row', houseNo: '', ptin: '' }];
   if (legacyHouseNo.trim() || legacyPtin.trim()) return [{
     id: 'legacy-house-ptin', houseNo: legacyHouseNo, ptin: legacyPtin,

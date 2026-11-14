@@ -18,7 +18,7 @@ export function houseStructureRate(row: StructureDetail, authority: string, fall
   if (row.rateOverride !== undefined) return row.rateOverride;
   const localBody = localAuthorityName(authority);
   const rural = localBody === 'Gram Panchayat';
-  if (!rural && !['Municipal Corporation', 'Municipal Council'].includes(localBody)) return '';
+  if (!rural && !['Municipal Corporation', 'Municipal Council', 'GHMC'].includes(localBody)) return '';
   const roof = (!row.structureType || STRUCTURE_TYPE_OPTIONS.includes(row.structureType)
     ? fallbackRoof
     : row.structureType === 'Other / Custom Structure' ? row.customStructureType || '' : row.structureType).trim();
@@ -36,6 +36,12 @@ export function houseStagePercent(row: StructureDetail): number | null {
   // Older priced rows without a stage were valued at full cost.
   if (isCompoundWall(row) || !row.stage?.trim()) return 100;
   return houseValuationStage(row.stage)?.percent ?? null;
+}
+
+export function houseStageRate(row: StructureDetail, authority: string, fallbackRoof = ''): string {
+  const rate = houseStructureRate(row, authority, fallbackRoof);
+  const percent = houseStagePercent(row);
+  return rate && percent !== null ? String(Number(rate) * percent / 100) : '';
 }
 
 export function houseStructurePaise(row: StructureDetail, authority: string, fallbackRoof = ''): bigint | null {

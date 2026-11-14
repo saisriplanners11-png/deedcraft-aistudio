@@ -41,7 +41,7 @@ export function reconveyanceAmounts(records: MortgageRecord[], principalOverride
 import type { AppState } from './logic';
 import { deedDate } from './deed-format';
 export function reconveyanceRecords(state: AppState): MortgageRecord[] {
-  const order = [...new Set(['primary', ...state.additionalSchedules.map(record => record.id), ...Object.keys(state.linkRecordsBySchedule)])];
+  const order = [...new Set([...(state.scheduleOrder || []), 'primary', ...state.additionalSchedules.map(record => record.id), ...Object.keys(state.linkRecordsBySchedule)])];
   return order.flatMap(id => state.linkRecordsBySchedule[id] || []).filter(record => record.values.linkOption === 'linkDoc' || (!record.values.linkOption && ['mortgageAmount','linkDocNo','linkDocDate','linkSro'].some(field => !!record.values[field]?.trim())));
 }
 export function mortgageInterestTotal(records: MortgageRecord[], legacyInterest = '') {

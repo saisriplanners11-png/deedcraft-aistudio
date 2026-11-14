@@ -16,7 +16,8 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   if (candidateVariant === 'municipal-gift' && property !== 'plot') continue;
   const state = rt.sampleState((candidateVariant === 'sale-deed-by-gpa-holder' ? 'gpa-' : candidateVariant === 'sale-through-existing-agpa' ? 'agpa-' : 'ordinary-') + property);
   Object.assign(state, { deedType, draft });
-  const stampCount = margin === '100' ? (property === 'plot' ? 2 : 3) : margin === '50' ? 2 : 1;
+  const fiveSheetGift = margin === '100' && property === 'house-finished' && candidateVariant === 'gift-settlement-family';
+  const stampCount = fiveSheetGift ? 5 : margin === '100' ? (property === 'plot' ? 2 : 3) : margin === '50' ? 2 : 1;
   Object.assign(state.form, { stampPaperMargin: margin, stampPaperCount: margin === 'None' ? '3' : String(stampCount), giftRelationship: 'daughter', poaRelationship: 'son' });
   Object.assign(state.form, { dimensionNorth: '21 ft', dimensionSouth: '22 ft', dimensionEast: '41 ft', dimensionWest: '42 ft' });
   if (property === 'house-finished') {
@@ -55,6 +56,11 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   const tops = [...xml.matchAll(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)].map(section => section[0].match(/w:top="(\d+)"/)?.[1]);
   const stampTop = ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' })[margin];
   assert.deepEqual(tops.slice(0, stampCount), Array(stampCount).fill(stampTop), label);
+  if (fiveSheetGift) {
+    const secondSheet = xml.split('</w:sectPr>')[1];
+    assert.match(secondSheet, /WHEREAS the Donees are the daughters of the Donor/);
+    assert.match(secondSheet, /the title, right, interest, and possession of the/);
+  }
   assert(tops.length > stampCount && !tops.slice(stampCount).some(top => top === '8352' || top === '8640'), label + ': continuation margins');
   assert.doesNotMatch(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent:/i, label);
   assert.doesNotMatch(text, /\b(?:Vendor|Vendee|Executant|Principal|Attorney|First Party|Second Party)\/s\b|\bhas\/have\b|\bis\/are\b|\bI\/We\b/i, label);

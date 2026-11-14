@@ -111,7 +111,7 @@ export function Input({
   // A saved execution date may predate the month-only control and still include
   // a day. Display its year/month in the native month picker without losing it
   // until the drafter changes the field.
-  const formatted = normalizePropertyPlaceName(field.id, rawShown);
+  const formatted = normalizePropertyPlaceName(field.id, rawShown, true);
   const shown = field.id === 'flatStage' ? flatStage(formatted) || formatted : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? formatted.slice(0, 7) : formatted;
 
   return (

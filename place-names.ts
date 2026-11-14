@@ -8,8 +8,9 @@ const PLACE_NAME_FIELDS = new Set([
 const ACRONYMS = new Set(['AP', 'GHMC', 'GP', 'HMDA', 'MRO', 'NH', 'PIN', 'SRO', 'TS', 'ULB']);
 
 /** Normalize only the requested property/place labels; source quotes stay untouched. */
-export function titleCasePlaceName(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').replace(/[\p{L}\p{M}]+/gu, word => {
+export function titleCasePlaceName(value: string, preserveSpacing = false): string {
+  const text = preserveSpacing ? value : value.trim().replace(/\s+/g, ' ');
+  return text.replace(/[\p{L}\p{M}]+/gu, word => {
     const upper = word.toLocaleUpperCase('en-IN');
     if (ACRONYMS.has(upper)) return upper;
     return word.toLocaleLowerCase('en-IN').replace(/^\p{L}/u, first => first.toLocaleUpperCase('en-IN'));
@@ -20,14 +21,6 @@ export function isPropertyPlaceNameField(field: string): boolean {
   return PLACE_NAME_FIELDS.has(field);
 }
 
-export function normalizePropertyPlaceName(field: string, value: string): string {
-  return isPropertyPlaceNameField(field) ? titleCasePlaceName(value) : value;
-}
-
-/** Keep boundary numbers and punctuation while joining capitalized words. */
-export function pascalCaseBoundary(value: string): string {
-  return value.trim().replace(/\p{L}[\p{L}\p{M}]*/gu, word => {
-    if (/^\p{Lu}\p{Ll}+\p{Lu}/u.test(word)) return word;
-    return word.toLocaleLowerCase('en-IN').replace(/^\p{L}/u, first => first.toLocaleUpperCase('en-IN'));
-  }).replace(/\s+/g, '');
+export function normalizePropertyPlaceName(field: string, value: string, preserveSpacing = false): string {
+  return isPropertyPlaceNameField(field) ? titleCasePlaceName(value, preserveSpacing) : value;
 }

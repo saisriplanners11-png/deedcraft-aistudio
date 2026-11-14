@@ -7,10 +7,10 @@
 
 export type FieldType = 'text' | 'number' | 'money' | 'date' | 'month' | 'tel' | 'select' | 'textarea';
 
-export const LOCAL_AUTHORITY_OPTIONS = ['Municipal Corporation', 'Municipal Council', 'Gram Panchayat'];
+export const LOCAL_AUTHORITY_OPTIONS = ['Municipal Corporation', 'Municipal Council', 'Gram Panchayat', 'GHMC'];
 export const localAuthorityName = (value: string): string => ({
   corporation: 'Municipal Corporation', municipality: 'Municipal Council', 'gram panchayati': 'Gram Panchayat',
-  'municipal corporation': 'Municipal Corporation', 'municipal council': 'Municipal Council', 'gram panchayat': 'Gram Panchayat',
+  ghmc: 'GHMC', 'greater hyderabad municipal corporation': 'GHMC', 'municipal corporation': 'Municipal Corporation', 'municipal council': 'Municipal Council', 'gram panchayat': 'Gram Panchayat',
 } as Record<string, string>)[value.trim().toLowerCase()] || value;
 
 export type Field = {
@@ -313,7 +313,7 @@ export const GROUPS: Group[] = [
       { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot'],
         hint: 'Vacant Land Tax / assessment number, exactly as printed in the local-body record.' },
       { id: 'locality', label: 'Locality', ph: 'Locality' },
-      { id: 'localAuthorityType', label: 'ULB / municipality', ph: 'Local Authority Type', type: 'select', options: LOCAL_AUTHORITY_OPTIONS },
+      { id: 'localAuthorityType', label: 'ULB / municipality', ph: 'Local Authority Type', type: 'select', options: LOCAL_AUTHORITY_OPTIONS, allowCustom: true },
       { id: 'pinCode', label: 'PIN code', ph: 'Pin Code' },
     ],
   },

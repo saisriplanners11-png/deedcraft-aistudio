@@ -1,5 +1,7 @@
+import { RecordMove } from './record-move';
 import { ReleaseFields } from './release-fields';
 import { releaseErrors } from './release';
+import { inRecordOrder } from './source-draft';
 import { orderedEnclosureIds } from './enclosure-records';
 import { guardianIds, isMinorParty } from './minor-parties';
 import { resolveSroSelection } from './sro-directory';
@@ -10,7 +12,7 @@ import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { LINK_ISSUING_AUTHORITIES } from './link-enclosure';
 import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
-import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, houseValuationStage, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
+import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, houseValuationStage, houseStageRate, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
 import { formatDeedAmount, formatMoneyInput, stampPaperValue } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
@@ -129,6 +131,7 @@ function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNoti
           const unit = structureUnit(row);
           const amount = houseStructurePaise(row, authority, defaultRoof);
           const stage = houseValuationStage(row.stage);
+          const stageRate = stage && stage.percent < 100 ? houseStageRate(row, authority, defaultRoof) : '';
           const legacyStage = !wall && !!row.stage && !stage;
           return <tr key={row.id}>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" aria-label="Total floors" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
@@ -137,9 +140,9 @@ function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNoti
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Stage" disabled={wall} value={wall ? '' : stage?.value ?? row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{legacyStage && <option value={row.stage}>{row.stage}</option>}{HOUSE_VALUATION_STAGES.map(option => <option key={option.value} value={option.value}>{option.label} ({option.percent}%)</option>)}</select>{legacyStage && <small>Choose a stage with a valuation percentage.</small>}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" aria-label="Building age" disabled={wall} value={wall ? '' : row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><label><span>{unit}</span><input aria-label={`Measurement (${unit})`} type="number" min="0" step="any" value={structureMeasurement(row)} onChange={event => patchRow(row.id, { [wall ? 'runningFeet' : 'builtUpAreaSqFt']: event.target.value })} style={{ width: 100, padding: 6, border: `1px solid ${C.goldLight}` }} /></label></td>
-          <td style={{ padding: 8 }}><label><span>Per {unit}</span><input aria-label={`Rate (₹ per ${unit})`} inputMode="decimal" value={formatMoneyInput(houseStructureRate(row, authority, defaultRoof))} onChange={event => patchRow(row.id, { rateOverride: event.target.value.replace(/,/g, '') })} style={{ width: 100, padding: 6 }} /></label></td>
+          <td style={{ padding: 8 }}><label><span>Per {unit}</span><input aria-label={`Rate (₹ per ${unit})`} inputMode="decimal" value={formatMoneyInput(houseStructureRate(row, authority, defaultRoof))} onChange={event => patchRow(row.id, { rateOverride: event.target.value.replace(/,/g, '') })} style={{ width: 100, padding: 6 }} /></label>{stageRate && <small style={{ display: 'block' }}>Stage rate ₹{formatMoneyInput(stageRate)} per {unit}</small>}</td>
           <td style={{ padding: 8 }}><input aria-label="Total Value (₹)" readOnly value={amount === null ? '' : formatDeedAmount(structureAmount(amount))} style={{ width: 100, padding: 6 }} /></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><button type="button" className="gold" aria-label="Add structure row" onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button><IconButton label={`Delete structure row ${index + 1}`} onClick={() => onChange({ ...details, rows: details.rows.length > 1 ? details.rows.filter(item => item.id !== row.id) : [newStructureDetail()] })} style={{ marginLeft: 6 }} /></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}`, whiteSpace: 'nowrap' }}><RecordMove scope="structure" id={row.id} ids={details.rows.map(item => item.id)} onChange={ids => onChange({ ...details, rows: inRecordOrder(details.rows, ids, item => item.id) })} /><button type="button" className="gold" aria-label="Add structure row" onClick={() => onChange({ ...details, rows: [...details.rows, newStructureDetail()] })}>+</button><IconButton label={`Delete structure row ${index + 1}`} onClick={() => onChange({ ...details, rows: details.rows.length > 1 ? details.rows.filter(item => item.id !== row.id) : [newStructureDetail()] })} style={{ marginLeft: 6 }} /></td>
         </tr>})}</tbody>
       </table>
     </div>
@@ -174,6 +177,7 @@ function HousePtinPairsEditor({
           <input aria-label={`PTIN for H.No. ${index + 1}`} value={row.ptin}
             onChange={event => patchRow(row.id, { ptin: event.target.value })} placeholder="Property tax ID" />
         </label>
+        <RecordMove scope="house-ptin" id={row.id} ids={rows.map(item => item.id)} onChange={ids => save(inRecordOrder(rows, ids, item => item.id))} />
         <button type="button" className="quiet house-ptin-remove" aria-label={`Remove H.No./PTIN pair ${index + 1}`}
           onClick={() => save(rows.filter(item => item.id !== row.id))}>Remove</button>
       </div>)}
@@ -512,7 +516,7 @@ function PartyRecordCard({
         const form = Object.fromEntries(PERSON_FIELDS.map(f => [f.id, resolved.values[fieldKey('party-person', person.id, f.id)] || (f.id === 'personRelation' ? 'S/O' : '')]));
         const fields = PERSON_FIELDS.map(field => field.id === 'personDesignation' ? { ...field, type: 'select' as const, allowCustom: true, options: representativeDesignationOptions(partyType), hint: 'Choose a designation or type your own.' } : field.id === 'personAge' && form.personDob ? { ...field, derived: true } : field);
         return <div className="representative-card" key={person.id} data-person-id={person.id}>
-          <div className="representative-heading"><b>Representative {index + 1}</b><IconButton label={`Delete representative ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
+          <div className="representative-heading"><RecordMove scope={'people:' + partyKey(role, record)} id={person.id} ids={rows.map(item => item.id)} onChange={ids => dispatch({ type: 'record-order', scope: 'people:' + partyKey(role, record), ids })} /><b>Representative {index + 1}</b><IconButton label={`Delete representative ${index + 1}`} onClick={() => dispatch({ type: 'remove-person', side: role, record, id: person.id })} /></div>
           <ScopedSectionUpload label="representative" busy={ownSources.some(s => s.status === 'reading' || s.status === 'queued')} onUpload={files => upload(files, { role: 'party-person', record: person.id }, 'party-person')} />
           <SourceFeedback sources={ownSources} />
           <FieldGroup group={{ step, title: 'Representative ' + (index + 1) + ' details', cols: 3, fields }} form={form} setField={(id, value) => edit('party-person', person.id, id, value)} />
@@ -650,12 +654,12 @@ function ScheduleTypeControl({ scheduleNumber, category, stage, onChange, munici
   </div>;
 }
 
-function ScheduleSwitcher({ records, activeId, onSelect }: { records: ReturnType<typeof scheduleRecords>; activeId: string; onSelect: (id: string) => void }) {
+function ScheduleSwitcher({ records, activeId, onSelect, onReorder }: { records: ReturnType<typeof scheduleRecords>; activeId: string; onSelect: (id: string) => void; onReorder?: (ids: string[]) => void }) {
   if (records.length < 2) return null;
   return <div className="add-document-row" aria-label="Property schedules">
-    {records.map((record, index) => <button key={record.id} type="button" className={record.id === activeId ? 'primary' : 'quiet'} onClick={() => onSelect(record.id)}>
+    {records.map((record, index) => <div key={record.id}>{onReorder && <RecordMove scope="property" id={record.id} ids={records.map(item => item.id)} onChange={onReorder} />}<button type="button" className={record.id === activeId ? 'primary' : 'quiet'} onClick={() => onSelect(record.id)}>
       Schedule {index + 1}{record.category ? ` · ${record.category === 'Flat' ? flatLabel(record.values.flatStage) : record.category}` : ''}
-    </button>)}
+    </button></div>)}
   </div>;
 }
 
@@ -779,7 +783,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v2:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v11'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v3:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v11'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -880,7 +884,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       setDownload(null);
       return;
     }
-    value = normalizePropertyPlaceName(field, value);
+    value = normalizePropertyPlaceName(field, value, true);
     value = uppercasePartyIdentity(field, value);
     if (field === 'consid' && hasPaymentStep(state.deedType)) {
       const consideration = Number(value);
@@ -1066,7 +1070,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const partyRecordIds = (role: 'executant' | 'claimant') => {
     const existing = recordOptions(role);
     const base = existing.includes('primary') ? ['primary', ...existing.filter(record => record !== 'primary')] : existing.length ? existing : ['primary'];
-    return [...base, ...extraPartyRecords[role].filter(r => !base.includes(r))];
+    return inRecordOrder([...base, ...extraPartyRecords[role].filter(r => !base.includes(r))], draft.recordOrder?.[role], id => id);
   };
   /** One new row per uploaded ID (each is its own person); no files chosen still creates one blank row to type into. */
   const addPartyRecord = (role: 'executant' | 'claimant') => (files: File[]) => {
@@ -1271,9 +1275,10 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     if (reasons.length && !allowIncomplete) { warn(reasons); return; }
     const snapshot = draft; setExporting(true); setMessage('');
     try {
+      const filename = deedFilename(state, savedDeeds.find(deed => deed.id === snapshot.id)?.name);
       const templateSource = templateReady ? activeTemplateSource : BUILT_IN_TEMPLATE_SOURCE;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
-        ? download : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename: deedFilename(state) };
+        ? { ...download, filename } : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename };
       if (isWord && !artifact.docx) {
         const deedValues = mergeValues(state);
         const inputSnapshotHash = await sha256(new TextEncoder().encode(JSON.stringify({ deedValues, typingStamp, saleAuthority: snapshot.saleAuthority, scheduleMerges, selectedPlanSvgs, templateFieldData: templateFieldResolution.data })));
@@ -1310,11 +1315,18 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       }
       if (kind === 'telugu' && !artifact.telugu) {
         const { translateDeedToTelugu } = await import('./telugu-deed');
-        const identities = Object.entries(resolved.values).flatMap(([key, value]) =>
-          /^(executant|claimant|party-person|link|payment)\|/.test(key) && /(?:name|address|aadhaar|pan|phone|mobile|account|sro|village|mandal|district|locality|bank|branch|reference)$/i.test(key)
+        const fields = Object.entries(resolved.values);
+        const identifiers = fields.flatMap(([key, value]) =>
+          /(?:aadhaar|pan|phone|mobile|account|reference|no|code)$/i.test(key)
+            && !/(?:address|street|locality|village|mandal|district)/i.test(key) ? [value] : []);
+        const namesAndPlaces = fields.flatMap(([key, value]) =>
+          /(?:name|village|mandal|district|locality|bank|branch|sro)$/i.test(key) && !/(?:address|street)/i.test(key)
             ? [value] : []);
-        if (typingStamp) identities.push(typingStamp.name, deedMobile(typingStamp.mobile), typingStamp.place);
-        artifact = { ...artifact, telugu: await translateDeedToTelugu(artifact.docx!, identities) };
+        if (typingStamp) {
+          identifiers.push(deedMobile(typingStamp.mobile));
+          namesAndPlaces.push(typingStamp.name, typingStamp.place);
+        }
+        artifact = { ...artifact, telugu: await translateDeedToTelugu(artifact.docx!, identifiers, undefined, namesAndPlaces) };
         if (current.current.id !== snapshot.id || current.current.revision !== snapshot.revision
           || activeTemplateKeyRef.current !== templateKey) {
           setMessage('The deed changed during translation. Download the Telugu copy again for the current draft.');
@@ -1323,7 +1335,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       }
       setDownload(artifact);
       if (kind === 'telugu') {
-        saveBlob(artifact.telugu!, artifact.filename.replace(/\.docx$/i, '-Telugu.docx'));
+        saveBlob(artifact.telugu!, artifact.filename.replace(/\.docx$/i, ' Telugu.docx'));
         setMessage('Downloaded the Telugu Word draft. Compare the translation with the English deed before signing or registration.');
         return;
       }
@@ -1352,7 +1364,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           new Paragraph('The deed template could not be rendered. Review and complete the draft before use.'),
           ...[...new Set([...reasons, reason])].map(text => new Paragraph(text)), ...details,
         ] }] }));
-        saveBlob(await appendRegistrationPlans(blob, [], typingStamp), deedFilename(state).replace(/\.docx$/, '-incomplete-details.docx'));
+        saveBlob(await appendRegistrationPlans(blob, [], typingStamp), deedFilename(state, savedDeeds.find(deed => deed.id === draft.id)?.name).replace(/\.docx$/, ' Incomplete Details.docx'));
         setMessage('Downloaded the entered details as a Word file because the deed template could not be rendered.');
       } else {
         setMessage(`Download could not be prepared: ${reason}`);
@@ -1543,7 +1555,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         </div>}
 
         {step === 0 && <div className="setup-step">
-          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="setup-card" aria-labelledby="setup-property-title">
             <div className="workflow-section-heading"><span className="workflow-section-number">01</span><div><h2 id="setup-property-title">Property type <span lang="te">ఆస్తి రకం</span></h2><p>Choose the property covered by this schedule.</p></div></div>
             <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><IconButton label={`Delete property schedule ${activePropertyIndex + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: activePropertyId })} />
@@ -1577,7 +1589,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <p className="workflow-footnote">Your choices carry forward to the document and property sections.</p>
         </div>}
 
-        {isRelease && [4,8].includes(step) && <ReleaseFields state={state} draft={draft} dispatch={dispatch} schedules={propertyRecords} onValue={(id,value)=>edit('property',propertyRecords[0]?.id||'primary',id,value)} />}
+        {isRelease && [4,8].includes(step) && <ReleaseFields state={state} draft={draft} dispatch={dispatch} schedules={propertyRecords} onValue={(id,value)=>edit('property','primary',id,value)} />}
         {isReconveyance && [4,8].includes(step) && <section className="panel repayment-panel" aria-label="Reconveyance repayment">
           <header>
             <h2>Reconveyance repayment</h2>
@@ -1619,7 +1631,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         </section>}
         {authorityErrors.length > 0 && [8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
-          const records = recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId);
+          const scope = 'link:' + activePropertyId;
+          const records = inRecordOrder(recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId), draft.recordOrder?.[scope], id => id);
           const activeProperty = propertyRecords.find(record => record.id === activePropertyId);
           const category = activeProperty?.category || '';
           const options = TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id)!);
@@ -1629,7 +1642,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               || (id === 'houseTax' && saved === 'assessment');
           });
           return <div className="documents-step">
-          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
           <section className="property-context" aria-label="Selected property type">
             <span className="document-card-icon"><LayoutGrid size={20} aria-hidden="true" /></span>
             <div><span className="property-context-label">Schedule {activePropertyIndex + 1} · Property type</span><strong>{category ? category === 'Flat' ? flatLabel(activeProperty?.values.flatStage) : category : 'Property type not selected'}</strong></div>
@@ -1637,10 +1650,9 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           </section>
           {!category ? <Empty>Choose this schedule's property type in Step 1 to add its documents.</Empty> : <>
           <div className="documents-intro"><div><h2>Documents for this property</h2><p>Add the records you have. Review the extracted details in each card.</p></div><span>{records.length} document{records.length === 1 ? '' : 's'} added</span></div>
-          {options.map(option => {
-            const related = sectionRecords(option.id);
-            return <React.Fragment key={option.id}>
-              {related.map((record, index) => {
+          {records.map(record => {
+            const option = options.find(item => sectionRecords(item.id).includes(record));
+            if (!option) return null;
                 const form = Object.fromEntries([...option.fields.map(field => field.id), 'municipalLinkAuthority', 'municipalLinkEnclosure'].map(field => [field, resolved.values[fieldKey('link', record, field)] || '']));
                 if (option.id === 'houseTax' && !form.bltNo) form.bltNo = resolved.values[fieldKey('link', record, 'assessmentPtinNo')] || '';
                 const ensureRecord = () => {
@@ -1649,16 +1661,15 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                     edit('link', record, 'linkOption', option.id);
                   }
                 };
-                return <TitlePointCard key={record} ordinal={index + 1} option={isReconveyance && option.id === 'linkDoc' ? { ...option, fields: option.fields.map(field => ['mortgageAmount','mortgageInterestAmount'].includes(field.id) ? { ...field, hidden: false } : field) } : option.id === 'houseTax' ? { ...option, fields: option.fields.filter(field => !['bearingHNo', 'bltNo', 'assessmentPtinNo'].includes(field.id)) } : option} record={record} form={form}
+                return <div key={record}><RecordMove scope={scope} id={record} ids={records} onChange={ids => dispatch({ type: 'record-order', scope, ids })} /><TitlePointCard ordinal={sectionRecords(option.id).indexOf(record) + 1} option={isReconveyance && option.id === 'linkDoc' ? { ...option, fields: option.fields.map(field => ['mortgageAmount','mortgageInterestAmount'].includes(field.id) ? { ...field, hidden: false } : field) } : option.id === 'houseTax' ? { ...option, fields: option.fields.filter(field => !['bearingHNo', 'bltNo', 'assessmentPtinNo'].includes(field.id)) } : option} record={record} form={form}
                   instrument={draft.instrumentId} variant={draft.variantId} templateSource={activeTemplateSource}
                   onField={(field, value) => { ensureRecord(); edit('link', record, field, value); }}
                   onUpload={files => { ensureRecord(); void runUpload(files, { role: 'link', record, propertyRecord: activePropertyId }, `phase1:${option.id}` as ExtractionProfile); }}
                   sources={draft.sources.filter(source => source.assignment?.role === 'link' && source.assignment.record === record)}
                   busy={!!sourceBusyFor('link', record)}
-                  onDelete={() => clearLinkRecord(record)} />;
-              })}
-              {!!related.length && <div className="add-document-row"><button type="button" className="quiet" onClick={event => addDocumentsInPlace(event.currentTarget, () => addLinkDocuments(option.id, []))}>+ Add another {option.label}</button></div>}
-            </React.Fragment>;
+                  onDelete={() => clearLinkRecord(record)} />
+              {sectionRecords(option.id).at(-1) === record && <div className="add-document-row"><button type="button" className="quiet" onClick={event => addDocumentsInPlace(event.currentTarget, () => addLinkDocuments(option.id, []))}>+ Add another {option.label}</button></div>}
+            </div>;
           })}
           {(HOUSE_PTIN_PAIR_CATEGORIES.includes(category) || category === 'Flat' || sectionRecords('houseTax').length > 0) && <section className="panel" aria-label="Property tax identification">
             <HousePtinPairsEditor
@@ -1681,16 +1692,16 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
 
         {step >= 2 && <div className={`workflow-step workflow-step-${step}`}>
         {step === 2 && <LinkStageGate status={linkStageStatus('step3')} loading="Extracting jurisdiction from the property documents…">
-          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
           <ScopedSectionUpload label="Jurisdiction" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'jurisdiction')} />
           <SourceFeedback sources={draft.sources.filter(source => source.profile === 'jurisdiction' && source.assignment?.record === activePropertyId)} visibleFields={GROUPS.filter(group => group.step === 2).flatMap(group => group.fields.map(field => field.id))} />
           <section className="panel"><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} />{presentation ? <presentation.Jurisdiction key={`${draft.id}:${activePropertyId}`} propertyId={activePropertyId} values={resolved.values} lookup={draft.jurisdictionLookups?.[activePropertyId] || EMPTY_LOOKUP} onLookupChange={value => dispatch({ type: 'jurisdiction-lookup', propertyId: activePropertyId, value })} onEdit={(field, value) => edit('property', activePropertyId, field, value)} renderFields={options => <RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} groupsOverride={options?.groups} renderField={options?.renderField} />} /> : <RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} />}</section>
         </LinkStageGate>}
 
         {step === 3 && <LinkStageGate status={linkStageStatus('step4')} loading="Extracting the property schedule from the property documents…">
-          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
           <ScopedSectionUpload label="Property Schedule" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'property-schedule')} />
-          <SourceFeedback sources={draft.sources.filter(source => source.profile === 'property-schedule' && source.assignment?.record === activePropertyId)} visibleFields={[...GROUPS.filter(group => group.step === 3).flatMap(group => group.fields.map(field => field.id)), 'category', 'unit']} />
+          <SourceFeedback sources={draft.sources.filter(source => source.profile === 'property-schedule' && source.assignment?.record === activePropertyId)} visibleFields={[...GROUPS.filter(group => group.step === 3).flatMap(group => group.fields.map(field => field.id)), ...PROPERTY_DIMENSIONS.fields.map(field => field.id), 'category', 'unit']} />
           {propertyRecords.filter(record => record.id === activePropertyId).map(record => {
             const id = record.id;
             const merge = activeScheduleMerge;
@@ -1700,8 +1711,6 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               ...group,
               fields: group.fields.filter(field => !(isFinishedHouse(record.category, record.values.houseStage) && ['nearAdjacent', 'nearHNo'].includes(field.id))),
             })).filter(group => group.fields.length);
-            const boundaries = propertyGroups.map(group => group.title.startsWith('Boundaries')).lastIndexOf(true);
-            propertyGroups.splice(boundaries + 1, 0, PROPERTY_DIMENSIONS);
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
               <ScheduleTypeControl municipal={municipalGift} scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
@@ -1746,7 +1755,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             </div>)}
             <div aria-live="polite"><h3>Total Consideration MV</h3><strong>{vm.persayINR || 'Enter the land extent and basic rate for each schedule.'}</strong></div>
           </section>
-          {draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', propertyRecords[0]?.id || 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
+          {draft.instrumentId === 'gift' ? <section className="panel"><h2>Gift document value</h2><p>Enter the consideration / declared value to print in every total market-value and estimate field. The Gift itself remains without monetary consideration (Nil).</p><FieldGroup group={{ step: 4, title: 'Declared value', fields: [{ ...ALL_FIELDS.find(field => field.id === 'consid')!, label: 'Consideration / declared document value (₹)' }] }} form={state.form} setField={(id, value) => edit('property', 'primary', id, value)} /></section> : <><section className="panel" aria-label="Consideration value">
             <h2>Consideration value</h2>
             <p>The agreed sale consideration for this deed. Calculated market value remains available for validation and duty calculations.</p>
             <strong style={{ fontSize: 22, color: C.ink }}>{vm.considINR || 'Enter sale consideration'}</strong>
@@ -1764,8 +1773,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <div className="payment-list-heading"><h3>Payment records</h3><span>Choose a method for each payment</span></div>
           {!state.payments.length && <div className="payment-empty"><CreditCard size={22} aria-hidden="true" /><div><strong>No payment records yet</strong><p>Choose a payment method below to add the first record.</p></div></div>}
           {state.payments.map((p, i) => (
-            <PaymentCard key={p.id} index={i} payment={p} canRemove={true}
-              onPatch={patch => patchPayment(p.id, patch)} onRemove={() => removePayment(p.id)} />
+            <div key={p.id}><RecordMove scope="payment" id={p.id} ids={state.payments.map(item => item.id)} onChange={ids => dispatch({ type: 'record-order', scope: 'payment', ids })} /><PaymentCard index={i} payment={p} canRemove={true}
+              onPatch={patch => patchPayment(p.id, patch)} onRemove={() => removePayment(p.id)} /></div>
           ))}
           <AddPayment onAdd={addPayment} remaining={vm.balanceINR ? `Balance remaining: ${vm.balanceINR}` : ''} />
           <div className="payment-total">
@@ -1800,7 +1809,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         {authorityErrors.length > 0 && step === 6 && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
             {records.map((record, i, all) => {
               const busySource = sourceBusyFor(role, record);
-              return <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
+              const card = <PartyRecordCard key={record} role={role} record={record} category={state.category} step={step} resolved={resolved} edit={edit}
                 onCapacityChange={combined ? value => { if (!busySource) void changeCapacity(record, value); } : undefined}
                 relationshipFields={generalPoa && role === 'claimant' && isFamilyPoa(state) && <div className="poa-relationship-fields">
                     <label className="field"><span>Relationship to principal(s)</span><select aria-label="Relationship to principal(s)" required value={resolved.values[fieldKey(role, record, 'poaRelationship')] || ''} onChange={event => edit(role, record, 'poaRelationship', event.target.value)}>
@@ -1820,10 +1829,11 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
                 onUpload={uploadFor(role, record)}
                 sources={draft.sources.filter(s => s.assignment?.role === role && s.assignment.record === record)}
                 busy={!!busySource} />;
+              return combined ? card : <div key={record}><RecordMove scope={role} id={record} ids={records} onChange={ids => dispatch({ type: 'record-order', scope: role, ids })} />{card}</div>;
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
           </>;
-          return role === 'executant' && !isRelease && !isReconveyance ? <SaleAuthorityEditor key={draft.id} state={state} principalIds={records} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
+          return role === 'executant' && !isRelease && !isReconveyance ? <SaleAuthorityEditor key={draft.id} state={state} principalIds={records} onRecordOrder={ids => dispatch({ type: 'record-order', scope: 'executant', ids })} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
         })()}
 
 

@@ -59,6 +59,7 @@ export type Draft = {
   step: number; manualEdits: number;
   /** Explicitly created blank schedules, in addition to Property 1. */
   propertyIds: string[];
+  recordOrder?: Record<string, string[]>;
   /** The schedule currently receiving its own Step 2 document bundle. */
   activePropertyId: string;
   /** Link/supporting-document cards remain in the property bundle that created them. */
@@ -97,6 +98,7 @@ export type Action =
   | { type: 'add-property'; id: string }
   | { type: 'active-property'; id: string }
   | { type: 'link-property'; record: string; propertyId: string }
+  | { type: 'record-order'; scope: string; ids: string[] }
   | { type: 'structure-details'; propertyId: string; value: StructureDetails }
   | { type: 'vendee-share'; scheduleId: string; claimantId: string; value: string }
   | { type: 'vendor-share'; scheduleId: string; executantId: string; value: string }
@@ -142,6 +144,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'add-property') next = { ...draft, propertyIds: draft.propertyIds.includes(action.id) || action.id === 'primary' ? draft.propertyIds : [...draft.propertyIds, action.id], activePropertyId: action.id };
   if (action.type === 'active-property') next = { ...draft, activePropertyId: action.id };
   if (action.type === 'link-property') next = { ...draft, linkPropertyRecords: { ...draft.linkPropertyRecords, [action.record]: action.propertyId } };
+  if (action.type === 'record-order') next = { ...draft, recordOrder: { ...draft.recordOrder, [action.scope]: action.ids } };
   if (action.type === 'structure-details') next = { ...draft, structureDetailsBySchedule: { ...draft.structureDetailsBySchedule, [action.propertyId]: action.value } };
   if (action.type === 'vendee-share') next = { ...draft, vendeeSharesBySchedule: {
     ...(draft.vendeeSharesBySchedule || {}),
@@ -393,6 +396,11 @@ export function resolveDraft(draft: Draft) {
   return { values, evidence, conflicts, unassigned, groups };
 }
 
+export function inRecordOrder<T>(items: T[], order: string[] | undefined, id: (item: T) => string): T[] {
+  if (!order?.length) return items;
+  const ranks = new Map(order.map((key, index) => [key, index]));
+  return [...items].sort((a, b) => (ranks.get(id(a)) ?? Infinity) - (ranks.get(id(b)) ?? Infinity));
+}
 export function appStateFor(draft: Draft): AppState {
   draft = migratePartyPeople(draft);
   const { values, conflicts } = resolveDraft(draft);
@@ -422,13 +430,18 @@ export function appStateFor(draft: Draft): AppState {
   const sellers = forRole('executant'); const buyers = forRole('claimant');
   const linkValues = forRole('link');
   const links = orderedEnclosureIds(linkValues.map(record => record.id), draft.linkPropertyRecords, draft.manual).map(id => linkValues.find(record => record.id === id)!);
-  const primarySeller = sellers.find(record => record.id === 'primary') || sellers[0];
-  const primaryBuyer = buyers.find(record => record.id === 'primary') || buyers[0];
+  const orderedParties = (side: 'executant' | 'claimant', records: ValueRecord[]) =>
+    inRecordOrder([...records].sort((a, b) => Number(b.id === 'primary') - Number(a.id === 'primary')), draft.recordOrder?.[side], record => record.id);
+  const orderedSellers = orderedParties('executant', sellers);
+  const orderedBuyers = orderedParties('claimant', buyers);
+  const primarySeller = orderedSellers[0];
+  const primaryBuyer = orderedBuyers[0];
   const linkScheduleId = (record: ValueRecord) => draft.linkPropertyRecords[record.id]
     || draft.sources.find(source => source.assignment?.role === 'link' && source.assignment.record === record.id)?.assignment?.propertyRecord
     || 'primary';
   const linkRecordsBySchedule: Record<string, ValueRecord[]> = {};
   for (const link of links) (linkRecordsBySchedule[linkScheduleId(link)] ??= []).push(link);
+  for (const id of Object.keys(linkRecordsBySchedule)) linkRecordsBySchedule[id] = inRecordOrder(linkRecordsBySchedule[id], draft.recordOrder?.['link:' + id], record => record.id);
   const assessmentFor = (scheduleId: string, category: string) => {
     if (!HOUSE_PTIN_PAIR_CATEGORIES.includes(category)) return '';
     const records = linkRecordsBySchedule[scheduleId] || [];
@@ -451,7 +464,7 @@ export function appStateFor(draft: Draft): AppState {
   const primaryRegisteredLink = primaryLinks.find(r => registeredLinks.includes(r));
   const form = { ...EMPTY_FORM, ...properties[0]?.values, ...primarySeller?.values, ...primaryBuyer?.values, ...primaryRegisteredLink?.values, ...transaction?.values };
   if (!form.bltNo) form.bltNo = assessmentFor('primary', properties[0]?.values.category || '');
-  const paymentRecords = forRole('payment');
+  const paymentRecords = inRecordOrder(forRole('payment'), draft.recordOrder?.payment, record => record.id);
   const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue', 'stampPaperMargin'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
   const unresolvedFields = Object.keys(conflicts).filter(key => {
@@ -495,8 +508,9 @@ export function appStateFor(draft: Draft): AppState {
     category: properties[0]?.values.category || '', unit: properties[0]?.values.unit || '',
     form: derived, payments, docs: [], fieldSource: {}, fieldEvidence: {}, conflicts: {}, unresolvedFields,
     linkRecordsBySchedule,
-    additionalExecutants: sellers.filter(r => r !== primarySeller).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
-    additionalClaimants: buyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
+    scheduleOrder: draft.recordOrder?.property,
+    additionalExecutants: orderedSellers.filter(r => r !== primarySeller).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
+    additionalClaimants: orderedBuyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
     partyPeopleByParty: Object.fromEntries(Object.keys(draft.partyPeople || {}).map(key => [key, peopleFor(draft, key, { values, conflicts })])),
     primaryClaimantId: primaryBuyer?.id || 'primary',
     primaryExecutantId: primarySeller?.id || 'primary',
@@ -542,7 +556,7 @@ export function peopleFor(draft: Draft, key: string, resolved: { values: Record<
     const blank = newPartyRepresentative();
     return Object.fromEntries(Object.keys(blank).map(k => [k, k === 'id' ? id : resolved.values[fieldKey('party-person', id, personField(k))] || (k === 'relation' && !resolved.conflicts?.[fieldKey('party-person', id, 'personRelation')] ? 'S/O' : '')])) as typeof blank;
   };
-  return { representatives: (ids?.representativeIds || []).map(person), members: (ids?.memberIds || []).map(person) };
+  return { representatives: inRecordOrder(ids?.representativeIds || [], draft.recordOrder?.['people:' + key], id => id).map(person), members: (ids?.memberIds || []).map(person) };
 }
 function removePerson(draft: Draft, side: 'executant' | 'claimant', record: string, id: string): Draft {
   const key = partyKey(side, record); const people = draft.partyPeople?.[key];

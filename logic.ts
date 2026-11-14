@@ -80,6 +80,7 @@ export function vendeeShareCents(value: string): number | null {
 import type { SaleDocument, SaleAuthority } from './sale-options';
 
 export type AppState = {
+  scheduleOrder?: string[];
   saleDocument?: SaleDocument;
   saleAuthority?: SaleAuthority;
   /** Explicitly unresolved fields must never be silently reconstructed by a fallback. */
@@ -241,7 +242,9 @@ export const scheduleRecords = (state: AppState): ScheduleRecord[] => {
     unit: state.unit,
     structureDetails: state.structureDetailsBySchedule.primary,
   };
-  return [primary, ...state.additionalSchedules.map(record => ({ ...record, structureDetails: state.structureDetailsBySchedule[record.id] }))];
+  const records = [primary, ...state.additionalSchedules.map(record => ({ ...record, structureDetails: state.structureDetailsBySchedule[record.id] }))];
+  const ranks = new Map(state.scheduleOrder?.map((id, index) => [id, index]));
+  return records.sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity));
 };
 
 export const supportingRecordsForSchedule = (state: AppState, scheduleId: string) =>

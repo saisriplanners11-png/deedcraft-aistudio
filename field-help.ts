@@ -8,7 +8,7 @@ const hints: Record<string, string> = {
   surveyNo: 'Copy all applicable survey numbers, including subdivisions, exactly as recorded.',
   bearingHNo: 'The house or door number of this property, not the nearby landmark.',
   plotNo: 'Copy the plot number from the registered deed or layout.',
-  localAuthorityType: 'Choose the body responsible for this property: corporation, council or Gram Panchayat.',
+  localAuthorityType: 'Choose the body responsible for this property or type a custom ULB.',
   bltNo: 'Property Tax Identification Number. Copy it from the property-tax record.',
   assessmentPtinNo: 'Vacant Land Tax identification number from the tax or assessment record.',
   govtRate: 'Enter the basic rate for one square yard, not the total property value.',

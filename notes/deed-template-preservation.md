@@ -100,4 +100,16 @@ COM-20 (09-11-2026): group currency with Indian commas and omit zero fractional 
 
 12-11-2026 COM-03, runtime 2026-11-12.7. Step 5 calculates the stamp paper value by multiplying the selected denomination by the stamp count. The same calculation feeds the Word binding. When the selection has no numeric denomination, retain the existing recorded value.
 
+14-11-2026 COM-03 pagination correction. Estimate the usable text height below each additional stamp gap and fill it with complete source paragraph groups before inserting a next-page section break. Preserve the opening section, required source breaks, the selected sheet count and the normal continuation geometry.
+
 12-11-2026 COM-25/26, runtime 2026-11-12.8. The stamp follows the supplied layout, with uppercase name, optional place and a validated mobile in 5+5 format. Party and representative mobile bindings apply the same ten-digit rule. Aadhaar digit grouping applies in dashboard inputs.
+
+14-11-2026 COM-25 correction. Center the stamp paragraphs in the right-side text area using the final section's page width and margins. This restores the approved position in Word compatibility mode.
+
+14-11-2026 House update, runtime 2026-11-14.1. Preserve the schedule’s dashboard boundary text, label party locality, group identity digits, and apply casing to payment names and bank particulars at merge time.
+
+14-11-2026 COM-16/22/27 (runtime preservation 2026-11-14.2): Step 2 and Property Schedule share editable property-scoped H.No./PTIN rows. House Annexure I-A lists those pairs in entered order. Repeatable dashboard records support manual ordering by stable ID. Word keeps the selected sequence within payment, title/enclosure, schedule, structure and party sections subject to instrument-specific rules. The opening SRO label and value use regular weight.
+
+14-11-2026 COM-25, runtime 2026-11-14.3. The typing stamp prints its heading and entered details at 10 pt and the statement at 8 pt.
+
+14-11-2026 runtime 2026-11-14.4. Boundary bindings preserve the dashboard text across all property variants. House locality keeps its label and entered text.

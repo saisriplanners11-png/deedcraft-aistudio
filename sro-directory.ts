@@ -16,18 +16,18 @@ export function sroFieldPair(id: string) {
   const name = id.replace(/Code$/i, '');
   return { name, code: name + 'Code' };
 }
-export const displaySro = (value: string) => { const office = findSro(value); return office ? sroLabel(office) : value; };
+export const displaySro = (value: string) => { const office = value === value.trim() ? findSro(value) : undefined; return office ? sroLabel(office) : value; };
 
 /** Resolve one combined selector value into the existing separate name/code fields. */
 export function resolveSroSelection(id: string, value: string) {
   if (!isSroField(id) || /Code$/i.test(id)) return null;
   const pair = sroFieldPair(id);
-  const office = findSro(value);
+  const office = value === value.trim() ? findSro(value) : undefined;
   if (office) return { nameField: pair.name, name: office.name, codeField: pair.code, code: office.code };
   const customPair = value.trim().match(/^(.*?)\s*\[([^\]]+)\]$/);
   return {
     nameField: pair.name,
-    name: titleCasePlaceName(customPair?.[1] ?? value),
+    name: titleCasePlaceName(customPair?.[1] ?? value, !customPair),
     codeField: pair.code,
     code: customPair?.[2].trim() ?? '',
   };

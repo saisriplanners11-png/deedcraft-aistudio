@@ -1,3 +1,4 @@
+import { RecordMove } from './record-move';
 import { ageFrom } from './party-age';
 import { Input } from './ui';
 import { formatMoneyInput } from './deed-money';
@@ -54,7 +55,7 @@ const fields = [
   ['District', 'District'], ['State', 'State'], ['PinCode', 'PIN code'], ['SharePercentage', 'Share percentage (%) — optional'], ['Aadhaar', 'Aadhaar number'],
   ['Mobile', 'Mobile (optional)'], ['Pan', 'PAN (optional)'],
 ];
-export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children, principalIds = [], onCapacityChange, onDeleteAttorney }: { principalIds?: string[]; onCapacityChange?: (id: string, value: string) => void; onDeleteAttorney?: (id: string) => void; children?: React.ReactNode; state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
+export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children, principalIds = [], onCapacityChange, onDeleteAttorney, onRecordOrder }: { onRecordOrder?: (ids: string[]) => void; principalIds?: string[]; onCapacityChange?: (id: string, value: string) => void; onDeleteAttorney?: (id: string) => void; children?: React.ReactNode; state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
   const authority = state.saleAuthority || emptySaleAuthority();
   const latest = useRef({ authority, onChange, onApplyGpa, onApplyPerson }); latest.current = { authority, onChange, onApplyGpa, onApplyPerson };
   const controllers = useRef(new Set<AbortController>());
@@ -158,12 +159,17 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     ] as [keyof SaleAuthority, string][]).map(([key, label]) => key === 'sro' || key === 'sroCode' ? <Input key={key} field={{ id: key, label, ariaLabel: label }} value={(authority[key] as string) || ''} onChange={value => { const office = findSro(value); onChange(office ? { ...authority, sro: office.name, sroCode: office.code } : { ...authority, [key]: value }); }} /> : <label className="field" key={key}><span>{label}</span><input type={key === 'documentDate' ? 'date' : 'text'} inputMode={key === 'adjustedAmount' ? 'decimal' : undefined} value={key === 'adjustedAmount' ? formatMoneyInput(authority.adjustedAmount || '') : (authority[key] as string) || ''} onChange={event => onChange({ ...authority, [key]: key === 'adjustedAmount' ? event.target.value.replace(/,/g, '') : event.target.value })} /></label>)}</div>
   </section>
   {order.map(id => {
+    const handle = <RecordMove scope="sale-authority" id={id} ids={order} onChange={ids => {
+      onRecordOrder?.(ids);
+      const attorneys = ids.flatMap(key => authority.attorneys.filter(attorney => attorney.id === key));
+      onChange({ ...authority, executantOrder: ids, attorneys });
+    }} />;
     const attorney = attorneyCards.find(card => card.key === id);
-    if (attorney) return attorney;
+    if (attorney) return <React.Fragment key={id}>{handle}{attorney}</React.Fragment>;
     const card = principalCards.find(card => card.props.record === id);
     if (!card) return null;
     const index = order.indexOf(id);
-    return <React.Fragment key={id}>{React.cloneElement(card, { label: `Executant ${index + 1} — Principal` })}
+    return <React.Fragment key={id}>{handle}{React.cloneElement(card, { label: `Executant ${index + 1} — Principal` })}
       {!!authority.personDocuments?.[id]?.length && <section className="panel"><AuthorityUploads label={`Upload Executant ${index + 1} supporting documents`} documents={authority.personDocuments[id]} onExtract={extract} onChange={documents => updateDocuments({ ...authority, personDocuments: { ...authority.personDocuments, [id]: documents } })} /><button type="button" disabled={extracting} onClick={() => void retry(authority.personDocuments?.[id] || [])}>Extract details for Executant {index + 1}</button></section>}
     </React.Fragment>;
   })}

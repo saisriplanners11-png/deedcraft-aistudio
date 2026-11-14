@@ -581,15 +581,15 @@ describe('sale deed template merge', () => {
     expect(variantFor('Flat')).toBe('IF FLAT');
     const text = await scheduleText('IF FLAT', mergeValues(state));
     for (const value of ['A-502', 'Semi-Finished', 'Sky Residency', '1250', '42', 'out of 1200 Sq.Yds.', '10-1-1, 10-1-2',
-      'ApartmentNorth', 'ApartmentSouth', 'ApartmentEast', 'ApartmentWest',
-      'FlatNorth', 'FlatSouth', 'FlatEast', 'FlatWest']) expect(text).toContain(value);
+      'Apartment North', 'Apartment South', 'Apartment East', 'Apartment West',
+      'Flat North', 'Flat South', 'Flat East', 'Flat West']) expect(text).toContain(value);
     expect(text).toContain('Boundaries of Apartment:');
     expect(text).toContain('Boundaries of Flat No.A-502 in 5 Floor:');
     const deed = await fillSaleDeed(mergeValues(state), 'IF FLAT');
     const deedText = await docxToText(new Uint8Array(await deed.blob.arrayBuffer()));
     expect(deedText).toContain('All that a Semi-Finished Flat No. A-502');
-    expect(deedText).toContain('North : ApartmentNorth,');
-    expect(deedText).toContain('North : FlatNorth,');
+    expect(deedText).toContain('North : Apartment North,');
+    expect(deedText).toContain('North : Flat North,');
     expect(deedText).not.toContain('<IF FLAT>');
   });
 
@@ -654,10 +654,13 @@ describe('sale deed template merge', () => {
     const entries = await readZip(new Uint8Array(await included.arrayBuffer()));
     const document = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml')!.data);
     expect(document).toContain('A &amp; B');
-    const stampTable = document.slice(document.lastIndexOf('<w:tbl>'), document.lastIndexOf('</w:tbl>'));
-    expect(stampTable).toContain('<w:tblW w:w="3250" w:type="pct"/><w:jc w:val="right"/>');
-    expect(stampTable).toContain('Typed By:');
-    expect(stampTable).toContain('the partie/s are accepted.');
+    const stamp = document.slice(document.lastIndexOf('</w:drawing>'), document.lastIndexOf('<w:sectPr'));
+    const stampIndents = [...stamp.matchAll(/<w:ind w:left="(\d+)" w:right="0" w:firstLine="0"\/><w:jc w:val="center"\/>/g)];
+    expect(stampIndents).toHaveLength(6);
+    expect(stampIndents.every(([, indent]) => Number(indent) > 3000)).toBe(true);
+    expect(stamp).toContain('the partie/s are accepted.');
+    expect([...stamp.matchAll(/<w:sz w:val="(\d+)"\/>/g)].map(([, size]) => size))
+      .toEqual(['20', '20', '20', '16', '16', '16']);
     expect(await appendRegistrationPlans(omitted.blob, [], { name: 'A & B', mobile: '98662700060' })).toBe(omitted.blob);
   });
 
@@ -703,6 +706,74 @@ describe('sale deed template merge', () => {
     expect(text).toContain('Cheque: Amount of Rs.5,00,000/-');
     expect(text).toContain('Cash: Amount of Rs.1,00,000/-');
     expect(text).not.toContain('Cheque: Amount of Rs.6,00,000/-');
+  });
+
+  it('prints House identity spacing, payment names and verbatim boundaries in Word', async () => {
+    const state = { ...initialState, category: 'Residential', form: {
+      ...initialState.form, executantName: 'MAIN SELLER', claimantName: 'MAIN BUYER',
+      executantLocality: 'green park', executantAadhaar: '123456789012',
+      executantMobile: '9876543210', boundaryNorth: '25 FT Road / Plot 19',
+      boundarySouth: 'SOUTH side  lane', boundaryEast: 'East lot', boundaryWest: 'west road',
+    }, payments: [{ ...newPayment('through-bank'), amount: '100', payer: 'RAVI KUMAR', payee: 'SITA DEVI' }] };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    for (const value of ['Locality: green park', '1234 5678 9012', '98765 43210', '25 FT Road / Plot 19', 'SOUTH side  lane', 'East lot', 'west road', 'Ravi Kumar', 'Sita Devi']) {
+      expect(printed).toContain(value);
+    }
+  });
+
+  it('keeps handwritten boundary text verbatim in a dismantled-house Word schedule', async () => {
+    const boundary = "24' Road & Open Land / Plot <8>";
+    const state = { ...initialState, category: 'Demolished', form: {
+      ...initialState.form, boundaryNorth: boundary,
+      boundarySouth: 'Open Land  Of Venkateshwara Temple',
+    } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(printed).toContain(boundary);
+    expect(printed).toContain('Open Land  Of Venkateshwara Temple');
+  });
+
+  it('prints each edited tax pair in the House annexure and removes bold from the opening SRO only', async () => {
+    const state = { ...initialState, category: 'Residential', form: { ...initialState.form,
+      executionDate: '2026-11-14', sro: 'Opening Office', housePtinPairs: JSON.stringify([
+        { id: 'a', houseNo: '6-21', ptin: '0021' }, { id: 'b', houseNo: '6-22', ptin: '0022' },
+      ]),
+    } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const bytes = new Uint8Array(await result.blob.arrayBuffer());
+    const printed = await docxToText(bytes);
+    expect(printed).toContain('H.No. 6-21 · PTIN / Assessment No. 0021; H.No. 6-22 · PTIN / Assessment No. 0022');
+    const xml = new TextDecoder().decode((await readZip(bytes)).find(entry => entry.name === 'word/document.xml')!.data);
+    const opening = xml.match(/<w:p(?=[\s>])(?:(?!<\/w:p>)[\s\S])*?Opening Office(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/)?.[0];
+    expect(opening).toMatch(/<w:b w:val="0"\/>[^<]*(?:<[^>]+>[^<]*)*?Opening Office/);
+    expect(xml).not.toMatch(/[\uE210-\uE213]/);
+  });
+
+  it('prints different enclosure types in the same order as their dashboard records', async () => {
+    const state = { ...initialState, linkRecordsBySchedule: { primary: [
+      { id: 'tax', docNames: [], values: { linkOption: 'landLayoutLrs', vltNo: 'ORDER-TAX-101' } as Record<string, string> },
+      { id: 'link', docNames: [], values: { linkOption: 'linkDoc', linkDocType: 'Sale Deed', linkDocNo: 'ORDER-DOC-202', linkDocDate: '2026-01-01', linkSro: 'Test Office' } },
+    ] } };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(printed).toContain('ORDER-DOC-202');
+    expect(printed.indexOf('ORDER-TAX-101')).toBeGreaterThanOrEqual(0);
+    expect(printed.indexOf('ORDER-TAX-101')).toBeLessThan(printed.indexOf('ORDER-DOC-202'));
+  });
+
+  it('keeps interleaved payment methods in the entered order', async () => {
+    const state = { ...initialState, payments: [
+      { ...newPayment('cheque'), amount: '12001', refNo: 'FIRST-CHEQUE' },
+      { ...newPayment('rtgs'), amount: '12002', refNo: 'SECOND-RTGS' },
+      { ...newPayment('cheque'), amount: '12003', refNo: 'THIRD-CHEQUE' },
+    ] };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    const positions = ['FIRST-CHEQUE', 'SECOND-RTGS', 'THIRD-CHEQUE'].map(value => printed.indexOf(value));
+    expect(positions[0]).toBeGreaterThanOrEqual(0);
+    expect(positions[1]).toBeGreaterThan(positions[0]);
+    expect(positions[2]).toBeGreaterThan(positions[1]);
   });
 
   it('omits missing payment dates from every generated payment paragraph', async () => {
@@ -990,10 +1061,10 @@ describe('sale deed template merge', () => {
     expect(text).toContain('TOTAL\n2250 Sq.Ft.');
     expect(text).toContain('Compound Wall: 40.5 R.Fts.');
     expect(text).not.toMatch(/40\.5\s+Sq\.Ft\./);
-    expect(text).toContain("33'Road");
-    expect(text).toContain('HouseOfGudlaBabu');
-    expect(text).toContain("26'Road");
-    expect(text).toContain('HouseOfAdepuKrishahari');
+    expect(text).toContain("33' Road");
+    expect(text).toContain('House of Gudla Babu');
+    expect(text).toContain("26' Road");
+    expect(text).toContain('House of Adepu Krishahari');
     expect(text).toContain('ANNEXURE – 1A');
     expect(text).toContain('Nature of roof\n: R.C.C. Building & Shed Structure');
     expect(text).toContain('Type of structure\n: Framed with pillars & columns only');

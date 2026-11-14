@@ -69,7 +69,7 @@ describe('Reconveyance source rendering and workflow', () => {
     expect(single).toContain('MIXED CASE RELEASOR');
     expect(single).toContain('MIXED CASE RELEASEE');
     expect(single).not.toMatch(/\b(?:vendors?|vendees?)\b/i);
-    expect(single).toContain('WestPlot.');
+    expect(single).toContain('West Plot.');
     expect(single).toContain('SCHEDULE OF THE PROPERTY');
     expect(single).toContain('SIGN/S');
     expect(single).not.toMatch(/Dimensions|North: 21 ft|Sign\/s of/i);
@@ -78,7 +78,7 @@ describe('Reconveyance source rendering and workflow', () => {
     const schedule = scheduleMergesFor(state)[0];
     const preview = await scheduleText(schedule.variant, schedule.values, undefined, schedule.structureDetails, undefined, undefined, source);
     expect(preview).toContain('Total Plinth Area: 634 Sq. Ft.');
-    expect(preview).toContain('WestPlot.');
+    expect(preview).toContain('West Plot.');
     expect(preview).not.toContain('Dimensions');
 
     const seed = guidedPlanFromDraft(state, 'primary');

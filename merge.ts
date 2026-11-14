@@ -1,7 +1,7 @@
 import { releaseValues, releaseScheduleValues } from './release';
 import { enclosureRecordsFor } from './enclosure-records';
 import { claimantRepresentationForOutput, isMinorParty, linkedClaimantRepresentation, minorClaimantValues, minorGuardianRecital, minorPartyErrors } from './minor-parties';
-import { deedMobile, executionDeedDate } from './deed-format';
+import { groupedIdentityDigits, deedMobile, executionDeedDate } from './deed-format';
 import { formatDeedAmount, stampPaperValue, stampSheetCount } from './deed-money';
 import { acreGuntasToSqYards } from './land-area';
 import { PROPERTY_DIRECTIONS } from './fields';
@@ -16,7 +16,7 @@ import { localAuthorityName } from './fields';
 import { instrumentIdForLegacyType } from './instruments';
 import { entityRecital, isEntity, partyDisplayName } from './party-entities';
 import { flatStage, flatVariant } from './flat-options';
-import { normalizePropertyPlaceName } from './place-names';
+import { normalizePropertyPlaceName, titleCasePlaceName } from './place-names';
 import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePtinOutput } from './property-house-ptin';
 // Builds the placeholder -> value map the template expects, from live form state.
 
@@ -64,12 +64,16 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
   out['Minor Representation Errors'] = minorErrors.join('\n');
   Object.assign(out, giftRelationshipValues(state), poaValues(state));
 
+  const house = ['Residential', 'Commercial'].includes(state.category);
+  const partyLocality = (value: string) => house && value ? 'Locality: ' + value : value;
   // Straight field -> placeholder mappings declared in fields.ts.
   for (const field of ALL_FIELDS) {
     if (!field.ph) continue;
     const names = Array.isArray(field.ph) ? field.ph : [field.ph];
-    let value = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, f[field.id] ?? ''));
+    let value = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, f[field.id] ?? ''), true);
     if (field.type === 'date') value = deedDate(value);
+    if (house && /Aadhaar$/.test(field.id) && /^\d{12}$/.test(value.replace(/[\s-]/g, ''))) value = groupedIdentityDigits(value.replace(/-/g, ''), 4);
+    if (/^(executant|claimant)Locality$/.test(field.id)) value = partyLocality(value);
     if (field.type === 'tel') value = deedMobile(value);
     if (field.type === 'money') value = formatDeedAmount(value);
     if (field.type === 'number' && /^(?:extentSq|udsSq|superBuiltUpAreaSq|parkingAreaSq)/.test(field.id)) value = value.replace(/,/g, '');
@@ -165,7 +169,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
   if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA', 'Deed Of Reconvayance'].includes(state.deedType)) {
     out['Municipality/Gram Panchayat Name'] = normalizePropertyPlaceName('permissionAuthorityName', f.permissionAuthorityName || '');
     out.Date = executionDeedDate(f.executionDate || '');
-    for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => f[side + suffix]?.trim()).filter(Boolean).join(', ');
+    for (const [side, label] of [['executant', 'Executant'], ['claimant', 'Claimant']] as const) out[label + ' Address'] = ['HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode'].map(suffix => suffix === 'Locality' ? partyLocality(f[side + suffix] || '') : f[side + suffix]).filter(Boolean).join(', ');
   }
 
   out['Stamp of Rs/-'] = formatDeedAmount(stampPaperValue(f));
@@ -254,19 +258,21 @@ export function rewritesFor(state: AppState): Rewrite[] {
   // The v2 template contains one sample paragraph for each payment method.
   // Replace each sample with one cloned paragraph per actual payment, or remove
   // it entirely when that method was not used.
+  const paymentText = (value: string) => scheduleRecords(state).some(record => ['Residential', 'Commercial'].includes(record.category)) ? titleCasePlaceName(value) : value;
   const paymentRecord = (payment: Payment, refName: string) => ({
+    'Payment Order': String(paid.indexOf(payment)),
     Amount: formatDeedAmount(payment.amount),
     [refName]: payment.refNo || '',
     'Utr/Reference No.': payment.refNo || '',
-    'Bank Name': [payment.bank, payment.branch].filter(Boolean).join(', '),
-    'Housing Loan Bank': payment.bank || '',
-    'Housing Loan Branch': payment.branch || '',
-    'Remitting Bank': [payment.bank, payment.branch].filter(Boolean).join(', '),
+    'Bank Name': paymentText([payment.bank, payment.branch].filter(Boolean).join(', ')),
+    'Housing Loan Bank': paymentText(payment.bank || ''),
+    'Housing Loan Branch': paymentText(payment.branch || ''),
+    'Remitting Bank': paymentText([payment.bank, payment.branch].filter(Boolean).join(', ')),
     Date: deedDate(payment.date),
-    'Claimant Name': payment.payer || defaultPayer,
-    'CLAIMANT NAME': payment.payer || defaultPayer,
-    'Executant Name': payment.payee || (state.deedType === 'Release' ? partyRecords(state,'executant').map(p=>partyDisplayName(p.values,'executant')).filter(Boolean).join(', ') : partyDisplayName(state.form, 'executant')) || '',
-    'EXECUTANT NAME': payment.payee || (state.deedType === 'Release' ? partyRecords(state,'executant').map(p=>partyDisplayName(p.values,'executant')).filter(Boolean).join(', ') : state.form.executantName) || '',
+    'Claimant Name': paymentText(payment.payer || defaultPayer),
+    'CLAIMANT NAME': paymentText(payment.payer || defaultPayer),
+    'Executant Name': paymentText(payment.payee || (state.deedType === 'Release' ? partyRecords(state,'executant').map(p=>partyDisplayName(p.values,'executant')).filter(Boolean).join(', ') : partyDisplayName(state.form, 'executant')) || ''),
+    'EXECUTANT NAME': paymentText(payment.payee || (state.deedType === 'Release' ? partyRecords(state,'executant').map(p=>partyDisplayName(p.values,'executant')).filter(Boolean).join(', ') : state.form.executantName) || ''),
   });
   const v2PaymentParagraphs: Array<{ mode: Payment['mode']; find: RegExp; refName: string }> = [
     { mode: 'rtgs', find: /RTGS\/NEFT:\s*Amount of Rs\./i, refName: 'UTR No.' },
@@ -301,9 +307,9 @@ export function rewritesFor(state: AppState): Rewrite[] {
       const bank = [payment.bank, payment.branch].filter(Boolean).join(', ');
       const date = deedDate(payment.date);
       const prefix = `(${index + 1}) Amount of Rs.${amount}/-`;
-      if (payment.mode === 'through-bank') return `${prefix} paid through bank by the Vendee/s, namely ${payment.payer || defaultPayer}, to the Vendor/s, namely ${payment.payee || partyDisplayName(state.form, 'executant') || ''}.`;
+      if (payment.mode === 'through-bank') return `${prefix} paid through bank by the Vendee/s, namely ${paymentText(payment.payer || defaultPayer)}, to the Vendor/s, namely ${paymentText(payment.payee || partyDisplayName(state.form, 'executant') || '')}.`;
       return payment.mode === 'cash' ? `${prefix} paid via cash${date ? ` dated ${date}` : ''}.`
-        : `${prefix} paid${mode ? ` through ${mode}` : ''}${ref ? ` bearing No. ${ref}` : ''}${bank ? ` drawn on ${bank}` : ''}${date ? ` dated ${date}` : ''}.`;
+        : `${prefix} paid${mode ? ` through ${mode}` : ''}${ref ? ` bearing No. ${ref}` : ''}${bank ? ` drawn on ${paymentText(bank)}` : ''}${date ? ` dated ${date}` : ''}.`;
     }).join('; ') });
   }
   for (const side of ['executant', 'claimant'] as const) {
@@ -395,7 +401,7 @@ export function propertyForm(state: AppState, values: Record<string, string>): R
 export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
   const vendees = claimantRepresentationForOutput(state).recipients;
   const vendors = partyRecords(state, 'executant');
-  return scheduleRecords(state).map(record => {
+  return scheduleRecords(state).map((record, scheduleIndex) => {
     const propertyFieldIds = new Set(GROUPS.flatMap(group => group.fields.map(field => field.id)));
     const blankTitleFields = Object.fromEntries(LINK_OPTIONS.flatMap(option => option.fields)
       .filter(field => !propertyFieldIds.has(field.id)).map(field => [field.id, '']));
@@ -412,6 +418,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
       structureDetailsBySchedule: { primary: structureDetails || { totalFloors: '', rows: [] } },
     };
     const titleLinkRecords = linkDocumentRecordsForSchedule(state, record.id);
+    const linkOrder = (index: number) => scheduleIndex + ":" + index;
     const identificationPairs = housePtinPairsForSources({ ...record.values, category: record.category }, titleLinkRecords);
     if (identificationPairs) scheduleState.form.housePtinPairs = identificationPairs;
     const values = mergeValues(scheduleState);
@@ -421,25 +428,25 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const titleValues = { ...values };
     const amendmentKind = (item: typeof titleLinkRecords[number]) => titleAmendmentKind(item.values);
     const amendmentRecords = { rectification: [] as Record<string, string>[], supplemental: [] as Record<string, string>[] };
-    for (const item of titleLinkRecords) {
+    for (const [index, item] of titleLinkRecords.entries()) {
       const kind = amendmentKind(item);
       if (!kind) continue;
       const fields = titleAmendmentValues(item.values, kind);
       if (!fields[(kind === 'rectification' ? 'Rectification' : 'Supplemental') + ' Deed No.']) continue;
-      amendmentRecords[kind].push({ ...mergeValues(scheduleState), ...fields, ...linkEnclosureValues(item.values) });
+      amendmentRecords[kind].push({ ...mergeValues(scheduleState), ...fields, ...linkEnclosureValues(item.values), 'Enclosure Order': linkOrder(index) });
     }
     const registeredTitleLinks: Record<string, string>[] = [];
     const taxRecords = titleLinkRecords.filter(titleRecord => titleRecord.values.linkOption === 'houseTax'
       || (!titleRecord.values.linkOption && ['houseTaxReceiptNo', 'assessmentPtinNo', 'taxPaidDate', 'localBodyName']
         .some(key => !!titleRecord.values[key])));
-    for (const titleRecord of titleLinkRecords) {
+    for (const [index, titleRecord] of titleLinkRecords.entries()) {
       if (amendmentKind(titleRecord)) continue;
       const mapped = mergeValues({ ...scheduleState, form: { ...scheduleState.form, ...titleRecord.values } });
       for (const [key, value] of Object.entries(mapped)) if (value && !titleValues[key]) titleValues[key] = value;
       if ((isMunicipalGift(state) && ['linkDocNo', 'linkDocType', 'linkDocDate', 'linkSro'].some(key => !!titleRecord.values[key])) || (['linkDocNo', 'linkDocType'].every(key => !!titleRecord.values[key])
         && (titleRecord.values.linkSro || scheduleState.form.sro))) {
         const titleSro = normalizePropertyPlaceName('sro', titleRecord.values.linkSro || scheduleState.form.sro || '');
-        registeredTitleLinks.push({ ...mapped,
+        registeredTitleLinks.push({ ...mapped, 'Enclosure Order': linkOrder(index),
           'Sub Registrar': titleSro,
           'Sub-Registrar': titleSro,
           'Sub Registrar Code': titleRecord.values.linkSroCode || '',
@@ -491,6 +498,9 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const explicitAssessment = preferredField('bltNo', ['houseTax', 'assessment']);
     const taxAssessment = taxRecords.find(item => item !== legacyVacantTax && item.values.assessmentPtinNo)?.values.assessmentPtinNo;
     const extractedPairs = parsePropertyHousePtinPairs(identificationPairs);
+    values['House Tax Identification Rows'] = extractedPairs?.map(row => [
+      row.houseNo && 'H.No. ' + row.houseNo, row.ptin && 'PTIN / Assessment No. ' + row.ptin,
+    ].filter(Boolean).join(' · ')).filter(Boolean).join('; ') || '';
     const pairedAssessment = extractedPairs === null ? '' : propertyHousePtinOutput(identificationPairs).ptins;
     const assessment = extractedPairs !== null ? pairedAssessment : explicitAssessment || record.values.bltNo || taxAssessment || '';
     titleValues['P.T.I.No.'] = assessment;
@@ -514,7 +524,7 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     titleValues['Application Date'] = deedDate(preferredField('lrsApplicationDate', ['landLayoutLrs', 'lrsApplication', 'layoutLrs']));
     titleValues['LRS Proceeding No.'] = preferredField('lrsProceedingNo', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']);
     titleValues['Proceeding Date'] = deedDate(preferredField('lrsProceedingDate', ['landLayoutLrs', 'lrsProceeding', 'layoutLrs']));
-    const enclosureRecords = enclosureRecordsFor(titleLinkRecords);
+    const enclosureRecords = enclosureRecordsFor(titleLinkRecords, linkOrder);
     for (const records of Object.values(enclosureRecords)) if (records?.length) Object.assign(titleValues, records[0]);
     const supportingRecords = supportingRecordsForSchedule(state, record.id)
       .map(supportingRecordRecital)
@@ -547,10 +557,15 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
 export const variantFor = (category: string, stage = '') => category === 'Flat' ? flatVariant(stage) : ['Residential', 'Commercial'].includes(category) && flatStage(stage) === 'Semi-Finished' ? 'IF HOUSE SEMI FINISHED' : SCHEDULE_VARIANT[category] || 'IF OPEN PLOT';
 
 /** Filename for the generated deed, identified by instrument and claimant. */
-export function deedFilename(state: AppState): string {
+export function deedFilename(state: AppState, savedName?: string): string {
+  if (savedName?.trim()) {
+    const name = savedName.trim().replace(/\.docx$/i, '').replace(/[<>:"/\\|?*\x00-\x1f-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (name) return name + '.docx';
+  }
   const claimant = claimantRepresentationForOutput(state).recipients
     .map(record => partyDisplayName(record.values, 'claimant')).find(Boolean) || 'Unnamed deed';
   const safe = (value: string) => value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^[._-]+|[._-]+$/g, '');
+  if (['Residential', 'Commercial'].includes(state.category)) return (safe(claimant).replace(/-+/g, ' ') || 'Unnamed deed') + '.docx';
   const saleMode = state.deedType === 'Sale' ? state.saleDocument : undefined;
   return `${safe(isMunicipalGift(state) ? 'Municipal Gift' : saleMode ? saleDocumentLabel(saleMode) : state.deedType || 'Deed')}${saleMode ? '-' + safe([state.category, state.category === 'Flat' ? state.form.flatStage : state.form.houseStage].filter(Boolean).join(' ')) : ''}-${safe(claimant).slice(0, 100) || 'Unnamed-deed'}.docx`;
 }

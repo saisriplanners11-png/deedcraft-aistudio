@@ -16,10 +16,11 @@ export type EnclosureRecords = Partial<Record<EnclosureRecitalKind, Record<strin
 
 /** Preserve each supporting record as a unit, including its own dates and office.
  * Old narrow cards and the combined land/layout/LRS card share these bindings. */
-export function enclosureRecordsFor(records: { values: Record<string, string> }[]): EnclosureRecords {
+export function enclosureRecordsFor(records: { values: Record<string, string> }[], order: (index: number) => string = () => ''): EnclosureRecords {
   const result: EnclosureRecords = {};
-  const add = (kind: EnclosureRecitalKind, values: Record<string, string>) => (result[kind] ??= []).push(values);
-  for (const { values: v } of records) {
+  for (const [index, { values: v }] of records.entries()) {
+    const position = order(index);
+    const add = (kind: EnclosureRecitalKind, values: Record<string, string>) => (result[kind] ??= []).push(position ? { ...values, 'Enclosure Order': position } : values);
     const option = v.linkOption;
     const landRecord = ['landLayoutLrs', 'vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'layoutLrs'].includes(option);
     if (landRecord && v.vltNo) add('vacantTax', {

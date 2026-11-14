@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { appStateFor, draftReducer, newDraft, plansFor, resolveDraft, type Candidate, type Draft, type Source, WorkQueue } from './source-draft';
 import { cleanCandidate, cleanDrawing } from './upload-extraction';
-import { ageFrom, buildViewModel, todayISO } from './logic';
+import { ageFrom, buildViewModel, partyRecords, scheduleRecords, todayISO } from './logic';
 import { newStructureDetail } from './fields';
 import { houseStructurePaise, STRUCTURE_VALUATION_OVERRIDE } from './house-valuation';
 import { parsePropertyHousePtinPairs, serializePropertyHousePtinPairs } from './property-house-ptin';
@@ -511,4 +511,42 @@ it('restores every separate Step 2 tax-receipt pair without duplicating inferred
   expect(parsePropertyHousePtinPairs(restored.form.housePtinPairs)?.map(row => [row.houseNo, row.ptin]))
     .toEqual([['6-2-24', '1105008210'], ['6-2-25', '1105008211']]);
   expect(restored.form.bearingHNo).toBe('6-2-24, 6-2-25');
+});
+
+it('keeps reordered schedules, payments and parties tied to their original IDs on reload', () => {
+  let draft = newDraft();
+  draft = draftReducer(draft, { type: 'add-property', id: 'second' });
+  for (const [key, value] of Object.entries({
+    'property|primary|category': 'Residential', 'property|second|category': 'Flat',
+    'property|second|housePtinPairs': '[{"id":"p","houseNo":"5-20","ptin":"099"}]',
+    'executant|primary|executantName': 'First Seller', 'executant|second|executantName': 'Second Seller',
+    'payment|first|amount': '100', 'payment|second|amount': '200',
+  })) draft = draftReducer(draft, { type: 'manual', key, value });
+  for (const [scope, ids] of Object.entries({ property: ['second', 'primary'], executant: ['second', 'primary'], payment: ['second', 'first'] })) {
+    draft = draftReducer(draft, { type: 'record-order', scope, ids });
+  }
+  const state = appStateFor(JSON.parse(JSON.stringify(draft)));
+  expect(scheduleRecords(state).map(record => record.id)).toEqual(['second', 'primary']);
+  expect(scheduleRecords(state)[0].values.housePtinPairs).toContain('5-20');
+  expect(state.payments.map(payment => payment.amount)).toEqual(['200', '100']);
+  expect(state.primaryExecutantId).toBe('second');
+  expect(partyRecords(state, 'executant').map(record => record.values.executantName)).toEqual(['SECOND SELLER', 'FIRST SELLER']);
+});
+
+it('prefills the tax upload schedule ULB and honours manual changes', () => {
+  let draft = draftReducer(newDraft(), { type: 'add-property', id: 'other' });
+  const candidate: Candidate = {
+    id: 'ulb', field: 'localAuthorityType', value: 'GHMC', role: 'property',
+    record: 'primary', quote: 'GHMC Property Tax Receipt', page: 1, region: 'Heading',
+    handwritten: false, status: 'accepted', historical: false,
+  };
+  draft = draftReducer(draft, { type: 'add', source: {
+    id: 'receipt', revision: 0, name: 'receipt.png', hash: '', status: 'done', profile: 'phase1:houseTax',
+    assignment: { role: 'link', record: 'tax-record', propertyRecord: 'other' },
+    result: { candidates: [candidate], plans: [], notes: [] },
+  } });
+  expect(resolveDraft(draft).values['property|other|localAuthorityType']).toBe('GHMC');
+  expect(resolveDraft(draft).values['property|primary|localAuthorityType']).toBeUndefined();
+  draft = draftReducer(draft, { type: 'manual', key: 'property|other|localAuthorityType', value: 'Custom Board' });
+  expect(resolveDraft(draft).values['property|other|localAuthorityType']).toBe('Custom Board');
 });

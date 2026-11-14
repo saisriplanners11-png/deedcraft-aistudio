@@ -30,7 +30,6 @@ import { releaseGate } from './legal-registry';
 import { titleAmendmentValues, type TitleAmendmentKind } from './title-amendments';
 import { isCompoundWall, structureMeasurement } from './house-valuation';
 import { ALL_FIELDS, STRUCTURE_TYPE_OPTIONS, type StructureDetails } from './fields';
-import { pascalCaseBoundary } from './place-names';
 import { flatVariant } from './flat-options';
 import { loadLibraryBytes } from './template-library-client';
 import type { TemplatePin } from './template-library-types';
@@ -872,7 +871,11 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     const completed = repeat.partyRole && index < repeat.records!.length - 1
       ? replaceRunText(filled, /[.,;]{2,}$/, () => '.')
       : filled;
-    return repeat.regularWeight ? regularWeight(completed) : completed;
+    const formatted = repeat.regularWeight ? regularWeight(completed) : completed;
+    const paymentOrder = record['Payment Order'];
+    const enclosureOrder = record['Enclosure Order'];
+    const marker = paymentOrder != null ? 'payment:' + paymentOrder : enclosureOrder ? 'enclosure:' + enclosureOrder : '';
+    return marker ? formatted.replace(/<\/w:p>$/, '<!--deed-order:' + marker + '--></w:p>') : formatted;
   }).join('');
   // This placeholder is reused by the original template for different concepts.
   if (/WHEREAS[\s\S]*agreed consideration amount/i.test(plainText(p))) {
@@ -920,9 +923,13 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
   if (linkNumber && values.get(norm('Link Authority')) === LINK_ISSUING_AUTHORITIES[1]) {
     p = replaceRunText(p, /office of the Sub[- ]Registrar,/i, () => 'office of the Tahsildar & Jt. Sub-Registrar,');
   }
+  const openingSro = /(?:made|executed)\b/i.test(plainText(p)) &&
+    /\b(?:S\.\s*R\.\s*O\.|SRO|Sub[- ]Registrar)\s*:?\s*<[^<>]+>/i.test(plainText(p));
+  if (openingSro) p = replaceRunText(p, /\b(?:S\.\s*R\.\s*O\.|SRO|Sub[- ]Registrar)\s*:?\s*(?=<[^<>]+>)/i,
+    match => '\uE212' + match[0] + '\uE213');
   p = removeEmptyFields(p, values, missing);
   const isReconveyance = values.has(norm('Reconveyance Draft'));
-  p = replaceRunText(p, /<[^<>]+>|\b(?:Document Issuing Authority|(?:Tahsildar & Jt\. )?Sub[- ]Registrar(?: Office(?:\s*\(SRO\))?)?|Document (?:Number|No\.?)|SRO)\b\.?/gi,
+  if (!openingSro) p = replaceRunText(p, /<[^<>]+>|\b(?:Document Issuing Authority|(?:Tahsildar & Jt\. )?Sub[- ]Registrar(?: Office(?:\s*\(SRO\))?)?|Document (?:Number|No\.?)|SRO)\b\.?/gi,
     match => match[0].startsWith('<') ? match[0] : boldDeedText(match[0]));
   if (isReconveyance) {
     p = replaceRunText(p, /<[^<>]+>|\b(?:loan amount(?: with interest)?|principal sum|interest(?= of Rs\.))\b/gi,
@@ -932,7 +939,7 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
     const name = match[1].trim();
     const value = values.get(norm(name)) || '';
     if (!value) return '';
-    if (/^(?:North|South|East|West) Boundary(?: of (?:Apartment|Flat))?$/i.test(name)) return pascalCaseBoundary(value);
+    if (openingSro && /\uE213\s*$/.test(match.input.slice(0, match.index))) return '\uE212' + value + '\uE213';
     if (/^(?:(?:Link |(?:A\.)?G\.P\.A\.)Doct\.No\.|(?:Rectification Deed|Supplemental(?: Deed| Agreement)?|Development) (?:Doc(?:ument)? )?No\.?|(?:Sub[- ]Registrar(?: Office)?|(?:Authority|Development|Supplemental|Rectification Deed|Supplemental Deed) SRO)(?: Code)?|Document (?:Issuing Authority|Number|No\.?)|(?:Principal|Intrest|Interest|Mortgage) Amount)$/i.test(name)) return boldDeedText(value);
     return value;
   });
@@ -941,6 +948,18 @@ function fillParagraph(p: string, values: Map<string, string>, missing: Set<stri
 }
 
 /** Remove direct bold styling while preserving the template's fonts and size. */
+function orderRecitalParagraphs(xml: string): string {
+  const pattern = /<w:p(?=[\s>])[^>]*>(?:(?!<\/w:p>)[\s\S])*?<!--deed-order:(payment|enclosure:\d+):(\d+)--><\/w:p>/g;
+  const groups = new Map<string, RegExpMatchArray[]>();
+  for (const match of xml.matchAll(pattern)) {
+    const group = groups.get(match[1]) || [];
+    group.push(match);
+    groups.set(match[1], group);
+  }
+  for (const group of groups.values()) group.sort((a, b) => Number(a[2]) - Number(b[2]));
+  return xml.replace(pattern, (_, group: string) => groups.get(group)!.shift()![0].replace(/<!--deed-order:[^>]+-->/, ''));
+}
+
 function regularWeight(paragraph: string): string {
   return paragraph
     .replace(/<w:b(?:\s[^>]*)?\/>/g, '<w:b w:val="0"/>')
@@ -1016,7 +1035,7 @@ function assertEnclosureRepetition(xml: string, schedules: ScheduleMerge[]): voi
 function enclosureRewrites(schedule: ScheduleMerge): Rewrite[] {
   return (Object.keys(ENCLOSURE_RECITALS) as EnclosureRecitalKind[]).flatMap(kind => {
     const records = schedule.enclosureRecords?.[kind];
-    return records && records.length > 1 ? [{ find: ENCLOSURE_RECITALS[kind], replace: '', records }] : [];
+    return records?.length && (records.length > 1 || records[0]['Enclosure Order']) ? [{ find: ENCLOSURE_RECITALS[kind], replace: '', records }] : [];
   });
 }
 
@@ -1560,6 +1579,9 @@ function prepareHouseBlock(block: string, values: Record<string, string>, detail
         : row.structureType || values['Roof Material'] || '';
   const filled = housePlinthDescription(block, details).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, original => {
     const text = plainText(original);
+    if (values['House Tax Identification Rows'] && /^\s*ANNEXURE\s*[–—-]?\s*[I1]\s*-?\s*A\s*$/i.test(text)) {
+      return original + paragraphLike(original, values['House Tax Identification Rows'], 'left');
+    }
     let paragraph = original;
     // Keep the house schedule opening and floor-table heading with their content.
     if (/SCHEDULE OF PROPERTY|Description of the property hereby sold|^\s*All that the\b|BUILDING\s*\/\s*FLOOR DETAILS/i.test(text) && !/<w:keepNext\b/.test(paragraph)) {
@@ -1807,6 +1829,33 @@ function prepareLandmarkBlock(block: string, values: Record<string, string>, var
  * @param variant  which SCHEDULE OF PROPERTY block to keep, e.g. 'IF OPEN PLOT'
  * @param rewrites literal phrases to fix up after substitution
  */
+/** Estimate the rendered height of a source paragraph without changing its runs. */
+function stampParagraphHeight(paragraph: string, textWidth: number): number {
+  const size = Math.max(28, ...Array.from(paragraph.matchAll(/<w:sz\s+w:val="(\d+)"/g), match => Number(match[1])));
+  const spacing = paragraph.match(/<w:spacing\b[^>]*\/>/)?.[0] || '';
+  const indent = paragraph.match(/<w:ind\b[^>]*\/>/)?.[0] || '';
+  const read = (tag: string, key: string, fallback = 0) => Number(tag.match(new RegExp(`\\bw:${key}="(\\d+)"`))?.[1] ?? fallback);
+  const usableWidth = Math.max(1, textWidth - read(indent, 'left') - read(indent, 'right') - read(indent, 'firstLine') - read(indent, 'hanging'));
+  const charactersPerLine = Math.max(1, Math.floor(usableWidth / (size * 6)));
+  const lines = paragraph.split(/<w:br\b[^>]*\/>/).reduce((total, segment) => {
+    let lineCount = 1;
+    let used = 0;
+    for (const word of plainText(segment).trim().split(/\s+/)) {
+      if (used && used + word.length + 1 > charactersPerLine) {
+        lineCount++;
+        used = 0;
+      }
+      lineCount += Math.floor(Math.max(0, word.length - 1) / charactersPerLine);
+      used = used ? used + word.length + 1 : word.length % charactersPerLine || Math.min(word.length, charactersPerLine);
+    }
+    return total + lineCount;
+  }, 0);
+  const line = read(spacing, 'line');
+  const lineHeight = /w:lineRule="(?:exact|atLeast)"/.test(spacing)
+    ? Math.max(size * 12, line) : size * 12 * Math.max(1, line / 240);
+  return lines * lineHeight + read(spacing, 'before', 80) + read(spacing, 'after', 120);
+}
+
 /** Apply the mandatory Sale-sized stamp area to every generated deed package. */
 export function ensureStampPaperSpace(xml: string, selection = 'Legacy', count = '1'): string {
   const top = ({ '100': '8352', '50': '8640', '20': '8640', None: '1080' } as Record<string, string>)[selection] || '8208';
@@ -1833,24 +1882,40 @@ export function ensureStampPaperSpace(xml: string, selection = 'Legacy', count =
       .replace(/<w:titlePg\b[^>]*\/>/g, '')
       .replace(/(<w:pgNumType\b[^>]*?)\s+w:start="[^"]*"/g, '$1');
     const sectionBreak = `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/>${stamp}</w:pPr></w:p>`;
+    const geometry = (key: string, fallback: number) => Number(stamp.match(new RegExp(`\\bw:${key}="(\\d+)"`))?.[1] ?? fallback);
+    const textWidth = geometry('w', 11920) - geometry('left', 1080) - geometry('right', 1080) - geometry('gutter', 0);
+    const availableHeight = geometry('h', 16840) - Number(top) - geometry('bottom', 1080) - 240;
     const blocks = children.slice(openingIndex + 1);
     let blockIndex = 0;
     let offset = children[openingIndex].end;
     const pages = [];
     for (let page = 1; page < pageCount; page++) {
       const start = offset;
-      // Keep tables, existing section boundaries, and explicitly paginated
-      // blocks in the original continuation. Use complete opening paragraphs.
+      let height = 0;
+      let groupHeight = 0;
+      let lastFit = blockIndex;
+      // Commit complete paragraph groups and compact boundary tables. Leave
+      // other tables and source page boundaries in their original continuation.
       while (blockIndex < blocks.length) {
         const block = blocks[blockIndex];
         const paragraph = body.slice(block.start, block.end);
-        if (!/^<w:p(?:\s|>)/.test(paragraph) || /<w:(?:sectPr|pageBreakBefore|drawing)\b|<w:br\b[^>]*w:type="page"/.test(paragraph)) break;
-        offset = block.end;
+        if (/<w:(?:sectPr|pageBreakBefore|drawing)\b|<w:br\b[^>]*w:type="page"/.test(paragraph)) break;
+        const boundaryTable = /^<w:tbl\b/.test(paragraph) && /^(?:North|East|West|South)\s*:/i.test(plainText(paragraph).trim());
+        if (!boundaryTable && !/^<w:p(?:\s|\/?>)/.test(paragraph)) break;
+        groupHeight += boundaryTable
+          ? Array.from(paragraph.matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g), ([cellParagraph]) => stampParagraphHeight(cellParagraph, textWidth * 0.65) + 80).reduce((a, b) => a + b, 0)
+          : stampParagraphHeight(paragraph, textWidth);
+        if (height + groupHeight > availableHeight) break;
         blockIndex++;
         const wording = plainText(paragraph).trim();
-        if (wording && !/<w:keepNext(?:\s*\/|\s+w:val="(?:true|1)")/.test(paragraph)
-          && !/^(?:IN\s*FAVOUR OF|(?:\d+\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:)$/i.test(wording)) break;
+        if (!boundaryTable && (!wording || /<w:keepNext(?:\s*\/|\s+w:val="(?:true|1)")|<w:pStyle\b[^>]*w:val="Heading\d+"/.test(paragraph)
+          || /^(?:IN\s*FAVOUR OF|(?:\d+\.\s*)?FLOW OF TITLE & LINK DEED DETAILS:)$/i.test(wording))) continue;
+        lastFit = blockIndex;
+        offset = block.end;
+        height += groupHeight;
+        groupHeight = 0;
       }
+      blockIndex = lastFit;
       pages.push(body.slice(start, offset) + sectionBreak);
     }
     const remaining = body.slice(offset).replace(continuationSection, nextPageSection(continuationSection));
@@ -2207,7 +2272,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     return ++blanks <= 1;
   }).join('');
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0, start) + result + xml.slice(end)), values['Stamp Paper Margin'], values['Stamp Paper Count']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -2220,14 +2285,16 @@ function omitSaleGpaNalaText(paragraph: string): string {
 // The merge places each marked value in one text run. Split that run so
 // adjacent source wording keeps its original formatting.
 function boldMarkedRunText(paragraph: string): string {
-  return paragraph.replace(/(<w:r(?:\s[^>]*)?>)(<w:rPr(?:\s[^>]*)?>(?:(?!<\/w:rPr>)[\s\S])*<\/w:rPr>)?(<w:t(?:\s[^>]*)?>)([^<]*[\uE210\uE211][^<]*)(<\/w:t><\/w:r>)/g,
+  return paragraph.replace(/(<w:r(?:\s[^>]*)?>)(<w:rPr(?:\s[^>]*)?>(?:(?!<\/w:rPr>)[\s\S])*<\/w:rPr>)?(<w:t(?:\s[^>]*)?>)([^<]*[\uE210-\uE213][^<]*)(<\/w:t><\/w:r>)/g,
     (_, run, properties = '', _textTag, text, end) => {
       const bold = properties
         ? properties.replace(/<w:b(?:\s[^>]*)?\/>/g, '').replace(/<w:rPr(?:\s[^>]*)?>(?:\s*<w:(?:rStyle|rFonts)\b[^>]*\/>){0,2}/, (tag: string) => tag + '<w:b/>')
         : '<w:rPr><w:b/></w:rPr>';
-      return text.split(/\uE210([^\uE211]*)\uE211/g).map((part: string, index: number) =>
-        part ? run + (index % 2 ? bold : properties) + '<w:t xml:space="preserve">' + part + end : '').join('');
-    }).replace(/[\uE210\uE211]/g, '');
+      const regular = properties ? properties.replace(/<w:(?:b|bCs)(?:\s[^>]*)?\s*\/>|<w:rStyle w:val="Strong"\s*\/>/g, '').replace(/<w:rPr(?:\s[^>]*)?>(?:\s*<w:(?:rStyle|rFonts)\b[^>]*\/>){0,2}/, tag => tag + '<w:b w:val="0"/><w:bCs w:val="0"/>')
+        : '<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/></w:rPr>';
+      return text.split(/([\uE210\uE212][^\uE211\uE213]*[\uE211\uE213])/g).map((part: string, index: number) =>
+        part ? run + (index % 2 ? part.startsWith('\uE210') ? bold : regular : properties) + '<w:t xml:space="preserve">' + part + end : '').join('');
+    }).replace(/[\uE210-\uE213]/g, '');
 }
 
 export async function fillSaleDeed(
@@ -2309,7 +2376,7 @@ export async function fillSaleDeed(
     const titleBlocks = (await Promise.all(selected.map(async (schedule, scheduleIndex) => {
       const titleValues = new Map<string, string>();
       for (const [key, value] of Object.entries(schedule.titleValues || values)) titleValues.set(norm(key), value ?? '');
-      const titleRewrites: Rewrite[] = [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1
+      const titleRewrites: Rewrite[] = [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords?.length
         ? [{ find: /(?:\(a\)\s+)?Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }]
         : [])];
       let block = removeOptionalTitleRecitals(
@@ -2465,7 +2532,7 @@ export async function fillSaleDeed(
     }
   }
   xml = ensureStampPaperSpace(xml.slice(0, bodyStart) + body + xml.slice(bodyEnd), values['Stamp Paper Margin'], values['Stamp Paper Count']);
-  doc.data = new TextEncoder().encode(xml);
+  doc.data = new TextEncoder().encode(orderRecitalParagraphs(xml));
   for (const part of entries.filter(entry => /^word\/(?:header|footer)\d+\.xml$/.test(entry.name))) {
     const filled = new TextDecoder().decode(part.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, values_, missing, []));
     part.data = new TextEncoder().encode(filled);
@@ -2551,8 +2618,16 @@ export async function appendRegistrationPlans(
   }
   const finalSection = xml.lastIndexOf('<w:sectPr');
   if (finalSection < 0 || !/^<w:sectPr\b[^>]*(?:\/>|>[\s\S]*?<\/w:sectPr>)\s*<\/w:body>/.test(xml.slice(finalSection))) throw new Error('The deed is missing its final page section.');
+  const section = xml.slice(finalSection);
+  const pageWidth = Number(section.match(/<w:pgSz\b[^>]*\bw:w="(\d+)"/)?.[1] ?? 11920);
+  const pageMargins = section.match(/<w:pgMar\b[^>]*>/)?.[0] || '';
+  const leftMargin = Number(pageMargins.match(/\bw:left="(\d+)"/)?.[1] ?? 1080);
+  const rightMargin = Number(pageMargins.match(/\bw:right="(\d+)"/)?.[1] ?? 1080);
+  const gutter = Number(pageMargins.match(/\bw:gutter="(\d+)"/)?.[1] ?? 0);
+  // Center the stamp about two-thirds across the text area, as in the reference.
+  const stampIndent = Math.round(Math.max(0, pageWidth - leftMargin - rightMargin - gutter) * 0.35);
   const stampPlace = typingStamp?.place?.trim().replace(/\.+$/, '');
-  const stampParagraphs = typingStamp && stampMobile ? [
+  const stamp = typingStamp && stampMobile ? [
     'Typed By:',
     typingStamp.name.trim().toLocaleUpperCase('en-IN'),
     [stampPlace && stampPlace + '.', '☎ ' + stampMobile + '.'].filter(Boolean).join(' '),
@@ -2560,15 +2635,8 @@ export async function appendRegistrationPlans(
     'the Executant/s and Claimant/s the document is',
     'prepared and the partie/s are accepted.',
   ].map((line, index, lines) =>
-    `<w:p><w:pPr>${index < lines.length - 1 ? '<w:keepNext/>' : ''}<w:keepLines/><w:spacing w:before="${index === 0 ? 120 : 0}" w:after="${index === 0 ? 680 : 0}"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`
+    `<w:p><w:pPr>${index < lines.length - 1 ? '<w:keepNext/>' : ''}<w:keepLines/><w:bidi w:val="0"/><w:spacing w:before="${index === 0 ? 120 : 0}" w:after="${index === 0 ? 680 : 0}"/><w:ind w:left="${stampIndent}" w:right="0" w:firstLine="0"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="${index < 3 ? 20 : 16}"/><w:szCs w:val="${index < 3 ? 20 : 16}"/></w:rPr><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`
   ).join('') : '';
-  const stamp = stampParagraphs
-    ? '<w:tbl><w:tblPr><w:tblW w:w="3250" w:type="pct"/><w:jc w:val="right"/>' +
-      '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tblBorders>' +
-      '<w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol/></w:tblGrid>' +
-      '<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr><w:tcW w:w="3250" w:type="pct"/></w:tcPr>' +
-      stampParagraphs + '</w:tc></w:tr></w:tbl>'
-    : '';
   xml = xml.slice(0, finalSection) + planParagraphs.join('') + stamp + xml.slice(finalSection);
   document.data = encoder.encode(xml);
   relationships.data = encoder.encode(rels);
@@ -2784,7 +2852,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
   let sectionIndex = 0;
   const numbered = (xml.slice(0, start) + result + xml.slice(end)).replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, section => sectionIndex++ === 0 ? section : section.replace(/(<w:pgNumType\b[^>]*?)\s+w:start="[^"]*"/g, '$1'));
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(numbered, values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(numbered), values['Stamp Paper Margin'], values['Stamp Paper Count']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -2848,7 +2916,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
     const block = opening.slice(titleStart.start, titleEnd.start);
     const titleBlocks = schedules.map(schedule => {
       const title = map(schedule.titleValues || values);
-      const titleRewrites: Rewrite[] = [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords && schedule.titleLinkRecords.length > 1 ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])];
+      const titleRewrites: Rewrite[] = [...enclosureRewrites(schedule), ...amendmentRewrites(schedule), ...(schedule.titleLinkRecords?.length ? [{ find: /^Registered Deed:/i, replace: '', records: schedule.titleLinkRecords }] : [])];
       return fill(removeOptionalTitleRecitals(block, title, schedule.variant), schedule.titleValues || values, titleRewrites);
     }).join('');
     opening = opening.slice(0, titleStart.start) + titleBlocks + opening.slice(titleEnd.start);
@@ -2919,7 +2987,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       .replace(/<w:pgMar\b[^>]*\/>/, `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>`);
   });
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0, start) + result + xml.slice(end), values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  document.data = new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0, start) + result + xml.slice(end)), values['Stamp Paper Margin'], values['Stamp Paper Count']));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -3302,6 +3370,6 @@ export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewr
       result=result.slice(0,boundary.end)+'<w:p><w:pPr>'+section+'</w:pPr></w:p>'+result.slice(boundary.end);
     }
   }
-  entry.data=new TextEncoder().encode(ensureStampPaperSpace(xml.slice(0,parts.start)+result+xml.slice(parts.end),values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  entry.data=new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0,parts.start)+result+xml.slice(parts.end)),values['Stamp Paper Margin'], values['Stamp Paper Count']));
   return {blob:new Blob([await writeZip(entries) as any],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),missing:[...missing],unmapped:[]};
 }

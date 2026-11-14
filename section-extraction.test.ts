@@ -134,6 +134,10 @@ describe('shared document section extraction', () => {
       expect(read('bltNo', '0310', profile)).toBeNull();
       expect(read('houseTaxReceiptNo', '001105008210', profile)).toBeNull();
       expect(read('houseTaxReceiptNo', '0248', profile)).toMatchObject({ value: '0248' });
+      for (const label of ['PTIN', 'P.T.I.N.', 'Property Tax Identification Number', 'PTIN No.']) {
+        expect(read('bltNo', '001105008210', profile, label + ': 001105008210')).toMatchObject({ value: '001105008210' });
+      }
+      expect(read('houseTaxReceiptNo', '0248', profile, 'G.H.M.C. (CURE) Reciept No.: 0248')).toMatchObject({ value: '0248' });
     }
 
     const pairs = read('housePtinPairs', JSON.stringify([
@@ -446,4 +450,30 @@ it('requests every H.No./PTIN pair in the Step 2 house-tax and assessment worker
     expect(sectionFields(profile)).toHaveLength(1);
     expect(sectionFields(profile)[0].fields).toContain('housePtinPairs');
   }
+});
+
+it('requests all four dimensions as well as the four boundaries from a property map upload', () => {
+  const fields = profileFields('property-schedule');
+  for (const side of ['North', 'South', 'East', 'West']) {
+    expect(fields).toContain('dimension' + side);
+    expect(fields).toContain('boundary' + side);
+  }
+});
+
+it('accepts the labelled cells in the three Step 2 tax layouts', () => {
+  const read = (field: string, value: string, quote: string) => cleanCandidate({
+    field, value, quote, role: 'link', record: 'primary', region: 'Tax table',
+    historical: false, handwritten: false,
+  }, 1, 0, 'phase1:houseTax');
+  expect(read('bltNo', '001234', 'Assessment No 17; PTIN (Property Tax Identification Number) 001234')?.value).toBe('001234');
+  expect(read('bltNo', '17', 'Assessment No 17; PTIN (Property Tax Identification Number) 001234')).toBeNull();
+  expect(read('houseTaxReceiptNo', '8212P00618/0', 'Book No./Receipt No. 8212P00618 / 0')?.value).toBe('8212P00618/0');
+  expect(read('taxPaidDate', '2026-06-16', 'Date of Payment 16/06/2026')?.value).toBe('2026-06-16');
+  expect(read('taxPaidDate', '2026-04-18', 'Transaction Date 18-04-2026 01:11 PM')?.value).toBe('2026-04-18');
+  expect(read('taxPaidDate', '0026-11-04', 'Dt. of Collection 04/11/0026')).toBeNull();
+  expect(read('taxPaidDate', '2026-10-28', 'Dt. of Asmt. 28/10/2026')).toBeNull();
+  expect(read('localAuthorityType', 'Municipality', 'ULB: Example Municipality')).toMatchObject({ role: 'property', value: 'Municipal Council' });
+  expect(read('localAuthorityType', 'Gram Panchayat', 'Panchayat: Example')).toMatchObject({ role: 'property', value: 'Gram Panchayat' });
+  expect(read('localAuthorityType', 'GHMC', 'Core Urban Region Economy (CURE) Property Tax Receipt Details')).toMatchObject({ role: 'property', value: 'GHMC' });
+  expect(read('localAuthorityType', 'Example Board', 'ULB: Example Board')).toMatchObject({ role: 'property', value: 'Example Board' });
 });

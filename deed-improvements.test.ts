@@ -135,6 +135,18 @@ describe('requested deed improvements', () => {
     const output = ensureStampPaperSpace(xml, selection);
     expect(output.match(/w:top="(\d+)"/g)).toEqual([`w:top="${top}"`, 'w:top="1080"']);
   });
+  it('fills the usable space on additional stamp sheets before breaking', () => {
+    const section = '<w:sectPr><w:pgSz w:w="11920" w:h="16840"/><w:pgMar w:top="1080" w:bottom="1080"/></w:sectPr>';
+    const opening = `<w:p><w:pPr>${section}</w:pPr><w:r><w:t>Gift opening</w:t></w:r></w:p>`;
+    const clauses = Array.from({ length: 36 }, (_, index) =>
+      `<w:p><w:r><w:t>Clause ${index + 1}. ${'The property described in the schedule belongs to the donor. '.repeat(5)}</w:t></w:r></w:p>`).join('');
+    const result = ensureStampPaperSpace(`<w:document><w:body>${opening}${clauses}${section}</w:body></w:document>`, '100', '5');
+    const pages = result.split(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g);
+    expect(result.match(/w:top="8352"/g)).toHaveLength(5);
+    for (const page of pages.slice(1, 5)) expect((page.match(/Clause /g) || []).length).toBeGreaterThan(1);
+    expect(pages[5]).toContain('Clause 36.');
+    expect(result.match(/Clause \d+/g)).toEqual(clauses.match(/Clause \d+/g));
+  });
   it('ignores inactive minor identity fields on organisations and municipal donees', () => {
     const company = { ...initialState, form: { ...initialState.form, executantPartyType: 'Company', executantDob: '2015-01-02' } };
     expect(mergeValues(company)['Minor Representation Complete']).toBe('true');

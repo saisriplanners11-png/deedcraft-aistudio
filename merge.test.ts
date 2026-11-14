@@ -42,6 +42,9 @@ describe('Printed deed date policy', () => {
 });
 
 describe('deed download filename', () => {
+  it('uses the saved dashboard name with spaces', () => {
+    expect(deedFilename(initialState, 'House Sale - Ravi Kumar')).toBe('House Sale Ravi Kumar.docx');
+  });
   it('uses the deed type and primary claimant name', () => {
     expect(deedFilename({ ...initialState, deedType: 'Sale', form: { ...initialState.form, claimantName: 'Ravi Kumar', executantName: 'Seller Name', plotNo: '42' } }))
       .toBe('Sale-Ravi-Kumar.docx');
@@ -111,4 +114,15 @@ it('does not invent an association between an unpaired property H.No. and a rece
   const pairs = housePtinPairsForSources({ bearingHNo: '6-2-24' }, [{ values: { linkOption: 'houseTax', bltNo: '1105008210' } }]);
   expect(parsePropertyHousePtinPairs(pairs)?.map(row => [row.houseNo, row.ptin])).toEqual([['6-2-24', ''], ['', '1105008210']]);
   expect(propertyHousePtinOutput(pairs).ptins).toBe('1105008210');
+});
+
+it('binds House locality, Aadhaar and mobile separately from boundary text', () => {
+  const values = mergeValues({ ...initialState, category: 'Residential', form: {
+    ...initialState.form, executantLocality: 'green park', executantAadhaar: '123456789012',
+    executantMobile: '9876543210', boundaryNorth: '25 FT Road / Plot 19',
+  } });
+  expect(values).toMatchObject({
+    'Executant Locality': 'Locality: green park', 'Executant Adhar Number': '1234 5678 9012',
+    'Executant Cell.No.': '98765 43210', 'North Boundary': '25 FT Road / Plot 19',
+  });
 });
