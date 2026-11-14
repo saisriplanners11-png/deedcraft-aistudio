@@ -115,11 +115,12 @@ export function Input({
   const shown = field.id === 'flatStage' ? flatStage(formatted) || formatted : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? formatted.slice(0, 7) : formatted;
 
   return (
-    <FieldContainer className="deed-field" data-span={field.type === 'textarea' ? 'full' : span > 1 ? 'wide' : undefined} style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
+    <FieldContainer className="deed-field" data-deed-field={field.id} data-span={field.type === 'textarea' ? 'full' : span > 1 ? 'wide' : undefined} style={css(`grid-column:span ${span};display:flex;flex-direction:column;gap:5px;min-width:0`)}>
       <span style={css('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
         <span style={css(`font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.mutedSoft}`)}>
           {field.label}
         </span>
+        {field.required && <span className="required-field-note" aria-hidden="true">Required</span>}
         {source ? (
           <span style={css(`font-size:8.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:${C.green};border:1px solid ${C.greenLine};background:${C.greenBg};padding:1px 5px`)}>
             {SOURCE_TAG[source]}
@@ -237,11 +238,13 @@ const SOURCE_TAG: Record<DocKind, string> = {
 };
 
 /** One titled group of fields. */
+export type FieldRenderer = (field: import('./fields').Field, value: string, onChange: (value: string) => void) => React.ReactNode;
+
 export function FieldGroup({
   group, form, setField, derived, conflicts, fieldSource, fieldEvidence, onAccept, onDismiss, onAcceptGroup, afterField, renderField,
 }: {
   afterField?: (fieldId: string) => React.ReactNode;
-  renderField?: import('./workspace-presentation').FieldRenderer;
+  renderField?: FieldRenderer;
   group: Group;
   form: Record<string, string>;
   setField: (id: string, v: string) => void;

@@ -76,15 +76,14 @@ import './finish-workflow.css';
 import './property-party-polish.css';
 import './workspace-density.css';
 import './friendly-workspace.css';
-import './registration-workspace.css';
-import { RegistrationNavigation } from './registration-navigation';
+import './workspace.css';
+import { WorkflowNavigation } from './workflow-navigation';
 import { ScreenGuide, GettingStartedGuide } from './screen-guide';
 import { DocumentUpload, ReviewIssues } from './workflow-ui';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
 import { deleteDeed, listSavedDeeds, saveDeed, type SavedDeed } from './saved-deeds';
-import type { WorkspacePresentation, FieldRenderer } from './workspace-presentation';
-import { EMPTY_LOOKUP } from './registration-location-state';
+import type { FieldRenderer } from './ui';
 
 // Raised from 4: Step 2 now lets a drafter add several document types (link
 // deed, house tax, title deed, NALA, permissions) at once, and each upload
@@ -243,7 +242,14 @@ function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
 function SourceFeedback({ sources }: { sources: Source[]; visibleFields?: string[] }) {
   const needsClearerUpload = sources.some(source => source.status === 'error' || !!source.error
     || source.result?.notes.some(note => /could not be read/i.test(note)));
-  return needsClearerUpload ? <p role="status" className="notice">Some details could not be filled. Enter them below or upload a clearer photo.</p> : null;
+  const pending = sources.some(source => source.status === 'queued' || source.status === 'reading');
+  const finished = sources.filter(source => source.status === 'done');
+  if (!sources.length) return null;
+  return <div role="status" className="source-review-status">
+    {pending && <p>Reading documents. You can keep editing.</p>}
+    {finished.length > 0 && <p>Read: {finished.map(source => source.name).join(', ')}. Check the filled fields against the originals.</p>}
+    {needsClearerUpload && <p className="notice">Some details could not be filled. Enter them below or upload a clearer copy.</p>}
+  </div>;
 }
 
 type LinkStageStatus = 'loading' | 'error' | 'review' | 'done' | null;
@@ -452,7 +458,7 @@ function AddLinkDocument({ onAdd }: { onAdd: (optionId: string, files: File[]) =
 
   return picking
     ? <div ref={anchor} className="document-picker"><MultiPicker onCancel={() => close([])} onContinue={close} /></div>
-    : <div ref={anchor} className="document-add"><span className="document-card-icon"><FolderOpen size={22} aria-hidden="true" /></span><div><h3>Add supporting documents</h3><p>Choose a registered deed, tax record, permission or other enclosure.</p></div><button ref={trigger} type="button" className="primary" onClick={() => setPicking(true)}>+ Add / upload document</button></div>;
+    : <div ref={anchor} className="document-add"><span className="document-card-icon"><FolderOpen size={22} aria-hidden="true" /></span><div><h3>Add supporting documents</h3><p>Choose the document type, then upload it or enter its details by hand.</p></div><button ref={trigger} type="button" className="primary" onClick={() => setPicking(true)}>+ Add / upload document</button></div>;
 }
 
 /** Checkbox-style tile picker for choosing one or several document types before any upload happens. */
@@ -683,7 +689,7 @@ function ReviewQueue({ sources, record, edit }: { sources: Source[]; record: str
   </Section>;
 }
 
-export default function WizardApp({ presentation, layoutControl }: { presentation?: WorkspacePresentation; layoutControl?: React.ReactNode } = {}) {
+export default function WizardApp() {
   const [showFieldHelp, setShowFieldHelp] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return localStorage.getItem('deedcraft-theme') === 'dark' ? 'dark' : 'light'; }
@@ -1441,7 +1447,6 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   const addProperty = () => {
     const id = crypto.randomUUID();
     dispatch({ type: 'add-property', id });
-    goto(1);
   };
   const confirmUnverified = (review: PendingReview, value: string) => {
     const target = reviewTarget(review);
@@ -1450,7 +1455,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
 
-  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app modern-workspace${showFieldHelp ? ' show-field-help' : ''}${presentation ? ` ${presentation.name}` : ''}`} data-theme={theme}>
+  return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app modern-workspace${showFieldHelp ? ' show-field-help' : ''}`} data-theme={theme}>
     {downloadWarning && downloadWarning.draftId === draft.id && downloadWarning.revision === draft.revision && downloadWarning.templateKey === templateKey &&
         <dialog className="download-warning-dialog" ref={element => { if (element && !element.open) element.showModal(); }}
           onCancel={() => setDownloadWarning(null)} aria-labelledby="download-warning-title">
@@ -1459,6 +1464,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           {downloadWarning.kind === 'word' && <p>If the selected template cannot be rendered, the download will use the deed’s default template when available or include the entered details for review.</p>}
           {downloadWarning.kind === 'telugu' && <p>The Telugu copy requires a renderable Word deed and uses the app’s AI service to translate the deed text.</p>}
           <button type="button" autoFocus onClick={() => setDownloadWarning(null)}>Cancel</button>
+          {notices.length > 0 && <button type="button" onClick={() => { setDownloadWarning(null); goto(8); }}>Find details to fix</button>}
           <button type="button" className="primary" onClick={() => {
             const { kind, reasons } = downloadWarning;
             setDownloadWarning(null);
@@ -1477,7 +1483,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
     />
     <UnverifiedReviewDialog review={pendingReviews[0] || null} onConfirm={confirmUnverified} onDismiss={dismissUnverified} />
     <a className="skip-link" href="#workspace-main">Skip to content</a>
-    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions">{layoutControl}<button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
+    <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
     {templateLibraryError && <p className="notice" role="alert">Shared template library: {templateLibraryError} <button onClick={() => void refreshPublishedTemplate()}>Retry</button></p>}
     {templatesView ? <TemplateLibrary onClose={() => setTemplatesView(false)} onPublished={() => void refreshPublishedTemplate()} /> : libraryView ? <main id="workspace-main" tabIndex={-1} className="saved-deeds-dashboard">
       <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
@@ -1486,7 +1492,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
       {savedDeeds.length > 0 && <GettingStartedGuide />}
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}
-      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? presentation ? <presentation.Library deeds={visibleSavedDeeds} templateLabel={deed => { const status = savedTemplateStatus(deed, latestTemplate); return status.label + (status.earlier ? ' · Updating to current default' : ''); }} onOpen={openSaved} onDuplicate={duplicateSaved} onRename={renameSaved} onRemove={deed => void removeSaved(deed)} /> : <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
+      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
         const name = deed.name || partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`;
         return <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
           <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeSavedWorkflowStep(deed.draft.instrumentId, deed.draft.step, deed.draft.workflowVersion)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
@@ -1494,13 +1500,15 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
         </article>; })}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
     </main> : <div className="shell">
-      <RegistrationNavigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={[...new Set([...notices.map(notice => notice.step), ...(Object.entries(draft.jurisdictionLookups || {}).some(([propertyId, lookup]) => lookup.needsReview?.some(field => !!resolved.values[fieldKey('property', propertyId, field)])) ? [2] : [])])]} title={deedDefinition.label} onNavigate={goto} />
+      <WorkflowNavigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={notices.map(notice => notice.step)} title={deedDefinition.label} onNavigate={goto} />
 
       <main id="workspace-main" tabIndex={-1} className="stage">
         {storageError && <p className="notice" role="alert">{storageError}</p>}
         {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
         <header className="compact-step-header">
-          <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p></div>
+          <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p>
+          {step >= 0 && step < 8 && <div className="step-quick-actions"><button type="button" className="primary" onClick={() => goto(followingStep)}>Next: {STEPS[followingStep]?.label}</button>
+          {notices.some(issue => issue.step === step) && <a href="#step-review">Details to check</a>}</div>}</div>
         </header>
         {step >= 0 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
         {[-1, 3, 6, 7, 8, 9].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
@@ -1649,7 +1657,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
             <button type="button" className="quiet" onClick={() => goto(0)}>{category ? 'Change property type in Step 1' : 'Choose property type in Step 1'}</button>
           </section>
           {!category ? <Empty>Choose this schedule's property type in Step 1 to add its documents.</Empty> : <>
-          <div className="documents-intro"><div><h2>Documents for this property</h2><p>Add the records you have. Review the extracted details in each card.</p></div><span>{records.length} document{records.length === 1 ? '' : 's'} added</span></div>
+          <div className="documents-intro"><div><h2>Documents for this property</h2><p>Upload a Link Document here once. It can also fill jurisdiction, property and valuation fields. Check the filled details, and add other records only if they apply.</p></div><span>{records.length} document{records.length === 1 ? '' : 's'} added</span></div>
           {records.map(record => {
             const option = options.find(item => sectionRecords(item.id).includes(record));
             if (!option) return null;
@@ -1695,7 +1703,7 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
           <ScopedSectionUpload label="Jurisdiction" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'jurisdiction')} />
           <SourceFeedback sources={draft.sources.filter(source => source.profile === 'jurisdiction' && source.assignment?.record === activePropertyId)} visibleFields={GROUPS.filter(group => group.step === 2).flatMap(group => group.fields.map(field => field.id))} />
-          <section className="panel"><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} />{presentation ? <presentation.Jurisdiction key={`${draft.id}:${activePropertyId}`} propertyId={activePropertyId} values={resolved.values} lookup={draft.jurisdictionLookups?.[activePropertyId] || EMPTY_LOOKUP} onLookupChange={value => dispatch({ type: 'jurisdiction-lookup', propertyId: activePropertyId, value })} onEdit={(field, value) => edit('property', activePropertyId, field, value)} renderFields={options => <RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} groupsOverride={options?.groups} renderField={options?.renderField} />} /> : <RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} />}</section>
+          <section className="panel"><SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === activePropertyId)} visibleFields={GROUPS.filter(g => g.step === 2).flatMap(g => g.fields.map(f => f.id))} /><RecordFieldGroup role="property" record={activePropertyId} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} step={2} resolved={resolved} edit={edit} /></section>
         </LinkStageGate>}
 
         {step === 3 && <LinkStageGate status={linkStageStatus('step4')} loading="Extracting the property schedule from the property documents…">
@@ -1711,6 +1719,8 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
               ...group,
               fields: group.fields.filter(field => !(isFinishedHouse(record.category, record.values.houseStage) && ['nearAdjacent', 'nearHNo'].includes(field.id))),
             })).filter(group => group.fields.length);
+            const boundaries = propertyGroups.map(group => group.title.startsWith('Boundaries')).lastIndexOf(true);
+            propertyGroups.splice(boundaries + 1, 0, PROPERTY_DIMENSIONS);
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
               <ScheduleTypeControl municipal={municipalGift} scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
@@ -1932,6 +1942,14 @@ export default function WizardApp({ presentation, layoutControl }: { presentatio
 
         </div>}
         {step >= 0 && step <= 7 && <TemplatePlacementFallback />}
+        {step >= 0 && step < 8 && notices.some(issue => issue.step === step) && <section id="step-review" className="notice" tabIndex={-1} aria-label="Details to check in this step">
+          <strong>Details to check in this step</strong>
+          <ul>{notices.filter(issue => issue.step === step).map(issue => <li key={issue.id}><strong>{issue.label}:</strong> {issue.reason} <button type="button" className="quiet" onClick={() => {
+            const fields = [...document.querySelectorAll<HTMLElement>(`[data-deed-field="${CSS.escape(issue.id)}"] :is(input, select, textarea)`)].filter(field => field.getClientRects().length);
+            if (fields.length === 1) { fields[0].focus(); fields[0].scrollIntoView({ block: 'center' }); }
+            else document.getElementById('workspace-title')?.focus();
+          }}>Return to entry</button></li>)}</ul>
+        </section>}
         {step >= 0 && <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(previousStep)}>{step <= 0 ? 'Overview' : STEPS[previousStep]?.label || 'Overview'}</button>
           <span><strong>Saved as you work</strong><small>You can go back and change any detail.</small></span>

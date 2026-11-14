@@ -14,8 +14,8 @@ try{
  const version={id:'finish-review-v6',filename:'Sale deed v6',instrumentId:'sale',hash:createHash('sha256').update(bytes).digest('hex')};
  await page.route('**/api/templates',r=>r.fulfill({json:{active:{sale:version.id},versions:[version]}}));
  await page.route('**/api/templates/versions/*/download',r=>r.fulfill({body:bytes,contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}));
- await page.goto(origin);await page.getByRole('button',{name:'Create your first deed'}).click();await page.locator('.registration-steps button').first().waitFor();
- const go=async step=>{if(page.viewportSize().width<=900)await page.locator('#mobile-step').selectOption(String(step));else await page.locator('.registration-steps button').nth(step).click();await page.locator(`.workflow-step-${step}`).waitFor();};
+ await page.goto(origin);await page.getByRole('button',{name:'Create your first deed'}).click();await page.locator('.workflow-steps button').first().waitFor();
+ const go=async step=>{if(page.viewportSize().width<=900)await page.locator('#mobile-step').selectOption(String(step));else await page.locator('.workflow-steps button').nth(step).click();await page.locator(`.workflow-step-${step}`).waitFor();};
  await go(4);await page.getByRole('textbox',{name:/sale consideration/i}).fill('100000');
  await go(5);await page.getByRole('button',{name:'+ Cheque',exact:true}).click();const first=page.locator('.payment-record').first();
  await first.getByRole('textbox',{name:'Amount (₹)',exact:true}).fill('25000');

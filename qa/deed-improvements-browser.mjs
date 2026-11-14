@@ -29,7 +29,7 @@ try {
   assert.equal(await page.getByLabel(/Guardian Aadhaar number/).inputValue(), '123456789012');
   await mkdir('tmp/improvements-ui', { recursive: true });
   await page.screenshot({ path: 'tmp/improvements-ui/minor-guardian.png', fullPage: true });
-  await page.locator('.registration-steps button').filter({ hasText: 'Market Value' }).click();
+  await page.locator('.workflow-steps button').filter({ hasText: 'Market Value' }).click();
   const margin = page.getByLabel(/First-page stamp-paper margin/);
   await margin.waitFor(); await margin.selectOption('100');
   assert.equal(await margin.inputValue(), '100');

@@ -20,11 +20,11 @@ try {
   await page.getByRole('button', { name: 'Create your first deed' }).click();
   const go = async step => {
     if (page.viewportSize().width <= 767) await page.locator('#mobile-step').selectOption(String(step));
-    else await page.locator('.registration-steps button').nth(step).click();
+    else await page.locator('.workflow-steps button').nth(step).click();
     await page.locator(`.workflow-step-${step}`).waitFor();
     if (step === 10) await page.frameLocator('iframe[title="Property Plan — New Generator"]').locator('#btn-app-library').waitFor();
   };
-  await page.locator('.registration-steps button').first().click();
+  await page.locator('.workflow-steps button').first().click();
   await page.getByLabel('What is this property?').selectOption('Residential:Finished');
   const capture = async name => page.screenshot({ path: fileURLToPath(new URL(name, out)), fullPage: true });
   await go(4);

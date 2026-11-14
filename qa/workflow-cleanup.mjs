@@ -14,9 +14,9 @@ try {
   await page.route('**/api/templates/versions/*/download', route => route.fulfill({ body: bytes, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.getByRole('button', { name: 'Create your first deed' }).click();
-  await page.locator('.registration-steps button').first().waitFor();
-  assert.equal(await page.locator('.registration-steps button').count(), 12);
-  const go = async index => page.locator('.registration-steps button').nth(index).click();
+  await page.locator('.workflow-steps button').first().waitFor();
+  assert.equal(await page.locator('.workflow-steps button').count(), 12);
+  const go = async index => page.locator('.workflow-steps button').nth(index).click();
   await go(0);
   await page.getByLabel('What is this property?').selectOption('Residential:Finished');
   await go(1);

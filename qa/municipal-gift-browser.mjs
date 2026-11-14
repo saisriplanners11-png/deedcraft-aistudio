@@ -20,7 +20,7 @@ try {
  assert.equal(await page.getByRole('region',{name:'Municipal donee'}).count(),0);
  await page.waitForTimeout(1500);await page.reload();await page.getByRole('heading',{name:'Saved deeds',exact:true}).waitFor();await page.getByRole('button',{name:'Continue / Edit'}).first().click();
  await name.waitFor();assert.equal(await name.inputValue(),'ENTERED MUNICIPAL CLAIMANT');
- await page.locator('.registration-steps button').filter({has:page.getByText('Generate',{exact:true})}).click();
+ await page.locator('.workflow-steps button').filter({has:page.getByText('Generate',{exact:true})}).click();
  const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'Download Word 2007 deed (.docx)',exact:true}).click();const download=await downloading;
  assert.match(download.suggestedFilename(),/Municipal-Gift-ENTERED-MUNICIPAL-CLAIMANT/);
  const text=await rt.docxToText(new Uint8Array(await readFile(await download.path())));

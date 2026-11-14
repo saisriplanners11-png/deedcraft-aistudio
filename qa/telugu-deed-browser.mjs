@@ -18,7 +18,7 @@ try {
   }
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.getByRole('button', { name: 'Create your first deed' }).click();
-  await page.locator('.registration-steps button').nth(9).click();
+  await page.locator('.workflow-steps button').nth(9).click();
   await page.getByLabel(/include typed by stamp/i).check();
   const stamp = page.locator('.typing-stamp-fields');
   await stamp.getByLabel('Name', { exact: true }).fill('Demo Typist');

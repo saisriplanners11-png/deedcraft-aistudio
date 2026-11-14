@@ -310,7 +310,7 @@ export const GROUPS: Group[] = [
         hint: 'Door/house number of a neighbouring property used as a landmark in the boundary description — not the subject property\'s own number (see Bearing H.No.).' },
       { id: 'landmarkHNo', label: 'Near / adjacent landmark house number', ph: 'Landmark House No.', only: ['Demolished', 'Part open place'],
         hint: 'Neighbouring house used as a landmark; keep the subject property house number in its separate field.' },
-      { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot'],
+      { id: 'assessmentPtinNo', label: 'V.L.T. number', ph: 'V.L.T No.', only: ['Vacant Plot'], hidden: true,
         hint: 'Vacant Land Tax / assessment number, exactly as printed in the local-body record.' },
       { id: 'locality', label: 'Locality', ph: 'Locality' },
       { id: 'localAuthorityType', label: 'ULB / municipality', ph: 'Local Authority Type', type: 'select', options: LOCAL_AUTHORITY_OPTIONS, allowCustom: true },

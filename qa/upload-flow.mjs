@@ -21,7 +21,7 @@ try {
  });
  await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
  await page.getByRole('heading',{name:'Deed setup',exact:true}).waitFor();
- assert.equal(await page.locator('.registration-steps button').count(),11);
+ assert.equal(await page.locator('.workflow-steps button').count(),11);
  await page.getByRole('button',{name:'Link Deed & Enclosures',exact:false}).first().click();
  await page.getByRole('heading',{name:'Link Deed & Enclosures',exact:true}).waitFor();
  await page.getByLabel('What is this property?').selectOption('Vacant Plot');

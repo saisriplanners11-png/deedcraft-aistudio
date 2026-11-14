@@ -10,14 +10,14 @@ try{
  page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const bytes=await readFile(new URL('../sale-deed-template-v6.docx',import.meta.url));const version={id:'property-party-v6',filename:'Sale deed v6',instrumentId:'sale',hash:createHash('sha256').update(bytes).digest('hex')};
  await page.route('**/api/templates',r=>r.fulfill({json:{active:{sale:version.id},versions:[version]}}));await page.route('**/api/templates/versions/*/download',r=>r.fulfill({body:bytes}));
- await page.goto(process.env.BASE_URL||'http://127.0.0.1:5198');await page.getByRole('button',{name:'Create your first deed'}).click();await page.locator('.registration-steps button').first().waitFor();
- const go=async step=>{if(page.viewportSize().width<=900)await page.locator('#mobile-step').selectOption(String(step));else await page.locator('.registration-steps button').nth(step).click();await page.waitForFunction(step=>document.querySelector('.step-position')?.textContent===`Step ${step+1} of 11`,step);};
+ await page.goto(process.env.BASE_URL||'http://127.0.0.1:5198');await page.getByRole('button',{name:'Create your first deed'}).click();await page.locator('.workflow-steps button').first().waitFor();
+ const go=async step=>{if(page.viewportSize().width<=900)await page.locator('#mobile-step').selectOption(String(step));else await page.locator('.workflow-steps button').nth(step).click();await page.waitForFunction(step=>document.querySelector('.step-position')?.textContent===`Step ${step+1} of 11`,step);};
  await go(0);await page.getByLabel('What is this property?').selectOption('Residential');
  await go(3);await page.getByLabel('Survey no(s).',{exact:true}).fill('145/A');await page.getByLabel('North',{exact:true}).fill('North road');
  await page.locator('.property-wording>summary').click();await page.locator('.property-wording .schedule-text-preview').waitFor();assert((await page.locator('.property-wording').innerText()).includes('145/A'));
  await page.locator('.property-wording>summary').click();
  await page.getByRole('button',{name:'+ Add another property',exact:true}).click();
- await page.locator('.registration-steps button').nth(3).click();
+ await page.locator('.workflow-steps button').nth(3).click();
  await page.getByLabel('What is this property?').selectOption('Open Place');await page.getByLabel('Survey no(s).',{exact:true}).fill('SECOND/22');
  await page.getByRole('button',{name:/Schedule 1.*Residential/}).click();assert.equal(await page.getByLabel('Survey no(s).',{exact:true}).inputValue(),'145/A');
  for(const [step,name] of [[6,'EXECUTANT SAMPLE'],[7,'CLAIMANT SAMPLE']]){

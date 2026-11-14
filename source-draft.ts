@@ -13,7 +13,6 @@ import type { PlanDrawing } from './registration-plan';
 import { newPayment, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
 import type { TemplateFieldCandidate, TemplateFieldValues } from './template-fields';
-import type { JurisdictionLookupState } from './registration-location-state';
 
 export const EXTRACTION_VERSION = 'evidence-v12-link-parties';
 export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned' | 'party-person';
@@ -51,7 +50,6 @@ export type Draft = {
   /** Distinguishes the added plan step from legacy removed plan-step IDs. */
   workflowVersion?: 2 | typeof CURRENT_WORKFLOW_VERSION;
   /** Optional lookup metadata; canonical names remain in the existing property fields. */
-  jurisdictionLookups?: Record<string, JurisdictionLookupState>;
   saleAuthority?: SaleAuthority;
   gpaExecutantsReplaced?: boolean;
   id: string; revision: number; sources: Source[];
@@ -81,7 +79,6 @@ export type Draft = {
 const draftId = () => globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const newDraft = (): Draft => ({ workflowVersion: CURRENT_WORKFLOW_VERSION, id: draftId(), revision: 0, sources: [], manual: {}, choices: {}, step: 0, manualEdits: 0, propertyIds: [], activePropertyId: 'primary', linkPropertyRecords: {}, structureDetailsBySchedule: {}, vendeeSharesBySchedule: {}, vendorSharesBySchedule: {}, instrumentId: 'sale', variantId: definitionFor('sale').variants[0].id, definitionVersion: definitionFor('sale').version });
 export type Action =
-  | { type: 'jurisdiction-lookup'; propertyId: string; value: JurisdictionLookupState }
   | { type: 'add-party'; role: 'executant' | 'claimant'; record: string }
   | { type: 'sale-authority'; value: SaleAuthority }
   | { type: 'template-field-clear'; fieldId: string; recordId: string }
@@ -127,7 +124,6 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     const value = resolveDraft(draft).values[key] || 'Individual';
     next = { ...draft, manual: { ...draft.manual, [key]: value } };
   }
-  if (action.type === 'jurisdiction-lookup') next = { ...draft, jurisdictionLookups: { ...draft.jurisdictionLookups, [action.propertyId]: action.value } };
   if (action.type === 'sale-authority') next = { ...draft, saleAuthority: action.value };
   if (action.type === 'template-field-clear') {
     const values = { ...draft.templateFieldValues?.[action.fieldId] };
@@ -169,7 +165,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
       const omit = <T,>(values: Record<string, T> = {}) => Object.fromEntries(Object.entries(values).filter(([id]) => id !== action.record));
       next = { ...next, propertyIds: next.propertyIds.filter(id => id !== action.record), activePropertyId: next.activePropertyId === action.record ? 'primary' : next.activePropertyId,
         linkPropertyRecords: Object.fromEntries(Object.entries(next.linkPropertyRecords).filter(([, id]) => id !== action.record)),
-        releaseData: next.releaseData ? { ...next.releaseData, releasedBySchedule: omit(next.releaseData.releasedBySchedule), allocatedBySchedule: omit(next.releaseData.allocatedBySchedule) } : undefined, structureDetailsBySchedule: omit(next.structureDetailsBySchedule), vendeeSharesBySchedule: omit(next.vendeeSharesBySchedule), vendorSharesBySchedule: omit(next.vendorSharesBySchedule), ...(next.jurisdictionLookups ? { jurisdictionLookups: omit(next.jurisdictionLookups) } : {}) };
+        releaseData: next.releaseData ? { ...next.releaseData, releasedBySchedule: omit(next.releaseData.releasedBySchedule), allocatedBySchedule: omit(next.releaseData.allocatedBySchedule) } : undefined, structureDetailsBySchedule: omit(next.structureDetailsBySchedule), vendeeSharesBySchedule: omit(next.vendeeSharesBySchedule), vendorSharesBySchedule: omit(next.vendorSharesBySchedule) };
     }
   }
   if (action.type === 'remove-party') {

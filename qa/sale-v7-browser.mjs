@@ -9,7 +9,7 @@ await page.goto('http://127.0.0.1:5179/');
 await page.getByRole('button',{name:'Create your first deed'}).click();
 await page.getByLabel('Sale document').selectOption('sale-deed-by-gpa-holder');
 await page.getByLabel('What is this property?').selectOption('Residential:Semi-Finished');
-await page.locator('.registration-steps button').filter({hasText:'Executant'}).click();
+await page.locator('.workflow-steps button').filter({hasText:'Executant'}).click();
 await page.getByRole('button',{name:'Add attorney',exact:true}).click();
 await page.getByLabel('Full name',{exact:true}).first().fill('UI AGENT');
 await page.getByLabel('Authority document number',{exact:true}).fill('UI-42');

@@ -246,10 +246,12 @@ COM-23 also extends floor-wise plinth display beyond Reconveyance. In house sche
 
 14-11-2026 COM-25 font update (runtime preservation 2026-11-14.3). Print the Typed By heading and entered details at 10 pt and the remaining stamp statement at 8 pt.
 
-14-11-2026 COM-23 dashboard update: remove the standalone Dimensions section from Step 4 Property Schedule. Retain saved measurements, map extraction, and plan generator mapping. This presentation change leaves the runtime preservation version unchanged.
+14-11-2026 COM-23 dashboard correction: restore the Dimensions section below Boundaries in Step 4 Property Schedule, with the original schedule-specific North, South, East and West inputs, map extraction and plan generator mapping. No runtime preservation version change.
 
 14-11-2026 COM-15/19/23 update: preserve dashboard boundary text verbatim in every Word schedule, including flats and dismantled houses. House party locality retains the entered text with its existing label. Preserve spaces and punctuation in free-text bindings. Typed dates, amounts and identity numbers continue to use their field-specific format. Runtime preservation version: 2026-11-14.4.
 
 14-11-2026 COM-16 dashboard update: remove the duplicate House number and PTIN editor from Step 4 Structure & Annexure I-A. Step 2 remains the editor for saved pairs, and the existing Word annexure output still uses those pairs. No runtime preservation version change.
 
 14-11-2026 COM-18 and COM-21 dashboard and extraction update. Step 2 tax uploads read labelled PTIN, house or door number, receipt identifier and receipt date from Panchayat Raj, CDMA and GHMC CURE layouts. Verified ULB type prefills the associated schedule unless manually entered. The ULB field accepts GHMC and custom values. GHMC uses the existing Municipal Corporation roof rates. No Word preservation version change.
+
+14-11-2026 COM-24 dashboard update. Hide the V.L.T. number input in Step 4 Property Schedule for Vacant Plot. Step 2 retains vacant-land tax entry and existing saved values remain available to the deed bindings. No runtime preservation version change.

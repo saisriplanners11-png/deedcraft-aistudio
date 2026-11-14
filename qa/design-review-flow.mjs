@@ -26,7 +26,7 @@ try {
   await page.locator('.rail-overview').click();
   await page.locator('.dashboard').waitFor();
   await page.screenshot({ path: new URL('overview-desktop.png', out).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
-  await page.locator('.registration-steps button').nth(8).click();
+  await page.locator('.workflow-steps button').nth(8).click();
   await page.getByRole('heading', { name: 'Details to review', exact: true }).waitFor();
   assert(await page.locator('.review-group').count() > 0);
   await page.locator('.review-group').first().locator('summary').click();
@@ -34,14 +34,14 @@ try {
   await page.screenshot({ path: new URL('review-desktop.png', out).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   await page.locator('.review-group').first().getByRole('button', { name: 'Review section' }).click();
   assert.equal(await page.locator('#workspace-title').evaluate(el => el === document.activeElement), true);
-  await page.locator('.registration-steps button').nth(0).click();
+  await page.locator('.workflow-steps button').nth(0).click();
   await page.locator('.setup-fields select').first().waitFor();
   assert.equal(await page.locator('.setup-fields select').count(), 2);
   assert.equal(await page.locator('.setup-fields select').first().inputValue(), 'sale');
   await page.screenshot({ path: new URL('setup-desktop.png', out).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
-  await page.locator('.registration-steps button').nth(2).click();
+  await page.locator('.workflow-steps button').nth(2).click();
   assert.equal(await page.locator('#workspace-title').evaluate(el => el === document.activeElement), true);
-  assert.equal(await page.locator('.registration-steps button[aria-current=step]').count(), 1);
+  assert.equal(await page.locator('.workflow-steps button[aria-current=step]').count(), 1);
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     if (width <= 767) await page.locator('#mobile-step').selectOption('2');
