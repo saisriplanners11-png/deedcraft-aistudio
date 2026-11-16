@@ -1,6 +1,6 @@
 # Permanent master rules for all deeds
 
-Status: user-confirmed permanent project policy, updated 12-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-14.4.
+Status: user-confirmed permanent project policy, updated 16-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-16.1.
 
 The user explicitly instructed: "Save all these as permanent master rules for all deeds. Whenever I upload a new draft, apply these modifications over it and change a rule only when I explicitly ask."
 
@@ -123,10 +123,11 @@ These versions describe the current sources, not permanent restrictions against 
 
 | Deed | Current default | Retained historical versions |
 | --- | --- | --- |
-| Release, Family and Co-owner | release-deed-v1 from RELEASE DEED.docx | First approved version |
-| Sale, Sale through GPA/AGPA | sale-deed-v11 from SALE DEED (7).docx | v10 and earlier registered Sale assets/hashes |
-| General/Family GPA | general-poa-v3 from G.P.A FOR CONSIDERATION (2).docx | v1-v2 |
-| Agreement of Sale Cum GPA, both possession variants | agreement-sale-gpa-v4 from AGREEMENT OF SALE CUM GPA (3).docx | v1-v3 |
+| Release, Family and Co-owner | release-deed-v2 from RELEASE DEED.docx | v1 |
+| Reconveyance | reconveyance-deed-v2 for bank cases | v1 for individual cases and historical downloads |
+| Sale, Sale through GPA/AGPA | sale-deed-v12 from SALE DEED (8).docx | v11 and earlier registered Sale assets/hashes |
+| General/Family GPA | general-poa-v4 from G.P.A FOR CONSIDERATION (3).docx | v1-v3 |
+| Agreement of Sale Cum GPA, both possession variants | agreement-sale-gpa-v5 from AGREEMENT OF SALE CUM GPA (4).docx | v1-v4 |
 | Regular Gift | gift-deed-v6 from GIFT SETTLEMENT (2).docx | v1-v5 |
 | Municipal Gift | gift-municipal-v3 from GIFT DEED FOR MUNCIPAL (2).docx | v1-v2 |
 
@@ -255,3 +256,9 @@ COM-23 also extends floor-wise plinth display beyond Reconveyance. In house sche
 14-11-2026 COM-18 and COM-21 dashboard and extraction update. Step 2 tax uploads read labelled PTIN, house or door number, receipt identifier and receipt date from Panchayat Raj, CDMA and GHMC CURE layouts. Verified ULB type prefills the associated schedule unless manually entered. The ULB field accepts GHMC and custom values. GHMC uses the existing Municipal Corporation roof rates. No Word preservation version change.
 
 14-11-2026 COM-24 dashboard update. Hide the V.L.T. number input in Step 4 Property Schedule for Vacant Plot. Step 2 retains vacant-land tax entry and existing saved values remain available to the deed bindings. No runtime preservation version change.
+
+16-11-2026 Sale template approval. The user chose the wording in SALE DEED (8).docx for both reviewed statements. Sale v12 prints “The schedule property is not the assigned property.” and “The Plan of schedule property is annexed hereto.” wherever the selected source schedule includes them, regardless of attached plan or separate assignment-status confirmation. This replaces the narrower v11 placement for the v12 source. House floor and annexure bindings continue to use the individual floor areas and a separate total. Earlier source versions and the runtime preservation version are retained.
+
+16-11-2026 Gift source refresh. Regular Gift v7 and Municipal Gift v4 use the newly supplied immutable Word files. Preserve existing Gift and Municipal Gift rules, including separate renderers, relationship and nil consideration handling, municipal recipient exceptions, and individual floor areas. Earlier sources and the preservation version are retained.
+
+16-11-2026 approval of the four remaining source revisions. The user explicitly approved the wording and layout in the new templates. Agreement v5 and General/Family GPA v4 use their shortened party definitions. GPA v4 resolves the supplied heading choice to FOR SALE OF IMMOVABLE PROPERTY for General or IN FAVOUR OF FAMILY MEMBER for Family and retains heading formatting (COM-13/GPA-08, AGR-03/04). Agreement v5, GPA v4 and Release v2 print the two plan and assignment statements in the selected source schedule positions, including without a separate attachment or status check (REL-01, TPL-04). Release v2 uses the source declaration as its closing boundary and retains the individual whole-property and released floor areas. Reconveyance v2 uses its supplied bank-only opening, while person-to-person drafts continue to use the retained v1 source (REC-03). The prior sources and saved facts are retained. Runtime preservation version 2026-11-16.1.

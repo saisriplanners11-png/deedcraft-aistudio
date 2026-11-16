@@ -12,7 +12,7 @@ const familyDraft = () => draftReducer(newDraft(), { type: 'instrument', instrum
 describe('General GPA relationships', () => {
   it('adds Family while preserving the other variant IDs and their generation gates', () => {
     expect(DEED_DEFINITIONS.power_of_attorney.variants.map(variant => variant.id)).toEqual([...GENERAL_POA_VARIANTS, 'special-power-of-attorney', 'property-power-of-attorney']);
-    for (const variantId of GENERAL_POA_VARIANTS) expect(compileDeed({ instrumentId: 'power_of_attorney', variantId, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] }).templateVersionId).toBe('general-poa-v3');
+    for (const variantId of GENERAL_POA_VARIANTS) expect(compileDeed({ instrumentId: 'power_of_attorney', variantId, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] }).templateVersionId).toBe('general-poa-v4');
     for (const variantId of ['special-power-of-attorney', 'property-power-of-attorney']) expect(() => compileDeed({ instrumentId: 'power_of_attorney', variantId, snapshotHash: '', values: {}, schedules: [], unresolvedWarnings: [] })).toThrow(/approved/);
     expect(POA_RELATIONSHIPS.some(([id]) => String(id) === 'friend')).toBe(false);
   });
@@ -61,10 +61,10 @@ describe('General GPA relationships', () => {
     for (const variantId of GENERAL_POA_VARIANTS) {
       const deed = { draft: { ...familyDraft(), variantId }, templateMode: 'built-in', generationManifest: { templateVersionId: 'old' } } as SavedDeed;
       const updated = updateSavedDeedTemplate(deed, {});
-      expect(updated.libraryTemplate?.versionId).toBe('general-poa-v3');
+      expect(updated.libraryTemplate?.versionId).toBe('general-poa-v4');
       expect(updated.draft).toBe(deed.draft);
       expect(updated.generationManifest).toBeNull();
-      expect(savedTemplateStatus(updated).label).toContain('General Power of Attorney v3');
+      expect(savedTemplateStatus(updated).label).toContain('General Power of Attorney v4');
       const custom = { ...deed, templateMode: 'custom' as const };
       const kept = updateSavedDeedTemplate(custom, {});
       expect(kept.draft).toBe(custom.draft);

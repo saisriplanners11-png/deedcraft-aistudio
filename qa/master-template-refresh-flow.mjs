@@ -4,15 +4,15 @@ import { createHash } from 'node:crypto';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
 const cases = [
-  ['sale', 'outright-absolute-sale-deed', 'Sale', 'Outright Absolute Sale Deed', 'ordinary', 'sale-deed-v11', 'sale-deed-template-v11.docx'],
-  ['sale', 'sale-deed-by-gpa-holder', 'Sale', 'Sale Deed by GPA Holder', 'gpa', 'sale-deed-v11', 'sale-deed-template-v11.docx'],
-  ['sale', 'sale-through-existing-agpa', 'Sale', 'Sale through Existing AGPA', 'agpa', 'sale-deed-v11', 'sale-deed-template-v11.docx'],
-  ['gift', 'family-gift', 'Gift', 'Gift Settlement Family', 'ordinary', 'gift-deed-v6', 'gift-deed-template-v6.docx'],
-  ['gift', 'municipal-gift', 'Gift', 'Municipal Gift', 'ordinary', 'gift-municipal-v3', 'gift-municipal-template-v3.docx'],
-  ['agreement_of_sale', 'with-possession', 'Agreement of Sale Cum GPA', 'With Possession', 'ordinary', 'agreement-sale-gpa-v4', 'agreement-sale-gpa-template-v4.docx'],
-  ['agreement_of_sale', 'without-possession', 'Agreement of Sale Cum GPA', 'Without Possession', 'ordinary', 'agreement-sale-gpa-v4', 'agreement-sale-gpa-template-v4.docx'],
-  ['power_of_attorney', 'general-power-of-attorney', 'GPA/Power of Attorney', 'General Power of Attorney', 'ordinary', 'general-poa-v3', 'general-poa-template-v3.docx'],
-  ['power_of_attorney', 'general-power-of-attorney-family', 'GPA/Power of Attorney', 'General Power of Attorney Family', 'ordinary', 'general-poa-v3', 'general-poa-template-v3.docx'],
+  ['sale', 'outright-absolute-sale-deed', 'Sale', 'Outright Absolute Sale Deed', 'ordinary', 'sale-deed-v12', 'sale-deed-template-v12.docx'],
+  ['sale', 'sale-deed-by-gpa-holder', 'Sale', 'Sale Deed by GPA Holder', 'gpa', 'sale-deed-v12', 'sale-deed-template-v12.docx'],
+  ['sale', 'sale-through-existing-agpa', 'Sale', 'Sale through Existing AGPA', 'agpa', 'sale-deed-v12', 'sale-deed-template-v12.docx'],
+  ['gift', 'family-gift', 'Gift', 'Gift Settlement Family', 'ordinary', 'gift-deed-v7', 'gift-deed-template-v7.docx'],
+  ['gift', 'municipal-gift', 'Gift', 'Municipal Gift', 'ordinary', 'gift-municipal-v4', 'gift-municipal-template-v4.docx'],
+  ['agreement_of_sale', 'with-possession', 'Agreement of Sale Cum GPA', 'With Possession', 'ordinary', 'agreement-sale-gpa-v5', 'agreement-sale-gpa-template-v5.docx'],
+  ['agreement_of_sale', 'without-possession', 'Agreement of Sale Cum GPA', 'Without Possession', 'ordinary', 'agreement-sale-gpa-v5', 'agreement-sale-gpa-template-v5.docx'],
+  ['power_of_attorney', 'general-power-of-attorney', 'GPA/Power of Attorney', 'General Power of Attorney', 'ordinary', 'general-poa-v4', 'general-poa-template-v4.docx'],
+  ['power_of_attorney', 'general-power-of-attorney-family', 'GPA/Power of Attorney', 'General Power of Attorney Family', 'ordinary', 'general-poa-v4', 'general-poa-template-v4.docx'],
 ];
 await mkdir('tmp/master-template-refresh', { recursive: true });
 const record = (id, values) => ({ id, values, docNames: [] });
@@ -57,6 +57,15 @@ for (const [instrument, variant, deedType, draft, mode, version, file] of cases)
       assert.equal((text.match(/Rectification Deed:/g) || []).length, 4);
       assert.equal((text.match(/Supplemental Deed:/g) || []).length, 2);
     } else assert.doesNotMatch(text, /Rectification Deed:|Supplemental Deed:/);
+    if (instrument === 'sale') {
+      assert.match(text, /The schedule property is not the assigned property\./);
+      assert.match(text, /The Plan of schedule property is annexed hereto\./);
+      if (property === 'house-semi') {
+        assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./);
+        assert.doesNotMatch(text, /Ground Floor:.*1400 square feets/);
+        assert.match(text, /Built-up area particulars/);
+      }
+    }
     if (instrument === 'sale' && mode !== 'ordinary') {
       assert.match(text, mode === 'gpa' ? /for SAMPLE VENDOR/ : /representing SAMPLE VENDOR/);
       assert.match(text, mode === 'gpa' ? /Authority SRO/ : /AUTHORITY SRO/);

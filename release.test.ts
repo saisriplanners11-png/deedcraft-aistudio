@@ -125,7 +125,7 @@ describe('Release saved data',()=>{
   });
   it('refreshes default metadata and leaves explicit custom sources selected',()=>{
     const deed={draft:{...newDraft(),instrumentId:'release',variantId:'co-owner-release'},templateMode:'built-in',updatedAt:'unchanged',generationManifest:{templateVersionId:'old'}} as SavedDeed;
-    const migrated=updateSavedDeedTemplate(deed,{});expect(migrated.libraryTemplate?.versionId).toBe('release-deed-v1');expect(migrated.generationManifest).toBeNull();expect(migrated.updatedAt).toBe('unchanged');expect(migrated.draft).toBe(deed.draft);
+    const migrated=updateSavedDeedTemplate(deed,{});expect(migrated.libraryTemplate?.versionId).toBe('release-deed-v2');expect(migrated.generationManifest).toBeNull();expect(migrated.updatedAt).toBe('unchanged');expect(migrated.draft).toBe(deed.draft);
     const custom=updateSavedDeedTemplate({...deed,templateMode:'custom',customTemplate:source as SavedDeed['customTemplate']},{});expect(custom.customTemplate).toBe(source);expect(custom.templateMode).toBe('custom');
   });
 });

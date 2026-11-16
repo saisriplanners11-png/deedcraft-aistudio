@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
 for (const gender of ['Male', 'Female', 'Other']) for (const plural of [false, true]) {
@@ -30,8 +31,14 @@ Object.assign(state.form, { executantGender: 'Male', claimantGender: 'Female', p
 state.additionalExecutants = [{ id: 'female-owner', values: { ...state.form, executantName: 'SECOND FEMALE OWNER', executantGender: 'Female' }, docNames: [] }];
 const output = await rt.fillGeneralPoaDeed({ ...rt.mergeValues(state), 'Poa Variant': 'general-power-of-attorney' }, rt.rewritesFor(state), rt.scheduleMergesFor(state));
 const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
-assert.match(text, /SECOND FEMALE OWNER[^\n]*include her legal heirs/);
+assert.match(text, /SECOND FEMALE OWNER[^\n]*Hereinafter called the/);
+assert.doesNotMatch(text, /include her legal heirs/);
 assert.match(text, /upon her by virtue/);
+const previous = new Uint8Array(await readFile(new URL('../general-poa-template-v3.docx', import.meta.url)));
+const historical = await rt.fillGeneralPoaDeed({ ...rt.mergeValues(state), 'Poa Variant': 'general-power-of-attorney' }, rt.rewritesFor(state), rt.scheduleMergesFor(state), {
+  kind: 'custom', name: 'General GPA v3.docx', bytes: previous, hash: 'historical-gpa-qa', validation: await rt.validateGeneralPoaTemplate(previous),
+});
+assert.match(await rt.docxToText(new Uint8Array(await historical.blob.arrayBuffer())), /SECOND FEMALE OWNER[^\n]*include her legal heirs/);
 for (const mode of ['gpa', 'agpa']) {
   const state = rt.sampleState(mode + '-plot');
   Object.assign(state.form, { executantGender: 'Female', claimantGender: 'Male' });

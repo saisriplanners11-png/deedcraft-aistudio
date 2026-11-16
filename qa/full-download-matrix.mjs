@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 
 // Generate the actual DOCX artifacts through compileDeed/renderArtifact and
@@ -11,11 +11,11 @@ const propertyTypes = ['plot', 'open', 'part', 'dismantled', 'house-finished', '
 const saleRows = [];
 const saleFields = suffix => ({
   surveyNo: `SURVEY-${suffix}`, plotNo: `PLOT-${suffix}`, bearingHNo: `HOUSE-${suffix}`,
-  village: `VILLAGE-${suffix}`, mandal: `MANDAL-${suffix}`, district: `DISTRICT-${suffix}`,
+  village: `Village-${suffix === 'ONE' ? 'One' : 'Two'}`, mandal: `MANDAL-${suffix}`, district: `DISTRICT-${suffix}`,
   boundaryNorth: `NORTH-${suffix}`, boundarySouth: `SOUTH-${suffix}`, boundaryEast: `EAST-${suffix}`, boundaryWest: `WEST-${suffix}`,
   flatNo: `FLAT-${suffix}`, apartmentName: `APARTMENTS-${suffix}`, developmentDocNo: `DEV-${suffix}`,
-  developmentDocDate: suffix === 'ONE' ? '2024-02-03' : '2025-04-05', developmentSro: `DEV-SRO-${suffix}`,
-  developmentSroCode: `DEV-CODE-${suffix}`, supplementalDocNo: `SUP-${suffix}`, supplementalSro: `SUP-SRO-${suffix}`,
+  developmentDocDate: suffix === 'ONE' ? '2024-02-03' : '2025-04-05', developmentSro: `Dev-SRO-${suffix === 'ONE' ? 'One' : 'Two'}`,
+  developmentSroCode: `DEV-CODE-${suffix}`, supplementalDocNo: `SUP-${suffix}`, supplementalSro: `Sup-SRO-${suffix === 'ONE' ? 'One' : 'Two'}`,
   supplementalSroCode: `SUP-CODE-${suffix}`,
 });
 const section = (text, marker) => {
@@ -44,6 +44,7 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const category of propertyT
   const compiled = rt.compileDeed({ instrumentId: 'sale', variantId, snapshotHash: `${mode}-${category}`, values: rt.mergeValues(state), schedules, rewrites: rt.rewritesFor(state), unresolvedWarnings: [] });
   const { result, manifest } = await rt.renderArtifact(compiled, 'docx');
   assert.equal(manifest.instrumentId, 'sale');
+  assert.equal(manifest.templateVersionId, 'sale-deed-v12');
   assert.deepEqual(result.unmapped, [], `${mode}/${category}: no unresolved fields`);
   const bytes = new Uint8Array(await result.blob.arrayBuffer());
   const text = await rt.docxToText(bytes);
@@ -52,8 +53,8 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const category of propertyT
   for (const [index, suffix] of ['ONE', 'TWO'].entries()) {
     const own = saleFields(suffix), other = saleFields(index ? 'ONE' : 'TWO');
     const block = schedulesText[index];
-    for (const marker of [`SURVEY-${suffix}`, `VILLAGE-${suffix}`, `NORTH-${suffix}`]) assert(block.includes(marker), `${mode}/${category}/schedule-${index + 1}: missing ${marker}`);
-    for (const marker of [`SURVEY-${index ? 'ONE' : 'TWO'}`, `VILLAGE-${index ? 'ONE' : 'TWO'}`]) assert(!block.includes(marker), `${mode}/${category}/schedule-${index + 1}: leaked ${marker}`);
+    for (const marker of [`SURVEY-${suffix}`, `Village-${suffix === 'ONE' ? 'One' : 'Two'}`, `NORTH-${suffix}`]) assert(block.includes(marker), `${mode}/${category}/schedule-${index + 1}: missing ${marker}`);
+    for (const marker of [`SURVEY-${index ? 'ONE' : 'TWO'}`, `Village-${index ? 'One' : 'Two'}`]) assert(!block.includes(marker), `${mode}/${category}/schedule-${index + 1}: leaked ${marker}`);
     assert(text.includes(`TITLE-${suffix}`), `${mode}/${category}/schedule-${index + 1}: missing linked title`);
     if (category === 'flat-semi') {
       for (const value of [own.flatNo, own.apartmentName]) assert(block.includes(value), `${mode}/${category}/schedule-${index + 1}: missing flat identity ${value}`);
@@ -67,10 +68,6 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const category of propertyT
 }
 
 const giftRows = [];
-const giftTemplateBytes = new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx', import.meta.url)));
-const giftValidation = await rt.validateGiftDeedTemplate(giftTemplateBytes);
-assert.equal(giftValidation.valid, true, giftValidation.errors.join('\n'));
-const giftSource = { kind: 'custom', name: 'Gift Settlement v5 QA', hash: 'matrix-v4', bytes: giftTemplateBytes, validation: giftValidation };
 for (const variant of ['family-gift', 'non-family-gift', 'gift-to-trust-or-charity']) for (const category of propertyTypes) {
   const state = rt.sampleState(`ordinary-${category}`);
   state.deedType = 'Gift'; state.form = { ...state.form, ...saleFields('ONE'), giftRelationship: variant === 'family-gift' ? 'daughter' : 'friend', localAuthorityType: 'Municipal Council' };
@@ -81,8 +78,8 @@ for (const variant of ['family-gift', 'non-family-gift', 'gift-to-trust-or-chari
   };
   const schedules = rt.scheduleMergesFor(state);
   const compiled = rt.compileDeed({ instrumentId: 'gift', variantId: variant, snapshotHash: `gift-${variant}-${category}`, values: rt.mergeValues(state), schedules, rewrites: rt.rewritesFor(state), unresolvedWarnings: [] });
-  const { result, manifest } = await rt.renderArtifact(compiled, 'docx', giftSource);
-  assert.equal(manifest.templateVersionId, 'custom:matrix-v4');
+  const { result, manifest } = await rt.renderArtifact(compiled, 'docx');
+  assert.equal(manifest.templateVersionId, 'gift-deed-v7');
   assert.deepEqual(result.unmapped, [], `${variant}/${category}: no unresolved fields`);
   const bytes = new Uint8Array(await result.blob.arrayBuffer());
   const text = await rt.docxToText(bytes);
@@ -90,13 +87,13 @@ for (const variant of ['family-gift', 'non-family-gift', 'gift-to-trust-or-chari
   assert.equal(schedulesText.length, 2, `${variant}/${category}: two property schedules`);
   for (const [index, suffix] of ['ONE', 'TWO'].entries()) {
     const block = schedulesText[index];
-    for (const marker of [`SURVEY-${suffix}`, `VILLAGE-${suffix}`, `NORTH-${suffix}`, `TITLE-${suffix}`]) {
+    for (const marker of [`SURVEY-${suffix}`, `Village-${suffix === 'ONE' ? 'One' : 'Two'}`, `NORTH-${suffix}`, `TITLE-${suffix}`]) {
       // Gift carries the same property's survey/boundaries; title records are added below.
       if (marker === `TITLE-${suffix}`) continue;
       assert(block.includes(marker), `${variant}/${category}/schedule-${index + 1}: missing ${marker}`);
     }
     assert(text.includes(`TITLE-${suffix}`), `${variant}/${category}/schedule-${index + 1}: missing linked title`);
-    for (const marker of [`SURVEY-${index ? 'ONE' : 'TWO'}`, `VILLAGE-${index ? 'ONE' : 'TWO'}`]) assert(!block.includes(marker), `${variant}/${category}/schedule-${index + 1}: leaked ${marker}`);
+    for (const marker of [`SURVEY-${index ? 'ONE' : 'TWO'}`, `Village-${index ? 'One' : 'Two'}`]) assert(!block.includes(marker), `${variant}/${category}/schedule-${index + 1}: leaked ${marker}`);
   }
   assert.doesNotMatch(text, /<[^<>]+>/, `${variant}/${category}: no unresolved template tags`);
   await writeFile(new URL(`gift-${variant}-${category}.docx`, outDir), bytes);
@@ -117,7 +114,7 @@ for (const category of ['plot', 'open', 'part', 'dismantled']) {
   const variantId = 'municipal-gift';
   const compiled = rt.compileDeed({ instrumentId: 'gift', variantId, snapshotHash: `municipal-${category}`, values: rt.mergeValues(state), schedules: rt.scheduleMergesFor(state), rewrites: rt.rewritesFor(state), unresolvedWarnings: [] });
   const { result, manifest } = await rt.renderArtifact(compiled, 'docx');
-  assert.equal(manifest.templateVersionId, 'gift-municipal-v3');
+  assert.equal(manifest.templateVersionId, 'gift-municipal-v4');
   assert.deepEqual(result.unmapped, [], `Municipal Gift/${category}: no unresolved fields`);
   const bytes = new Uint8Array(await result.blob.arrayBuffer());
   const text = await rt.docxToText(bytes);

@@ -11,7 +11,7 @@ import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant
 import { IconButton } from './icon-button';
 import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { LINK_ISSUING_AUTHORITIES } from './link-enclosure';
-import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
+import { isBankReconveyance, reconveyanceTemplateVersion, reconveyanceErrors, repaymentFor } from './reconveyance';
 import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, houseValuationStage, houseStageRate, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
 import { formatDeedAmount, formatMoneyInput, stampPaperValue } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
@@ -755,7 +755,8 @@ export default function WizardApp() {
   const giftVersion = giftTemplateVersion(draft.variantId);
   const agreementSaleGpa = draft.instrumentId === 'agreement_of_sale';
   const generalPoa = isGeneralPoa(draft.instrumentId, draft.variantId);
-  const bundledVersion = isRelease ? 'release-deed-v1' : isReconveyance ? 'reconveyance-deed-v1' : generalPoa ? 'general-poa-v3' : agreementSaleGpa ? 'agreement-sale-gpa-v4' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v11';
+  const reconveyanceVersion = reconveyanceTemplateVersion(isBankReconveyance(state));
+  const bundledVersion = isRelease ? 'release-deed-v2' : isReconveyance ? reconveyanceVersion : generalPoa ? 'general-poa-v4' : agreementSaleGpa ? 'agreement-sale-gpa-v5' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v12';
   const instrumentTitle = isRelease ? 'Release Deed' : isReconveyance ? 'Deed Of Reconvayance' : draft.instrumentId === 'power_of_attorney' ? 'General Power of Attorney' : agreementSaleGpa ? 'Agreement of Sale Cum GPA' : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift' : 'Gift Settlement') : 'Sale Deed';
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
   // Every real edit goes through `dispatch`/`edit`, never this setter.
@@ -774,11 +775,11 @@ export default function WizardApp() {
   const repayment = repaymentFor(state);
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
-  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v11'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
+  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v11', 'sale-deed-v12'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
   const authorityErrors = isRelease ? [...releaseErrors(state), ...salePropertyErrors(state)] : isReconveyance ? reconveyanceErrors(state) : generalPoa ? [...poaRelationshipErrors(state), ...salePropertyErrors(state)] : agreementSaleGpa ? salePropertyErrors(state) : draft.instrumentId === 'gift' ? [...(!municipalGift && !giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state), ...(municipalGift ? scheduleRecords(state).flatMap(record => MUNICIPAL_GIFT_CATEGORIES.includes(record.category) ? [] : ['Municipal Gift supports open place, plot, dismantled house and part open place only.']) : [])] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
   const minorDownloadErrors = mergeValues(state)['Minor Representation Errors'] || '';
-  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : isRelease ? { kind: 'library', ...bundledTemplatePin('release-deed-v1') } : isReconveyance ? { kind: 'library', ...bundledTemplatePin('reconveyance-deed-v1') } : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v3') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v4') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa]);
+  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : isRelease ? { kind: 'library', ...bundledTemplatePin('release-deed-v2') } : isReconveyance ? { kind: 'library', ...bundledTemplatePin(reconveyanceVersion) } : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v4') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v5') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa, reconveyanceVersion]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
     additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
@@ -789,7 +790,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v3:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v11'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v3:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v12'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -836,7 +837,7 @@ export default function WizardApp() {
       const version = listing.versions.find(item => item.id === listing.active.sale);
       if (!version) throw new Error('No published Sale template is available.');
       setLatestTemplate(pinFor(version));
-      setDefaultTemplates(Object.fromEntries([['release', bundledTemplatePin('release-deed-v1')], ['reconveyance', bundledTemplatePin('reconveyance-deed-v1')], ['power_of_attorney', bundledTemplatePin('general-poa-v3')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v4')], ['gift', bundledTemplatePin('gift-deed-v6')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
+      setDefaultTemplates(Object.fromEntries([['release', bundledTemplatePin('release-deed-v2')], ['reconveyance', bundledTemplatePin('reconveyance-deed-v2')], ['power_of_attorney', bundledTemplatePin('general-poa-v4')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v5')], ['gift', bundledTemplatePin('gift-deed-v7')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
         const revision = listing.versions.find(item => item.id === id && item.instrumentId === instrument);
         return revision ? [[instrument, pinFor(revision)]] : [];
       })]));
@@ -857,12 +858,12 @@ export default function WizardApp() {
     }
   }, [loadingLibrary, defaultTemplates]);
   useEffect(() => {
-    const pin = isRelease ? bundledTemplatePin('release-deed-v1') : isReconveyance ? bundledTemplatePin('reconveyance-deed-v1') : generalPoa ? bundledTemplatePin('general-poa-v3') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v4') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
+    const pin = isRelease ? bundledTemplatePin('release-deed-v2') : isReconveyance ? bundledTemplatePin(reconveyanceVersion) : generalPoa ? bundledTemplatePin('general-poa-v4') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v5') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
     if (templateMode !== 'built-in' || !pin || (libraryTemplate && !templateIsEarlier(libraryTemplate, pin))) return;
     setLibraryTemplate(pin);
     setDownload(null);
     setGenerationManifest(null);
-  }, [defaultTemplates, draft.instrumentId, giftVersion, generalPoa, templateMode, libraryTemplate]);
+  }, [defaultTemplates, draft.instrumentId, giftVersion, generalPoa, templateMode, libraryTemplate, reconveyanceVersion]);
   const goto = (s: number) => {
     dispatch({ type: 'step', step: s });
     requestAnimationFrame(() => {

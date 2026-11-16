@@ -32,17 +32,31 @@ export interface TemplateVersion {
 
 const saleDefinition = DEED_DEFINITIONS.sale;
 export const LEGAL_REFERENCES: LegalReference[] = [{
+  id: 'ts-release-v2', instrumentId: 'release', variantIds: DEED_DEFINITIONS.release.variants.map(v => v.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '2.0.0', status: 'approved', supersedes: 'ts-release-v1', templateVersionId: 'release-deed-v2', sourceDocument: 'RELEASE DEED.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
+}, {
   id: 'ts-release-v1', instrumentId: 'release', variantIds: DEED_DEFINITIONS.release.variants.map(v => v.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-07', version: '1.0.0', status: 'approved', templateVersionId: 'release-deed-v1', sourceDocument: 'RELEASE DEED.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
+}, {
+  id: 'ts-reconveyance-v2', instrumentId: 'reconveyance', variantIds: DEED_DEFINITIONS.reconveyance.variants.map(v => v.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '2.0.0', status: 'approved', supersedes: 'ts-reconveyance-v1', templateVersionId: 'reconveyance-deed-v2', sourceDocument: 'DEED OF RECONVEYANCE.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
 }, {
   id: 'ts-reconveyance-v1', instrumentId: 'reconveyance', variantIds: DEED_DEFINITIONS.reconveyance.variants.map(v => v.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-07', version: '1.0.0', status: 'approved', templateVersionId: 'reconveyance-deed-v1', sourceDocument: 'DEED OF RECONVEYANCE.docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
 }, {
+  id: 'ts-gift-municipal-2026-11-v4', instrumentId: 'gift', variantIds: ['municipal-gift'], jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '4.0.0', status: 'approved', supersedes: 'ts-gift-municipal-2026-10-v3', templateVersionId: 'gift-municipal-v4', sourceDocument: 'GIFT DEED FOR MUNCIPAL (3).docx', propertyCategories: ['Vacant Plot', 'Open Place', 'Demolished', 'Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
+}, {
   id: 'ts-gift-municipal-2026-10-v3', instrumentId: 'gift', variantIds: ['municipal-gift'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-29', version: '3.0.0', status: 'approved', templateVersionId: 'gift-municipal-v3', sourceDocument: 'GIFT DEED FOR MUNCIPAL (2).docx', propertyCategories: ['Vacant Plot', 'Open Place', 'Demolished', 'Part open place'], requiredSchedules: ['property'], requiredAnnexures: [], witnessCount: 2,
+}, {
+  id: 'ts-gift-2026-11-v4', instrumentId: 'gift', variantIds: DEED_DEFINITIONS.gift.variants.filter(variant => variant.id !== 'municipal-gift').map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '4.0.0', status: 'approved', supersedes: 'ts-gift-2026-10-v3', templateVersionId: 'gift-deed-v7', sourceDocument: 'GIFT SETTLEMENT (3).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }, {
   id: 'ts-gift-2026-10-v3', instrumentId: 'gift', variantIds: DEED_DEFINITIONS.gift.variants.filter(variant => variant.id !== 'municipal-gift').map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-29', version: '3.0.0', status: 'approved', templateVersionId: 'gift-deed-v6', sourceDocument: 'GIFT SETTLEMENT (2).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }, {
+  id: 'ts-agreement-sale-gpa-2026-11-v5', instrumentId: 'agreement_of_sale', variantIds: DEED_DEFINITIONS.agreement_of_sale.variants.map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '5.0.0', status: 'approved', supersedes: 'ts-agreement-sale-gpa-2026-10-v4', templateVersionId: 'agreement-sale-gpa-v5', sourceDocument: 'AGREEMENT OF SALE CUM GPA (4).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
+}, {
   id: 'ts-agreement-sale-gpa-2026-10-v4', instrumentId: 'agreement_of_sale', variantIds: DEED_DEFINITIONS.agreement_of_sale.variants.map(variant => variant.id), jurisdiction: 'Telangana', effectiveFrom: '2026-10-29', version: '4.0.0', status: 'approved', templateVersionId: 'agreement-sale-gpa-v4', sourceDocument: 'AGREEMENT OF SALE CUM GPA (3).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
 }, {
+  id: 'ts-general-poa-2026-11-v4', instrumentId: 'power_of_attorney', variantIds: ['general-power-of-attorney', 'general-power-of-attorney-family'], jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '4.0.0', status: 'approved', supersedes: 'ts-general-poa-2026-10-v3', templateVersionId: 'general-poa-v4', sourceDocument: 'G.P.A FOR CONSIDERATION (3).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
+}, {
   id: 'ts-general-poa-2026-10-v3', instrumentId: 'power_of_attorney', variantIds: ['general-power-of-attorney', 'general-power-of-attorney-family'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-29', version: '3.0.0', status: 'approved', templateVersionId: 'general-poa-v3', sourceDocument: 'G.P.A FOR CONSIDERATION (2).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['section-32a', 'annexure-i-a-when-structure'], witnessCount: 2,
+}, {
+  id: 'ts-sale-2026-11-v3', instrumentId: 'sale', variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana', effectiveFrom: '2026-11-16', version: '3.0.0', status: 'approved', supersedes: 'ts-sale-2026-10-v2', templateVersionId: 'sale-deed-v12', sourceDocument: 'SALE DEED (8).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Agricultural land','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }, {
   id: 'ts-sale-2026-10-v2', instrumentId: 'sale', variantIds: [saleDefinition.variants[0].id, 'sale-deed-by-gpa-holder', 'sale-through-existing-agpa'], jurisdiction: 'Telangana', effectiveFrom: '2026-10-29', version: '2.0.0', status: 'approved', templateVersionId: 'sale-deed-v11', sourceDocument: 'SALE DEED (7).docx', propertyCategories: ['Vacant Plot','Open Place','Residential','Flat','Demolished','Commercial','Agricultural land','Part open place'], requiredSchedules: ['property'], requiredAnnexures: ['annexure-i-a-when-structure'], witnessCount: 2,
 }, {
@@ -73,17 +87,31 @@ export const LEGAL_REFERENCES: LegalReference[] = [{
 }];
 
 export const TEMPLATE_VERSIONS: TemplateVersion[] = [{
+  id: 'release-deed-v2', referenceId: 'ts-release-v2', instrumentId: 'release', version: '2.0.0', asset: 'release-deed-template-v2.docx', sha256: '3d1379cfcb3e85534c2f3ae4035b3c568cea5454233e8bcae7c4439adc2bb5bc', immutable: true,
+}, {
   id: 'release-deed-v1', referenceId: 'ts-release-v1', instrumentId: 'release', version: '1.0.0', asset: 'release-deed-template-v1.docx', sha256: 'd3077f53109780af91f60d77299737ce5f190198d8a46a126e03eb7237db33f1', immutable: true,
+}, {
+  id: 'reconveyance-deed-v2', referenceId: 'ts-reconveyance-v2', instrumentId: 'reconveyance', version: '2.0.0', asset: 'reconveyance-deed-template-v2.docx', sha256: '6ba6a89371e3fae7ee2150acc11dc68e3186f41dd9d52383b7f7c8b6c16aef0c', immutable: true,
 }, {
   id: 'reconveyance-deed-v1', referenceId: 'ts-reconveyance-v1', instrumentId: 'reconveyance', version: '1.0.0', asset: 'reconveyance-deed-template-v1.docx', sha256: '313d04bd3de1eb11949e6c9e3721ae5073250c43ea969330168b8801a98ba62b', immutable: true,
 }, {
+  id: 'gift-municipal-v4', referenceId: 'ts-gift-municipal-2026-11-v4', instrumentId: 'gift', version: '4.0.0', asset: 'gift-municipal-template-v4.docx', sha256: 'af2913154ec5cca419dc911b3d043e3efb5371896c7a20ea262d8fe45350b857', immutable: true,
+}, {
   id: 'gift-municipal-v3', referenceId: 'ts-gift-municipal-2026-10-v3', instrumentId: 'gift', version: '3.0.0', asset: 'gift-municipal-template-v3.docx', sha256: '507c06be8e45f9e091c2298d9736425b3a926c7f6237cf9d4c2a6bf37dfd9b49', immutable: true,
+}, {
+  id: 'gift-deed-v7', referenceId: 'ts-gift-2026-11-v4', instrumentId: 'gift', version: '7.0.0', asset: 'gift-deed-template-v7.docx', sha256: 'ea0bd124cda0ff3841e1815da1d61cf47e30932377f111e247ea7eb949170c33', immutable: true,
 }, {
   id: 'gift-deed-v6', referenceId: 'ts-gift-2026-10-v3', instrumentId: 'gift', version: '6.0.0', asset: 'gift-deed-template-v6.docx', sha256: 'a12d0d963dff594b4bbc1920d07c698603133bd4a94f45f91bcad22cb49b1edd', immutable: true,
 }, {
+  id: 'agreement-sale-gpa-v5', referenceId: 'ts-agreement-sale-gpa-2026-11-v5', instrumentId: 'agreement_of_sale', version: '5.0.0', asset: 'agreement-sale-gpa-template-v5.docx', sha256: '2043619ddc02cd288e94f5aaf51f4f08bb228193b104dcf3b1c3206c60b39dc6', immutable: true,
+}, {
   id: 'agreement-sale-gpa-v4', referenceId: 'ts-agreement-sale-gpa-2026-10-v4', instrumentId: 'agreement_of_sale', version: '4.0.0', asset: 'agreement-sale-gpa-template-v4.docx', sha256: '0a39e5635d04ba03b2db91d53f9c056eb9947db5d16188b0a94e4237c20b07e5', immutable: true,
 }, {
+  id: 'general-poa-v4', referenceId: 'ts-general-poa-2026-11-v4', instrumentId: 'power_of_attorney', version: '4.0.0', asset: 'general-poa-template-v4.docx', sha256: '02b4e80d7fcf18c5e8581a6eeaa616821b79a0794e9548073302c1c71b52ea2e', immutable: true,
+}, {
   id: 'general-poa-v3', referenceId: 'ts-general-poa-2026-10-v3', instrumentId: 'power_of_attorney', version: '3.0.0', asset: 'general-poa-template-v3.docx', sha256: '88cb8180abd6257a82a94888db4abda301012986fab37833110adb4c1965cb4c', immutable: true,
+}, {
+  id: 'sale-deed-v12', referenceId: 'ts-sale-2026-11-v3', instrumentId: 'sale', version: '12.0.0', asset: 'sale-deed-template-v12.docx', sha256: 'ffe0f008562de264a6a11bfb6b0c6ef6d8e71324d0f5f348a93a26d78963e00a', immutable: true,
 }, {
   id: 'sale-deed-v11', referenceId: 'ts-sale-2026-10-v2', instrumentId: 'sale', version: '11.0.0', asset: 'sale-deed-template-v11.docx', sha256: '44862d1d352a577c3e2802698f05fa3c1ecefafef7e3c0deeff381ec82842c51', immutable: true,
 }, {

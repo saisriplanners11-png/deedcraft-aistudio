@@ -3,8 +3,8 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
-const bytes = new Uint8Array(await readFile(new URL('../general-poa-template-v3.docx', import.meta.url)));
-assert.equal(createHash('sha256').update(bytes).digest('hex'), '88cb8180abd6257a82a94888db4abda301012986fab37833110adb4c1965cb4c');
+const bytes = new Uint8Array(await readFile(new URL('../general-poa-template-v4.docx', import.meta.url)));
+assert.equal(createHash('sha256').update(bytes).digest('hex'), '02b4e80d7fcf18c5e8581a6eeaa616821b79a0794e9548073302c1c71b52ea2e');
 const validation = await rt.validateGeneralPoaTemplate(bytes);
 assert.equal(validation.valid, true, validation.errors.join('\n'));
 const reference = await rt.readZip(bytes);
@@ -31,7 +31,10 @@ for (const property of properties) for (const variant of variants) for (const cu
   const entries = await rt.readZip(output);
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   const text = await rt.docxToText(output);
-  assert.match(text, /^GENERAL POWER OF ATTORNEY \(FOR SALE OF IMMOVABLE PROPERTY\)/);
+  assert.ok(text.startsWith('GENERAL POWER OF ATTORNEY ' + (variant === variants[1] ? 'IN FAVOUR OF FAMILY MEMBER' : 'FOR SALE OF IMMOVABLE PROPERTY')));
+  assert.doesNotMatch(text, /legal heirs, successors|legal representatives and permitted assigns/i);
+  assert.equal((text.match(/The Plan of schedule property is annexed hereto\./g) || []).length, 1);
+  assert.equal((text.match(/The schedule property is not the assigned property\./g) || []).length, 1);
   assert.match(text, new RegExp(`appoint my ${variant === variants[1] ? 'son' : 'friend'} SAMPLE PURCHASER as`));
   assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
   assert.match(text, /24-10-2026/); assert.match(text, /01-10-2026/); assert.match(text, /TITLE-44/);
@@ -52,7 +55,7 @@ for (const property of properties) for (const variant of variants) for (const cu
   assert(form.indexOf('SAMPLE VENDOR') < form.indexOf('SAMPLE PURCHASER'));
   for (const entry of reference.filter(entry => !['word/document.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml'].includes(entry.name))) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
   if (!custom) {
-    assert.equal(manifest.templateVersionId, 'general-poa-v3');
+    assert.equal(manifest.templateVersionId, 'general-poa-v4');
     if (['plot', 'house-finished', 'flat-finished'].includes(property)) await writeFile(`tmp/general-poa-qa/${property}-${variant === variants[1] ? 'family' : 'friend'}.docx`, output);
   }
   count++;

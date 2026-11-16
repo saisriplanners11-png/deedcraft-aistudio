@@ -1,7 +1,7 @@
 import type { AppState } from './logic';
 
 export const MUNICIPAL_GIFT_VARIANT = 'municipal-gift';
-export const MUNICIPAL_GIFT_TEMPLATE = 'gift-municipal-v3';
+export const MUNICIPAL_GIFT_TEMPLATE = 'gift-municipal-v4';
 export const MUNICIPAL_GIFT_CATEGORIES = ['Vacant Plot', 'Open Place', 'Demolished', 'Part open place'];
 
 /** User-approved council-only closing. Jurisdiction never supplies the recipient. */
@@ -14,7 +14,7 @@ export const isMunicipalGift = (state: Pick<AppState, 'deedType' | 'draft'>) =>
   state.deedType === 'Gift' && ['Gift to Local Bodies', 'Municipal Gift'].includes(state.draft);
 
 export const giftTemplateVersion = (variant?: string) =>
-  variant === MUNICIPAL_GIFT_VARIANT ? MUNICIPAL_GIFT_TEMPLATE : 'gift-deed-v6';
+  variant === MUNICIPAL_GIFT_VARIANT ? MUNICIPAL_GIFT_TEMPLATE : 'gift-deed-v7';
 
 /** Compare registration particulars, never schedule jurisdiction or document number alone. */
 export function uniqueMunicipalLinks(records: Record<string, string>[], keys: { number: string; date: string; office: string; code: string }) {

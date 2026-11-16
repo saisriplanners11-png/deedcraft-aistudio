@@ -10,10 +10,10 @@ const cases = [
   ['gift', 'non-family-gift', 'gift-deed-template-v6.docx', 'Gift'],
   ['gift', 'gift-to-trust-or-charity', 'gift-deed-template-v6.docx', 'Gift'],
   ['gift', 'municipal-gift', 'gift-municipal-template-v3.docx', 'Gift'],
-  ['power_of_attorney', 'general-power-of-attorney', 'general-poa-template-v3.docx', 'GPA/Power of Attorney'],
-  ['power_of_attorney', 'general-power-of-attorney-family', 'general-poa-template-v3.docx', 'GPA/Power of Attorney'],
-  ['agreement_of_sale', 'with-possession', 'agreement-sale-gpa-template-v4.docx', 'Agreement of Sale Cum GPA'],
-  ['agreement_of_sale', 'without-possession', 'agreement-sale-gpa-template-v4.docx', 'Agreement of Sale Cum GPA'],
+  ['power_of_attorney', 'general-power-of-attorney', 'general-poa-template-v4.docx', 'GPA/Power of Attorney'],
+  ['power_of_attorney', 'general-power-of-attorney-family', 'general-poa-template-v4.docx', 'GPA/Power of Attorney'],
+  ['agreement_of_sale', 'with-possession', 'agreement-sale-gpa-template-v5.docx', 'Agreement of Sale Cum GPA'],
+  ['agreement_of_sale', 'without-possession', 'agreement-sale-gpa-template-v5.docx', 'Agreement of Sale Cum GPA'],
 ];
 for (const [instrumentId, variantId, file, deedType] of cases) {
   const bytes = new Uint8Array(await readFile(new URL('../' + file, import.meta.url)));
@@ -26,6 +26,10 @@ for (const [instrumentId, variantId, file, deedType] of cases) {
   const actual = heading(await xmlOf(new Uint8Array(await artifact.result.blob.arrayBuffer())));
   let expected = heading(await xmlOf(bytes));
   if (variantId === 'without-possession') expected = rt.replaceRunText(expected, /WITH POSSESSION/, () => 'WITHOUT POSSESSION');
+  if (instrumentId === 'power_of_attorney') {
+    const qualifier = variantId === 'general-power-of-attorney-family' ? 'IN FAVOUR OF FAMILY MEMBER' : 'FOR SALE OF IMMOVABLE PROPERTY';
+    expected = rt.replaceRunText(expected, /<FOR SALE OF IMMOVABLE PROPERTY\/IN FAVOUR OF FAMILY MEMBER>/, () => qualifier);
+  }
   assert.equal(actual, expected, `${instrumentId}/${variantId}: preserve title text and complete paragraph/run formatting`);
 }
-console.log(`PASS: ${cases.length} deed/variant headings retain exact source paragraph/run XML; only source-defined possession choice is resolved.`);
+console.log(`PASS: ${cases.length} deed/variant headings retain exact source paragraph/run XML after source-defined title choices.`);

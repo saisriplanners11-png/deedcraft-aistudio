@@ -1,3 +1,5 @@
+import { appStateFor } from './source-draft';
+import { isBankReconveyance, reconveyanceTemplateVersion } from './reconveyance';
 import { isGeneralPoa } from './poa-options';
 import { giftTemplateVersion } from './municipal-gift';
 import type { SavedDeed } from './saved-deeds';
@@ -11,12 +13,15 @@ export function templateIsEarlier(pin: TemplatePin, latest?: TemplatePin | null)
 
 export function savedTemplateStatus(deed: SavedDeed, latest?: TemplatePin | null) {
   if (deed.templateMode === 'custom') return { label: `Custom template: ${deed.customTemplate?.name || 'saved Word document'}`, earlier: false };
-  if (deed.draft.instrumentId === 'release') return { label: 'Release v1 (release-deed-v1)', earlier: false };
-  if (deed.draft.instrumentId === 'reconveyance') return { label: 'Reconveyance v1 (reconveyance-deed-v1)', earlier: false };
-  if (isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId)) return { label: 'General Power of Attorney v3 (general-poa-v3)', earlier: false };
-  if (deed.draft.instrumentId === 'agreement_of_sale') return { label: 'Agreement of Sale Cum GPA v4 (agreement-sale-gpa-v4)', earlier: false };
-  if (deed.draft.instrumentId === 'gift' && deed.draft.variantId === 'municipal-gift') return { label: 'Municipal Gift v3 (gift-municipal-v3)', earlier: false };
-  if (deed.draft.instrumentId === 'gift') return { label: 'Gift Settlement v6 (gift-deed-v6)', earlier: false };
+  if (deed.draft.instrumentId === 'release') return { label: 'Release v2 (release-deed-v2)', earlier: false };
+  if (deed.draft.instrumentId === 'reconveyance') {
+    const version = reconveyanceTemplateVersion(isBankReconveyance(appStateFor(deed.draft)));
+    return { label: `Reconveyance v${version.slice(-1)} (${version})`, earlier: false };
+  }
+  if (isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId)) return { label: 'General Power of Attorney v4 (general-poa-v4)', earlier: false };
+  if (deed.draft.instrumentId === 'agreement_of_sale') return { label: 'Agreement of Sale Cum GPA v5 (agreement-sale-gpa-v5)', earlier: false };
+  if (deed.draft.instrumentId === 'gift' && deed.draft.variantId === 'municipal-gift') return { label: 'Municipal Gift v4 (gift-municipal-v4)', earlier: false };
+  if (deed.draft.instrumentId === 'gift') return { label: 'Gift Settlement v7 (gift-deed-v7)', earlier: false };
   if (deed.draft.instrumentId && deed.draft.instrumentId !== 'sale') return { label: 'Reference required', earlier: false };
   const pin = deed.libraryTemplate || bundledTemplatePin(deed.generationManifest?.templateVersionId);
   return { label: `${pin.name} (${pin.versionId})`, earlier: templateIsEarlier(pin, latest) };
@@ -26,7 +31,7 @@ export function savedTemplateStatus(deed: SavedDeed, latest?: TemplatePin | null
 export function updateSavedDeedTemplate(deed: SavedDeed, defaults: Record<string, TemplatePin>): SavedDeed {
   if (deed.generationManifest && deed.generationManifest.preservationVersion !== DEED_PRESERVATION_VERSION) deed = { ...deed, generationManifest: null };
   if (deed.templateMode === 'custom') return deed;
-  const pin = deed.draft.instrumentId === 'release' ? bundledTemplatePin('release-deed-v1') : deed.draft.instrumentId === 'reconveyance' ? bundledTemplatePin('reconveyance-deed-v1') : isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId) ? bundledTemplatePin('general-poa-v3') : deed.draft.instrumentId === 'agreement_of_sale' ? bundledTemplatePin('agreement-sale-gpa-v4') : deed.draft.instrumentId === 'gift' ? bundledTemplatePin(giftTemplateVersion(deed.draft.variantId)) : defaults[deed.draft.instrumentId || 'sale'];
+  const pin = deed.draft.instrumentId === 'release' ? bundledTemplatePin('release-deed-v2') : deed.draft.instrumentId === 'reconveyance' ? bundledTemplatePin(reconveyanceTemplateVersion(isBankReconveyance(appStateFor(deed.draft)))) : isGeneralPoa(deed.draft.instrumentId, deed.draft.variantId) ? bundledTemplatePin('general-poa-v4') : deed.draft.instrumentId === 'agreement_of_sale' ? bundledTemplatePin('agreement-sale-gpa-v5') : deed.draft.instrumentId === 'gift' ? bundledTemplatePin(giftTemplateVersion(deed.draft.variantId)) : defaults[deed.draft.instrumentId || 'sale'];
   if (!pin || (deed.libraryTemplate && !templateIsEarlier(deed.libraryTemplate, pin))) return deed;
   return { ...deed, ...(deed.draft.instrumentId === 'agreement_of_sale' ? { deedType: 'Agreement of Sale Cum GPA' } : {}), libraryTemplate: pin, generationManifest: null };
 }

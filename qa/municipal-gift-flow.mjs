@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt = await loadTemplateRuntime();
-const reference = new Uint8Array(await readFile(new URL('../gift-municipal-template-v3.docx', import.meta.url)));
+const reference = new Uint8Array(await readFile(new URL('../gift-municipal-template-v4.docx', import.meta.url)));
 const sourceEntries = await rt.readZip(reference);
 assert.deepEqual((await rt.validateMunicipalGiftTemplate(reference)).errors, []);
 await mkdir('tmp/municipal-gift/qa', { recursive: true });
@@ -20,7 +20,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   const { result, manifest } = await rt.renderArtifact(compiled, 'docx');
   const bytes = new Uint8Array(await result.blob.arrayBuffer());
   const text = await rt.docxToText(bytes);
-  assert.equal(manifest.templateVersionId, 'gift-municipal-v3');
+  assert.equal(manifest.templateVersionId, 'gift-municipal-v4');
   assert.deepEqual(result.unmapped, []);
   assert.match(text, /SAMPLE PURCHASER/);
   assert.doesNotMatch(text, /Represented by its Commissioner|constitute under Hyderabad Municipal Corporation Act/);

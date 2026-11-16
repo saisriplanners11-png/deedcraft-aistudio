@@ -53,7 +53,7 @@ add(['Bank Name', 'Housing Loan Bank'], 'Payment Details / bank', ['payments.ban
 add(['Housing Loan Branch'], 'Payment Details / bank branch', ['payments.branch']);
 add(['Cheque No.', 'DD No.', 'Transaction ID', 'Utr/Reference No.'], 'Payment Details / method-specific reference', ['payments.refNo']);
 const report = [];
-for (const file of ['gift-municipal-template-v3.docx', 'gift-deed-template-v6.docx', 'agreement-sale-gpa-template-v4.docx', 'general-poa-template-v3.docx', 'sale-deed-template-v11.docx', 'sale-deed-template-v10.docx', 'gift-deed-template-v5.docx', 'gift-municipal-template-v2.docx', 'agreement-sale-gpa-template-v1.docx', 'agreement-sale-gpa-template-v2.docx', 'general-poa-template-v1.docx', 'general-poa-template-v2.docx', 'agreement-sale-gpa-template-v3.docx']) {
+for (const file of ['gift-municipal-template-v4.docx', 'gift-deed-template-v7.docx', 'gift-municipal-template-v3.docx', 'gift-deed-template-v6.docx', 'agreement-sale-gpa-template-v4.docx', 'general-poa-template-v3.docx', 'sale-deed-template-v12.docx', 'sale-deed-template-v11.docx', 'sale-deed-template-v10.docx', 'gift-deed-template-v5.docx', 'gift-municipal-template-v2.docx', 'agreement-sale-gpa-template-v1.docx', 'agreement-sale-gpa-template-v2.docx', 'general-poa-template-v1.docx', 'general-poa-template-v2.docx', 'agreement-sale-gpa-template-v3.docx']) {
  const text = await rt.docxToText(new Uint8Array(await readFile(new URL('../' + file, import.meta.url))));
  const tags = [...new Set([...text.matchAll(/<([^<>]+)>/g)].map(match => norm(match[1])))].filter(tag => !/^(?:if|end|for)\b/.test(tag) && tag !== 'without possession');
  const rows = tags.sort().map(placeholder => {

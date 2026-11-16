@@ -34,10 +34,12 @@ export function createTemplateApi(options = {}) {
     await storage.init();
     const previous = await storage.read();
     const current = previous || { active: {}, versions: [], history: [] };
+    const addingLatestSale = !current.versions.some(item => item.id === 'sale-deed-v12');
     let changed = false;
     for (const source of [
       { id: 'sale-deed-v10', filename: 'sale-deed-template-v10.docx', sourceDocument: 'SALE DEED-1610.docx' },
       { id: 'sale-deed-v11', filename: 'sale-deed-template-v11.docx', sourceDocument: 'SALE DEED (7).docx' },
+      { id: 'sale-deed-v12', filename: 'sale-deed-template-v12.docx', sourceDocument: 'SALE DEED (8).docx' },
     ]) {
       if (current.versions.some(item => item.id === source.id)) continue;
       const bytes = await readFile(join(ROOT, source.filename));
@@ -49,12 +51,15 @@ export function createTemplateApi(options = {}) {
       await atomic(version.id + '.docx', bytes);
       current.versions.push(version); current.history.push({ versionId: version.id, at, action: 'seed' }); changed = true;
     }
-    if (!current.active.sale || ['sale-deed-v6', 'sale-deed-v7', 'sale-deed-v8', 'sale-deed-v9', 'sale-deed-v10'].includes(current.active.sale)) { current.active.sale = 'sale-deed-v11'; changed = true; }
+    const supersededSaleDefaults = ['sale-deed-v6', 'sale-deed-v7', 'sale-deed-v8', 'sale-deed-v9', 'sale-deed-v10'];
+    if (!current.active.sale || supersededSaleDefaults.includes(current.active.sale) || (addingLatestSale && current.active.sale === 'sale-deed-v11')) {
+      current.active.sale = 'sale-deed-v12'; changed = true;
+    }
     if (!changed) return;
     try { await save(current); }
     catch (error) {
       const latest = error.status === 409 ? await storage.read() : null;
-      if (!latest?.versions.some(item => item.id === 'sale-deed-v11')) throw error;
+      if (!latest?.versions.some(item => item.id === 'sale-deed-v12')) throw error;
     }
   }
 
@@ -65,6 +70,7 @@ export function createTemplateApi(options = {}) {
       { id: 'agreement-sale-gpa-v2', filename: 'agreement-sale-gpa-template-v2.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (1).docx' },
       { id: 'agreement-sale-gpa-v3', filename: 'agreement-sale-gpa-template-v3.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (2).docx' },
       { id: 'agreement-sale-gpa-v4', filename: 'agreement-sale-gpa-template-v4.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (3).docx' },
+      { id: 'agreement-sale-gpa-v5', filename: 'agreement-sale-gpa-template-v5.docx', sourceDocument: 'AGREEMENT OF SALE CUM GPA (4).docx' },
     ];
     let changed = false;
     for (const source of sources) {
@@ -80,12 +86,12 @@ export function createTemplateApi(options = {}) {
       current.history.push({ versionId: version.id, at, action: 'seed' });
       changed = true;
     }
-    if (!current.active.agreement_of_sale || ['agreement-sale-gpa-v1', 'agreement-sale-gpa-v2', 'agreement-sale-gpa-v3'].includes(current.active.agreement_of_sale)) { current.active.agreement_of_sale = 'agreement-sale-gpa-v4'; changed = true; }
+    if (!current.active.agreement_of_sale || ['agreement-sale-gpa-v1', 'agreement-sale-gpa-v2', 'agreement-sale-gpa-v3', 'agreement-sale-gpa-v4'].includes(current.active.agreement_of_sale)) { current.active.agreement_of_sale = 'agreement-sale-gpa-v5'; changed = true; }
     if (!changed) return;
     try { await save(current); }
     catch (error) {
       const latest = error.status === 409 ? await storage.read() : null;
-      if (!latest?.versions.some(item => item.id === 'agreement-sale-gpa-v4')) throw error;
+      if (!latest?.versions.some(item => item.id === 'agreement-sale-gpa-v5')) throw error;
     }
   }
   async function seedGeneralPoaLibrary() {
@@ -95,6 +101,7 @@ export function createTemplateApi(options = {}) {
       { id: 'general-poa-v1', filename: 'general-poa-template-v1.docx', sourceDocument: 'G.P.A FOR CONSIDERATION.docx' },
       { id: 'general-poa-v2', filename: 'general-poa-template-v2.docx', sourceDocument: 'G.P.A FOR CONSIDERATION (1).docx' },
       { id: 'general-poa-v3', filename: 'general-poa-template-v3.docx', sourceDocument: 'G.P.A FOR CONSIDERATION (2).docx' },
+      { id: 'general-poa-v4', filename: 'general-poa-template-v4.docx', sourceDocument: 'G.P.A FOR CONSIDERATION (3).docx' },
     ]) {
       if (current.versions.some(item => item.id === source.id)) continue;
       const bytes = await readFile(join(ROOT, source.filename));
@@ -108,12 +115,12 @@ export function createTemplateApi(options = {}) {
       current.history.push({ versionId: version.id, at, action: 'seed' });
       changed = true;
     }
-    if (!current.active.power_of_attorney || ['general-poa-v1', 'general-poa-v2'].includes(current.active.power_of_attorney)) { current.active.power_of_attorney = 'general-poa-v3'; changed = true; }
+    if (!current.active.power_of_attorney || ['general-poa-v1', 'general-poa-v2', 'general-poa-v3'].includes(current.active.power_of_attorney)) { current.active.power_of_attorney = 'general-poa-v4'; changed = true; }
     if (!changed) return;
     try { await save(current); }
     catch (error) {
       const latest = error.status === 409 ? await storage.read() : null;
-      if (!latest?.versions.some(item => item.id === 'general-poa-v3')) throw error;
+      if (!latest?.versions.some(item => item.id === 'general-poa-v4')) throw error;
     }
   }
   let initialization;

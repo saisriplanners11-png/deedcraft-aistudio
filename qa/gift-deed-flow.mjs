@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {loadTemplateRuntime} from '../template-runtime-loader.mjs';
 const rt=await loadTemplateRuntime();
-const referenceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx',import.meta.url)));
+const referenceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v7.docx',import.meta.url)));
 const referenceEntries=await rt.readZip(referenceBytes);
 const referenceXml=new TextDecoder().decode(referenceEntries.find(entry=>entry.name==='word/document.xml').data);
 await mkdir('tmp/gift/qa',{recursive:true});
@@ -46,7 +46,7 @@ const state=rt.sampleState('multiple');state.deedType='Gift';state.form.giftRela
 const schedules=rt.scheduleMergesFor(state);
 const compiled=rt.compileDeed({instrumentId:'gift',variantId:'family-gift',snapshotHash:'synthetic',values:rt.mergeValues(state),schedules,rewrites:rt.rewritesFor(state),unresolvedWarnings:[]});
 const artifact=await rt.renderArtifact(compiled,'docx');
-assert.equal(artifact.manifest.templateVersionId,'gift-deed-v6');
+assert.equal(artifact.manifest.templateVersionId,'gift-deed-v7');
 assert.match(await rt.docxToText(new Uint8Array(await artifact.result.blob.arrayBuffer())),/WHEREAS the Donees are the son and daughter of the Donors/);
 const sourceBytes=new Uint8Array(await readFile(new URL('../gift-deed-template-v6.docx',import.meta.url)));
 const entries=await rt.readZip(sourceBytes);const document=entries.find(entry=>entry.name==='word/document.xml');

@@ -1,4 +1,4 @@
-import { reconveyanceBindingErrors } from './reconveyance';
+import { reconveyanceBindingErrors, reconveyanceTemplateVersion } from './reconveyance';
 import { BUILT_IN_TEMPLATE_SOURCE, fillSaleDeed, fillGiftDeed, fillReleaseDeed, fillReconveyanceDeed, fillAgreementSaleGpaDeed, fillGeneralPoaDeed, type DeedTemplateSource, type MergeResult, type Rewrite, type ScheduleMerge } from './docx';
 import type { InstrumentId } from './instruments';
 import { definitionFor } from './instruments';
@@ -52,7 +52,7 @@ export function compileDeed(snapshot: DraftSnapshot, templateSource: DeedTemplat
   if (!allowIncomplete && snapshot.instrumentId === 'sale' && snapshot.values['Sale Document Mode'] && snapshot.values['Sale Document Mode'] !== 'ordinary') {
     for (const tag of ['G.P.A.Doct.No.', 'G.P.A.Doct.Date', 'Authority SRO', 'Authority SRO Code']) if (!snapshot.values[tag]) throw new Error('Complete the sale authority details before generating the deed.');
   }
-  return { snapshot, templateSource, allowIncomplete, templateVersionId: templateSource.kind === 'library' ? templateSource.versionId : templateSource.kind === 'custom' ? `custom:${templateSource.hash}` : gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
+  return { snapshot, templateSource, allowIncomplete, templateVersionId: templateSource.kind === 'library' ? templateSource.versionId : templateSource.kind === 'custom' ? `custom:${templateSource.hash}` : snapshot.instrumentId === 'reconveyance' ? reconveyanceTemplateVersion(snapshot.values['Mortgage Party Mode'] !== 'person-to-person') : gate.reference.templateVersionId, ruleVersion: definitionFor(snapshot.instrumentId).dutyRuleSetId };
 }
 
 export async function renderArtifact(

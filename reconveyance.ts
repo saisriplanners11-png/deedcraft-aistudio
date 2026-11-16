@@ -64,6 +64,7 @@ export const isBankReconveyance = (state: AppState) => state.deedType === 'Deed 
   state.draft === 'TITLE DEED' || state.form.executantPartyType === 'Bank' || state.form.mortgagePartyMode === 'bank-to-person' ||
   (state.form.mortgagePartyMode !== 'person-to-person' && !!state.form.bankName?.trim())
 );
+export const reconveyanceTemplateVersion = (bank: boolean) => bank ? 'reconveyance-deed-v2' : 'reconveyance-deed-v1';
 export function reconveyanceErrors(state: AppState): string[] {
   const errors = [...repaymentFor(state).errors];
   const records = reconveyanceRecords(state);

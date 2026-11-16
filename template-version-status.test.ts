@@ -24,10 +24,10 @@ it('refreshes stale rule metadata for every instrument without changing custom s
 
 it('moves previous authority defaults to the new immutable sources without changing entered facts', () => {
   for (const [instrumentId, variantId, previous, current] of [
-    ['power_of_attorney', 'general-power-of-attorney', 'general-poa-v2', 'general-poa-v3'],
-    ['power_of_attorney', 'general-power-of-attorney-family', 'general-poa-v2', 'general-poa-v3'],
-    ['agreement_of_sale', 'with-possession', 'agreement-sale-gpa-v3', 'agreement-sale-gpa-v4'],
-    ['agreement_of_sale', 'without-possession', 'agreement-sale-gpa-v3', 'agreement-sale-gpa-v4'],
+    ['power_of_attorney', 'general-power-of-attorney', 'general-poa-v2', 'general-poa-v4'],
+    ['power_of_attorney', 'general-power-of-attorney-family', 'general-poa-v2', 'general-poa-v4'],
+    ['agreement_of_sale', 'with-possession', 'agreement-sale-gpa-v3', 'agreement-sale-gpa-v5'],
+    ['agreement_of_sale', 'without-possession', 'agreement-sale-gpa-v3', 'agreement-sale-gpa-v5'],
   ]) {
     const deed = saved({ draft: { ...newDraft(), instrumentId, variantId, manual: { 'claimant|primary|claimantGender': 'Female', 'claimant|primary|poaRelationship': 'daughter', 'property|primary|surveyNo': 'KEPT-42' } }, libraryTemplate: bundledTemplatePin(previous), generationManifest: { templateVersionId: previous }, sourceFiles: { primary: [] } });
     const updated = updateSavedDeedTemplate(deed, {});
@@ -51,7 +51,7 @@ describe('Saved template version notices', () => {
   });
   it('identifies the Gift default independently of the Sale default', () => {
     const draft = { ...newDraft(), instrumentId: 'gift' as const, variantId: 'family-gift' };
-    expect(savedTemplateStatus(saved({ draft, libraryTemplate: bundledTemplatePin('gift-deed-v1') }), latest)).toEqual({ label: 'Gift Settlement v6 (gift-deed-v6)', earlier: false });
+    expect(savedTemplateStatus(saved({ draft, libraryTemplate: bundledTemplatePin('gift-deed-v1') }), latest)).toEqual({ label: 'Gift Settlement v7 (gift-deed-v7)', earlier: false });
   });
   it('does not mark drafts as older before the library is loaded', () => {
     expect(savedTemplateStatus(saved()).earlier).toBe(false);
@@ -60,7 +60,7 @@ describe('Saved template version notices', () => {
 
 describe('Automatic default template updates', () => {
   const sale = bundledTemplatePin('sale-deed-v10');
-  const gift = bundledTemplatePin('gift-deed-v6');
+  const gift = bundledTemplatePin('gift-deed-v7');
   it('updates every deed type using its own default and preserves facts and files', () => {
     for (const instrumentId of ['sale', 'gift', 'power_of_attorney', 'development_agreement_agpa'] as const) {
       const pin = instrumentId === 'gift' ? gift : { ...sale, versionId: instrumentId + '-current' };
@@ -85,10 +85,10 @@ describe('Automatic default template updates', () => {
 it('keeps municipal and regular Gift defaults separate across refresh and reload', () => {
   const municipal = saved({ draft: { ...newDraft(), instrumentId: 'gift', variantId: 'municipal-gift' }, libraryTemplate: bundledTemplatePin('gift-deed-v5') });
   const updated = updateSavedDeedTemplate(municipal, { gift: bundledTemplatePin('gift-deed-v5') });
-  expect(updated.libraryTemplate?.versionId).toBe('gift-municipal-v3');
+  expect(updated.libraryTemplate?.versionId).toBe('gift-municipal-v4');
   expect(savedTemplateStatus(updated).label).toContain('Municipal Gift');
   const regular = { ...updated, draft: { ...updated.draft, variantId: 'family-gift' } };
-  expect(updateSavedDeedTemplate(regular, {}).libraryTemplate?.versionId).toBe('gift-deed-v6');
+  expect(updateSavedDeedTemplate(regular, {}).libraryTemplate?.versionId).toBe('gift-deed-v7');
 });
 
 
@@ -96,7 +96,7 @@ it('refreshes Agreement of Sale Cum GPA defaults while preserving both variants 
   for (const variantId of ['with-possession', 'without-possession']) {
     const deed = saved({ deedType: 'Agreement of Sale', libraryTemplate: bundledTemplatePin('agreement-sale-gpa-v1'), draft: { ...newDraft(), instrumentId: 'agreement_of_sale', variantId, manual: { 'executant|primary|executantName': 'KEPT NAME' } }, generationManifest: { templateVersionId: 'old' } });
     const updated = updateSavedDeedTemplate(deed, {});
-    expect(updated.libraryTemplate?.versionId).toBe('agreement-sale-gpa-v4');
+    expect(updated.libraryTemplate?.versionId).toBe('agreement-sale-gpa-v5');
     expect(updated.deedType).toBe('Agreement of Sale Cum GPA');
     expect(updated.draft).toBe(deed.draft);
     expect(updated.generationManifest).toBeNull();
@@ -111,7 +111,7 @@ it('refreshes Agreement of Sale Cum GPA defaults while preserving both variants 
 });
 
 it('refreshes previous Gift defaults without changing saved party, property or relationship records', () => {
-  for (const [variantId, previous, current] of [['family-gift', 'gift-deed-v5', 'gift-deed-v6'], ['municipal-gift', 'gift-municipal-v2', 'gift-municipal-v3']]) {
+  for (const [variantId, previous, current] of [['family-gift', 'gift-deed-v5', 'gift-deed-v7'], ['municipal-gift', 'gift-municipal-v2', 'gift-municipal-v4']]) {
     const deed = saved({ draft: { ...newDraft(), instrumentId: 'gift', variantId, manual: { 'executant|primary|executantPan': 'ABCDE1234F', 'property|primary|surveyNo': 'SAVED-42', 'transaction|primary|giftRelationship': 'daughter' } }, libraryTemplate: bundledTemplatePin(previous), generationManifest: { templateVersionId: previous } });
     const updated = updateSavedDeedTemplate(deed, {});
     expect(updated.libraryTemplate?.versionId).toBe(current);

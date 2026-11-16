@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { loadTemplateRuntime } from '../template-runtime-loader.mjs';
 const rt=await loadTemplateRuntime();
-const bytes=new Uint8Array(await readFile('release-deed-template-v1.docx'));
+const bytes=new Uint8Array(await readFile('release-deed-template-v2.docx'));
 const validation=await rt.validateReleaseTemplate(bytes); assert.deepEqual(validation.errors,[]);
 await mkdir('tmp/release/qa',{recursive:true});
 for(const property of ['plot','open','part','dismantled','house-finished','house-semi','flat-finished','flat-semi']) {
@@ -19,6 +19,8 @@ for(const property of ['plot','open','part','dismantled','house-finished','house
   assert.equal((text.match(/THE DETAILS OF TOTAL PROPERTY/g)||[]).length,1);
   assert.ok(!/<[^>]+>|DD-MM-YYYY|Vendee\/s|Vendor\/s|SIGN\/S|HAS\/HAVE|HIS\/HER/.test(text),text);
   assert.ok(text.includes('1/3'));
+  assert.equal((text.match(/The Plan of schedule property is annexed hereto\./g) || []).length, 1);
+  assert.equal((text.match(/The schedule property is not the assigned property\./g) || []).length, 1);
   assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, property);
   if (property.startsWith('house-')) assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./, property);
   await writeFile(`tmp/release/qa/${property}.docx`,output);
