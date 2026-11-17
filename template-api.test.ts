@@ -133,7 +133,7 @@ describe('shared template library API', { timeout: 30000 }, () => {
     expect((await upload(Buffer.alloc(20 * 1024 * 1024 + 1))).status).toBe(413);
   });
   it('rejects unsupported instruments and stored-byte tampering', async () => {
-    expect((await fetch(base + '/upload?instrument=gift&filename=gift.docx', { method: 'POST', headers: headers(), body: new Uint8Array(starter).buffer })).status).toBe(400);
+    expect((await fetch(base + '/upload?instrument=mortgage&filename=mortgage.docx', { method: 'POST', headers: headers(), body: new Uint8Array(starter).buffer })).status).toBe(400);
     const revision = await (await upload()).json();
     await writeFile(join(directory, revision.id + '.docx'), 'tampered');
     expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'sale-deed-v12', reviewed: true })).status).toBe(503);
@@ -235,6 +235,26 @@ describe('shared template library API', { timeout: 30000 }, () => {
     expect(revision.validation.valid).toBe(false);
     expect(revision.validation.errors.join(' ')).toMatch(/saved party details/i);
     expect(revision.samples).toEqual([]);
+  });
+  it('publishes Municipal Gift independently and serves the same source to another browser after restart', async () => {
+    const bytes = await readFile(new URL('./gift-municipal-template-v4.docx', import.meta.url));
+    const body = new Uint8Array(bytes).buffer;
+    const path = '/upload?family=municipal-gift&filename=edited-municipal.docx';
+    expect((await fetch(base + path + '&parentVersionId=gift-deed-v7', { method: 'POST', headers: headers(), body })).status).toBe(400);
+    const uploadResponse = await fetch(base + path, { method: 'POST', headers: headers(), body });
+    expect(uploadResponse.status).toBe(201);
+    const revision = await uploadResponse.json();
+    expect(revision.preservationVersion).toBe(runtime.DEED_PRESERVATION_VERSION);
+    expect(revision.samples).toHaveLength(4);
+    expect(revision.samples.filter((sample: any) => sample.error)).toEqual([]);
+    expect((await post(`/versions/${revision.id}/publish`, { expectedActive: 'gift-municipal-v4', reviewed: true })).status).toBe(200);
+    await close(); await start();
+    const listing = await (await fetch(base)).json();
+    expect(listing.active.gift).toBe('gift-deed-v7');
+    expect(listing.active['municipal-gift']).toBe(revision.id);
+    expect(listing.preservationVersion).toBe(runtime.DEED_PRESERVATION_VERSION);
+    const response = await fetch(base + `/versions/${revision.id}/download`);
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
   });
   it('disables management without a password and limits failed logins', async () => {
     await close(); await start('');

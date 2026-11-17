@@ -40,6 +40,8 @@ Policy version `2026-11-03.1` additionally applies COM-16. Part open place and h
 
 Library samples carry their preservation version. A replacement validated under older rules must be validated again before publication. Rollback also checks the old source against current rules; rolling back a Word asset never rolls back application rules.
 
+The shared library selects defaults by deed family, with separate regular Gift, Municipal Gift and bank Reconveyance entries. Person-to-person Reconveyance continues to use the approved v1 source. Browsers use the active library revision for previews and generation, including when the revision was published under an earlier policy. Stored Word source bytes are immutable. The application is the source of the rules, so a future rule change takes effect on both computers after deploying the updated app. Publishing a new Word source and deploying the app are independent operations.
+
 `qa/deed-preservation-flow.mjs` runs in every production build. It exercises 84 changed-source downloads across all currently supported instrument/property variants, source-embedded stale facts, missing party identities, flat recitals removed from both source branches, cached valid metadata and the shared policy-version manifest. The existing Gift, authority, payment, share, date, margin, gender, flat, guardian and Section 32A regressions remain in the build.
 
 The other catalogued deed families still require approved references and registered renderers. A source cannot be accepted for a new family until a preservation profile is explicitly registered; there is no fallback to another deed's rules.

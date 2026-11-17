@@ -4,6 +4,8 @@
 .template-panel h2 { margin-top: 0; }
 .template-panel p { line-height: 1.6; }
 .template-panel small { overflow-wrap: anywhere; }
+.template-family-field { display: grid; gap: 6px; justify-items: start; }
+.template-family-field select { max-width: 100%; }
 .template-actions, .template-samples { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
 .template-panel a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .template-panel details { padding: 10px 0; }

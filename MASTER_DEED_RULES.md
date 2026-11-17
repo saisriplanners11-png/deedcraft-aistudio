@@ -114,6 +114,7 @@ This register consolidates the rule inventory confirmed in this chat. It persist
 - **TPL-03 — Common validation and safe rejection.** Use the shared upload/server validator and current source policies. Retain configured-field definitions/values; missing required/configured bindings must produce actionable errors instead of silently trimming fields. Invalid/malformed/oversized browser replacements keep the preceding valid custom source.
 - **TPL-04 — Actual output enforcement.** Apply current preservation rules at download even with cached valid metadata. Normalize recognized stale literal dates, values, shares and NALA examples; restore supported bindings/required recitals. Reject incompatible or unfamiliar conflicting structures rather than choosing another deed's renderer or inventing legal clauses.
 - **TPL-05 — Publication and rollback.** Require current-policy validation and fresh samples before publication. Rollback must validate against current rules; rolling back a Word asset never rolls back application protections. Track preservation version separately from template/schema/input/output hashes.
+- **Shared dashboard defaults.** A published library revision supplies the source for new and saved default-mode deeds in its own supported family, regardless of which computer published it. Separate regular and Municipal Gift sources and retain the approved person-to-person Reconveyance v1 path. The deployed app applies the current master rules at generation, including to sources published under an earlier revision. Deploy future rule changes as application updates. Existing published source files and per-deed custom selections carry forward.
 - **TPL-06 — Future deed families.** Register approved references, compatible renderers and preservation profiles before accepting replacements for new families. Special/Property POA and other gated variants cannot silently use General GPA or another deed's wording. Carry applicable common master rules into every new integration, retaining its explicitly authorized exceptions.
 - **TPL-07 — Regression checks.** Keep the single-upload Link Document projection, Gift, universal replacement, authority refresh/download, possession, Section 32A, shares, declaration, dates, values, margins, landmarks, flats, payments, gender, guardian and saved-data checks in the production build. Run npm run typecheck and npm run build after changes. Visually verify generated Word samples when document rendering/layout changes.
 
@@ -128,8 +129,8 @@ These versions describe the current sources, not permanent restrictions against 
 | Sale, Sale through GPA/AGPA | sale-deed-v12 from SALE DEED (8).docx | v11 and earlier registered Sale assets/hashes |
 | General/Family GPA | general-poa-v4 from G.P.A FOR CONSIDERATION (3).docx | v1-v3 |
 | Agreement of Sale Cum GPA, both possession variants | agreement-sale-gpa-v5 from AGREEMENT OF SALE CUM GPA (4).docx | v1-v4 |
-| Regular Gift | gift-deed-v6 from GIFT SETTLEMENT (2).docx | v1-v5 |
-| Municipal Gift | gift-municipal-v3 from GIFT DEED FOR MUNCIPAL (2).docx | v1-v2 |
+| Regular Gift | gift-deed-v7 from GIFT SETTLEMENT (3).docx | v1-v6 |
+| Municipal Gift | gift-municipal-v4 from GIFT DEED FOR MUNCIPAL (3).docx | v1-v3 |
 
 Detailed implementation records: [replacement preservation](notes/deed-template-preservation.md), [Gift preservation](notes/gift-template-preservation.md), [project instructions](AGENTS.md). Runtime protection remains in deed-preservation.ts and the instrument renderers, not only in this document.
 

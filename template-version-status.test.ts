@@ -39,19 +39,20 @@ it('moves previous authority defaults to the new immutable sources without chang
 });
 describe('Saved template version notices', () => {
   const latest = bundledTemplatePin('sale-deed-v10');
+  const defaults = { sale: latest };
   it('flags v9 and legacy drafts without replacing their pinned version', () => {
     const pin = bundledTemplatePin('sale-deed-v9');
-    expect(savedTemplateStatus(saved({ libraryTemplate: pin }), latest)).toEqual({ label: 'Built-in Sale v9 (sale-deed-v9)', earlier: true });
+    expect(savedTemplateStatus(saved({ libraryTemplate: pin }), defaults)).toEqual({ label: 'Built-in Sale v9 (sale-deed-v9)', earlier: true });
     expect(pin.versionId).toBe('sale-deed-v9');
-    expect(savedTemplateStatus(saved(), latest).earlier).toBe(true);
+    expect(savedTemplateStatus(saved(), defaults).earlier).toBe(false);
   });
   it('identifies the current default and keeps per-deed custom templates distinct', () => {
-    expect(savedTemplateStatus(saved({ libraryTemplate: latest }), latest).earlier).toBe(false);
-    expect(savedTemplateStatus(saved({ templateMode: 'custom', customTemplate: { name: 'My template.docx' } }), latest)).toEqual({ label: 'Custom template: My template.docx', earlier: false });
+    expect(savedTemplateStatus(saved({ libraryTemplate: latest }), defaults).earlier).toBe(false);
+    expect(savedTemplateStatus(saved({ templateMode: 'custom', customTemplate: { name: 'My template.docx' } }), defaults)).toEqual({ label: 'Custom template: My template.docx', earlier: false });
   });
   it('identifies the Gift default independently of the Sale default', () => {
     const draft = { ...newDraft(), instrumentId: 'gift' as const, variantId: 'family-gift' };
-    expect(savedTemplateStatus(saved({ draft, libraryTemplate: bundledTemplatePin('gift-deed-v1') }), latest)).toEqual({ label: 'Gift Settlement v7 (gift-deed-v7)', earlier: false });
+    expect(savedTemplateStatus(saved({ draft, libraryTemplate: bundledTemplatePin('gift-deed-v1') }), defaults)).toEqual({ label: 'Built-in Gift v1 (gift-deed-v1)', earlier: true });
   });
   it('does not mark drafts as older before the library is loaded', () => {
     expect(savedTemplateStatus(saved()).earlier).toBe(false);
@@ -61,24 +62,31 @@ describe('Saved template version notices', () => {
 describe('Automatic default template updates', () => {
   const sale = bundledTemplatePin('sale-deed-v10');
   const gift = bundledTemplatePin('gift-deed-v7');
-  it('updates every deed type using its own default and preserves facts and files', () => {
-    for (const instrumentId of ['sale', 'gift', 'power_of_attorney', 'development_agreement_agpa'] as const) {
-      const pin = instrumentId === 'gift' ? gift : { ...sale, versionId: instrumentId + '-current' };
-      const deed = saved({ draft: { ...newDraft(), instrumentId }, libraryTemplate: bundledTemplatePin('sale-deed-v9'), generationManifest: { templateVersionId: 'old' }, updatedAt: 'original', sourceFiles: { source: [] } });
-      const updated = updateSavedDeedTemplate(deed, { [instrumentId]: pin });
+  it('uses each published deed default and preserves facts and files', () => {
+    const cases = [['sale', 'outright-absolute-sale-deed'], ['gift', 'family-gift'], ['gift', 'municipal-gift'], ['power_of_attorney', 'general-power-of-attorney-family'], ['agreement_of_sale', 'without-possession'], ['release', 'family-release'], ['reconveyance', 'title-deed']] as const;
+    for (const [instrumentId, variantId] of cases) {
+      const family = variantId === 'municipal-gift' ? variantId : instrumentId;
+      const pin = { ...gift, versionId: family + '-current', family };
+      const manual = instrumentId === 'reconveyance' ? { 'property|primary|bankName': 'Sample Bank' } : {};
+      const deed = saved({ draft: { ...newDraft(), instrumentId, variantId, manual }, libraryTemplate: bundledTemplatePin('sale-deed-v9'), generationManifest: { templateVersionId: 'old' }, updatedAt: 'original', sourceFiles: { source: [] } });
+      const defaults = { sale, [family]: pin };
+      const updated = updateSavedDeedTemplate(deed, defaults);
       expect(updated.libraryTemplate).toEqual(pin);
       expect(updated.generationManifest).toBeNull();
       expect(updated.draft).toBe(deed.draft);
       expect(updated.sourceFiles).toBe(deed.sourceFiles);
       expect(updated.updatedAt).toBe('original');
-      expect(updateSavedDeedTemplate(updated, { [instrumentId]: pin })).toBe(updated);
+      expect(updateSavedDeedTemplate(updated, defaults)).toBe(updated);
+      expect(updateSavedDeedTemplate(updated, {}).libraryTemplate).toEqual(pin);
     }
   });
-  it('retains explicit custom templates and types without a published default', () => {
+  it('retains explicit custom templates and refreshes old Sale pins when shared storage is offline', () => {
     const custom = saved({ templateMode: 'custom' });
     expect(updateSavedDeedTemplate(custom, { sale })).toBe(custom);
-    const noDefault = saved();
-    expect(updateSavedDeedTemplate(noDefault, {})).toBe(noDefault);
+    const old = saved({ libraryTemplate: bundledTemplatePin('sale-deed-v10') });
+    expect(updateSavedDeedTemplate(old, {}).libraryTemplate?.versionId).toBe('sale-deed-v12');
+    const person = saved({ draft: { ...newDraft(), instrumentId: 'reconveyance', variantId: 'mortgage-deed-person-to-person-and-bank-to-person' } });
+    expect(updateSavedDeedTemplate(person, { reconveyance: { ...sale, versionId: 'bank-new' } }).libraryTemplate?.versionId).toBe('reconveyance-deed-v1');
   });
 });
 

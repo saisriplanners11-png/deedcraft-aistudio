@@ -2783,7 +2783,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
     if (!['IF OPEN PLACE', 'IF OPEN PLOT', 'IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(schedule.variant)) throw new Error('The Municipal Gift reference supports open place, plot, dismantled house and part open place only.');
     if (!allowIncomplete && (!schedule.values.ULB?.trim() || !schedule.values.VILLAGE?.trim())) throw new Error('Complete the property ULB / municipality and village for each municipal schedule.');
   }
-  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && source.versionId.startsWith('gift-municipal-') ? await loadLibraryBytes(source) : await loadTemplate('gift-municipal-v4');
+  const bytes = source.kind === 'built-in' ? await loadTemplate('gift-municipal-v4') : await templateBytes(source);
   const validation = await validateMunicipalGiftTemplate(bytes);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
@@ -2878,7 +2878,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
   if (values['Gift Variant'] === 'municipal-gift') return fillMunicipalGiftDeed(values, rewrites, schedules, source, allowIncomplete);
   if (!allowIncomplete && !values.Relationship?.trim()) throw new Error('Select the relationship of the Donee to the Donor before downloading the Gift deed.');
   if (!schedules.length) throw new Error('Add a Gift property schedule.');
-  const bytes = source.kind === 'custom' ? source.bytes : source.kind === 'library' && !source.versionId.startsWith('gift-deed-') ? await loadTemplate('gift-deed-v7') : source.kind === 'library' ? await loadLibraryBytes(source) : await loadTemplate('gift-deed-v7');
+  const bytes = source.kind === 'built-in' ? await loadTemplate('gift-deed-v7') : await templateBytes(source);
   const validation = await validateGiftDeedTemplate(bytes);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
   const entries = await readZip(bytes);
@@ -3063,7 +3063,7 @@ export async function validateReconveyanceTemplate(bytes: Uint8Array): Promise<T
     for (const tag of ['Principal Amount','Intrest Amount','Total Amount','MORTGAGE AMOUNT','Link Doct.No.','Link Doct.Date','Sub Registrar','Sub Registrar Code','BANK NAME','Branch','Designation','Executant PAN','Claimant PAN']) if (!text.includes(`<${tag}>`) && !(tag === 'Intrest Amount' && detected.has(norm('Interest Amount')))) errors.push(`Missing Reconveyance binding: ${tag}`);
     if (!/WHEREAS, the Releasee\/s had further created/.test(text)) errors.push('Missing repeatable additional-mortgage recital.');
   } catch (error: any) { errors.push(error.message); }
-  return { valid: !errors.length, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
+  return { valid: !errors.length, preservationVersion: DEED_PRESERVATION_VERSION, errors, detectedPlaceholders: [], omittedPlaceholders: [] };
 }
 function reconveyanceNames(values: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(values).map(([key, value]) =>

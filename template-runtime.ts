@@ -9,10 +9,12 @@ export { initialState, partyRecords } from './logic';
 export { newPayment, MODES } from './payments';
 export { PLACEMENT_CATALOG } from './template-placement';
 export { DEED_PRESERVATION_VERSION, preservationProfileFor } from './deed-preservation';
+export { TEMPLATE_VERSIONS } from './legal-registry';
+export { TEMPLATE_FAMILIES, libraryFamilyFor } from './template-library-families';
 export { validateDeedTemplate, loadTitleAmendmentTemplates, titleAmendmentPreview } from './docx';
 export { validateReleaseTemplate, fillReleaseDeed, validateReconveyanceTemplate, fillReconveyanceDeed, validateGeneralPoaTemplate, fillGeneralPoaDeed, validateAgreementSaleGpaTemplate, fillAgreementSaleGpaDeed, validateSaleDeedTemplate, validateGiftDeedTemplate, validateMunicipalGiftTemplate, fillGiftDeed, fillSaleDeed, readZip, writeZip, docxToText, templateBindingCatalog, inspectTemplateFields, replaceRunText } from './docx';
 export { validateFieldContract, canonicalContract, EMPTY_FIELD_CONTRACT } from './template-fields';
-import { fillSaleDeed, type DeedTemplateSource } from './docx';
+import type { DeedTemplateSource } from './docx';
 import { initialState, type AppState } from './logic';
 import { mergeValues, rewritesFor, scheduleMergesFor, variantFor } from './merge';
 import { newPayment } from './payments';
@@ -21,6 +23,7 @@ import { compileDeed, renderArtifact } from './deed-compiler';
 import { templateRecords } from './template-field-values';
 import { EMPTY_FIELD_CONTRACT } from './template-fields';
 import { DEED_DEFINITIONS } from './instruments';
+import { TEMPLATE_FAMILIES, type TemplateFamilyId } from './template-library-families';
 
 export const sampleCases = [
   ['plot', 'Vacant plot', 'Vacant Plot', ''], ['open', 'Open place', 'Open Place', ''],
@@ -34,13 +37,57 @@ export const saleMatrixCases = ['ordinary', 'gpa', 'agpa'].flatMap(mode => [
   ['house-finished', 'Finished house', 'Residential', 'Finished'], ['house-semi', 'Semi-finished house', 'Residential', 'Semi-Finished'],
   ['flat-finished', 'Finished flat', 'Flat', 'Finished'], ['flat-semi', 'Semi-finished flat', 'Flat', 'Semi-Finished'],
 ].map(item => [`${mode}-${item[0]}`, `${mode.toUpperCase()} — ${item[1]}`, item[2], item[3]]));
-export const sampleCasesFor = (contract = EMPTY_FIELD_CONTRACT, validation?: { saleOpenings?: boolean; releaseTemplate?: boolean }) => validation?.releaseTemplate ? [...saleMatrixCases.filter(item=>item[0].startsWith('ordinary-')), sampleCases.find(item=>item[0]==='multiple')!] : validation?.saleOpenings ? [...saleMatrixCases, sampleCases.find(item => item[0] === 'multiple')!, ...(contract.fields.some(field => field.scope === 'party') ? [['entity', 'Company vendor', 'Vacant Plot', '']] : [])] : contract.fields.some(field => field.scope === 'party') ? [...sampleCases, ['entity', 'Company vendor', 'Vacant Plot', '']] : sampleCases;
+const nonSaleSampleCases = {
+  gift: [['family-gift', 'Family'], ['non-family-gift', 'Non-family'], ['gift-to-trust-or-charity', 'Trust or charity']],
+  'municipal-gift': [['municipal-gift', 'Municipal Gift']],
+  agreement_of_sale: [['with-possession', 'With Possession'], ['without-possession', 'Without Possession']],
+  power_of_attorney: [['general-power-of-attorney', 'General Power of Attorney'], ['general-power-of-attorney-family', 'General Power of Attorney Family']],
+  release: [['co-owner-release', 'Co-owner Release'], ['family-release', 'Family Release']],
+  reconveyance: [['title-deed', 'TITLE DEED'], ['mortgage-deed-person-to-person-and-bank-to-person', 'MORTGAGE DEED (PERSON TO PERSON and bank to person)']],
+};
 
-export async function renderSample(id: string, source: DeedTemplateSource): Promise<Uint8Array> {
+export function sampleCasesFor(contract = EMPTY_FIELD_CONTRACT, validation?: { saleOpenings?: boolean; releaseTemplate?: boolean }, family: TemplateFamilyId = 'sale') {
+  if (family !== 'sale') {
+    const properties = family === 'municipal-gift' ? sampleCases.slice(0, 5).filter(([id]) => id !== 'house') : sampleCases;
+    return nonSaleSampleCases[family].flatMap(([variant, label]) => properties.map(([id, property]) => [`${variant}--${id}`, `${label} — ${property}`]));
+  }
+  const multiple = sampleCases.find(item => item[0] === 'multiple')!;
+  if (validation?.releaseTemplate) return [...saleMatrixCases.filter(([id]) => id.startsWith('ordinary-')), multiple];
+  const cases = validation?.saleOpenings ? [...saleMatrixCases, multiple] : sampleCases;
+  return contract.fields.some(field => field.scope === 'party') ? [...cases, ['entity', 'Company vendor', 'Vacant Plot', '']] : cases;
+}
+
+export async function renderSample(id: string, source: DeedTemplateSource, family: TemplateFamilyId = 'sale'): Promise<Uint8Array> {
   const contract = source.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : source.fieldContract || EMPTY_FIELD_CONTRACT;
-  const state = sampleState(id);
-  const release = source.kind === 'custom' && source.validation.releaseTemplate;
-  if (release) { state.deedType='Release'; state.draft='Co-owner Release'; state.form.totalPropertyValue='3000000'; state.releaseData={ releasedBySchedule: { primary: { primary: '1/3' } } }; }
+  const [variantKey, property] = id.split('--');
+  const variant = family === 'sale' ? undefined : nonSaleSampleCases[family].find(([key]) => key === variantKey);
+  const state = sampleState(variant ? property : id);
+  const legacyReleaseSample = family === 'sale' && source.kind === 'custom' && source.validation.releaseTemplate;
+  const instrumentId = legacyReleaseSample ? 'release' : TEMPLATE_FAMILIES[family].instrumentId;
+  if (variant) {
+    const definition = DEED_DEFINITIONS[instrumentId];
+    state.deedType = definition.legacyType;
+    state.draft = variant[1];
+  }
+  if (instrumentId === 'release') {
+    state.deedType = 'Release';
+    if (legacyReleaseSample) state.draft = 'Co-owner Release';
+    state.form.totalPropertyValue = '3000000';
+    state.releaseData = { releasedBySchedule: { primary: { primary: '1/3' } } };
+    if (variantKey === 'family-release') state.releaseData.relationships = ['primary', ...state.additionalExecutants.map(party => party.id)].map(releasorId => ({ id: `relation-${releasorId}`, releasorId, releaseeId: 'primary', wording: 'sister' }));
+  }
+  if (instrumentId === 'gift') state.form.giftRelationship = 'daughter';
+  if (instrumentId === 'power_of_attorney') {
+    state.form.poaRelationship = 'son';
+    state.additionalClaimants = state.additionalClaimants.map(party => ({ ...party, values: { ...party.values, poaRelationship: 'daughter' } }));
+  }
+  if (instrumentId === 'reconveyance') {
+    Object.assign(state.form, { bankName: 'SAMPLE BANK', bankBranch: 'Central', officialDesignation: 'Manager', mortgagePartyMode: 'bank-to-person' });
+    state.linkRecordsBySchedule = Object.fromEntries(['primary', ...state.additionalSchedules.map(schedule => schedule.id)].map((key, index) => [key, [{
+      id: 'mortgage-' + key, docNames: [],
+      values: { linkOption: 'linkDoc', linkDocNo: `${1234 + index}/2025`, linkDocDate: '2025-01-02', linkSro: 'Sample SRO', linkSroCode: '101', mortgageAmount: '100000', mortgageInterestAmount: '0' },
+    }]]));
+  }
   const mode = state.saleDocument || 'ordinary';
   const records = templateRecords(state);
   const customValues: Record<string, Record<string, string>> = {};
@@ -51,7 +98,8 @@ export async function renderSample(id: string, source: DeedTemplateSource): Prom
       customValues[field.id][record.id] = field.type === 'text' || field.type === 'multiline' ? `${field.sampleValue} ${index + 1}` : field.sampleValue;
     }
   }
-  const compiled = compileDeed({ instrumentId: release ? 'release' : 'sale', variantId: release ? 'co-owner-release' : mode === 'gpa' ? 'sale-deed-by-gpa-holder' : mode === 'agpa' ? 'sale-through-existing-agpa' : DEED_DEFINITIONS.sale.variants[0].id, snapshotHash: 'synthetic-sample', values: mergeValues(state), schedules: scheduleMergesFor(state), rewrites: rewritesFor(state), unresolvedWarnings: [], templateFieldData: { records, values: customValues } }, source);
+  const variantId = variant?.[0] || (legacyReleaseSample ? 'co-owner-release' : mode === 'gpa' ? 'sale-deed-by-gpa-holder' : mode === 'agpa' ? 'sale-through-existing-agpa' : DEED_DEFINITIONS.sale.variants[0].id);
+  const compiled = compileDeed({ instrumentId, variantId, snapshotHash: 'synthetic-sample', values: mergeValues(state), schedules: scheduleMergesFor(state), rewrites: rewritesFor(state), unresolvedWarnings: [], templateFieldData: { records, values: customValues } }, source);
   const { result } = await renderArtifact(compiled, 'docx');
   if (result.unmapped.length) throw new Error(`Unmapped sample placeholders: ${result.unmapped.join(', ')}`);
   return new Uint8Array(await result.blob.arrayBuffer());

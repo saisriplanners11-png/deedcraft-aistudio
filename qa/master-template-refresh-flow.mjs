@@ -29,20 +29,27 @@ for (const [instrument, variant, deedType, draft, mode, version, file] of cases)
   const hash = createHash('sha256').update(bytes).digest('hex');
   const validation = await rt.validateDeedTemplate(bytes, instrument, variant, file);
   assert(validation.valid, file + ': ' + validation.errors.join(' '));
-  for (const property of (variant === 'municipal-gift' ? ['plot'] : ['plot', 'house-semi', 'flat-finished', 'flat-semi'])) for (const amendments of [false, true]) for (const custom of [false, true]) {
+  const entries = await rt.readZip(bytes);
+  const styles = entries.find(entry => entry.name === 'word/styles.xml');
+  const marker = '<!-- Shared library source -->';
+  styles.data = new TextEncoder().encode(new TextDecoder().decode(styles.data) + marker);
+  const publishedBytes = await rt.writeZip(entries);
+  const published = { kind: 'library', versionId: 'published-' + version, hash: createHash('sha256').update(publishedBytes).digest('hex'), bytes: publishedBytes, name: file };
+  const sources = [{ kind: 'built-in' }, { kind: 'custom', bytes, hash, name: file, validation }, published];
+  for (const property of (variant === 'municipal-gift' ? ['plot'] : ['plot', 'house-semi', 'flat-finished', 'flat-semi'])) for (const amendments of [false, true]) for (const source of sources) {
     const state = rt.sampleState(mode + '-' + property); Object.assign(state, { deedType, draft });
     Object.assign(state.form, { executionDate: '2026-10', stampPaperMargin: '100', giftRelationship: 'daughter', poaRelationship: 'son', consid: '765432', claimantPan: 'NEWPAN1234Z', executantGender: 'Female', claimantGender: 'Male' });
     if (mode !== 'ordinary') state.saleAuthority.bookNumber = 'BOOK-777';
     state.additionalSchedules = [{ id: 'second', category: 'Open Place', docNames: [], values: { ...state.form, village: 'SECOND VILLAGE' } }];
     state.linkRecordsBySchedule = { primary: amendments ? links('ONE') : [links('ONE')[0]], second: amendments ? links('TWO') : [links('TWO')[0]] };
     const before = JSON.stringify(state);
-    const source = custom ? { kind: 'custom', bytes, hash, name: file, validation } : { kind: 'built-in' };
     const schedules = rt.scheduleMergesFor(state);
     const artifact = await rt.renderArtifact(rt.compileDeed({ instrumentId: instrument, variantId: variant, values: rt.mergeValues(state), schedules, rewrites: rt.rewritesFor(state), snapshotHash: 'refresh', unresolvedWarnings: [] }, source), 'docx');
     const output = new Uint8Array(await artifact.result.blob.arrayBuffer()), text = await rt.docxToText(output);
     assert.deepEqual(artifact.result.unmapped, []);
-    assert.equal(artifact.manifest.templateVersionId, custom ? 'custom:' + hash : version);
+    assert.equal(artifact.manifest.templateVersionId, source.kind === 'library' ? published.versionId : source.kind === 'custom' ? 'custom:' + hash : version);
     assert.equal(artifact.manifest.preservationVersion, rt.DEED_PRESERVATION_VERSION);
+    if (source.kind === 'library') assert(new TextDecoder().decode((await rt.readZip(output)).find(entry => entry.name === 'word/styles.xml').data).includes(marker), 'download must use the published Word source');
     assert.match(text, /__-10-2026/); assert.match(text, /NEWPAN1234Z/);
     if (property.startsWith('flat')) assert.match(text, /30 Sq\.yds equivalent to 25\.08 square meters/, 'flat UDS square metres must not use the total plot extent');
     assert.doesNotMatch(text, /<[^<>]+>|WITNESSES\/S|SIGN\/S/);
@@ -78,8 +85,8 @@ for (const [instrument, variant, deedType, draft, mode, version, file] of cases)
       assert(xml.indexOf('<w:sectPr') < xml.indexOf('TITLE-ONE'), 'expanded title records must follow the first-page section boundary');
     }
     assert.equal(JSON.stringify(state), before, 'generation must not change saved facts');
-    if (!custom && amendments && ['plot', 'flat-finished'].includes(property)) await writeFile(`tmp/master-template-refresh/${variant}-${property}.docx`, output);
+    if (source.kind === 'built-in' && amendments && ['plot', 'flat-finished'].includes(property)) await writeFile(`tmp/master-template-refresh/${variant}-${property}.docx`, output);
     count++;
   }
 }
-console.log(`PASS: ${count} new-default/custom downloads preserve master rules, independent repeated amendment identities, dates/offices, blank amendment omission, authority declarations, immutable sources and saved facts.`);
+console.log(`PASS: ${count} bundled, custom and published-template downloads preserve master rules, independent repeated amendment identities, dates/offices, blank amendment omission, authority declarations, source styles and saved facts.`);

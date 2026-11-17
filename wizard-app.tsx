@@ -9,9 +9,9 @@ import { normalizePropertyPlaceName, titleCasePlaceName } from './place-names';
 import { titleAmendmentKind, titleAmendmentLabel } from './title-amendments';
 import { changeExecutantCapacity, withReplacedExecutantOrder } from './executant-capacity';
 import { IconButton } from './icon-button';
-import { giftTemplateVersion, isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
+import { isMunicipalGift, MUNICIPAL_GIFT_CATEGORIES } from './municipal-gift';
 import { LINK_ISSUING_AUTHORITIES } from './link-enclosure';
-import { isBankReconveyance, reconveyanceTemplateVersion, reconveyanceErrors, repaymentFor } from './reconveyance';
+import { isBankReconveyance, reconveyanceErrors, repaymentFor } from './reconveyance';
 import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, houseValuationStage, houseStageRate, houseStructurePaise, houseStructureRate, houseStructureTotal, isCompoundWall, isHouseCategory, structureAmount, structureMeasurement, structureUnit } from './house-valuation';
 import { formatDeedAmount, formatMoneyInput, stampPaperValue } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
@@ -25,7 +25,7 @@ import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PROPERTY_DIMENSIONS, PARTY_CAPA
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
 import { FileDropZone } from './file-drop-zone';
-import { savedTemplateStatus, templateIsEarlier, updateSavedDeedTemplate } from './template-version-status';
+import { defaultTemplateForDraft, savedTemplateStatus, templateIsEarlier, updateSavedDeedTemplate } from './template-version-status';
 import { POA_RELATIONSHIPS, isGeneralPoa, isFamilyPoa, poaRelationship, poaRelationshipErrors, poaValues } from './poa-options';
 import { GIFT_RELATIONSHIPS, giftRelationshipValues } from './gift-options';
 import { SALE_DOCUMENT_OPTIONS, saleVariant, saleDocumentLabel, saleAuthorityErrors, salePropertyErrors } from './sale-options';
@@ -41,10 +41,11 @@ import {
   loadTitleAmendmentTemplates, titleAmendmentPreview,
   type DeedTemplateSource, type ScheduleMerge,
 } from './docx';
-import { loadTemplate } from './template';
 import { templateBytes } from './docx';
 import { TemplateLibrary } from './template-library';
-import { bundledTemplatePin, currentSaleTemplate, listTemplates, pinFor, sha256 } from './template-library-client';
+import { listTemplates, pinFor, sha256 } from './template-library-client';
+import { libraryFamilyFor } from './template-library-families';
+import { DEED_PRESERVATION_VERSION } from './deed-preservation';
 import type { TemplatePin } from './template-library-types';
 import { compileDeed, renderArtifact, type GenerationManifest } from './deed-compiler';
 import { EMPTY_FIELD_CONTRACT, canonicalContract, fieldName, recordScope } from './template-fields';
@@ -706,7 +707,6 @@ export default function WizardApp() {
   const [creatingDeed, setCreatingDeed] = useState(false);
   const [templatesView, setTemplatesView] = useState(false);
   const [libraryTemplate, setLibraryTemplate] = useState<TemplatePin | null>(null);
-  const [latestTemplate, setLatestTemplate] = useState<TemplatePin | null>(null);
   const [defaultTemplates, setDefaultTemplates] = useState<Record<string, TemplatePin>>({});
   const [templateLibraryError, setTemplateLibraryError] = useState('');
   const [generationManifest, setGenerationManifest] = useState<GenerationManifest | null>(null);
@@ -752,11 +752,8 @@ export default function WizardApp() {
   const isRelease = draft.instrumentId === 'release';
   const isReconveyance = draft.instrumentId === 'reconveyance';
   const municipalGift = isMunicipalGift(state);
-  const giftVersion = giftTemplateVersion(draft.variantId);
   const agreementSaleGpa = draft.instrumentId === 'agreement_of_sale';
   const generalPoa = isGeneralPoa(draft.instrumentId, draft.variantId);
-  const reconveyanceVersion = reconveyanceTemplateVersion(isBankReconveyance(state));
-  const bundledVersion = isRelease ? 'release-deed-v2' : isReconveyance ? reconveyanceVersion : generalPoa ? 'general-poa-v4' : agreementSaleGpa ? 'agreement-sale-gpa-v5' : draft.instrumentId === 'gift' ? giftVersion : 'sale-deed-v12';
   const instrumentTitle = isRelease ? 'Release Deed' : isReconveyance ? 'Deed Of Reconvayance' : draft.instrumentId === 'power_of_attorney' ? 'General Power of Attorney' : agreementSaleGpa ? 'Agreement of Sale Cum GPA' : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift' : 'Gift Settlement') : 'Sale Deed';
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
   // Every real edit goes through `dispatch`/`edit`, never this setter.
@@ -775,11 +772,14 @@ export default function WizardApp() {
   const repayment = repaymentFor(state);
   const deedDefinition = definitionFor(draft.instrumentId);
   const deedRelease = releaseGate(draft.instrumentId, draft.variantId);
-  const usesV7 = templateMode === 'custom' ? !!customTemplate?.validation.saleOpenings : !libraryTemplate || ['sale-deed-v9', 'sale-deed-v11', 'sale-deed-v12'].includes(libraryTemplate.versionId) || !!libraryTemplate.saleOpenings;
+  const bankReconveyance = isBankReconveyance(state);
+  const defaultPin = useMemo(() => defaultTemplateForDraft(draft, defaultTemplates, libraryTemplate, bankReconveyance), [draft.instrumentId, draft.variantId, defaultTemplates, libraryTemplate, bankReconveyance]);
+  const defaultSource = useMemo<DeedTemplateSource>(() => defaultPin ? { kind: 'library', ...defaultPin } : BUILT_IN_TEMPLATE_SOURCE, [defaultPin]);
+  const activeTemplateSource = templateMode === 'custom' && customTemplate ? customTemplate : defaultSource;
+  const usesV7 = activeTemplateSource.kind === 'custom' ? !!activeTemplateSource.validation.saleOpenings : activeTemplateSource.kind === 'built-in' || !!activeTemplateSource.saleOpenings;
   const authorityErrors = isRelease ? [...releaseErrors(state), ...salePropertyErrors(state)] : isReconveyance ? reconveyanceErrors(state) : generalPoa ? [...poaRelationshipErrors(state), ...salePropertyErrors(state)] : agreementSaleGpa ? salePropertyErrors(state) : draft.instrumentId === 'gift' ? [...(!municipalGift && !giftRelationshipValues(state).Relationship ? ['Select the relationship of the Donee to the Donor.'] : []), ...salePropertyErrors(state), ...(municipalGift ? scheduleRecords(state).flatMap(record => MUNICIPAL_GIFT_CATEGORIES.includes(record.category) ? [] : ['Municipal Gift supports open place, plot, dismantled house and part open place only.']) : [])] : [...saleAuthorityErrors(state), ...(usesV7 ? salePropertyErrors(state) : []), ...(!usesV7 && state.saleDocument && state.saleDocument !== 'ordinary' ? ['Choose or upgrade to the v7 template for sale through GPA/AGPA.'] : [])];
   const generationReady = deedRelease.ready;
   const minorDownloadErrors = mergeValues(state)['Minor Representation Errors'] || '';
-  const activeTemplateSource: DeedTemplateSource = useMemo(() => templateMode === 'custom' ? customTemplate || BUILT_IN_TEMPLATE_SOURCE : isRelease ? { kind: 'library', ...bundledTemplatePin('release-deed-v2') } : isReconveyance ? { kind: 'library', ...bundledTemplatePin(reconveyanceVersion) } : generalPoa ? { kind: 'library', ...bundledTemplatePin('general-poa-v4') } : agreementSaleGpa ? { kind: 'library', ...bundledTemplatePin('agreement-sale-gpa-v5') } : draft.instrumentId === 'gift' ? { kind: 'library', ...bundledTemplatePin(giftVersion) } : libraryTemplate && !libraryTemplate.versionId.startsWith('gift-') ? { kind: 'library', ...libraryTemplate } : BUILT_IN_TEMPLATE_SOURCE, [templateMode, customTemplate, libraryTemplate, draft.instrumentId, giftVersion, agreementSaleGpa, generalPoa, reconveyanceVersion]);
   const fieldContract = activeTemplateSource.kind === 'built-in' ? EMPTY_FIELD_CONTRACT : activeTemplateSource.fieldContract || EMPTY_FIELD_CONTRACT;
   const templateFieldState = useMemo(() => ({ ...state,
     additionalExecutants: [...state.additionalExecutants, ...extraPartyRecords.executant.filter(id => !state.additionalExecutants.some(record => record.id === id)).map(id => ({ id, values: {}, docNames: [] }))],
@@ -790,7 +790,7 @@ export default function WizardApp() {
   const notices = [...baseNotices, ...templateFieldResolution.instances.filter(instance => instance.error && instance.field.placement).map(instance => ({ id: `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`, label: `${instance.record.label} — ${instance.field.label}`, reason: instance.error!, source: 'Template field', step: placementStepIndex(instance.field.placement) ?? 0 }))];
   const templateFieldErrors = templateFieldResolution.instances.filter(instance => instance.error).map(instance => `${instance.record.label}: ${instance.error}`);
   const templateReady = templateMode === 'built-in' || !!customTemplate?.validation.valid;
-  const templateKey = `${draft.instrumentId}:${draft.variantId}:${(agreementSaleGpa || draft.instrumentId === 'power_of_attorney') ? "section32a-inline-signatures-v2:" : ""}stamp-space-policy-v3:gift-format-policy-v3:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in:sale-deed-v12'}:annexure-floor-stage-v2:party-share-policy-v4:authority-declaration-policy-v1`;
+  const templateKey = `${draft.instrumentId}:${draft.variantId}:${DEED_PRESERVATION_VERSION}:${activeTemplateSource.kind === 'custom' ? `custom:${activeTemplateSource.hash}:${canonicalContract(fieldContract)}` : activeTemplateSource.kind === 'library' ? `library:${activeTemplateSource.versionId}:${activeTemplateSource.packageHash || activeTemplateSource.hash}` : 'built-in'}`;
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
@@ -805,7 +805,8 @@ export default function WizardApp() {
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
     planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
-    templateMode, customTemplate, libraryTemplate: (isRelease || isReconveyance || generalPoa || agreementSaleGpa || draft.instrumentId === 'gift') && templateMode === 'built-in' ? bundledTemplatePin(bundledVersion) : libraryTemplate, generationManifest,
+    templateMode, customTemplate, libraryTemplate: defaultPin || null,
+    generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
     const sequence = ++saveSequence.current;
@@ -830,19 +831,19 @@ export default function WizardApp() {
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, libraryTemplate, generationManifest]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, templateKey, generationManifest]);
+  const templateRefresh = useRef(0);
   async function refreshPublishedTemplate() {
+    const request = ++templateRefresh.current;
     try {
       const listing = await listTemplates();
-      const version = listing.versions.find(item => item.id === listing.active.sale);
-      if (!version) throw new Error('No published Sale template is available.');
-      setLatestTemplate(pinFor(version));
-      setDefaultTemplates(Object.fromEntries([['release', bundledTemplatePin('release-deed-v2')], ['reconveyance', bundledTemplatePin('reconveyance-deed-v2')], ['power_of_attorney', bundledTemplatePin('general-poa-v4')], ['agreement_of_sale', bundledTemplatePin('agreement-sale-gpa-v5')], ['gift', bundledTemplatePin('gift-deed-v7')], ...Object.entries(listing.active).flatMap(([instrument, id]) => {
-        const revision = listing.versions.find(item => item.id === id && item.instrumentId === instrument);
-        return revision ? [[instrument, pinFor(revision)]] : [];
-      })]));
+      if (request !== templateRefresh.current) return;
+      setDefaultTemplates(Object.fromEntries(Object.entries(listing.active).flatMap(([family, id]) => {
+        const revision = listing.versions.find(item => item.id === id && item.publishedAt && libraryFamilyFor(item.instrumentId, item.variantId) === family);
+        return revision ? [[family, pinFor(revision)]] : [];
+      })));
       setTemplateLibraryError('');
-    } catch (error: any) { setTemplateLibraryError(error.message); }
+    } catch (error: any) { if (request === templateRefresh.current) setTemplateLibraryError(error.message); }
   }
   useEffect(() => {
     void refreshPublishedTemplate();
@@ -851,19 +852,18 @@ export default function WizardApp() {
     return () => window.removeEventListener('focus', refresh);
   }, []);
   useEffect(() => {
-    if (loadingLibrary || !Object.keys(defaultTemplates).length) return;
+    if (loadingLibrary) return;
     for (const deed of savedDeeds) {
+      if (!libraryView && deed.id === draft.id) continue;
       const updated = updateSavedDeedTemplate(deed, defaultTemplates);
       if (updated !== deed) void persist(updated).catch(() => {});
     }
-  }, [loadingLibrary, defaultTemplates]);
+  }, [loadingLibrary, defaultTemplates, libraryView]);
   useEffect(() => {
-    const pin = isRelease ? bundledTemplatePin('release-deed-v2') : isReconveyance ? bundledTemplatePin(reconveyanceVersion) : generalPoa ? bundledTemplatePin('general-poa-v4') : agreementSaleGpa ? bundledTemplatePin('agreement-sale-gpa-v5') : draft.instrumentId === 'gift' ? bundledTemplatePin(giftVersion) : defaultTemplates[draft.instrumentId || 'sale'];
-    if (templateMode !== 'built-in' || !pin || (libraryTemplate && !templateIsEarlier(libraryTemplate, pin))) return;
-    setLibraryTemplate(pin);
-    setDownload(null);
+    if (templateMode !== 'built-in' || !defaultPin || !libraryTemplate || !templateIsEarlier(libraryTemplate, defaultPin)) return;
+    setLibraryTemplate(defaultPin);
     setGenerationManifest(null);
-  }, [defaultTemplates, draft.instrumentId, giftVersion, generalPoa, templateMode, libraryTemplate, reconveyanceVersion]);
+  }, [defaultPin, templateMode, libraryTemplate]);
   const goto = (s: number) => {
     dispatch({ type: 'step', step: s });
     requestAnimationFrame(() => {
@@ -1144,11 +1144,12 @@ export default function WizardApp() {
     setCreatingDeed(true);
     try {
       if (!await saveBeforeSwitch()) return;
-      const pin = await currentSaleTemplate();
       clearTransient();
-      setLibraryTemplate(pin); setLatestTemplate(pin); setTemplateLibraryError('');
-      dispatch({ type: 'load', draft: newDraft() });
+      const nextDraft = newDraft();
+      setLibraryTemplate(defaultTemplateForDraft(nextDraft, defaultTemplates) || null);
+      dispatch({ type: 'load', draft: nextDraft });
       setTemplatesView(false); setLibraryView(false);
+      void refreshPublishedTemplate();
     } catch (error: any) { setTemplateLibraryError(error.message); }
     finally { setCreatingDeed(false); }
   }
@@ -1181,7 +1182,7 @@ export default function WizardApp() {
     setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
     setTemplateMode(deed.templateMode || 'built-in');
     setCustomTemplate(deed.customTemplate || null);
-    setLibraryTemplate(deed.libraryTemplate || bundledTemplatePin(deed.generationManifest?.templateVersionId));
+    setLibraryTemplate(deed.libraryTemplate || null);
     setGenerationManifest(deed.generationManifest || null);
     setTemplatesView(false);
     setLibraryView(false);
@@ -1283,7 +1284,7 @@ export default function WizardApp() {
     const snapshot = draft; setExporting(true); setMessage('');
     try {
       const filename = deedFilename(state, savedDeeds.find(deed => deed.id === snapshot.id)?.name);
-      const templateSource = templateReady ? activeTemplateSource : BUILT_IN_TEMPLATE_SOURCE;
+      const templateSource = templateReady ? activeTemplateSource : defaultSource;
       let artifact = download?.draftId === snapshot.id && download.revision === snapshot.revision && download.templateKey === templateKey
         ? { ...download, filename } : { draftId: snapshot.id, revision: snapshot.revision, templateKey, filename };
       if (isWord && !artifact.docx) {
@@ -1296,9 +1297,9 @@ export default function WizardApp() {
           templateFieldData: templateFieldResolution.data,
         }, source, allowIncomplete), 'docx', source);
         const { result: merged, manifest } = await render(templateSource).catch(error => {
-          if (!allowIncomplete || templateSource.kind !== 'custom') throw error;
+          if (!allowIncomplete || templateSource.kind === 'built-in') throw error;
           reasons.push(`The selected Word template could not be rendered. Using the default template. ${error.message}`);
-          return render(BUILT_IN_TEMPLATE_SOURCE);
+          return templateSource.kind !== 'custom' ? render(BUILT_IN_TEMPLATE_SOURCE) : render(defaultSource).catch(() => render(BUILT_IN_TEMPLATE_SOURCE));
         });
         const reviewed = await Promise.all(propertyRecords.flatMap((record, index) =>
           selectedPlanSvgs[record.id] ? [{ schedule: index + 1, svg: selectedPlanSvgs[record.id] }] : []
@@ -1308,7 +1309,11 @@ export default function WizardApp() {
         })).then(pages => pages.flat());
         artifact = { ...artifact, docx: await appendRegistrationPlans(merged.blob, reviewed, typingStamp) };
         const outputHash = await sha256(new Uint8Array(await artifact.docx.arrayBuffer()));
-        if (current.current.id === snapshot.id && current.current.revision === snapshot.revision) setGenerationManifest({ ...manifest, outputHash });
+        if (current.current.id !== snapshot.id || current.current.revision !== snapshot.revision || activeTemplateKeyRef.current !== templateKey) {
+          setMessage('The deed or its template changed during generation. Download again to use the current version.');
+          return;
+        }
+        setGenerationManifest({ ...manifest, outputHash });
       }
       if (kind === 'pdf' && !artifact.pdf) {
         const pngs = await Promise.all(previews.map(async preview => {
@@ -1417,7 +1422,7 @@ export default function WizardApp() {
 
   async function downloadStarterTemplate() {
     try {
-      const bytes = (isRelease || isReconveyance || generalPoa || agreementSaleGpa || draft.instrumentId === 'gift') && templateMode !== 'custom' ? await loadTemplate(bundledVersion) : await templateBytes(activeTemplateSource);
+      const bytes = await templateBytes(defaultSource);
       saveBlob(new Blob([bytes as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), `DeedCraft-${isRelease ? 'Release' : isReconveyance ? 'Reconveyance' : generalPoa ? 'General-Power-of-Attorney' : agreementSaleGpa ? 'Agreement-of-Sale-Cum-GPA' : draft.instrumentId === 'gift' ? 'Gift' : 'Sale'}-Deed-Template.docx`);
     } catch (error: any) {
       setMessage(`Starter template could not be downloaded: ${error?.message || 'Please retry.'}`);
@@ -1496,7 +1501,7 @@ export default function WizardApp() {
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
         const name = deed.name || partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`;
         return <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
-          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeSavedWorkflowStep(deed.draft.instrumentId, deed.draft.step, deed.draft.workflowVersion)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, latestTemplate).label}{savedTemplateStatus(deed, latestTemplate).earlier ? ' · Updating to current default' : ''}</span></div></div>
+          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeSavedWorkflowStep(deed.draft.instrumentId, deed.draft.step, deed.draft.workflowVersion)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, defaultTemplates).label}{savedTemplateStatus(deed, defaultTemplates).earlier ? ' · Updating to current default' : ''}</span></div></div>
           <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><button type="button" onClick={() => duplicateSaved(deed, name)}>Duplicate This Document</button>{deed.name && <button type="button" onClick={() => renameSaved(deed)}>Rename</button>}<IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
         </article>; })}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
@@ -1868,7 +1873,7 @@ export default function WizardApp() {
             <div className="template-choices">
               <label className={templateMode === 'built-in' ? 'selected' : ''}>
                 <input type="radio" name="template-mode" checked={templateMode === 'built-in'} onChange={() => { setTemplateMode('built-in'); setDownload(null); setMessage(''); }} />
-                <span><b>Published / pinned template</b><small>Use DeedCraft’s supplied {instrumentTitle} template.</small></span>
+                <span><b>Published / pinned template</b><small>{defaultPin?.name || `${instrumentTitle} template`}</small></span>
               </label>
               <label className={templateMode === 'custom' ? 'selected' : ''}>
                 <input type="radio" name="template-mode" checked={templateMode === 'custom'} onChange={() => { setTemplateMode('custom'); setDownload(null); setMessage(''); }} />

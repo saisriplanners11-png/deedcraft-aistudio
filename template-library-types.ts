@@ -2,12 +2,13 @@ import type { InstrumentId } from './instruments';
 import type { TemplateValidationResult } from './docx';
 import type { TemplateFieldContract, TemplateFieldInspection } from './template-fields';
 
-export interface TemplatePin { saleOpenings?: boolean; versionId: string; hash: string; name: string; bytes?: Uint8Array; fieldContract?: TemplateFieldContract; schemaHash?: string; packageHash?: string; contractVersion?: string }
+export interface TemplatePin { saleOpenings?: boolean; versionId: string; hash: string; name: string; family?: string; bytes?: Uint8Array; fieldContract?: TemplateFieldContract; schemaHash?: string; packageHash?: string; contractVersion?: string }
 export interface LibraryRevision {
   preservationVersion?: string;
   samplesPreservationVersion?: string;
   id: string;
   instrumentId: InstrumentId;
+  variantId?: string;
   saleOpenings?: boolean;
   filename: string;
   hash: string;
@@ -28,6 +29,7 @@ export interface LibraryRevision {
   samples?: { id: string; label: string; error?: string }[];
 }
 export interface LibraryListing {
+  preservationVersion?: string;
   active: Record<string, string>;
   versions: LibraryRevision[];
   deletedVersions?: LibraryRevision[];

@@ -2,19 +2,20 @@ import { loadTemplate } from './template';
 import { TEMPLATE_VERSIONS } from './legal-registry';
 import type { LibraryListing, LibraryRevision, TemplatePin } from './template-library-types';
 import { canonicalContract } from './template-fields';
+import { libraryFamilyFor, TEMPLATE_FAMILIES } from './template-library-families';
 
 export async function templateRequest<T>(path = '', init?: RequestInit): Promise<T> {
-  const response = await fetch('/api/templates' + path, { ...init, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20000) });
+  const response = await fetch('/api/templates' + path, { ...init, credentials: 'same-origin', cache: 'no-store', signal: init?.signal || AbortSignal.timeout(20000) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Template request failed.');
   return data;
 }
 export const listTemplates = () => templateRequest<LibraryListing>();
-export function bundledTemplatePin(versionId = 'sale-deed-v6'): TemplatePin {
-  const version = TEMPLATE_VERSIONS.find(item => item.id === versionId) || TEMPLATE_VERSIONS.find(item => item.id === 'sale-deed-v6')!;
+export function bundledTemplatePin(versionId: string = TEMPLATE_FAMILIES.sale.defaultId): TemplatePin {
+  const version = TEMPLATE_VERSIONS.find(item => item.id === versionId) || TEMPLATE_VERSIONS.find(item => item.id === TEMPLATE_FAMILIES.sale.defaultId)!;
   return { versionId: version.id, hash: version.sha256!, name: version.id.startsWith('general-poa-') ? `General Power of Attorney v${version.version.split('.')[0]}` : version.instrumentId === 'agreement_of_sale' ? `Agreement of Sale Cum GPA v${version.version.split('.')[0]}` : version.id.startsWith('gift-municipal-') ? `Municipal Gift v${version.version.split('.')[0]}` : `Built-in ${version.instrumentId === 'release' ? 'Release' : version.instrumentId === 'reconveyance' ? 'Reconveyance' : version.instrumentId === 'gift' ? 'Gift' : 'Sale'} v${version.version.split('.')[0]}`, saleOpenings: ['sale-deed-v7', 'sale-deed-v9', 'sale-deed-v10', 'sale-deed-v11', 'sale-deed-v12'].includes(version.id) };
 }
-export const pinFor = (version: LibraryRevision): TemplatePin => ({ saleOpenings: version.saleOpenings ?? version.validation?.saleOpenings, versionId: version.id, hash: version.hash, name: version.filename, fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
+export const pinFor = (version: LibraryRevision): TemplatePin => ({ saleOpenings: version.saleOpenings ?? version.validation?.saleOpenings, versionId: version.id, hash: version.hash, name: version.filename, family: libraryFamilyFor(version.instrumentId, version.variantId), fieldContract: version.fieldContract, schemaHash: version.schemaHash, packageHash: version.packageHash, contractVersion: version.contractVersion });
 
 const cache = new Map<string, Promise<Uint8Array>>();
 export async function sha256(bytes: Uint8Array): Promise<string> {
@@ -42,11 +43,4 @@ export async function loadLibraryBytes(pin: TemplatePin): Promise<Uint8Array> {
     cache.set(key, pending);
   }
   return pending;
-}
-export async function currentSaleTemplate(): Promise<TemplatePin> {
-  const listing = await listTemplates();
-  const version = listing.versions.find(item => item.id === listing.active.sale);
-  if (!version) throw new Error('No published Sale template is available.');
-  const pin = pinFor(version);
-  return { ...pin, bytes: await loadLibraryBytes(pin) };
 }
