@@ -7,6 +7,7 @@ import { stepsFor, adjacentWorkflowStep } from './workflow-steps';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PropertyDetailsForm } from './guided-reference-plan/src/components/PropertyDetailsForm';
+import { PropertyDetailsForm as Step13PropertyDetailsForm } from './step13-reference-plan/src/components/PropertyDetailsForm';
 
 describe('guided plan workspace', () => {
   it('does not display or enable the exported sample house for an empty property', () => {
@@ -17,6 +18,12 @@ describe('guided plan workspace', () => {
     expect(html).not.toContain('1 House(s) Enabled');
     expect(html).not.toContain('value="1172"');
     expect(html).not.toContain('value="508/B"');
+    const step13Html = renderToStaticMarkup(createElement(Step13PropertyDetailsForm, {
+      property: seed.property, boundaries: seed.boundaries, onChange: () => {},
+    }));
+    expect(step13Html).not.toContain('1 House(s) Enabled');
+    expect(step13Html).not.toContain('value="1172"');
+    expect(step13Html).not.toContain('value="508/B"');
   });
   it('keeps each schedule separate without introducing sample facts', () => {
     let draft = newDraft();
@@ -61,16 +68,17 @@ describe('guided plan workspace', () => {
   });
 
   it('restores the current plan step and routes legacy plans to the original guided editor', () => {
-    const saved = { ...newDraft(), step: 11, manual: { 'property|primary|surveyNo': 'RETAIN/123' } };
+    const saved = { ...newDraft(), step: 12, manual: { 'property|primary|surveyNo': 'RETAIN/123' } };
     expect(draftReducer(newDraft(), { type: 'load', draft: saved })).toMatchObject(saved);
     const legacy = { ...saved, workflowVersion: undefined };
     const restored = draftReducer(newDraft(), { type: 'load', draft: legacy });
     expect(restored.step).toBe(10);
     expect(restored.manual).toEqual(saved.manual);
-    expect(stepsFor('sale').slice(-3).map(step => step.id)).toEqual([9, 10, 11]);
-    expect(stepsFor('gift').slice(-3).map(step => step.id)).toEqual([9, 10, 11]);
+    expect(stepsFor('sale').slice(-4).map(step => step.id)).toEqual([9, 10, 11, 12]);
+    expect(stepsFor('gift').slice(-4).map(step => step.id)).toEqual([9, 10, 11, 12]);
     expect(adjacentWorkflowStep('sale', 9, 1)).toBe(10);
     expect(adjacentWorkflowStep('sale', 10, -1)).toBe(9);
     expect(adjacentWorkflowStep('sale', 10, 1)).toBe(11);
+    expect(adjacentWorkflowStep('sale', 11, 1)).toBe(12);
   });
 });

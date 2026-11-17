@@ -4,7 +4,7 @@ import { syncGuidedDeedBoundaries, applyGuidedRefresh, guidedRefreshFields, isGu
 
 export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDeedDimensions, selected, onChange, onUse, theme = 'light', variant = 'guided' }: {
   draftId: string; scheduleId: string; seed: PlanDocument; doc?: PlanDocument; enteredDeedDimensions?: readonly string[]; selected: boolean;
-  onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void; theme?: 'light' | 'dark'; variant?: 'guided' | 'latest';
+  onChange: (doc: PlanDocument) => void; onUse: (svg: string) => void; theme?: 'light' | 'dark'; variant?: 'guided' | 'latest' | 'step13';
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
@@ -62,7 +62,7 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDee
     <div className="plan-workspace-actions">
       <button aria-expanded={review} onClick={() => { setReview(!review); setChecked([]); }}>Review and refresh from deed</button>
       <button className="primary" onClick={() => frame.current?.contentWindow?.postMessage({ type: 'deedcraft:guided-plan-request-use', draftId, scheduleId, sessionId }, window.location.origin)}>Use this plan in deed</button>
-      {selected && <span role="status">This new generator plan is selected for this schedule.</span>}
+      {selected && <span role="status">This generator plan is selected for this schedule.</span>}
     </div>
     {error && <p role="alert">{error}</p>}
     {review && <div className="plan-refresh-review">
@@ -77,7 +77,7 @@ export function GuidedReferenceStep({ draftId, scheduleId, seed, doc, enteredDee
         onChange(next); sendSeed(next); setReview(false);
       }}>Apply selected deed facts to plan</button>
     </div>}
-    <iframe className="plan-workspace-frame" ref={frame} title={variant === 'latest' ? 'Property Plan — Latest Generator' : 'Property Plan — New Generator'}
+    <iframe className="plan-workspace-frame" ref={frame} title={variant === 'step13' ? 'Property Plan — Updated Generator' : variant === 'latest' ? 'Property Plan — Latest Generator' : 'Property Plan — New Generator'}
       src={`/${variant}-reference-plan/index.html?draftId=${encodeURIComponent(draftId)}&scheduleId=${encodeURIComponent(scheduleId)}&sessionId=${sessionId}`}
       onLoad={() => { sendSeed(); sendTheme(); }} style={{ display: 'block', width: '100%', minHeight: 900, height: 'calc(100vh - 170px)', border: 0, background: 'var(--dc-ground)' }} />
   </>;

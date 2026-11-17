@@ -735,6 +735,8 @@ export default function WizardApp() {
   // row would otherwise vanish from the step until its first field resolves.
   const [extraPartyRecords, setExtraPartyRecords] = useState<{ executant: string[]; claimant: string[] }>({ executant: [], claimant: [] });
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
+  const [step13PlanDrafts, setStep13PlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
+  const [step13PlanSelectedSvgs, setStep13PlanSelectedSvgs] = useState<Record<string, string>>({});
   const [latestPlanDrafts, setLatestPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
   const [latestPlanSelectedSvgs, setLatestPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [guidedPlanDrafts, setGuidedPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
@@ -798,7 +800,7 @@ export default function WizardApp() {
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
-    || !!Object.keys(latestPlanDrafts).length || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(step13PlanDrafts).length || !!Object.keys(latestPlanDrafts).length || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
     id: draft.id,
@@ -808,7 +810,7 @@ export default function WizardApp() {
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
-    planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
+    planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, step13PlanDrafts, step13PlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
     templateMode, customTemplate, libraryTemplate: defaultPin || null,
     generationManifest,
   });
@@ -835,7 +837,7 @@ export default function WizardApp() {
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, templateKey, generationManifest]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, step13PlanDrafts, step13PlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, templateKey, generationManifest]);
   const templateRefresh = useRef(0);
   async function refreshPublishedTemplate() {
     const request = ++templateRefresh.current;
@@ -1131,7 +1133,7 @@ export default function WizardApp() {
   function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
     setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPendingReviews([]); setLatestPlanDrafts({}); setLatestPlanSelectedSvgs({}); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
+    setPendingReviews([]); setStep13PlanDrafts({}); setStep13PlanSelectedSvgs({}); setLatestPlanDrafts({}); setLatestPlanSelectedSvgs({}); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
     setLibraryTemplate(null); setGenerationManifest(null);
@@ -1181,6 +1183,8 @@ export default function WizardApp() {
     setReferencePlanDrafts(deed.referencePlanDrafts || {});
     setLatestPlanDrafts(deed.latestPlanDrafts || {});
     setLatestPlanSelectedSvgs(deed.latestPlanSelectedSvgs || {});
+    setStep13PlanDrafts(deed.step13PlanDrafts || {});
+    setStep13PlanSelectedSvgs(deed.step13PlanSelectedSvgs || {});
     setGuidedPlanDrafts(deed.guidedPlanDrafts || {});
     setGuidedPlanSelectedSvgs(deed.guidedPlanSelectedSvgs || {});
     setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
@@ -1246,13 +1250,17 @@ export default function WizardApp() {
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
-  const isLatestPlanStep = step === 11;
-  const activePlanDraft = (isLatestPlanStep ? latestPlanDrafts : guidedPlanDrafts)[activePropertyId];
-  const activePlanSelection = (isLatestPlanStep ? latestPlanSelectedSvgs : guidedPlanSelectedSvgs)[activePropertyId];
+  const planVariant = step === 12 ? 'step13' : step === 11 ? 'latest' : 'guided';
+  const activePlanDraft = (planVariant === 'step13' ? step13PlanDrafts : planVariant === 'latest' ? latestPlanDrafts : guidedPlanDrafts)[activePropertyId];
+  const activePlanSelection = (planVariant === 'step13' ? step13PlanSelectedSvgs : planVariant === 'latest' ? latestPlanSelectedSvgs : guidedPlanSelectedSvgs)[activePropertyId];
   const isActivePlanSelected = !!activePlanSelection && activePlanSelection === selectedPlanSvgs[activePropertyId];
-  const setActivePlanDrafts = isLatestPlanStep ? setLatestPlanDrafts : setGuidedPlanDrafts;
-  const setActivePlanSelections = isLatestPlanStep ? setLatestPlanSelectedSvgs : setGuidedPlanSelectedSvgs;
-  const setOtherPlanSelections = isLatestPlanStep ? setGuidedPlanSelectedSvgs : setLatestPlanSelectedSvgs;
+  const setActivePlanDrafts = planVariant === 'step13' ? setStep13PlanDrafts : planVariant === 'latest' ? setLatestPlanDrafts : setGuidedPlanDrafts;
+  const setActivePlanSelections = planVariant === 'step13' ? setStep13PlanSelectedSvgs : planVariant === 'latest' ? setLatestPlanSelectedSvgs : setGuidedPlanSelectedSvgs;
+  const setOtherPlanSelections = (omit: (old: Record<string, string>) => Record<string, string>) => {
+    if (planVariant !== 'guided') setGuidedPlanSelectedSvgs(omit);
+    if (planVariant !== 'latest') setLatestPlanSelectedSvgs(omit);
+    if (planVariant !== 'step13') setStep13PlanSelectedSvgs(omit);
+  };
   const omitActivePlanSelection = (old: Record<string, string>) => {
     if (!(activePropertyId in old)) return old;
     const next = { ...old };
@@ -1964,9 +1972,9 @@ export default function WizardApp() {
 
         </section>}
 
-        {(step === 10 || step === 11) && <section className="panel reference-plan-step">
+        {(step === 10 || step === 11 || step === 12) && <section className="panel reference-plan-step">
           <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
-          <GuidedReferenceStep variant={isLatestPlanStep ? 'latest' : 'guided'} key={`${step}:${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
+          <GuidedReferenceStep variant={planVariant} key={`${step}:${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
             seed={guidedPlanFromDraft(state, activePropertyId)} doc={activePlanDraft}
             enteredDeedDimensions={PROPERTY_DIMENSIONS.fields
               .filter(field => Object.hasOwn(resolved.values, fieldKey('property', activePropertyId, field.id))).map(field => field.id)}
