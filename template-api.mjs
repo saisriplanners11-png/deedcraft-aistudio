@@ -322,7 +322,7 @@ export function createTemplateApi(options = {}) {
         });
         return send(201, version);
       }
-      const match = /^\/versions\/([a-z0-9-]+)(?:\/(download|validate|publish|rollback|samples|fields|restore)(?:\/([a-z0-9-]+))?)?$/.exec(route);
+      const match = /^\/versions\/([a-z0-9-]+)(?:\/(download|validate|publish|rollback|samples|current-samples|fields|restore)(?:\/([a-z0-9-]+))?)?$/.exec(route);
       if (!match) throw fail(404, 'Template endpoint not found.');
       const [, id, action, sampleId] = match;
       const data = await read();
@@ -380,6 +380,24 @@ export function createTemplateApi(options = {}) {
         res.setHeader('Content-Disposition', `attachment; filename="SAMPLE-${sampleId}.docx"`);
         res.setHeader('Cache-Control', 'no-store');
         res.end(await storage.get(sample.file || version.id + '-' + sampleId + '.docx')); return;
+      }
+      if (action === 'current-samples' && req.method === 'GET') {
+        // Samples stored at publication are historical. Render these on demand
+        // from the unchanged Word source with the currently deployed deed rules.
+        const runtime = await loadTemplateRuntime();
+        const bytes = await checkedBytes(version);
+        const validation = await runtime.validateDeedTemplate(bytes, version.instrumentId, version.variantId || '', version.filename, version.fieldContract);
+        if (!validation.valid) throw fail(409, 'This source conflicts with current deed rules: ' + validation.errors.join(' '));
+        const family = runtime.libraryFamilyFor(version.instrumentId, version.variantId);
+        const cases = runtime.sampleCasesFor(version.fieldContract || runtime.EMPTY_FIELD_CONTRACT, validation, family);
+        if (!sampleId) return send(200, { preservationVersion: runtime.DEED_PRESERVATION_VERSION, cases: cases.map(([id, label]) => ({ id, label })) });
+        if (!cases.some(([id]) => id === sampleId)) throw fail(404, 'Current-rule sample is not available.');
+        const source = { kind: 'custom', name: version.filename, hash: version.hash, bytes, validation, fieldContract: version.fieldContract || runtime.EMPTY_FIELD_CONTRACT };
+        const output = await runtime.renderSample(sampleId, source, family);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="CURRENT-RULES-${sampleId}.docx"`);
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(Buffer.from(output)); return;
       }
       if (!action && req.method === 'GET') return send(200, version);
       if (action === 'validate' && req.method === 'POST') {

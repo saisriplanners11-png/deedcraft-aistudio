@@ -43,7 +43,7 @@ import {
 } from './docx';
 import { templateBytes } from './docx';
 import { TemplateLibrary } from './template-library';
-import { listTemplates, pinFor, sha256 } from './template-library-client';
+import { listTemplates, pinFor, requireCurrentDeedRules, sha256 } from './template-library-client';
 import { libraryFamilyFor } from './template-library-families';
 import { DEED_PRESERVATION_VERSION } from './deed-preservation';
 import type { TemplatePin } from './template-library-types';
@@ -83,7 +83,8 @@ import { ScreenGuide, GettingStartedGuide } from './screen-guide';
 import { DocumentUpload, ReviewIssues } from './workflow-ui';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
-import { deleteDeed, listSavedDeeds, saveDeed, type SavedDeed } from './saved-deeds';
+import { deleteDeed, listSavedDeeds, saveDeed, saveDeeds, type SavedDeed } from './saved-deeds';
+import { createDeedBackup, readDeedBackup } from './deed-backup';
 import type { FieldRenderer } from './ui';
 
 // Raised from 4: Step 2 now lets a drafter add several document types (link
@@ -716,6 +717,9 @@ export default function WizardApp() {
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [savedDeeds, setSavedDeeds] = useState<SavedDeed[]>([]);
   const [storageError, setStorageError] = useState('');
+  const [backupNotice, setBackupNotice] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const backupInput = useRef<HTMLInputElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const saveSequence = useRef(0);
@@ -838,6 +842,7 @@ export default function WizardApp() {
     try {
       const listing = await listTemplates();
       if (request !== templateRefresh.current) return;
+      requireCurrentDeedRules(listing);
       setDefaultTemplates(Object.fromEntries(Object.entries(listing.active).flatMap(([family, id]) => {
         const revision = listing.versions.find(item => item.id === id && item.publishedAt && libraryFamilyFor(item.instrumentId, item.variantId) === family);
         return revision ? [[family, pinFor(revision)]] : [];
@@ -1213,6 +1218,31 @@ export default function WizardApp() {
     } catch (error: any) { setStorageError(`Deed could not be deleted: ${error?.message || String(error)}`); }
   }
 
+  async function exportSavedBackup() {
+    setBackupBusy(true); setStorageError(''); setBackupNotice('');
+    try {
+      await saveQueue.current;
+      const deeds = await listSavedDeeds();
+      saveBlob(await createDeedBackup(deeds), `DeedCraft-saved-deeds-${new Date().toISOString().slice(0, 10)}.json`);
+      setBackupNotice(`Exported ${deeds.length} saved ${deeds.length === 1 ? 'deed' : 'deeds'} with uploaded files and custom templates.`);
+    } catch (error: any) { setStorageError(`Backup could not be exported: ${error?.message || String(error)}`); }
+    finally { setBackupBusy(false); }
+  }
+
+  async function importSavedBackup(file?: File) {
+    if (!file) return;
+    setBackupBusy(true); setStorageError(''); setBackupNotice('');
+    try {
+      await saveQueue.current;
+      const existing = await listSavedDeeds();
+      const result = await readDeedBackup(file, existing);
+      if (result.deeds.length) await saveDeeds(result.deeds);
+      setSavedDeeds(await listSavedDeeds());
+      setBackupNotice(`Imported ${result.deeds.length} saved ${result.deeds.length === 1 ? 'deed' : 'deeds'}. ${result.skipped} already present. ${result.copies} conflicting ${result.copies === 1 ? 'deed was' : 'deeds were'} kept as separate copies.`);
+    } catch (error: any) { setStorageError(`Backup could not be imported: ${error?.message || String(error)}`); }
+    finally { setBackupBusy(false); if (backupInput.current) backupInput.current.value = ''; }
+  }
+
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
@@ -1281,6 +1311,13 @@ export default function WizardApp() {
     ])];
     const warn = (issues: string[]) => setDownloadWarning({ kind, reasons: issues, draftId: draft.id, revision: draft.revision, templateKey });
     if (reasons.length && !allowIncomplete) { warn(reasons); return; }
+    if (isWord) {
+      try { requireCurrentDeedRules(await listTemplates()); }
+      catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Could not confirm the current deed rules. Retry when the shared dashboard is available.');
+        return;
+      }
+    }
     const snapshot = draft; setExporting(true); setMessage('');
     try {
       const filename = deedFilename(state, savedDeeds.find(deed => deed.id === snapshot.id)?.name);
@@ -1495,6 +1532,8 @@ export default function WizardApp() {
       <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
       {storageError && <p className="notice" role="alert">{storageError}</p>}
       <div className="library-context"><span><FolderOpen size={16} aria-hidden="true" /> {savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'}</span><span>Stored in this browser · Keep using this device to access your drafts</span></div>
+      <div className="library-toolbar"><button type="button" disabled={backupBusy || loadingLibrary} onClick={() => void exportSavedBackup()}>Export saved-deeds backup</button><input ref={backupInput} type="file" hidden accept=".json,application/json" onChange={event => void importSavedBackup(event.target.files?.[0])} /><button type="button" disabled={backupBusy || loadingLibrary} onClick={() => backupInput.current?.click()}>Import saved-deeds backup</button><small>The backup includes deed details, uploaded files and custom templates. Keep the file private when moving it to another computer.</small></div>
+      {backupNotice && <p role="status">{backupNotice}</p>}
       {savedDeeds.length > 0 && <GettingStartedGuide />}
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}

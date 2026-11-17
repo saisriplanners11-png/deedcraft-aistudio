@@ -65,6 +65,12 @@ export const saveDeed = (deed: SavedDeed) => transaction<void>('readwrite', (sto
   request.onerror = () => reject(request.error);
 });
 
+/** Import a backup in one transaction, so a quota failure leaves existing drafts intact. */
+export const saveDeeds = (deeds: SavedDeed[]) => transaction<void>('readwrite', (store, resolve) => {
+  for (const deed of deeds) store.put(deed);
+  resolve(undefined);
+});
+
 export const deleteDeed = (id: string) => transaction<void>('readwrite', (store, resolve, reject) => {
   const request = store.delete(id);
   request.onsuccess = () => resolve(undefined);

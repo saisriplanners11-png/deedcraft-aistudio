@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { bundledTemplatePin } from './template-library-client';
+import { bundledTemplatePin, requireCurrentDeedRules } from './template-library-client';
 import { savedTemplateStatus, updateSavedDeedTemplate } from './template-version-status';
 import { newDraft } from './source-draft';
 import type { SavedDeed } from './saved-deeds';
 import { INSTRUMENT_IDS } from './instruments';
 import { DEED_PRESERVATION_VERSION } from './deed-preservation';
 const saved = (patch = {}) => ({ draft: newDraft(), templateMode: 'built-in', ...patch } as SavedDeed);
+
+it('stops an older computer from generating against newer shared deed rules', () => {
+  expect(() => requireCurrentDeedRules({ preservationVersion: DEED_PRESERVATION_VERSION })).not.toThrow();
+  expect(() => requireCurrentDeedRules({ preservationVersion: '2026-10-28.1' })).toThrow(/Reload this page/);
+  expect(() => requireCurrentDeedRules({})).toThrow(/unknown version/);
+});
 
 it('refreshes stale rule metadata for every instrument without changing custom sources or saved facts', () => {
   for (const instrumentId of INSTRUMENT_IDS) {

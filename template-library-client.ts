@@ -3,6 +3,7 @@ import { TEMPLATE_VERSIONS } from './legal-registry';
 import type { LibraryListing, LibraryRevision, TemplatePin } from './template-library-types';
 import { canonicalContract } from './template-fields';
 import { libraryFamilyFor, TEMPLATE_FAMILIES } from './template-library-families';
+import { DEED_PRESERVATION_VERSION } from './deed-preservation';
 
 export async function templateRequest<T>(path = '', init?: RequestInit): Promise<T> {
   const response = await fetch('/api/templates' + path, { ...init, credentials: 'same-origin', cache: 'no-store', signal: init?.signal || AbortSignal.timeout(20000) });
@@ -11,6 +12,11 @@ export async function templateRequest<T>(path = '', init?: RequestInit): Promise
   return data;
 }
 export const listTemplates = () => templateRequest<LibraryListing>();
+export function requireCurrentDeedRules(listing: Pick<LibraryListing, 'preservationVersion'>): void {
+  if (listing.preservationVersion !== DEED_PRESERVATION_VERSION) {
+    throw new Error(`This computer has deed rules ${DEED_PRESERVATION_VERSION}, while the shared dashboard has ${listing.preservationVersion || 'an unknown version'}. Reload this page to get the current rules before generating a deed.`);
+  }
+}
 export function bundledTemplatePin(versionId: string = TEMPLATE_FAMILIES.sale.defaultId): TemplatePin {
   const version = TEMPLATE_VERSIONS.find(item => item.id === versionId) || TEMPLATE_VERSIONS.find(item => item.id === TEMPLATE_FAMILIES.sale.defaultId)!;
   return { versionId: version.id, hash: version.sha256!, name: version.id.startsWith('general-poa-') ? `General Power of Attorney v${version.version.split('.')[0]}` : version.instrumentId === 'agreement_of_sale' ? `Agreement of Sale Cum GPA v${version.version.split('.')[0]}` : version.id.startsWith('gift-municipal-') ? `Municipal Gift v${version.version.split('.')[0]}` : `Built-in ${version.instrumentId === 'release' ? 'Release' : version.instrumentId === 'reconveyance' ? 'Reconveyance' : version.instrumentId === 'gift' ? 'Gift' : 'Sale'} v${version.version.split('.')[0]}`, saleOpenings: ['sale-deed-v7', 'sale-deed-v9', 'sale-deed-v10', 'sale-deed-v11', 'sale-deed-v12'].includes(version.id) };

@@ -66,6 +66,18 @@ describe('shared template library API', { timeout: 30000 }, () => {
     expect((await fetch(base + '/versions/sale-deed-v11')).status).toBe(401);
     const bytes = Buffer.from(await (await fetch(base + '/versions/sale-deed-v11/download')).arrayBuffer());
     expect(bytes.equals(await readFile(new URL('./sale-deed-template-v11.docx', import.meta.url)))).toBe(true);
+    expect((await fetch(base + '/versions/sale-deed-v12/current-samples')).status).toBe(401);
+    const currentSamples = await (await fetch(base + '/versions/sale-deed-v12/current-samples', { headers: headers() })).json();
+    expect(currentSamples.preservationVersion).toBe(runtime.DEED_PRESERVATION_VERSION);
+    expect(currentSamples.cases.some((item: any) => item.id === 'ordinary-plot')).toBe(true);
+    const currentSample = await fetch(base + '/versions/sale-deed-v12/current-samples/ordinary-plot', { headers: headers() });
+    expect(currentSample.status).toBe(200);
+    expect(currentSample.headers.get('cache-control')).toBe('no-store');
+    const currentText = await runtime.docxToText(new Uint8Array(await currentSample.arrayBuffer()));
+    expect(currentText).toContain('The schedule property is not the assigned property.');
+    expect(currentText).toContain('The Plan of schedule property is annexed hereto.');
+    expect((await fetch(base + '/versions/sale-deed-v12/current-samples/unknown', { headers: headers() })).status).toBe(404);
+    expect(Buffer.from(await (await fetch(base + '/versions/sale-deed-v12/download')).arrayBuffer()).equals(await readFile(new URL('./sale-deed-template-v12.docx', import.meta.url)))).toBe(true);
     expect((await fetch(base + '/upload?filename=x.docx', { method: 'POST', body: new Uint8Array(starter).buffer })).status).toBe(401);
     expect((await fetch(base + '/upload?filename=x.docx', { method: 'POST', headers: { Cookie: cookie }, body: new Uint8Array(starter).buffer })).status).toBe(403);
     expect((await fetch(base + '/upload?filename=x.docx', { method: 'POST', headers: { ...headers(), Origin: 'https://evil.example' }, body: new Uint8Array(starter).buffer })).status).toBe(403);
