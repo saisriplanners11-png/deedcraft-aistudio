@@ -2,7 +2,7 @@ import type { ReleaseData } from './release';
 import { orderedEnclosureIds } from './enclosure-records';
 import { acreGuntasToSqYards } from './land-area';
 import { titleAmendmentKind } from './title-amendments';
-import { CURRENT_WORKFLOW_VERSION, normalizeSavedWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
+import { CURRENT_WORKFLOW_VERSION, normalizeWorkflowStep } from './workflow-steps';
 import { houseStructureTotal, isHouseCategory, STRUCTURE_VALUATION_OVERRIDE } from './house-valuation';
 import { PARTY_CAPACITY_OPTIONS, localAuthorityName } from './fields';
 import { isEntity } from './party-entities';
@@ -10,15 +10,17 @@ import { newPartyRepresentative, partyKey, personField, type PartyPeople, type P
 import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePtinOutput, mergePropertyHousePtinPairValues } from './property-house-ptin';
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
-import { newPayment, type Payment } from './payments';
+import { newPayment, paymentPatchError, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
 import type { TemplateFieldCandidate, TemplateFieldValues } from './template-fields';
+import { isWrittenMobile } from './identity-contact';
 
 export const EXTRACTION_VERSION = 'evidence-v13-verified-pages';
 export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned' | 'party-person';
 export type Candidate = {
   id: string; field: string; value: string; role: Role; record: string;
   quote: string; page: number; region: string; handwritten: boolean;
+  writtenContact?: true;
   status: 'accepted' | 'uncertain'; historical: boolean;
 };
 export type SourcePlan = { record: string; drawing: PlanDrawing; linked: boolean; page: number };
@@ -31,6 +33,7 @@ export type Source = {
   id: string; revision: number; name: string; hash: string; status: 'queued' | 'reading' | 'done' | 'error';
   /** Extraction scope, retained so section uploads can be displayed and filtered correctly. */
   profile?: string;
+  readMode?: 'local';
   /**
    * `fromRecord` scopes the assignment to the one AI-provided record identifier
    * the user actually confirmed (e.g. one person's name on a page that shows
@@ -48,7 +51,7 @@ import { saleDocumentForVariant, type SaleAuthority } from './sale-options';
 
 export type Draft = {
   /** Distinguishes the added plan step from legacy removed plan-step IDs. */
-  workflowVersion?: 2 | typeof CURRENT_WORKFLOW_VERSION;
+  workflowVersion?: 2 | 3 | typeof CURRENT_WORKFLOW_VERSION;
   /** Optional lookup metadata; canonical names remain in the existing property fields. */
   saleAuthority?: SaleAuthority;
   gpaExecutantsReplaced?: boolean;
@@ -110,9 +113,9 @@ export type Action =
 
 export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'reset') return newDraft();
-  // Legacy plan positions reopen in Step 11; the current version can restore Step 12.
+  // Saved plan positions reopen in the remaining plan workspace.
   if (action.type === 'load') {
-    const step = normalizeSavedWorkflowStep(action.draft.instrumentId, action.draft.step, action.draft.workflowVersion);
+    const step = normalizeWorkflowStep(action.draft.instrumentId, action.draft.step);
     return migratePartyPeople(step === action.draft.step && action.draft.workflowVersion === CURRENT_WORKFLOW_VERSION
       ? action.draft : { ...action.draft, step, workflowVersion: CURRENT_WORKFLOW_VERSION });
   }
@@ -210,6 +213,25 @@ export function draftReducer(draft: Draft, action: Action): Draft {
   if (action.type === 'job') {
     if (action.draftId !== draft.id || !draft.sources.some(s => s.id === action.sourceId && s.revision === action.sourceRevision)) return draft;
     next = { ...draft, sources: draft.sources.map(s => s.id === action.sourceId ? { ...s, ...action.patch, id: s.id, revision: s.revision } : s) };
+    const original = next.sources.find(source => source.id === action.sourceId);
+    const result = action.patch.result;
+    if (result && original?.readMode === 'local' && original.assignment?.role === 'payment' && original.profile?.startsWith('payment:')) {
+      const record = original.assignment.record;
+      const mode = resolveDraft(draft).values[fieldKey('payment', record, 'mode')];
+      let rejectedField: string | undefined;
+      let note: string | undefined;
+      if (mode && original.profile !== 'payment:' + mode) {
+        note = 'The payment method changed while reading. Upload proof for the selected method.';
+      } else if (result.candidates.some(candidate => candidate.field === 'amount') && !(fieldKey('payment', record, 'amount') in draft.manual)) {
+        const projected = appStateFor(next);
+        const error = paymentPatchError(projected.payments, record, {}, projected.form.consid);
+        if (error) { rejectedField = 'amount'; note = error; }
+      }
+      if (note) {
+        const checked = { ...result, candidates: result.candidates.filter(candidate => rejectedField && candidate.field !== rejectedField), notes: [...result.notes, note] };
+        next = { ...next, sources: next.sources.map(source => source === original ? { ...source, result: checked } : source) };
+      }
+    }
   }
   if (next !== draft) next = { ...next, step: normalizeWorkflowStep(next.instrumentId, next.step) };
   return next === draft ? draft : { ...next, revision: draft.revision + 1 };
@@ -338,13 +360,16 @@ export function resolveDraft(draft: Draft) {
     }
     const selected = usable.find(c => c.id === draft.choices[key]);
     if (selected) { values[key] = uppercasePartyIdentity(field, selected.value); evidence[key] = [selected]; continue; }
+    const written = usable.filter(isWrittenMobile);
+    const readings = written.length ? written : usable;
     const byValue = new Map<string, Evidence[]>();
-    for (const c of usable) {
+    for (const c of readings) {
       const k = exact(c.value);
       const bucket = byValue.get(k);
       if (bucket) bucket.push(c); else byValue.set(k, [c]);
     }
-    if (byValue.size === 1) { values[key] = uppercasePartyIdentity(field, usable[0].value); evidence[key] = usable; continue; }
+    if (byValue.size === 1) { values[key] = uppercasePartyIdentity(field, readings[0].value); evidence[key] = readings; continue; }
+    if (written.length) { values[key] = ''; conflicts[key] = usable; continue; }
     // A single document read across several pages/regions rarely reproduces a
     // value byte-for-byte (a full name vs. an abbreviated signature, "Business"
     // vs. "BUSINESS"). Requiring unanimous agreement blanked the field on any

@@ -16,7 +16,7 @@ import { HOUSE_ROOFS, HOUSE_VALUATION_STAGES, STRUCTURE_VALUATION_OVERRIDE, hous
 import { formatDeedAmount, formatMoneyInput, stampPaperValue } from './deed-money';
 import { RECONVEYANCE_FIELDS } from './fields';
 import { applyAuthorityPerson, applyGpaExtraction } from './authority-import';
-import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeSavedWorkflowStep } from './workflow-steps';
+import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeWorkflowStep } from './workflow-steps';
 import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -64,7 +64,7 @@ import { deedMobile, isMobileNumber } from './deed-format';
 import { PaymentCard, AddPayment } from './paymentui';
 import { GuidedReferenceStep } from './guided-reference-step';
 import { guidedPlanFromDraft } from './guided-reference-integration';
-import type { PlanDocument as GuidedPlanDocument } from './guided-reference-plan/src/types';
+import type { PlanDocument as GuidedPlanDocument } from './step13-reference-plan/src/types';
 import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
 import './wizard-app.css';
@@ -94,6 +94,7 @@ import type { FieldRenderer } from './ui';
 // four — actual API concurrency is still throttled downstream, in
 // upload-extraction.ts's own apiQueue/pageQueue.
 const fileQueue = new WorkQueue(10);
+const localFileQueue = new WorkQueue(2);
 const ACCEPT = '.pdf,.docx,.txt,.md,image/jpeg,image/png,image/webp,image/gif';
 function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNotice }: { value: StructureDetails; defaultRoof: string; authority: string; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
@@ -244,7 +245,8 @@ function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
 /** Keep upload feedback actionable; extracted values are shown in the form itself. */
 function SourceFeedback({ sources }: { sources: Source[]; visibleFields?: string[] }) {
   const needsClearerUpload = sources.some(source => source.status === 'error' || !!source.error
-    || source.result?.notes.some(note => /could not be read/i.test(note)));
+    || source.result?.notes.some(note => /could not be read/i.test(note))
+    || (source.readMode === 'local' && source.status === 'done' && !source.result?.candidates.length));
   const pending = sources.some(source => source.status === 'queued' || source.status === 'reading');
   const finished = sources.filter(source => source.status === 'done');
   if (!sources.length) return null;
@@ -730,6 +732,11 @@ export default function WizardApp() {
   const cache = useRef(new Map<string, Promise<SourceResult>>());
   const [uploadSteps, setUploadSteps] = useState<Record<string, ExtractStep[]>>({});
   const [activeUpload, setActiveUpload] = useState<{ id: string; label: string; names: string[] } | null>(null);
+  const [aiExtraction, setAiExtraction] = useState(() => {
+    try { return localStorage.getItem('deedcraft-ai-extraction') !== 'off'; }
+    catch { return true; }
+  });
+  const aiExtractionRef = useRef(aiExtraction);
   const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
   // Record ids added via "Add another executant/claimant" before any evidence names them —
   // resolveDraft only lists a record once it has a value, so a freshly added blank/uploading
@@ -738,10 +745,6 @@ export default function WizardApp() {
   const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDocument>>({});
   const [step13PlanDrafts, setStep13PlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
   const [step13PlanSelectedSvgs, setStep13PlanSelectedSvgs] = useState<Record<string, string>>({});
-  const [latestPlanDrafts, setLatestPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
-  const [latestPlanSelectedSvgs, setLatestPlanSelectedSvgs] = useState<Record<string, string>>({});
-  const [guidedPlanDrafts, setGuidedPlanDrafts] = useState<Record<string, GuidedPlanDocument>>({});
-  const [guidedPlanSelectedSvgs, setGuidedPlanSelectedSvgs] = useState<Record<string, string>>({});
   const [referencePlanDrafts, setReferencePlanDrafts] = useState<Record<string, ReferencePlanDocument>>({});
   const [sourceFiles, setSourceFiles] = useState<Record<string, File[]>>({});
   const [selectedPlanSvgs, setSelectedPlanSvgs] = useState<Record<string, string>>({});
@@ -800,7 +803,7 @@ export default function WizardApp() {
   const activeTemplateKeyRef = useRef(templateKey); activeTemplateKeyRef.current = templateKey;
   useEffect(() => { templateExtractionGeneration.current++; setExtractingTemplateFields(false); setTemplateFieldMessage(''); }, [templateKey, draft.id]);
   const hasStarted = draft.revision > 0 || !!libraryTemplate || !!customTemplate || templateMode === 'custom'
-    || !!Object.keys(step13PlanDrafts).length || !!Object.keys(latestPlanDrafts).length || !!Object.keys(guidedPlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
+    || !!Object.keys(step13PlanDrafts).length || !!Object.keys(planDrafts).length || !!Object.keys(referencePlanDrafts).length
     || !!Object.keys(selectedPlanSvgs).length;
   const snapshot = (): SavedDeed => ({
     id: draft.id,
@@ -810,7 +813,7 @@ export default function WizardApp() {
     deedType: deedDefinition.label,
     draft,
     sourceFiles: Object.fromEntries(Object.entries(sourceFiles).filter(([id]) => draft.sources.some(source => source.id === id))),
-    planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, step13PlanDrafts, step13PlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
+    planDrafts, referencePlanDrafts, step13PlanDrafts, step13PlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords,
     templateMode, customTemplate, libraryTemplate: defaultPin || null,
     generationManifest,
   });
@@ -837,7 +840,7 @@ export default function WizardApp() {
   useEffect(() => {
     if (skipRestoreSave.current) { skipRestoreSave.current = false; return; }
     if (!loadingLibrary && !libraryView && hasStarted) void persist(snapshot()).catch(() => {});
-  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, guidedPlanDrafts, guidedPlanSelectedSvgs, latestPlanDrafts, latestPlanSelectedSvgs, step13PlanDrafts, step13PlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, templateKey, generationManifest]);
+  }, [loadingLibrary, libraryView, draft, sourceFiles, planDrafts, referencePlanDrafts, step13PlanDrafts, step13PlanSelectedSvgs, selectedPlanSvgs, extraPartyRecords, templateMode, customTemplate, templateKey, generationManifest]);
   const templateRefresh = useRef(0);
   async function refreshPublishedTemplate() {
     const request = ++templateRefresh.current;
@@ -934,6 +937,7 @@ export default function WizardApp() {
   /** Reads one ordered source bundle, binding it to one record so it never spills into another. */
   async function runUpload(files: File[], assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
     if (!files.length) return;
+    const local = !aiExtractionRef.current;
     const templateKeyAtUpload = activeTemplateKeyRef.current;
     const sourceId = crypto.randomUUID();
     setSourceFiles(old => ({ ...old, [sourceId]: files }));
@@ -941,28 +945,27 @@ export default function WizardApp() {
     controllers.current.get(sourceId)?.abort();
     const controller = new AbortController(); controllers.current.set(sourceId, controller);
     const option = profile.startsWith('phase1:') ? LINK_OPTIONS.find(item => item.id === profile.slice('phase1:'.length)) : undefined;
-    setActiveUpload({
+    if (!local) setActiveUpload({
       id: sourceId,
       label: option?.label || (assignment?.role === 'executant' ? 'Executant ID' : assignment?.role === 'claimant' ? 'Claimant ID' : 'Document'),
       names: files.map(file => file.name),
     });
     const valid = () => !controller.signal.aborted && current.current.id === draftId && (assignment?.role !== 'party-person' || Object.values(current.current.partyPeople || {}).some(p => [...p.representativeIds, ...p.memberIds].includes(assignment.record)));
     const job = (patch: any) => dispatch({ type: 'job', draftId, sourceId, sourceRevision: 0, patch });
-    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'queued', assignment, profile } });
-    setUploadSteps(s => ({ ...s, [sourceId]: [] }));
+    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'queued', assignment, profile, readMode: local ? 'local' : undefined } });
+    if (!local) setUploadSteps(s => ({ ...s, [sourceId]: [] }));
     const started = performance.now();
     try {
-      await fileQueue.run(async () => {
+      await (local ? localFileQueue : fileQueue).run(async () => {
         if (!valid()) return;
         job({ status: 'reading' });
         const hash = await fileHash(files);
         if (!valid()) return;
         job({ hash });
-        const key = `${draftId}:${hash}:${EXTRACTION_VERSION}:${profile}`;
+        const reconveyance = current.current.instrumentId === 'reconveyance';
+        const key = JSON.stringify([draftId, hash, EXTRACTION_VERSION, profile, local, reconveyance, files.map(file => file.name)]);
         let result: SourceResult;
-        if (cache.current.has(key)) result = await cache.current.get(key)!;
-        else {
-          result = await extractUpload(files, controller.signal, event => {
+        const report: Parameters<typeof extractUpload>[2] = event => {
             if (!valid()) return;
             // Link-deed page 1/2 verification is the foreground task. Once
             // it settles, the property-page workers keep running without a
@@ -976,10 +979,20 @@ export default function WizardApp() {
               const index = steps.findIndex(step => step.id === event.id);
               return { ...s, [sourceId]: index < 0 ? [...steps, event] : steps.map((step,i) => i === index ? event : step) };
             });
-          }, result => { if (valid()) job({ result }); }, profile);
-          if (valid() && result.candidates.length > 0 && result.candidates.every(c => c.status === 'accepted') && result.notes.length === 0) cache.current.set(key, Promise.resolve(result));
+        };
+        if (cache.current.has(key)) result = await cache.current.get(key)!;
+        else if (local) {
+          const { extractLocally } = await import('./local-upload-extraction');
+          result = await extractLocally(files, controller.signal, () => {}, profile, reconveyance);
+        } else {
+          result = await extractUpload(files, controller.signal, report, result => { if (valid()) job({ result }); }, profile);
         }
         if (valid()) {
+          if (result.candidates.length > 0 && result.candidates.every(c => c.status === 'accepted') && result.notes.length === 0) cache.current.set(key, Promise.resolve(result));
+          if (local) {
+            job({ status: 'done', result, durationMs: performance.now() - started, error: undefined });
+            return;
+          }
           setUploadSteps(s => ({ ...s, [sourceId]: (s[sourceId] || []).map(step => step.state === 'running' ? { ...step, state: 'done' as const } : step) }));
           job({ status: 'done', result, durationMs: performance.now() - started, error: undefined });
           const uncertain = result.candidates.filter(candidate => candidate.status === 'uncertain');
@@ -998,7 +1011,7 @@ export default function WizardApp() {
       }, controller.signal);
     } catch (error: any) {
       if (valid()) {
-        setUploadSteps(s=>({...s,[sourceId]:(s[sourceId]||[]).map(step=>step.state==='running'||step.state==='queued'?{...step,state:'error' as const}:step)}));
+        if (!local) setUploadSteps(s=>({...s,[sourceId]:(s[sourceId]||[]).map(step=>step.state==='running'||step.state==='queued'?{...step,state:'error' as const}:step)}));
         job({ status: 'error', error: error.message || 'This upload could not be read.' });
       }
     } finally {
@@ -1023,6 +1036,12 @@ export default function WizardApp() {
     }
   };
   async function runTemplateExtraction(files: File[], record: TemplateRecord, existingSource?: Source) {
+    if (!aiExtractionRef.current) {
+      setTemplateFieldMessage('Enter additional template fields manually while AI extraction is off.');
+      const role = record.scope === 'executant' || record.scope === 'claimant' ? record.scope : 'property';
+      if (!existingSource) void runUpload(files, { role, record: record.id });
+      return;
+    }
     const fields = resolveTemplateFieldData(current.current, appStateFor(current.current), fieldContract).instances.filter(instance => instance.record.scope === record.scope && instance.record.id === record.id && instance.field.extractionEnabled).map(instance => instance.field);
     if (!files.length || !fields.length) return;
     const sourceId = crypto.randomUUID(); const draftId = current.current.id; const key = activeTemplateKeyRef.current; const generation = templateExtractionGeneration.current;
@@ -1044,6 +1063,10 @@ export default function WizardApp() {
     finally { controllers.current.delete(sourceId); if (generation === templateExtractionGeneration.current) setExtractingTemplateFields(false); }
   }
   async function readSavedTemplateFields() {
+    if (!aiExtractionRef.current) {
+      setTemplateFieldMessage('Enter additional template fields manually while AI extraction is off.');
+      return;
+    }
     const generation = templateExtractionGeneration.current;
     const sources = draft.sources.filter(source => source.profile !== 'template-fields' && sourceFiles[source.id]?.length);
     if (!sources.length) { setTemplateFieldMessage('No original documents are saved with this draft. Upload evidence using the additional-fields section.'); return; }
@@ -1136,8 +1159,8 @@ export default function WizardApp() {
 
   function clearTransient() {
     controllers.current.forEach(c => c.abort()); controllers.current.clear(); cache.current.clear();
-    setUploadSteps({}); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
-    setPendingReviews([]); setStep13PlanDrafts({}); setStep13PlanSelectedSvgs({}); setLatestPlanDrafts({}); setLatestPlanSelectedSvgs({}); setGuidedPlanDrafts({}); setGuidedPlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
+    setUploadSteps({}); setActiveUpload(null); setDownload(null); setMessage(''); setExtraPartyRecords({ executant: [], claimant: [] });
+    setPendingReviews([]); setStep13PlanDrafts({}); setStep13PlanSelectedSvgs({}); setPlanDrafts({}); setReferencePlanDrafts({}); setSelectedPlanSvgs({}); setSourceFiles({});
     templateValidationRevision.current++; if (templateInput.current) templateInput.current.value = '';
     setTemplateMode('built-in'); setCustomTemplate(null); setValidatingTemplate(false);
     setLibraryTemplate(null); setGenerationManifest(null);
@@ -1185,12 +1208,8 @@ export default function WizardApp() {
     setSourceFiles(deed.sourceFiles || {});
     setPlanDrafts(deed.planDrafts || {});
     setReferencePlanDrafts(deed.referencePlanDrafts || {});
-    setLatestPlanDrafts(deed.latestPlanDrafts || {});
-    setLatestPlanSelectedSvgs(deed.latestPlanSelectedSvgs || {});
     setStep13PlanDrafts(deed.step13PlanDrafts || {});
     setStep13PlanSelectedSvgs(deed.step13PlanSelectedSvgs || {});
-    setGuidedPlanDrafts(deed.guidedPlanDrafts || {});
-    setGuidedPlanSelectedSvgs(deed.guidedPlanSelectedSvgs || {});
     setSelectedPlanSvgs(deed.selectedPlanSvgs || {});
     setExtraPartyRecords(deed.extraPartyRecords || { executant: [], claimant: [] });
     setTemplateMode(deed.templateMode || 'built-in');
@@ -1254,17 +1273,9 @@ export default function WizardApp() {
   const propertyIds = [...new Set(['primary', ...draft.propertyIds, ...Object.keys(resolved.values).filter(k => k.startsWith('property|') && !k.startsWith('property|transaction|')).map(k => k.split('|')[1])])];
   const activePropertyId = propertyIds.includes(draft.activePropertyId) ? draft.activePropertyId : 'primary';
   const activePropertyIndex = propertyIds.indexOf(activePropertyId);
-  const planVariant = step === 12 ? 'step13' : step === 11 ? 'latest' : 'guided';
-  const activePlanDraft = (planVariant === 'step13' ? step13PlanDrafts : planVariant === 'latest' ? latestPlanDrafts : guidedPlanDrafts)[activePropertyId];
-  const activePlanSelection = (planVariant === 'step13' ? step13PlanSelectedSvgs : planVariant === 'latest' ? latestPlanSelectedSvgs : guidedPlanSelectedSvgs)[activePropertyId];
+  const activePlanDraft = step13PlanDrafts[activePropertyId];
+  const activePlanSelection = step13PlanSelectedSvgs[activePropertyId];
   const isActivePlanSelected = !!activePlanSelection && activePlanSelection === selectedPlanSvgs[activePropertyId];
-  const setActivePlanDrafts = planVariant === 'step13' ? setStep13PlanDrafts : planVariant === 'latest' ? setLatestPlanDrafts : setGuidedPlanDrafts;
-  const setActivePlanSelections = planVariant === 'step13' ? setStep13PlanSelectedSvgs : planVariant === 'latest' ? setLatestPlanSelectedSvgs : setGuidedPlanSelectedSvgs;
-  const setOtherPlanSelections = (omit: (old: Record<string, string>) => Record<string, string>) => {
-    if (planVariant !== 'guided') setGuidedPlanSelectedSvgs(omit);
-    if (planVariant !== 'latest') setLatestPlanSelectedSvgs(omit);
-    if (planVariant !== 'step13') setStep13PlanSelectedSvgs(omit);
-  };
   const omitActivePlanSelection = (old: Record<string, string>) => {
     if (!(activePropertyId in old)) return old;
     const next = { ...old };
@@ -1528,6 +1539,8 @@ export default function WizardApp() {
     setPendingReviews(queue => queue.filter(item => item.id !== review.id));
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
+  const localUploads = draft.sources.filter(source => source.readMode === 'local');
+  const localReadsInProgress = localUploads.filter(source => source.status === 'queued' || source.status === 'reading');
 
   return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app modern-workspace${showFieldHelp ? ' show-field-help' : ''}`} data-theme={theme}>
     {downloadWarning && downloadWarning.draftId === draft.id && downloadWarning.revision === draft.revision && downloadWarning.templateKey === templateKey &&
@@ -1571,7 +1584,7 @@ export default function WizardApp() {
       {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
         const name = deed.name || partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`;
         return <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
-          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeSavedWorkflowStep(deed.draft.instrumentId, deed.draft.step, deed.draft.workflowVersion)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, defaultTemplates).label}{savedTemplateStatus(deed, defaultTemplates).earlier ? ' · Updating to current default' : ''}</span></div></div>
+          <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, defaultTemplates).label}{savedTemplateStatus(deed, defaultTemplates).earlier ? ' · Updating to current default' : ''}</span></div></div>
           <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><button type="button" onClick={() => duplicateSaved(deed, name)}>Duplicate This Document</button>{deed.name && <button type="button" onClick={() => renameSaved(deed)}>Rename</button>}<IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
         </article>; })}
       </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
@@ -1586,6 +1599,40 @@ export default function WizardApp() {
           {step >= 0 && step < 8 && <div className="step-quick-actions"><button type="button" className="primary" onClick={() => goto(followingStep)}>Next: {STEPS[followingStep]?.label}</button>
           {notices.some(issue => issue.step === step) && <a href="#step-review">Details to check</a>}</div>}</div>
         </header>
+        {step >= 1 && step <= 8 && <div className="extraction-mode">
+          <label>
+            <input type="checkbox" role="switch" checked={aiExtraction} aria-describedby="extraction-mode-description"
+              onChange={event => {
+                const enabled = event.target.checked;
+                aiExtractionRef.current = enabled;
+                setAiExtraction(enabled);
+                try { localStorage.setItem('deedcraft-ai-extraction', enabled ? 'on' : 'off'); } catch { /* Storage may be disabled. */ }
+              }} />
+            AI extraction
+          </label>
+          <span id="extraction-mode-description">{aiExtraction ? 'On · Cloud extraction' : 'Off · Local reading uses no AI credits'}</span>
+        </div>}
+        {!!localReadsInProgress.length && <p role="status" className="notice">
+          {localReadsInProgress.length === 1 ? 'Reading 1 upload on this device.' : 'Reading ' + localReadsInProgress.length + ' uploads on this device.'} You can keep editing.
+        </p>}
+        {localUploads.length > 0 && <details className="notice local-upload-list">
+          <summary>Local uploads and results ({localUploads.length})</summary>
+          <ul>{localUploads.map(source => <li key={source.id}>
+            <strong>{source.name}</strong>
+            {(source.status === 'queued' || source.status === 'reading') && <p>{source.status === 'queued' ? 'Waiting to be read' : 'Reading on this device'}</p>}
+            {(source.status === 'queued' || source.status === 'reading') &&
+              <button type="button" className="quiet" onClick={() => {
+                controllers.current.get(source.id)?.abort();
+                dispatch({ type: 'job', draftId: draft.id, sourceId: source.id, sourceRevision: source.revision, patch: { status: 'error', error: 'Reading cancelled.' } });
+              }}>Cancel reading {source.name}</button>}
+            {source.error && <p>{source.error}</p>}
+            {source.result?.notes.map((note, index) => <p key={index}>{note}</p>)}
+            {(sourceFiles[source.id] || []).map((file, index) =>
+              <button type="button" className="quiet" key={index} onClick={() => saveBlob(file, file.name)}>Download {file.name}</button>)}
+            {!aiExtraction && !!(sourceFiles[source.id]?.length && (source.error || source.result?.candidates.some(candidate => candidate.status === 'uncertain'))) &&
+              <button type="button" className="quiet" onClick={() => retryUpload(source)}>Read {source.name} again</button>}
+          </li>)}</ul>
+        </details>}
         {step >= 0 && step !== 9 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
         {[-1, 3, 6, 7, 8].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
         {fieldContract.fields.some(field => field.placement) && (extractingTemplateFields || templateFieldMessage) && <div className="notice"><p role="status">{templateFieldMessage}</p>{extractingTemplateFields && <button type="button" onClick={cancelTemplateExtraction}>Cancel additional-field read</button>}</div>}
@@ -1860,6 +1907,7 @@ export default function WizardApp() {
           {!state.payments.length && <div className="payment-empty"><CreditCard size={22} aria-hidden="true" /><div><strong>No payment records yet</strong><p>Choose a payment method below to add the first record.</p></div></div>}
           {state.payments.map((p, i) => (
             <div key={p.id}><RecordMove scope="payment" id={p.id} ids={state.payments.map(item => item.id)} onChange={ids => dispatch({ type: 'record-order', scope: 'payment', ids })} /><PaymentCard index={i} payment={p} canRemove={true}
+              onLocalUpload={aiExtraction ? undefined : files => void runUpload(files, { role: 'payment', record: p.id }, `payment:${p.mode}`)}
               onPatch={patch => patchPayment(p.id, patch)} onRemove={() => removePayment(p.id)} /></div>
           ))}
           <AddPayment onAdd={addPayment} remaining={vm.balanceINR ? `Balance remaining: ${vm.balanceINR}` : ''} />
@@ -1919,7 +1967,7 @@ export default function WizardApp() {
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
           </>;
-          return role === 'executant' && !isRelease && !isReconveyance ? <SaleAuthorityEditor key={draft.id} state={state} principalIds={records} onRecordOrder={ids => dispatch({ type: 'record-order', scope: 'executant', ids })} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
+          return role === 'executant' && !isRelease && !isReconveyance ? <SaleAuthorityEditor key={draft.id} state={state} aiExtraction={aiExtraction} principalIds={records} onRecordOrder={ids => dispatch({ type: 'record-order', scope: 'executant', ids })} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
         })()}
 
 
@@ -1992,27 +2040,26 @@ export default function WizardApp() {
           </section>
         </div>}
 
-        {(step === 10 || step === 11 || step === 12) && <section className="panel reference-plan-step">
+        {step === 10 && <section className="panel reference-plan-step">
           <div className="plan-download-actions">
             <button type="button" disabled={exporting} onClick={() => void generate('pdf')}>{exporting ? 'Preparing…' : 'Download plan PDF'}</button>
             {message && <p role="status">{message}</p>}
           </div>
           <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
-          <GuidedReferenceStep variant={planVariant} key={`${step}:${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
+          <GuidedReferenceStep key={`${step}:${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
             seed={guidedPlanFromDraft(state, activePropertyId)} doc={activePlanDraft}
             enteredDeedDimensions={PROPERTY_DIMENSIONS.fields
               .filter(field => Object.hasOwn(resolved.values, fieldKey('property', activePropertyId, field.id))).map(field => field.id)}
             selected={isActivePlanSelected}
             onChange={doc => {
-              setActivePlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
+              setStep13PlanDrafts(old => ({ ...old, [activePropertyId]: doc }));
               if (isActivePlanSelected) setSelectedPlanSvgs(omitActivePlanSelection);
-              setActivePlanSelections(omitActivePlanSelection);
+              setStep13PlanSelectedSvgs(omitActivePlanSelection);
               setDownload(null);
             }}
             onUse={svg => {
-              setOtherPlanSelections(omitActivePlanSelection);
               setSelectedPlanSvgs(old => ({ ...old, [activePropertyId]: svg }));
-              setActivePlanSelections(old => ({ ...old, [activePropertyId]: svg }));
+              setStep13PlanSelectedSvgs(old => ({ ...old, [activePropertyId]: svg }));
               setDownload(null);
             }} />
         </section>}

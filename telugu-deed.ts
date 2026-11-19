@@ -1,7 +1,7 @@
 import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { EXTRACT_MODEL, getClient } from './claude';
 import { readZip, writeZip } from './docx';
-import { transliterateEnglishToTelugu } from './latest-reference-plan/src/utils/teluguTranslation';
+import { transliterateEnglishToTelugu } from './step13-reference-plan/src/utils/teluguTranslation';
 
 const WORD = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const XML = 'http://www.w3.org/XML/1998/namespace';

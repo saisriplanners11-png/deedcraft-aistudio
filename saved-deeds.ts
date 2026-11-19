@@ -1,4 +1,4 @@
-import type { PlanDocument as GuidedPlanDocument } from './guided-reference-plan/src/types';
+import type { PlanDocument as GuidedPlanDocument } from './step13-reference-plan/src/types';
 import type { Draft } from './source-draft';
 import type { PlanDocument } from './plan-sketch-types';
 import type { PlanDocument as ReferencePlanDocument } from './reference-plan/src/types';
@@ -17,10 +17,6 @@ export type SavedDeed = {
   planDrafts: Record<string, PlanDocument>;
   step13PlanDrafts?: Record<string, GuidedPlanDocument>;
   step13PlanSelectedSvgs?: Record<string, string>;
-  latestPlanDrafts?: Record<string, GuidedPlanDocument>;
-  latestPlanSelectedSvgs?: Record<string, string>;
-  guidedPlanDrafts?: Record<string, GuidedPlanDocument>;
-  guidedPlanSelectedSvgs?: Record<string, string>;
   referencePlanDrafts: Record<string, ReferencePlanDocument>;
   selectedPlanSvgs: Record<string, string>;
   extraPartyRecords: { executant: string[]; claimant: string[] };

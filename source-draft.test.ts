@@ -11,6 +11,35 @@ const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${
 const draftWith = (...sources: Source[]): Draft => ({ ...newDraft(), sources });
 
 describe('source-backed drafts', () => {
+  it('applies the consideration limit to local payment amounts while retaining valid proof evidence', () => {
+    let draft = newDraft();
+    for (const [key, value] of [['property|transaction|consid', '1000'], ['payment|payment-1|mode', 'cheque']]) {
+      draft = draftReducer(draft, { type: 'manual', key, value });
+    }
+    const proof: Source = { id: 'proof', revision: 0, hash: 'test', name: 'Proof.pdf', profile: 'payment:cheque', readMode: 'local',
+      status: 'reading', assignment: { role: 'payment', record: 'payment-1' } };
+    draft = draftReducer(draft, { type: 'add', source: proof });
+    const result = { candidates: [
+      candidate('amount', '1500', { role: 'payment' }),
+      candidate('refNo', '001234', { role: 'payment' }),
+    ], plans: [], notes: [] };
+    const next = draftReducer(draft, { type: 'job', draftId: draft.id, sourceId: proof.id, sourceRevision: 0, patch: { status: 'done', result } });
+    const payment = appStateFor(next).payments[0];
+    expect(payment.refNo).toBe('001234');
+    expect(payment.amount).toBe('');
+    expect(next.sources[0].result?.notes[0]).toMatch(/cannot exceed/);
+  });
+  it('prefers one clear written mobile over printed evidence and keeps intentional manual edits', () => {
+    const printed = source('aadhaar', [candidate('executantMobile', '9123456789', { handwritten: false })]);
+    const note = source('note', [candidate('executantMobile', '9876543210', { handwritten: false, writtenContact: true })]);
+    const key = 'executant|primary|executantMobile';
+    const draft = draftWith(printed, note);
+    expect(resolveDraft(draft).values[key]).toBe('9876543210');
+    const secondNote = source('second', [candidate('executantMobile', '9988776655')]);
+    expect(resolveDraft(draftWith(printed, note, secondNote)).values[key]).toBe('');
+    expect(resolveDraft(draftReducer(draft, { type: 'manual', key, value: '9898989898' })).values[key]).toBe('9898989898');
+    expect(resolveDraft(draftReducer(draft, { type: 'remove', id: note.id })).values[key]).toBe('9123456789');
+  });
   it('deletes a property with its documents and allocations while keeping other schedules', () => {
     let draft = newDraft();
     draft = draftReducer(draft, { type: 'add-property', id: 'second' });
@@ -47,9 +76,6 @@ describe('source-backed drafts', () => {
       expect(restored.manual).toEqual(saved.manual);
       expect(restored.revision).toBe(saved.revision);
     }
-    const latest = { ...newDraft(), step: 11 };
-    expect(draftReducer(newDraft(), { type: 'load', draft: latest }).step).toBe(11);
-    expect(draftReducer(newDraft(), { type: 'load', draft: { ...latest, workflowVersion: 2 } }).step).toBe(10);
     const saved = { ...newDraft(), step: 3 };
     expect(draftReducer(newDraft(), { type: 'load', draft: saved }).step).toBe(3);
   });

@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { createProxyHandler } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
 import { createTemplateApi } from './template-api.mjs';
+import { localOcrAssets } from './local-ocr-assets';
 
 function templateLibraryApi(env: Record<string, string>): Plugin {
   let handler: ReturnType<typeof createTemplateApi>;
@@ -54,7 +55,7 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env)],
+    plugins: [react(), tailwindcss(), localOcrAssets(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),
@@ -63,6 +64,6 @@ export default defineConfig(({ mode }) => {
       'process.env.VERIFY_MODEL': JSON.stringify(geminiExtraction ? geminiVerifyModel : (env.VERIFY_MODEL ?? '')),
     },
     server: { port: 5173, open: false, watch: { ignored: ['**/tmp/**', '**/output/**', '**/template-storage/**'] }, fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/template-storage/**', resolve(env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR || 'template-storage').replace(/\\/g, '/') + '/**'] } },
-    build: { outDir: 'dist', sourcemap: false, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), guidedReferencePlan: resolve(__dirname, 'guided-reference-plan/index.html'), latestReferencePlan: resolve(__dirname, 'latest-reference-plan/index.html'), step13ReferencePlan: resolve(__dirname, 'step13-reference-plan/index.html') } } },
+    build: { outDir: 'dist', sourcemap: false, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), step13ReferencePlan: resolve(__dirname, 'step13-reference-plan/index.html') } } },
   };
 });

@@ -1,8 +1,8 @@
 import { planDocumentFromDraft } from './plan-sketch-mapping';
 import { scheduleRecords, type AppState } from './logic';
 import { PROPERTY_DIRECTIONS } from './fields';
-import { parseDimension } from './guided-reference-plan/src/utils/dimensionUtils';
-import type { PlanDocument } from './guided-reference-plan/src/types';
+import { parseDimension } from './step13-reference-plan/src/utils/dimensionUtils';
+import type { PlanDocument } from './step13-reference-plan/src/types';
 
 function buildPlanSeed(state: AppState, scheduleId: string): PlanDocument {
   const base = planDocumentFromDraft(state, scheduleId);

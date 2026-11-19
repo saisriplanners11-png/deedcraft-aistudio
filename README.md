@@ -6,7 +6,7 @@ Create a sale deed through an 11-step wizard, covering deed setup, supporting do
 
 The output uses the supplied sale-deed Word template by default. A reviewed plan explicitly selected in the Property Plan step is appended to the deed; the separate combined plan PDF uses that plan or an unambiguous verified source plan for each schedule. On the Generate Deed step, a drafter may instead upload a compatible tagged `.docx` derived from the downloadable starter template. Clause wording, numbering, formatting, schedule variants, declaration and signatures come from the selected template. Supporting records populate existing fields; they do not add paragraphs. New drafts contain no sample parties, properties, dimensions, stamp values or payments.
 
-**Property Plan — New Generator**, **Property Plan — Latest Generator** and **Property Plan — Updated Generator** are optional plan steps. All three prefill current deed facts per schedule, support selective refresh, and save their own edits and library entries. “Use this plan in deed” attaches one rendered plan per schedule. Standalone print, PDF and Word exports are available. See [Step 11 source](guided-reference-plan/REFERENCE.md), [Step 12 source](latest-reference-plan/REFERENCE.md) and [Step 13 source](step13-reference-plan/REFERENCE.md).
+**Property Plan** is optional. It prefills current deed facts per schedule, supports selective refresh, and saves edits and library entries. “Use this plan in deed” attaches one rendered plan per schedule. Standalone print, PDF and Word exports are available. See the [generator source](step13-reference-plan/REFERENCE.md).
 
 ## Current template refresh
 
@@ -24,6 +24,14 @@ npm start
 ```
 
 Set `ANTHROPIC_API_KEY` in `.env.local` on the server. The key is never compiled into browser assets. The application needs the Node server or Vite proxy for AI extraction; it is not a static-only deployment.
+
+### Document extraction without AI credits
+
+Turn **AI extraction** off in the deed workspace and upload through the usual document controls. The browser reads supported printed fields from searchable PDFs, Word documents and text files and fills them automatically. Scans and photos use English and Telugu OCR on the device. Edit the filled fields directly if a correction is needed. Manual entries take priority.
+
+Local reading covers clearly labelled Link Deed, tax, enclosure, property, identity and supported payment proof fields. It reads a scanned region even if a PDF contains a separate searchable header, and keeps labelled rows aligned in Word and PDF forms. Supported Aadhaar letters can supply a printed relative's name from the line between the cardholder's name and the numbered address. A relationship type is extracted only if printed. Unfamiliar layouts, ambiguous details and handwriting may require manual entry. Dedicated GPA/AGPA authority evidence and additional template fields still need manual entry in local mode. Turn the switch on to use cloud extraction for a subsequent upload.
+
+A readable written mobile number takes priority over the number printed on Aadhaar. For handwriting the local reader cannot read, enter the values directly or attach a text file with labelled Mobile and Occupation lines to the same party. Local reading runs in the background so you can continue editing.
 
 To use Gemini for uploaded-file extraction while retaining Anthropic for drafting, add this to `.env.local` and restart the app:
 

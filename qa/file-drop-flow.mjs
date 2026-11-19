@@ -80,13 +80,17 @@ try {
   await page.locator('.workflow-steps button').first().click();
   await page.locator('.setup-fields select').nth(1).selectOption('sale-deed-by-gpa-holder');
   await page.locator('.workflow-steps button').nth(6).click();
-  await drop(page.locator('.authority-uploads').first(), [{ name: 'gpa.txt', type: 'text/plain' }]);
+  await page.getByRole('switch', { name: 'AI extraction' }).uncheck();
+  const authority = page.getByRole('region', { name: 'Sale authority details' });
+  await drop(authority.locator('.document-upload'), [{ name: 'gpa.txt', type: 'text/plain' }]);
   await expect(page.getByRole('link', { name: 'gpa.txt', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Add attorney', exact: true }).click();
-  await drop(page.locator('.authority-uploads').nth(1), [{ name: 'attorney.txt', type: 'text/plain' }]);
+  await page.getByRole('button', { name: 'Add blank executant instead', exact: true }).click();
+  await page.locator('.party-record-card').last().getByLabel('Party type').selectOption({ label: 'Attorney / Agent (ఏజెంట్)' });
+  const attorney = page.getByRole('region', { name: /Executant \d+ Attorney/ });
+  await drop(attorney.locator('.document-upload'), [{ name: 'attorney.txt', type: 'text/plain' }]);
   await expect(page.getByRole('link', { name: 'attorney.txt', exact: true })).toBeVisible();
-  await expect(page.locator('.authority-uploads').first().getByRole('link')).toHaveCount(1);
-  await expect(page.locator('.authority-uploads').nth(1).getByRole('link')).toHaveCount(1);
+  await expect(authority.getByRole('link')).toHaveCount(1);
+  await expect(attorney.getByRole('link')).toHaveCount(1);
   await page.getByRole('button', { name: 'Remove attorney.txt', exact: true }).click();
   await expect(page.getByRole('link', { name: 'attorney.txt', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'gpa.txt', exact: true })).toHaveCount(1);
@@ -94,7 +98,8 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: new URL('authority-mobile.png', folder).pathname.replace(/^\/([A-Za-z]:)/, '$1'), fullPage: true });
   await page.setViewportSize({ width: 1360, height: 1000 });
-  await page.locator('.workflow-steps button').nth(9).click();
+  await page.getByRole('navigation', { name: 'Deed steps' }).getByRole('button', { name: /^9\s+Reverify/ }).click();
+  await page.getByText('Word template for this draft', { exact: true }).click();
   await page.locator('.template-choices input[type=radio]').nth(1).check();
   await drop(page.locator('.custom-template'), [{ name: 'custom-v9.docx', base64: bytes.toString('base64') }]);
   await expect(page.locator('.template-status.valid')).toContainText('custom-v9.docx');
@@ -109,7 +114,7 @@ try {
   await expect(page.getByText(/Revision uploaded\. Review its validation report/)).toBeVisible();
   assert.equal(revisions, 1, 'Shared template drop must upload exactly once');
 
-  for (const editor of ['reference-plan', 'guided-reference-plan']) {
+  for (const editor of ['reference-plan', 'step13-reference-plan']) {
     await page.goto(base + '/' + editor + '/index.html');
     const sample = await page.evaluate(async editor => {
       const module = await import('/' + editor + '/src/components/SavedPlansModal.tsx');
@@ -117,9 +122,31 @@ try {
     }, editor);
     if (editor === 'reference-plan') await page.locator('#btn-app-library').click();
     else await page.getByRole('button', { name: /^Saved \(/ }).click();
-    await drop(page.locator('[data-file-drop-zone]').filter({ hasText: 'Import Plans JSON' }), [{ name: 'plans.json', type: 'application/json', text: sample }]);
+    const importInput = page.locator('label').filter({ hasText: 'Import Plans JSON' }).locator('input[type=file]');
+    await importInput.setInputFiles({ name: 'plans.json', mimeType: 'application/json', buffer: Buffer.from(sample) });
     await expect(page.getByText('DROP IMPORT QA ' + editor, { exact: true })).toBeVisible();
   }
+  await page.goto(base + '/step13-reference-plan/index.html');
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 400;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, 640, 400);
+    context.strokeRect(120, 60, 400, 280);
+    context.font = '20px sans-serif';
+    context.fillStyle = '#000';
+    context.fillText('North: 40 feet', 240, 50);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.route('**/api/analyze-sketch', route => route.fulfill({
+    json: { success: true, data: { northDim: '40', southDim: '40', eastDim: '28', westDim: '28', title: 'Synthetic plot sketch' } },
+  }));
+  await page.getByRole('button', { name: 'Upload Sketch', exact: true }).click();
+  await page.locator('input[accept="image/*,.pdf"]').first().setInputFiles({ name: 'synthetic-sketch.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await expect(page.getByAltText('Uploaded Manual Plan')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Apply Same to Same Drawing/i })).toBeEnabled();
   assert.deepEqual(errors, []);
-  console.log('PASS: multiple drops, validation, picker fallback, busy state, nested drops, existing uploader, GPA/attorney isolation, mobile layout, custom/shared templates and JSON imports in both plan editors.');
+  console.log('PASS: drag-and-drop controls, GPA and attorney attachments with AI off, custom/shared Word templates, plan JSON imports, and the separate sketch upload with a mocked AI response.');
 } finally { await browser.close(); }

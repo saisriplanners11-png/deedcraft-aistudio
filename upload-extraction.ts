@@ -1,5 +1,6 @@
 import { moneyPaise } from './deed-money';
 import { isoDate } from './deed-format';
+import { identityMobile, isWrittenMobile } from './identity-contact';
 import { acreGuntasToSqYards } from './land-area';
 import { localAuthorityName } from './fields';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -15,10 +16,12 @@ import { citedPage, imagePart, originalPageParts, pageText, prepareDocument, quo
 import { directionRegion } from './plan-regions';
 import type { PlanDrawing } from './registration-plan';
 import { fieldFingerprint, validateFieldValue, type TemplateField, type TemplateFieldCandidate } from './template-fields';
+import type { PayMode } from './payments';
 
 type Part = Anthropic.ContentBlockParam;
 type Page = DocumentPage;
 export type ExtractionProfile =
+  | `payment:${PayMode}`
   | 'guardian:executant' | 'guardian:claimant'
   | 'phase1:linkDoc' | 'phase1:houseTax' | 'phase1:titleDeed' | 'phase1:nala' | 'phase1:permissions' | 'phase1:layoutLrs' | 'phase1:landLayoutLrs'
   | 'phase1:vacantTax' | 'phase1:approvedLayout' | 'phase1:assessment' | 'phase1:lrsApplication' | 'phase1:lrsProceeding'
@@ -90,6 +93,7 @@ export function sameTranscription(a: Candidate, b: Candidate) {
     if(/^(nearHNo|bearingHNo)$/.test(a.field))value=value.replace(/^(?:(?:near|adjacent)\s+)?(?:h\.?\s*no\.?|house\s*(?:no\.?|number))\s*[:.-]?\s*/i,'');
     if(/^(linkSro|sro)$/.test(a.field))value=value.replace(/^(?:joint\s+)?sub[-\s]*registrar(?:\s+office)?\s*[:,-]?\s*/i,'');
     if(/(?:Name|RelativeName|RelationName)$/.test(a.field)) value = value.toLocaleUpperCase('en-IN');
+    if (/Mobile$/.test(a.field)) value = identityMobile(value) || value;
     if(a.field==='linkRegisteredVolume')value=value.replace(/^(?:book|volume)(?:\s*(?:no\.?|number))?\s*[:.-]?\s*/i,'');
     return value;
   };
@@ -405,7 +409,10 @@ export function cleanCandidate(raw: any, page: number, index: number, profile?: 
   if (/Pan$/.test(field)) value = value.toUpperCase();
   if (/Aadhaar$/.test(field) && !/^(?:\d{12}|\d{4} \d{4} \d{4})$/.test(value)) return null;
   if (/Pan$/.test(field) && !/^[A-Z]{5}\d{4}[A-Z]$/.test(value)) return null;
-  if (/Mobile$/.test(field) && !/^(?:\+91[ -]?)?\d{5}[ -]?\d{5}$/.test(value)) return null;
+  if (/Mobile$/.test(field)) {
+    value = identityMobile(value);
+    if (!value) return null;
+  }
   if (/PinCode$/.test(field) && !/^\d{6}$/.test(value)) return null;
   const isDate = [...ALL_FIELDS, ...PERSON_FIELDS].find(f => f.id === lookup)?.type === 'date' || field === 'date';
   if (isDate) value = isoDate(value);
@@ -890,7 +897,7 @@ export async function extractSections(inputPages: Page[], initialNotes: string[]
   return output();
 }
 
-const IDENTITY_INSTRUCTION = `Read the selected ID holder only. On Aadhaar, the holder's name is the standalone personal name near DOB/gender, NOT Government of India, UIDAI, the S/O/W/O/D/O/C/O relative or the address recipient. Prefer the visibly printed English name, preserving every initial, spelling and name component; do not transliterate when English is visible. Front and back describe the SAME person. An Aadhaar has no seller/buyer role: use the upload's selected role. When C/O is printed, transcribe C/O into the relationship field and the following name into the relative-name field; this is transcription only and does not establish parentage or guardian status. Never turn DOB into a name, use a relative as the holder or use the 16-digit VID as the 12-digit Aadhaar. For a year-only DOB or Year of Birth printed on Aadhaar, return only the four-digit year with its original label in the quotation. Leave masked Aadhaar digits blank. Do not infer occupation, mobile, PAN or missing address components. Each candidate must include source page, verbatim quote, region, handwritten and historical=false. Return no plan.`;
+const IDENTITY_INSTRUCTION = `Read the selected ID holder only. On Aadhaar, the holder's name is the standalone personal name near DOB/gender, NOT Government of India, UIDAI, the S/O/W/O/D/O/C/O relative or the address recipient. Prefer the visibly printed English name, preserving every initial, spelling and name component; do not transliterate when English is visible. Front and back describe the SAME person. An Aadhaar has no seller/buyer role: use the upload's selected role. When C/O is printed, transcribe C/O into the relationship field and the following name into the relative-name field; this is transcription only and does not establish parentage or guardian status. Never turn DOB into a name, use a relative as the holder or use the 16-digit VID as the 12-digit Aadhaar. For a year-only DOB or Year of Birth printed on Aadhaar, return only the four-digit year with its original label in the quotation. Leave masked Aadhaar digits blank. Inspect the margin and attached contact text for the holder's explicitly written occupation and complete mobile number. Prefer a clear separately written mobile number to the one printed on the Aadhaar. If more than one separately written number is visible, return the distinct readings with their own quotations; do not guess which is current. Mark actual handwriting accurately. Do not infer occupation, mobile, PAN or missing address components. Each candidate must include source page, verbatim quote, region, handwritten and historical=false. Return no plan.`;
 
 export function scopedIdentityCandidate(raw: any, profile: ExtractionProfile, page: number, index: number): Candidate | null {
   if (!raw || typeof raw.field !== 'string' || raw.historical !== false) return null;
@@ -943,14 +950,17 @@ async function extractIdentity(pages: Page[], notes: string[], signal: AbortSign
     return candidate && requestedFields.includes(candidate.field) && (visuallyRead(page) || quoteOccurs(pageText(page), candidate.quote)) ? [candidate] : [];
   }) : [];
   const [first, second] = reads.map(candidatesFor);
-  const match = (a: Candidate, b: Candidate) => a.page === b.page && sameTranscription(a, b);
+  const match = (a: Candidate, b: Candidate) => a.page === b.page && sameTranscription(a, b)
+    && isWrittenMobile(a) === isWrittenMobile(b);
   const severalHolders = (values: Candidate[]) => ['Name', 'Aadhaar', 'Pan'].some(suffix =>
     new Set(values.filter(c => c.field === prefix + suffix).map(c => c.value.toLocaleUpperCase('en-IN').trim())).size > 1);
   if (severalHolders(first) || severalHolders(second)) {
     progress({ id: 'identity', title: 'Identity details', state: 'review' });
     return { candidates: [], plans: [], notes: [...notes, 'Multiple ID holders were found. Upload only the selected person’s front and back.'] };
   }
-  const combined = [...first, ...second];
+  const all = [...first, ...second];
+  const written = new Set(all.filter(isWrittenMobile).map(candidate => candidate.field));
+  const combined = all.filter(candidate => !written.has(candidate.field) || isWrittenMobile(candidate));
   const holderConflict = first.some(a => a.field === prefix + 'Name' && second.some(b => b.field === a.field && !sameTranscription(a, b)));
   const candidates = combined.filter((candidate, index) => combined.findIndex(other => match(candidate, other)) === index)
     .map((candidate, index): Candidate => {

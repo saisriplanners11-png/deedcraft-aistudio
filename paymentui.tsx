@@ -123,13 +123,14 @@ function ModeTabs({ mode, onPick }: { mode: PayMode; onPick: (m: PayMode) => voi
  * way the same record is edited, and the fields shown follow the mode.
  */
 export function PaymentCard({
-  index, payment, onPatch, onRemove, canRemove,
+  index, payment, onPatch, onRemove, canRemove, onLocalUpload,
 }: {
   index: number;
   payment: Payment;
   onPatch: (patch: Partial<Payment>) => boolean | void;
   onRemove: () => void;
   canRemove: boolean;
+  onLocalUpload?: (files: File[]) => void;
 }) {
   const spec = modeSpec(payment.mode);
   const [busy, setBusy] = useState(false);
@@ -148,6 +149,7 @@ export function PaymentCard({
   const amount = Number(payment.amount) || 0;
 
   async function onFiles(files: File[]) {
+    if (onLocalUpload) { onLocalUpload(files); return; }
     readController.current?.abort();
     const controller = new AbortController();
     readController.current = controller;
@@ -267,7 +269,7 @@ export function PaymentCard({
         <span className="payment-upload-icon"><FileUp size={22} aria-hidden="true" /></span>
         <span style={css('display:flex;flex-direction:column;gap:2px;min-width:0')}>
           <span style={css(`font-family:${C.serif};font-size:13.5px;font-weight:600;color:${busy ? C.gold : C.ink}`)}>
-            {busy ? 'Reading…' : payment.docName ? payment.docName : `Upload the ${spec.label.toLowerCase()} — its details are read and filled in below`}
+            {busy ? 'Reading…' : onLocalUpload ? 'Upload payment proof to fill readable details' : payment.docName || `Upload the ${spec.label.toLowerCase()} — its details are read and filled in below`}
           </span>
           <span style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{spec.docLabel}</span>
         </span>

@@ -22,7 +22,7 @@ try {
     if (page.viewportSize().width <= 767) await page.locator('#mobile-step').selectOption(String(step));
     else await page.locator('.workflow-steps button').nth(step).click();
     await page.locator(`.workflow-step-${step}`).waitFor();
-    if (step === 10) await page.frameLocator('iframe[title="Property Plan — New Generator"]').locator('#btn-app-library').waitFor();
+    if (step === 10) await page.frameLocator('iframe[title="Property Plan"]').locator('#btn-app-library').waitFor();
   };
   await page.locator('.workflow-steps button').first().click();
   await page.getByLabel('What is this property?').selectOption('Residential:Finished');
@@ -37,7 +37,7 @@ try {
     await go(step);
     await capture(`step${step + 1}-desktop.png`);
   }
-  const frame = page.frameLocator('iframe[title="Property Plan — New Generator"]');
+  const frame = page.frameLocator('iframe[title="Property Plan"]');
   await frame.locator('#input-survey-no').waitFor();
   await frame.locator('#input-survey-no').fill('PLAN/123');
   await page.getByRole('button', { name: 'Review and refresh from deed', exact: true }).click();
@@ -59,7 +59,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Company representative overflows');
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   await capture('company-dark-mobile.png');
-  await go(9);
+  await go(8);
   await page.getByRole('radio', { name: /my template/i }).check();
   await page.getByRole('button', { name: 'Upload .docx template', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

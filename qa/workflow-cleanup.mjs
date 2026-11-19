@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
-const browser = await chromium.launch({ headless: true, channel: 'msedge' });
+const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' });
 const errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -15,7 +15,7 @@ try {
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.getByRole('button', { name: 'Create your first deed' }).click();
   await page.locator('.workflow-steps button').first().waitFor();
-  assert.equal(await page.locator('.workflow-steps button').count(), 13);
+  assert.equal(await page.locator('.workflow-steps button').count(), 11);
   const go = async index => page.locator('.workflow-steps button').nth(index).click();
   await go(0);
   await page.getByLabel('What is this property?').selectOption('Residential:Finished');
@@ -32,29 +32,14 @@ try {
   await page.getByRole('textbox', { name: /survey no/i }).fill('508/B');
   await go(9);
   await page.getByRole('button', { name: /Continue.*Property Plan/ }).click();
-  await page.frameLocator('iframe[title="Property Plan — New Generator"]').locator('#btn-app-library').waitFor();
-  const existing = page.frameLocator('iframe[title="Property Plan — New Generator"]');
-  assert.equal(await existing.locator('#input-survey-no').inputValue(), '508/B');
-  await existing.locator('#input-survey-no').fill('STEP-11');
-  await page.getByRole('button', { name: /Continue.*Latest Generator/ }).click();
-  const latest = page.frameLocator('iframe[title="Property Plan — Latest Generator"]');
-  await latest.locator('#btn-app-library').waitFor();
-  assert.equal(await latest.locator('#input-survey-no').inputValue(), '508/B');
-  await latest.locator('#input-survey-no').fill('STEP-12');
-  await page.getByRole('button', { name: /Continue.*Updated Generator/ }).click();
-  const updated = page.frameLocator('iframe[title="Property Plan — Updated Generator"]');
+  const updated = page.frameLocator('iframe[title="Property Plan"]');
   await updated.locator('#btn-app-library').waitFor();
   assert.equal(await updated.locator('#input-survey-no').inputValue(), '508/B');
-  await updated.locator('#input-survey-no').fill('STEP-13');
+  await updated.locator('#input-survey-no').fill('PLAN-EDITED');
+  await go(9);
   await go(10);
-  await existing.locator('#input-survey-no').waitFor();
-  assert.equal(await existing.locator('#input-survey-no').inputValue(), 'STEP-11');
-  await go(11);
-  await latest.locator('#input-survey-no').waitFor();
-  assert.equal(await latest.locator('#input-survey-no').inputValue(), 'STEP-12');
-  await go(12);
   await updated.locator('#input-survey-no').waitFor();
-  assert.equal(await updated.locator('#input-survey-no').inputValue(), 'STEP-13');
+  assert.equal(await updated.locator('#input-survey-no').inputValue(), 'PLAN-EDITED');
   await page.getByRole('button', { name: 'Review and refresh from deed' }).click();
   await page.locator('.plan-refresh-review').getByRole('checkbox', { name: /survey/i }).check();
   await page.getByRole('button', { name: 'Apply selected deed facts to plan' }).click();
@@ -64,44 +49,23 @@ try {
   await page.getByRole('button', { name: 'Continue / Edit' }).click();
   await updated.locator('#input-survey-no').waitFor();
   assert.equal(await updated.locator('#input-survey-no').inputValue(), '508/B');
-  // Explicitly choose a complete sample to exercise Step 13's rendered attachment bridge.
+  // Explicitly choose a complete sample to exercise the rendered attachment bridge.
   await updated.locator('#btn-app-library').click();
   await updated.locator('#tab-sample-templates').click();
   await updated.getByRole('button', { name: 'Load Template' }).first().click();
   await page.getByRole('button', { name: 'Use this plan in deed' }).click();
   await page.locator('.plan-workspace-actions').getByRole('status').waitFor();
-  await go(11);
-  assert.equal(await page.locator('.plan-workspace-actions').getByRole('status').count(), 0);
-  // Selecting Step 12 replaces the one attached plan for this schedule.
-  await latest.locator('#btn-app-library').click();
-  await latest.locator('#tab-sample-templates').click();
-  await latest.getByRole('button', { name: 'Load Template' }).first().click();
-  await go(10);
-  await go(11);
-  await latest.locator('#input-survey-no').waitFor();
-  await page.getByRole('button', { name: 'Use this plan in deed' }).click();
-  await page.locator('.plan-workspace-actions').getByRole('status').waitFor();
-  await go(12);
-  assert.equal(await page.locator('.plan-workspace-actions').getByRole('status').count(), 0);
-  await updated.locator('#input-survey-no').fill('STEP-13-EDITED');
-  await go(11);
-  await page.locator('.plan-workspace-actions').getByRole('status').waitFor();
-  await go(10);
-  await existing.locator('#input-survey-no').fill('STEP-11-EDITED');
-  await go(11);
-  await page.locator('.plan-workspace-actions').getByRole('status').waitFor();
-  await go(3);
-  await page.getByRole('textbox', { name: /survey no/i }).fill('508/C');
-  await go(11);
-  assert.equal(await page.locator('.plan-workspace-actions').getByRole('status').count(), 0);
+  await updated.locator('#btn-preview-edit').click();
+  await updated.locator('#input-village').fill('Plan Village');
+  await page.locator('.plan-workspace-actions').getByRole('status').waitFor({ state: 'hidden' });
   await page.setViewportSize({ width: 375, height: 812 });
-  assert.equal(await page.locator('#mobile-step option').count(), 14);
+  assert.equal(await page.locator('#mobile-step option').count(), 12);
   await page.locator('#mobile-step').selectOption('1');
   assert.equal(await page.getByLabel('What is this property?').count(), 0);
   await mkdir(new URL('../tmp/workflow-cleanup/', import.meta.url), { recursive: true });
   await page.screenshot({ path: new URL('../tmp/workflow-cleanup/documents-mobile.png', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('PASS: property type reused, change link, 13-step navigation, plan prefill, selective refresh, saved-step restoration, and attachment invalidation.');
+  console.log('PASS: property type reused, change link, 11-step navigation, plan prefill, selective refresh, saved-step restoration, and attachment invalidation.');
 } finally {
   await browser.close();
 }

@@ -55,7 +55,7 @@ const fields = [
   ['District', 'District'], ['State', 'State'], ['PinCode', 'PIN code'], ['SharePercentage', 'Share percentage (%) — optional'], ['Aadhaar', 'Aadhaar number'],
   ['Mobile', 'Mobile (optional)'], ['Pan', 'PAN (optional)'],
 ];
-export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children, principalIds = [], onCapacityChange, onDeleteAttorney, onRecordOrder }: { onRecordOrder?: (ids: string[]) => void; principalIds?: string[]; onCapacityChange?: (id: string, value: string) => void; onDeleteAttorney?: (id: string) => void; children?: React.ReactNode; state: AppState; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
+export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa, children, principalIds = [], onCapacityChange, onDeleteAttorney, onRecordOrder, aiExtraction = true }: { onRecordOrder?: (ids: string[]) => void; principalIds?: string[]; onCapacityChange?: (id: string, value: string) => void; onDeleteAttorney?: (id: string) => void; children?: React.ReactNode; state: AppState; aiExtraction?: boolean; onChange: (value: SaleAuthority) => void; onApplyGpa: (authority: SaleAuthority, result: AuthorityExtraction) => string; onApplyPerson: (person: AuthorityPerson, role: 'principal' | 'attorney', targetId: string) => string }) {
   const authority = state.saleAuthority || emptySaleAuthority();
   const latest = useRef({ authority, onChange, onApplyGpa, onApplyPerson }); latest.current = { authority, onChange, onApplyGpa, onApplyPerson };
   const controllers = useRef(new Set<AbortController>());
@@ -73,6 +73,11 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
   if (!state.saleDocument || state.saleDocument === 'ordinary') return <>{children}</>;
   async function extract(files: File[], ids: string[], authorityUpload = false) {
     if (!mounted.current) return;
+    if (!aiExtraction) {
+      setExtractionError('');
+      setProgress('Documents attached. Enter authority and representation details manually while AI extraction is off.');
+      return;
+    }
     setDialog({ names: files.map(file => file.name), label: authorityUpload ? `${state.saleDocument?.toUpperCase()} authority document` : 'Attorney identity / supporting document', result: '' });
     const controller = new AbortController(); controllers.current.add(controller); setExtractionError(''); setExtracting(true); setProgress('Preparing authority documents…');
     try {
@@ -147,8 +152,8 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     <h2>{saleDocumentLabel(state.saleDocument)} — authority details</h2>
     <p>Copy these registration details from the existing {state.saleDocument.toUpperCase()} document. Add principals and attorneys in Executant Details below and choose each person’s party type.</p>
     <AuthorityUploads label={`Upload ${state.saleDocument.toUpperCase()} documents`} documents={authority.documents} onExtract={(files, ids) => extract(files, ids, true)} onChange={documents => updateDocuments({ ...authority, documents })} />
-    {!!authority.documents?.length && <button type="button" disabled={extracting} onClick={() => void retry(authority.documents || [], true)}>Extract details from attached authority documents</button>}
-    {!!authority.documents?.length && !extracting && !extractionError && authority.documents.some(document => !(authority.extractions || []).some(read => read.documentIds.includes(document.id))) && <p role="alert">The authority document is attached, but extraction has not completed. Click “Extract details from attached authority documents”. If extraction fails, the error will appear here; uploading alone does not confirm that details were filled.</p>}
+    {aiExtraction && !!authority.documents?.length && <button type="button" disabled={extracting} onClick={() => void retry(authority.documents || [], true)}>Extract details from attached authority documents</button>}
+    {aiExtraction && !!authority.documents?.length && !extracting && !extractionError && authority.documents.some(document => !(authority.extractions || []).some(read => read.documentIds.includes(document.id))) && <p role="alert">The authority document is attached, but extraction has not completed. Click “Extract details from attached authority documents”. If extraction fails, the error will appear here; uploading alone does not confirm that details were filled.</p>}
     {extracting && <p role="status">Extracting authority details…</p>}
     {progress && !extractionError && <p role="status" aria-live="polite">{progress}</p>}
     {extractionError && <p role="alert">Extraction could not finish: {extractionError} Your attached documents are retained; retry extraction.</p>}

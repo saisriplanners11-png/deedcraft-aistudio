@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { saveAs } from 'file-saver';
 import mammoth from 'mammoth';
-import { downloadWord2007DeedDocx } from './guided-reference-plan/src/utils/deedDocxExporter';
-import { SAMPLE_TEMPLATES } from './guided-reference-plan/src/components/SavedPlansModal';
+import { downloadWord2007DeedDocx } from './step13-reference-plan/src/utils/deedDocxExporter';
+import { SAMPLE_TEMPLATES } from './step13-reference-plan/src/components/SavedPlansModal';
 
 vi.mock('file-saver', () => ({ saveAs: vi.fn() }));
-vi.mock('./guided-reference-plan/src/utils/capturePlan', () => ({
+vi.mock('./step13-reference-plan/src/utils/capturePlan', () => ({
   capturePlan: vi.fn(async () => ({
     width: 1, height: 1,
     toDataURL: () => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',
   })),
 }));
 
-describe('new generator Word export', () => {
+describe('property plan Word export', () => {
   it('produces a readable Word file with the selected plan facts and separate party identities', async () => {
     const plan = structuredClone(SAMPLE_TEMPLATES[0]);
     plan.property.surveyNo = 'EXPORT/123';
