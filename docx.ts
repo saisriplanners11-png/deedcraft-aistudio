@@ -3261,7 +3261,6 @@ function releaseWording(p:string, sellers:number,buyers:number,values:Record<str
   replace(/WITNESSES\/S/g,'WITNESSES');
   if (/^(?:IN CONSIDERATION|The receipt and sufficiency)/i.test(plainText(p).trim())) replace(/\btheir\b/g,sellers>1?'their':values['Executant Gender']==='Male'?'his':values['Executant Gender']==='Female'?'her':'their');
   replace(/\bWE DECLARE\b/g,sellers+buyers>1?'WE DECLARE':'I DECLARE');
-  replace(/SIGN\/S OF THE/g,'SIGNATURE'+(sellers===1&&buyers===1?'':'S')+' OF THE');
   return p;
 }
 function releaseShareWithExtent(share: string, values: Record<string, string>, variant: string): string {
@@ -3357,17 +3356,12 @@ export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewr
     const v={...merged,...s.values};
     return releasePropertyBlock(block,s,v,false,allowIncomplete);
   }).join('');
-  let closing=parts.chunks.slice(parts.tail).join('');
+  let closing=fill(parts.chunks.slice(parts.tail).join(''),merged);
   const sellers=JSON.parse(values['Release Releasor Names']||'[]') as string[],buyers=JSON.parse(values['Release Releasee Names']||'[]') as string[];
-  closing=closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>{
-    if(/SIGN\/S OF THE RELEASOR\/S/.test(plainText(p))) return sellers.map((name,i)=>paragraphLike(p,`${i+1}. ${name} — SIGNATURE OF THE RELEASOR`)).join('')+buyers.map((name,i)=>paragraphLike(p,`${i+1}. ${name} — SIGNATURE OF THE RELEASEE`)).join('');
-    return p;
-  });
-  closing=fill(closing,merged);
   let signing=false;
   closing=closing.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g,p=>{
     const text=plainText(p).trim();
-    if(/SIGNATURE OF THE RELEASOR/.test(text)) signing=true;
+    if(/SIGN\/S OF THE RELEASOR/i.test(text)) signing=true;
     if(signing && !/^2\.$/.test(text)) p=keepWithNext(p);
     if(signing && /^2\.$/.test(text)) signing=false;
     return p;

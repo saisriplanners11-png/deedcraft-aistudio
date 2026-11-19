@@ -1,5 +1,6 @@
 import { PlanDocument, BoundaryDimensions, PropertyDetails, RoadSideOption, PartyDetails } from '../types';
 import { parseDimension, calculateSqMtrs } from '../utils/dimensionUtils';
+import { withPlanDocumentProperty, type PlanDocumentScope } from '../../../plan-document-input';
 
 export interface PartyExtract {
   partyType?: 'individual' | 'gpa_attorney' | 'minor_guardian' | 'company' | 'society' | 'firm';
@@ -21,6 +22,7 @@ export interface PartyExtract {
 }
 
 export interface ExtractedSketchData {
+  documentScope?: PlanDocumentScope;
   northDim: string;
   southDim: string;
   eastDim: string;
@@ -374,7 +376,7 @@ export function applyExtractedDataToPlan(
     .filter((e) => e && ((e.name && e.name.trim()) || (e.relativeName && e.relativeName.trim())))
     .map((e) => ({
       name: (e.name || '').trim(),
-      relation: (e.relation || 'S/o').trim(),
+      relation: (e.relation || (extracted.documentScope ? '' : 'S/o')).trim(),
       relativeName: (e.relativeName || '').trim(),
       age: (e.age !== undefined && e.age !== null ? String(e.age) : '').trim(),
       occupation: (e.occupation || '').trim(),
@@ -404,7 +406,7 @@ export function applyExtractedDataToPlan(
     .filter((c) => c && ((c.name && c.name.trim()) || (c.relativeName && c.relativeName.trim())))
     .map((c) => ({
       name: (c.name || '').trim(),
-      relation: (c.relation || 'S/o').trim(),
+      relation: (c.relation || (extracted.documentScope ? '' : 'S/o')).trim(),
       relativeName: (c.relativeName || '').trim(),
       age: (c.age !== undefined && c.age !== null ? String(c.age) : '').trim(),
       occupation: (c.occupation || '').trim(),
@@ -412,6 +414,11 @@ export function applyExtractedDataToPlan(
     }));
 
   const updatedClaimant = validClaimants.length > 0 ? validClaimants : currentPlan.claimant;
+
+  if (extracted.documentScope) {
+    const plan = extracted.documentScope === 'parties' ? currentPlan : withPlanDocumentProperty(currentPlan, extracted, parseDimension);
+    return { ...plan, executant: updatedExecutant, claimant: updatedClaimant };
+  }
 
   return {
     ...currentPlan,
@@ -424,18 +431,15 @@ export function applyExtractedDataToPlan(
   };
 }
 
-export async function parseDocumentFile(fileBase64?: string, mimeType?: string, textContent?: string): Promise<ExtractedSketchData> {
+export async function parseDocumentFile(input: { fileBase64?: string; mimeType?: string; textContent?: string }, scope: PlanDocumentScope, signal: AbortSignal): Promise<ExtractedSketchData> {
   try {
     const response = await fetch('/api/parse-document', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        fileBase64,
-        mimeType,
-        textContent,
-      }),
+      body: JSON.stringify({ ...input, scope }),
+      signal,
     });
 
     const result = await response.json();
@@ -443,9 +447,9 @@ export async function parseDocumentFile(fileBase64?: string, mimeType?: string, 
       throw new Error(result.error || 'Failed to parse document.');
     }
 
-    return result.data as ExtractedSketchData;
+    return { ...result.data, documentScope: scope } as ExtractedSketchData;
   } catch (error: any) {
-    console.error('Document parsing service error:', error);
+    if (!signal.aborted) console.error('Document parsing service error:', error);
     throw error;
   }
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { PartyDetails, Witnesses } from '../types';
 import { UserCheck, Users, Briefcase, Calendar, MapPin, Plus, Trash2, Sparkles, Upload, Loader2, CheckCircle2 } from 'lucide-react';
 import { parseDocumentFile } from '../services/sketchAiService';
-import mammoth from 'mammoth';
+import { planDocumentInput } from '../../../plan-document-input';
 
 interface PartiesFormProps {
   executant: PartyDetails[];
@@ -49,32 +49,24 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [extractedFeedback, setExtractedFeedback] = useState<string | null>(null);
 
+  const documentRead = React.useRef<AbortController | null>(null);
+  const applyDocument = React.useRef(onApplyExtractedData);
+  applyDocument.current = onApplyExtractedData;
+  React.useEffect(() => () => documentRead.current?.abort(), []);
+
   const handleDocumentFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    documentRead.current?.abort();
+    const controller = new AbortController();
+    documentRead.current = controller;
     setIsUploadingDoc(true);
     setExtractedFeedback(null);
     try {
-      let textContent = '';
-      if (file.name.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        textContent = result.value;
-      }
-
-      let base64 = undefined;
-      if (!textContent) {
-        const reader = new FileReader();
-        base64 = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      }
-
-      const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-      const extracted = await parseDocumentFile(base64, mimeType, textContent || undefined);
+      const input = await planDocumentInput(file, controller.signal);
+      const extracted = await parseDocumentFile(input, 'parties', controller.signal);
+      if (controller.signal.aborted) return;
       
       const rawExecs = extracted.executants || (Array.isArray(extracted.executant) ? extracted.executant : (extracted.executant ? [extracted.executant] : []));
       const rawClaims = extracted.claimants || (Array.isArray(extracted.claimant) ? extracted.claimant : (extracted.claimant ? [extracted.claimant] : []));
@@ -83,7 +75,7 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
         .filter((item) => item && (item.name?.trim() || item.relativeName?.trim()))
         .map((item) => ({
           name: item.name?.trim() || '',
-          relation: item.relation?.trim() || 'S/o',
+          relation: item.relation?.trim() || '',
           relativeName: item.relativeName?.trim() || '',
           age: item.age !== undefined && item.age !== null ? String(item.age).trim() : '',
           occupation: item.occupation?.trim() || '',
@@ -94,15 +86,15 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
         .filter((item) => item && (item.name?.trim() || item.relativeName?.trim()))
         .map((item) => ({
           name: item.name?.trim() || '',
-          relation: item.relation?.trim() || 'S/o',
+          relation: item.relation?.trim() || '',
           relativeName: item.relativeName?.trim() || '',
           age: item.age !== undefined && item.age !== null ? String(item.age).trim() : '',
           occupation: item.occupation?.trim() || '',
           address: item.address?.trim() || '',
         }));
 
-      if (onApplyExtractedData) {
-        onApplyExtractedData(extracted);
+      if (applyDocument.current) {
+        applyDocument.current(extracted);
       } else {
         if (validExecs.length > 0) onExecutantChange(validExecs);
         if (validClaims.length > 0) onClaimantChange(validClaims);
@@ -112,10 +104,14 @@ export const PartiesForm: React.FC<PartiesFormProps> = ({
         `సంగ్రహించబడ్డాయి: ${validExecs.length || (extracted.executant ? 1 : 0)} Executants, ${validClaims.length || (extracted.claimant ? 1 : 0)} Claimants Auto-Filled!`
       );
     } catch (err: any) {
+      if (controller.signal.aborted) return;
       alert('డ్యాక్యుమెంట్ పార్సింగ్ విఫలమైంది: ' + (err.message || 'Error'));
     } finally {
-      setIsUploadingDoc(false);
-      e.target.value = '';
+      if (documentRead.current === controller) {
+        documentRead.current = null;
+        setIsUploadingDoc(false);
+        e.target.value = '';
+      }
     }
   };
 

@@ -20,7 +20,7 @@ import { hasPaymentStep, stepsFor, adjacentWorkflowStep, normalizeSavedWorkflowS
 import { isEntity, partyDisplayName, representativeDesignationOptions } from './party-entities';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, Download, FileDown, Map as MapIcon, AlertCircle, UserRound, Building2, House } from 'lucide-react';
+import { Pencil, ArrowRight, Check, FileText, FolderOpen, LayoutGrid, Moon, Plus, Search, Sun, Files, ListChecks, CircleCheck, Users, CreditCard, UserRound, Building2, House } from 'lucide-react';
 import { ALL_FIELDS, HOUSE_PTIN_PAIR_CATEGORIES, PROPERTY_DIMENSIONS, PARTY_CAPACITY_OPTIONS, PERSON_FIELDS, partyKey, personField, GROUPS, groupsForStep, LINK_OPTIONS, TITLE_SECTION_IDS, newPartyRepresentative, newStructureDetail, newStructureDetails, partyEntityFields, ROOF_NATURE_OPTIONS, STRUCTURE_TYPE_OPTIONS, type PartyRepresentative, type PartyType, type StructureDetails } from './fields';
 import { STEPS, DEEDS, DRAFTS, CATEGORIES } from './reference';
 import { SaleAuthorityEditor } from './sale-authority-ui';
@@ -28,7 +28,7 @@ import { FileDropZone } from './file-drop-zone';
 import { defaultTemplateForDraft, savedTemplateStatus, templateIsEarlier, updateSavedDeedTemplate } from './template-version-status';
 import { POA_RELATIONSHIPS, isGeneralPoa, isFamilyPoa, poaRelationship, poaRelationshipErrors, poaValues } from './poa-options';
 import { GIFT_RELATIONSHIPS, giftRelationshipValues } from './gift-options';
-import { SALE_DOCUMENT_OPTIONS, saleVariant, saleDocumentLabel, saleAuthorityErrors, salePropertyErrors } from './sale-options';
+import { SALE_DOCUMENT_OPTIONS, saleVariant, saleAuthorityErrors, salePropertyErrors } from './sale-options';
 import { HOUSE_OPTIONS, FLAT_OPTIONS, propertyChoice, flatLabel, flatStage, isFinishedHouse } from './flat-options';
 import {
   appStateFor, draftReducer, EXTRACTION_VERSION, fieldKey, newDraft,
@@ -77,6 +77,7 @@ import './finish-workflow.css';
 import './property-party-polish.css';
 import './workspace-density.css';
 import './friendly-workspace.css';
+import './workspace-fonts.css';
 import './workspace.css';
 import { WorkflowNavigation } from './workflow-navigation';
 import { ScreenGuide, GettingStartedGuide } from './screen-guide';
@@ -441,7 +442,7 @@ function TitlePointCard({ option, record, ordinal, form, onField, onUpload, sour
 function addDocumentsInPlace(anchor: HTMLElement, add: () => void, focus?: () => HTMLElement | null) {
   const bottom = anchor.getBoundingClientRect().bottom;
   flushSync(add);
-  window.scrollBy({ top: anchor.getBoundingClientRect().bottom - bottom, behavior: 'instant' });
+  (anchor.closest('.stage') ?? window).scrollBy({ top: anchor.getBoundingClientRect().bottom - bottom, behavior: 'instant' });
   focus?.()?.focus({ preventScroll: true });
 }
 
@@ -764,7 +765,6 @@ export default function WizardApp() {
   // Read-only: only its pure-derived numbers (checks, pct, conversions) are used below.
   // Every real edit goes through `dispatch`/`edit`, never this setter.
   const baseNotices = [...generationBlockers(state), ...(draft.sources.some(s=>s.status==='reading'||s.status==='queued') ? [{id:'pending-uploads',label:'Document verification',reason:'Wait for all uploads to finish verification.',source:'Uploaded documents',step:1}] : [])];
-  const shareBlockers = baseNotices.filter(item => item.id.startsWith('vendee-share-') || item.id.startsWith('vendor-share-'));
   const recordOptions = (role: Role) => {
     const ids = [...new Set(Object.keys(resolved.values).filter(k => k.startsWith(role + '|')).map(k => k.split('|')[1]))];
     return role === 'link' ? orderedEnclosureIds(ids, draft.linkPropertyRecords, draft.manual) : ids;
@@ -875,7 +875,7 @@ export default function WizardApp() {
     dispatch({ type: 'step', step: s });
     requestAnimationFrame(() => {
       document.getElementById('workspace-title')?.focus({ preventScroll: true });
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      document.getElementById('workspace-main')?.scrollTo({ top: 0, behavior: 'instant' });
     });
   };
   const gotoTemplateField = (instance: TemplateFieldInstance) => {
@@ -922,6 +922,14 @@ export default function WizardApp() {
   };
 
   useEffect(() => () => { controllers.current.forEach(c => c.abort()); }, []);
+  const previousSourceIds = useRef(new Set<string>());
+  useEffect(() => {
+    const retained = new Set(draft.sources.map(source => source.id));
+    for (const id of previousSourceIds.current) {
+      if (!retained.has(id)) controllers.current.get(id)?.abort();
+    }
+    previousSourceIds.current = retained;
+  }, [draft.sources]);
 
   /** Reads one ordered source bundle, binding it to one record so it never spills into another. */
   async function runUpload(files: File[], assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
@@ -987,7 +995,7 @@ export default function WizardApp() {
             if (customRecord && latest.instances.some(instance => instance.record.scope === customRecord.scope && instance.record.id === customRecord.id && instance.field.extractionEnabled)) void runTemplateExtraction(files, customRecord, { id: sourceId, revision: 0 } as Source);
           });
         }
-      });
+      }, controller.signal);
     } catch (error: any) {
       if (valid()) {
         setUploadSteps(s=>({...s,[sourceId]:(s[sourceId]||[]).map(step=>step.state==='running'||step.state==='queued'?{...step,state:'error' as const}:step)}));
@@ -1000,13 +1008,15 @@ export default function WizardApp() {
   function retryUpload(source: Source) {
     const files = sourceFiles[source.id];
     if (!files?.length) { setMessage('The original upload is unavailable. Please upload the file again.'); return; }
+    controllers.current.get(source.id)?.abort();
     dispatch({ type: 'remove', id: source.id });
     setSourceFiles(old => { const next = { ...old }; delete next[source.id]; return next; });
     void runUpload(files, source.assignment, (source.profile || 'general') as ExtractionProfile);
   }
   const uploadFor = (role: Role, record: string, profile?: ExtractionProfile, propertyRecord = activePropertyId) => (files: File[]) => {
     const scoped = profile || (role === 'executant' ? 'party:executant' : role === 'claimant' ? 'party:claimant' : 'general');
-    if (scoped === 'phase1:linkDoc' || scoped === 'jurisdiction' || scoped === 'property-schedule') {
+    if (scoped === 'phase1:linkDoc' || scoped === 'jurisdiction' || scoped === 'property-schedule'
+      || scoped.startsWith('party:') || scoped.startsWith('guardian:') || scoped === 'party-person') {
       void runUpload(files, { role, record, ...(role === 'link' ? { propertyRecord } : {}) }, scoped);
     } else {
       for (const file of files) void runUpload([file], { role, record, ...(role === 'link' ? { propertyRecord } : {}) }, scoped);
@@ -1086,21 +1096,15 @@ export default function WizardApp() {
     const base = existing.includes('primary') ? ['primary', ...existing.filter(record => record !== 'primary')] : existing.length ? existing : ['primary'];
     return inRecordOrder([...base, ...extraPartyRecords[role].filter(r => !base.includes(r))], draft.recordOrder?.[role], id => id);
   };
-  /** One new row per uploaded ID (each is its own person); no files chosen still creates one blank row to type into. */
+  /** The files selected together on this control describe one new party. */
   const addPartyRecord = (role: 'executant' | 'claimant') => (files: File[]) => {
     // Persist even untouched blank cards so numbering and share checks use the
     // same parties as the UI, including after a draft is reopened.
     if (!recordOptions(role).length) dispatch({ type: 'add-party', role, record: 'primary' });
-    if (!files.length) { const record = crypto.randomUUID(); dispatch({ type: 'add-party', role, record }); setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] })); return; }
-    for (const file of files) {
-      const record = crypto.randomUUID();
-      dispatch({ type: 'add-party', role, record });
-      setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] }));
-      // Extra people use the same identity-only profile as the primary card.  A
-      // generic extraction here used to discard address/identity candidates
-      // during profile filtering, leaving this newly added card blank.
-      void runUpload([file], { role, record }, role === 'executant' ? 'party:executant' : 'party:claimant');
-    }
+    const record = crypto.randomUUID();
+    dispatch({ type: 'add-party', role, record });
+    setExtraPartyRecords(s => ({ ...s, [role]: [...s[role], record] }));
+    if (files.length) void runUpload(files, { role, record }, role === 'executant' ? 'party:executant' : 'party:claimant');
   };
   const clearPartyRecord = (role: 'executant' | 'claimant', record: string) => {
     dispatch({ type: 'remove-party', role, record });
@@ -1298,11 +1302,30 @@ export default function WizardApp() {
   const activeScheduleMerge = scheduleMerges[activePropertyIndex];
   const claimantIds = partyRecordIds('claimant');
   const executantIds = partyRecordIds('executant');
-  const includeTypingStamp = draft.manual.includePreparedBy === 'true';
-  const typingName = (draft.manual.typingStampName || '').toLocaleUpperCase('en-IN');
-  const typingMobile = (draft.manual.typingStampMobile || '').trim();
-  const typingStamp = includeTypingStamp && typingName.trim() && isMobileNumber(typingMobile)
-    ? { name: typingName.trim(), mobile: typingMobile, place: draft.manual.typingStampPlace || '' }
+  const includeTypingStamp = (draft.manual.includePreparedBy ?? 'true') === 'true';
+  const hasSavedTypingDetails = ['typingStampName', 'typingStampPlace', 'typingStampMobile']
+    .some(key => Object.hasOwn(draft.manual, key));
+  const typingDetails = hasSavedTypingDetails ? {
+    typingStampName: draft.manual.typingStampName ?? '',
+    typingStampPlace: draft.manual.typingStampPlace ?? '',
+    typingStampMobile: draft.manual.typingStampMobile ?? '',
+  } : {
+    typingStampName: 'Gundlapelli Sampath',
+    typingStampPlace: 'Sircilla',
+    typingStampMobile: '9866270006',
+  };
+  function editTypingDetail(key: keyof typeof typingDetails, value: string) {
+    if (!hasSavedTypingDetails) {
+      for (const [otherKey, otherValue] of Object.entries(typingDetails)) {
+        if (otherKey !== key) dispatch({ type: 'manual', key: otherKey, value: otherValue });
+      }
+    }
+    dispatch({ type: 'manual', key, value });
+  }
+  const typingName = typingDetails.typingStampName.trim().toLocaleUpperCase('en-IN');
+  const typingMobile = typingDetails.typingStampMobile.trim();
+  const typingStamp = includeTypingStamp && typingName && isMobileNumber(typingMobile)
+    ? { name: typingName, mobile: typingMobile, place: typingDetails.typingStampPlace }
     : undefined;
 
   async function generate(kind: 'word' | 'telugu' | 'pdf', confirmedReasons?: string[]) {
@@ -1559,12 +1582,12 @@ export default function WizardApp() {
         {storageError && <p className="notice" role="alert">{storageError}</p>}
         {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
         <header className="compact-step-header">
-          <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div><p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p>
+          <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div>{step !== 9 && <p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p>}
           {step >= 0 && step < 8 && <div className="step-quick-actions"><button type="button" className="primary" onClick={() => goto(followingStep)}>Next: {STEPS[followingStep]?.label}</button>
           {notices.some(issue => issue.step === step) && <a href="#step-review">Details to check</a>}</div>}</div>
         </header>
-        {step >= 0 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
-        {[-1, 3, 6, 7, 8, 9].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
+        {step >= 0 && step !== 9 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
+        {[-1, 3, 6, 7, 8].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
         {fieldContract.fields.some(field => field.placement) && (extractingTemplateFields || templateFieldMessage) && <div className="notice"><p role="status">{templateFieldMessage}</p>{extractingTemplateFields && <button type="button" onClick={cancelTemplateExtraction}>Cancel additional-field read</button>}</div>}
 
 
@@ -1690,7 +1713,7 @@ export default function WizardApp() {
           {state.form.giftRelationship === 'other' && <label className="field"><span>Relationship wording</span><input aria-label="Relationship wording" value={state.form.giftRelationshipCustom || ''} onChange={event => edit('property', 'primary', 'giftRelationshipCustom', event.target.value)} /><small>Enter the full phrase, for example “son and daughter” for two Donees. Confirm it applies to the listed Donors.</small></label>}
           <div className="gift-clause-preview"><strong>Clause preview</strong><p>{giftRelationshipValues(state)['Gift Relationship Recital'] || 'Choose a relationship to preview the gift recital.'}</p></div>
         </section>}
-        {authorityErrors.length > 0 && [8, 9].includes(step) && <details className="notice" open={step !== 6}><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
+        {authorityErrors.length > 0 && step === 8 && <details className="notice" open><summary>Complete document details ({authorityErrors.length})</summary><ul>{authorityErrors.map(error => <li key={error}>{error}</li>)}</ul><button type="button" onClick={() => goto(6)}>Open Executants and authority</button><button type="button" onClick={() => goto(0)}>Choose property type and stage</button></details>}
         {step === 1 && (() => {
           const scope = 'link:' + activePropertyId;
           const records = inRecordOrder(recordOptions('link').filter(record => propertyForLinkRecord(record) === activePropertyId), draft.recordOrder?.[scope], id => id);
@@ -1912,11 +1935,9 @@ export default function WizardApp() {
           </details>
         </section>}
 
-        {step === 9 && <section className="panel download">
-          <div className="finish-section-heading"><span className="finish-heading-icon"><Download size={22} aria-hidden="true" /></span><div><h2>Prepare your downloads</h2><p>Choose your template, then download the deed or property plan.</p></div><button type="button" className="quiet download-review-link" onClick={() => goto(8)}>Back to final review <ArrowRight size={14} aria-hidden="true" /></button></div>
-          <p role="status"><strong>{isRelease ? 'Release Deed' : isReconveyance ? 'Deed Of Reconvayance' : generalPoa || agreementSaleGpa ? `${instrumentTitle} — ${state.draft}` : draft.instrumentId === 'gift' ? (municipalGift ? 'Municipal Gift Deed' : 'Gift Settlement Deed') : saleDocumentLabel(state.saleDocument)}</strong> · {propertyRecords.map(record => `${record.category} ${record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''}`.trim()).join(' / ')}</p>
-          <div className="template-picker" aria-label="Word template">
-            <div className="template-picker-heading"><h3>1. Choose the Word template</h3><span>Applies to this draft</span></div>
+        {step === 8 &&
+          <details className="template-picker review-template-picker">
+            <summary>Word template for this draft</summary>
             <div className="template-choices">
               <label className={templateMode === 'built-in' ? 'selected' : ''}>
                 <input type="radio" name="template-mode" checked={templateMode === 'built-in'} onChange={() => { setTemplateMode('built-in'); setDownload(null); setMessage(''); }} />
@@ -1940,39 +1961,42 @@ export default function WizardApp() {
               {!customTemplate && !validatingTemplate && <small>No custom template selected. Upload a compatible .docx or choose the built-in template.</small>}
               <small>Per-deed custom templates are checked locally and are not sent to the extraction AI. Publish shared revisions from Dashboard → Templates. Compatibility checks do not legally approve customer-authored wording.</small>
             </FileDropZone>}
-          </div>
-          <div className="template-picker">
+            {message && <p className="export-feedback" role="status">{message}</p>}
+          </details>}
+        {step === 9 && <div className="generation-columns">
+          <section className="panel" aria-labelledby="deed-download-heading">
+            <h2 id="deed-download-heading">Download deed</h2>
+            <div className="language-actions" aria-busy={exporting}>
+              <button type="button" className="primary" disabled={exporting || validatingTemplate} onClick={() => void generate('word')}>
+                <span aria-hidden="true">EN</span>Download English (.docx)
+              </button>
+              <button type="button" className="primary" disabled={exporting || validatingTemplate} onClick={() => void generate('telugu')}>
+                <span aria-hidden="true" lang="te">తె</span>Download Telugu (.docx)
+              </button>
+            </div>
+            {(exporting || validatingTemplate || message) && <p className="export-feedback" role="status">
+              {exporting ? 'Preparing your download…' : validatingTemplate ? 'Checking the selected Word template…' : message}
+            </p>}
+          </section>
+          <section className="panel" aria-labelledby="typing-stamp-heading">
+            <h2 id="typing-stamp-heading">Typed By stamp</h2>
             <label className="typing-stamp-toggle">
               <input type="checkbox" checked={includeTypingStamp} onChange={event => dispatch({ type: 'manual', key: 'includePreparedBy', value: event.target.checked ? 'true' : '' })} />
-              <span><b>Include Typed By stamp</b><small>Prints at the end of the Word deed.</small></span>
+              Include Typed By stamp
             </label>
             {includeTypingStamp && <div className="typing-stamp-fields">
-              <label>Name<input type="text" autoCapitalize="characters" value={typingName} onChange={event => dispatch({ type: 'manual', key: 'typingStampName', value: event.target.value.toLocaleUpperCase('en-IN') })} /></label>
-              <label>Place (optional)<input type="text" value={draft.manual.typingStampPlace || ''} onChange={event => dispatch({ type: 'manual', key: 'typingStampPlace', value: event.target.value })} /></label>
-              <Input field={{ id: 'typingStampMobile', label: 'Mobile number', type: 'tel' }} value={draft.manual.typingStampMobile || ''} onChange={value => dispatch({ type: 'manual', key: 'typingStampMobile', value })} />
+              <label>Name<input type="text" value={typingDetails.typingStampName} onChange={event => editTypingDetail('typingStampName', event.target.value)} /></label>
+              <label>Place (optional)<input type="text" value={typingDetails.typingStampPlace} onChange={event => editTypingDetail('typingStampPlace', event.target.value)} /></label>
+              <Input field={{ id: 'typingStampMobile', label: 'Mobile number', type: 'tel' }} value={typingDetails.typingStampMobile} onChange={value => editTypingDetail('typingStampMobile', value)} />
             </div>}
-          </div>
-          <h3 className="export-section-title">2. Download your files</h3>
-          <div className="export-options" aria-busy={exporting}>
-            <article className="export-card export-word"><div className="export-file-icon"><FileDown size={25} aria-hidden="true" /></div><div><span className="export-format">WORD DOCUMENT · .DOCX</span><h3>Editable deed</h3><p>Open in Microsoft Word to review the wording and finish any write-in details.</p></div>
-              <button className="primary" aria-describedby="word-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate)} onClick={() => generate('word')}>{exporting ? 'Preparing…' : 'Download Word 2007 deed (.docx)'}</button>
-              <button type="button" aria-describedby="telugu-download-state" disabled={exporting || (templateMode === 'custom' && validatingTemplate)} onClick={() => generate('telugu')}>Download Telugu Word deed (.docx)</button>
-              <small id="telugu-download-state">తెలుగు దస్తావేజు · AI translation of the deed text. Review it against the English copy before use.</small>
-              <small id="word-download-state">{minorDownloadErrors || (exporting ? 'Preparing your files. Please keep this screen open.' : templateMode === 'custom' && validatingTemplate ? 'Checking the custom template.' : !generationReady ? [...deedRelease.reasons, ...authorityErrors].join(' ') : authorityErrors.length ? authorityErrors.join(' ') : !templateReady ? 'The custom Word template has compatibility issues.' : templateFieldErrors.length || notices.length ? 'Review the outstanding details before using this draft.' : 'Read the generated deed before using it.')}</small>{minorDownloadErrors && <button type="button" className="quiet" onClick={() => goto(minorDownloadErrors.startsWith('Claimant') ? 7 : 6)}>Complete guardian details</button>}
-            </article>
-            <article className="export-card"><div className="export-file-icon"><MapIcon size={25} aria-hidden="true" /></div><div><span className="export-format">PROPERTY PLAN · PDF</span><h3>Plan for printing</h3><p>Download the property-plan PDF. This is a separate file from the Word deed.</p></div>
-              <button aria-describedby="plan-download-state" disabled={exporting} onClick={() => generate('pdf')}>Download plan PDF</button>
-              <small id="plan-download-state">{exporting ? 'Preparing your files…' : 'Check the property plan before printing.'}</small>
-            </article>
-          </div>
-          {message && <p className="export-feedback" role="status">{message}</p>}
-          {templateFieldErrors.length > 0 && <div className="notice" role="alert"><b>Template fields need attention</b><ul>{templateFieldResolution.instances.filter(instance => instance.error).map(instance => <li key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}>{instance.record.label}: {instance.error}{instance.field.placement && <button type="button" onClick={() => gotoTemplateField(instance)}>Go to field</button>}</li>)}</ul></div>}
-          {shareBlockers.length > 0 && <p className="notice" role="alert">Review the entered ownership percentages. Invalid and blank percentages are omitted. <button type="button" onClick={() => goto(-1)}>Review party details</button></p>}
-          <details className="download-outstanding"><summary><AlertCircle size={17} aria-hidden="true" />{notices.length ? `${notices.length} details to review before using this draft` : 'Review the current readiness status'}</summary><ReviewIssues issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} compact /></details>
-
-        </section>}
+          </section>
+        </div>}
 
         {(step === 10 || step === 11 || step === 12) && <section className="panel reference-plan-step">
+          <div className="plan-download-actions">
+            <button type="button" disabled={exporting} onClick={() => void generate('pdf')}>{exporting ? 'Preparing…' : 'Download plan PDF'}</button>
+            {message && <p role="status">{message}</p>}
+          </div>
           <div className="plan-schedule-tabs">{propertyIds.map((id, index) => <button key={id} className={id === activePropertyId ? 'primary' : ''} onClick={() => dispatch({ type: 'active-property', id })}>Schedule {index + 1}</button>)}</div>
           <GuidedReferenceStep variant={planVariant} key={`${step}:${draft.id}:${activePropertyId}`} draftId={draft.id} scheduleId={activePropertyId} theme={theme}
             seed={guidedPlanFromDraft(state, activePropertyId)} doc={activePlanDraft}
@@ -2003,12 +2027,12 @@ export default function WizardApp() {
             else document.getElementById('workspace-title')?.focus();
           }}>Return to entry</button></li>)}</ul>
         </section>}
-        {step >= 0 && <footer className="navigation">
+      </main>
+      {step >= 0 && <footer className="navigation">
           <button disabled={step <= -1} onClick={() => goto(previousStep)}>{step <= 0 ? 'Overview' : STEPS[previousStep]?.label || 'Overview'}</button>
           <span><strong>Saved as you work</strong><small>You can go back and change any detail.</small></span>
           {step < STEPS.length - 1 && <button className="primary" onClick={() => goto(followingStep)}>{step < 0 ? 'Start at Step 01' : `Continue → ${STEPS[followingStep]?.label ?? 'Generate'}`}</button>}
-        </footer>}
-      </main>
+      </footer>}
     </div>}
   </div></TemplatePlacementSurface>;
 }

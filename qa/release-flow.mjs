@@ -17,7 +17,8 @@ for(const property of ['plot','open','part','dismantled','house-finished','house
   const output=new Uint8Array(await result.blob.arrayBuffer()),text=await rt.docxToText(output);
   assert.ok(text.includes('RELEASE DEED BETWEEN CO-OWNERS'));
   assert.equal((text.match(/THE DETAILS OF TOTAL PROPERTY/g)||[]).length,1);
-  assert.ok(!/<[^>]+>|DD-MM-YYYY|Vendee\/s|Vendor\/s|SIGN\/S|HAS\/HAVE|HIS\/HER/.test(text),text);
+  assert.ok(!/<[^>]+>|DD-MM-YYYY|Vendee\/s|Vendor\/s|HAS\/HAVE|HIS\/HER/.test(text),text);
+  assert.match(text, /SIGN\/S OF THE RELEASOR\..*SIGN\/S OF THE RELEASEE\./);
   assert.ok(text.includes('1/3'));
   assert.equal((text.match(/The Plan of schedule property is annexed hereto\./g) || []).length, 1);
   assert.equal((text.match(/The schedule property is not the assigned property\./g) || []).length, 1);
@@ -47,8 +48,10 @@ const render=async(state,variant='co-owner-release')=>{
   const output=new Uint8Array(await result.blob.arrayBuffer());return {output,text:await rt.docxToText(output)};
 };
 const multi=await render(multiple);
-assert.equal((multi.text.match(/SIGNATURE OF THE RELEASOR/g)||[]).length,4);
-assert.equal((multi.text.match(/SIGNATURE OF THE RELEASEE/g)||[]).length,3);
+const signatureBlock = multi.text.slice(multi.text.indexOf('SIGN/S OF THE RELEASOR'));
+assert.match(signatureBlock, /SIGN\/S OF THE RELEASORS\..*SIGN\/S OF THE RELEASEES\./);
+assert.match(signatureBlock, /WITNESSES[^\n]*\n1\.\n2\./);
+assert.doesNotMatch(signatureBlock, /SAMPLE VENDOR|SAMPLE PURCHASER|RELEASOR PERSON|RELEASEE PERSON|SIGNATURE OF THE RELEASE/);
 for(const scope of ['primary','property-2']) for(const i of [1,2]) for(const prefix of ['TITLE','RECT','SUPP','VLT','LAYOUT','APP','PROC','PASSBOOK','KHATA','NALA','RECEIPT','PERMIT']) assert.ok(multi.text.includes(`${prefix}-${scope}-${i}`),prefix+' '+scope+' '+i);
 assert.equal(JSON.stringify(multiple),before);
 await writeFile('tmp/release/qa/multiple.docx',multi.output);

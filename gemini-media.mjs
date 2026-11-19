@@ -165,6 +165,18 @@ export function createGeminiMediaStore({ fetch: fetcher = (...args) => fetch(...
 export const geminiMediaStore = createGeminiMediaStore();
 export const isGeminiFileReferenceError = error => [400, 403, 404].includes(Number(error.status)) && /file/i.test(error.message || '') && /not found|not exist|expired|permission|not.*active|invalid|unsupported/i.test(error.message || '');
 
+export function logGeminiExtraction(task, started, status, usage, log = console.info) {
+  if (process.env.AI_EXTRACTION_LOG === 'false') return;
+  log(JSON.stringify({
+    event: 'ai_extraction_request', provider: 'gemini', task, requests: 1, status,
+    elapsedMs: Math.round(performance.now() - started),
+    inputTokens: usage?.promptTokenCount,
+    cachedTokens: usage?.cachedContentTokenCount,
+    outputTokens: usage?.candidatesTokenCount,
+    thinkingTokens: usage?.thoughtsTokenCount,
+  }));
+}
+
 /** Shared by the wizard proxy and the plan/document API. No output deduplication. */
 export async function withGeminiMedia(request, { apiKey, signal, send, store = geminiMediaStore, log = console.info }) {
   const prepared = await store.prepare(request, apiKey, signal);

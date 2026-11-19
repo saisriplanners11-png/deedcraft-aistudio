@@ -1,6 +1,6 @@
 # Permanent master rules for all deeds
 
-Status: user-confirmed permanent project policy, updated 16-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-16.1.
+Status: user-confirmed permanent project policy, updated 19-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-18.1.
 
 The user explicitly instructed: "Save all these as permanent master rules for all deeds. Whenever I upload a new draft, apply these modifications over it and change a rule only when I explicitly ask."
 
@@ -263,3 +263,7 @@ COM-23 also extends floor-wise plinth display beyond Reconveyance. In house sche
 16-11-2026 Gift source refresh. Regular Gift v7 and Municipal Gift v4 use the newly supplied immutable Word files. Preserve existing Gift and Municipal Gift rules, including separate renderers, relationship and nil consideration handling, municipal recipient exceptions, and individual floor areas. Earlier sources and the preservation version are retained.
 
 16-11-2026 approval of the four remaining source revisions. The user explicitly approved the wording and layout in the new templates. Agreement v5 and General/Family GPA v4 use their shortened party definitions. GPA v4 resolves the supplied heading choice to FOR SALE OF IMMOVABLE PROPERTY for General or IN FAVOUR OF FAMILY MEMBER for Family and retains heading formatting (COM-13/GPA-08, AGR-03/04). Agreement v5, GPA v4 and Release v2 print the two plan and assignment statements in the selected source schedule positions, including without a separate attachment or status check (REL-01, TPL-04). Release v2 uses the source declaration as its closing boundary and retains the individual whole-property and released floor areas. Reconveyance v2 uses its supplied bank-only opening, while person-to-person drafts continue to use the retained v1 source (REC-03). The prior sources and saved facts are retained. Runtime preservation version 2026-11-16.1.
+
+18-11-2026 REL-02 signature correction. The user confirmed that Release signature sections omit releasor and releasee names. The renderer previously replaced the source captions with numbered rows containing names. Use the template signature captions with the applicable party counts, retain witness lines 1 and 2, and keep party identities and names in the deed body. Apply to both Release variants and compatible templates. Runtime preservation version 2026-11-18.1.
+
+19-11-2026 COM-25 update. Generate Deed shows the English and Telugu Word downloads and the editable Typed By stamp. Drafts without a saved stamp choice default to checked. Prefill Gundlapelli Sampath, Sircilla, and 98662 70006 when no stamp details have been saved. Keep an explicit opt-out and existing typed-by details, including intentionally blank entries. Word template controls are in Reverify and the separate plan PDF download is in the optional plan steps. Existing Word stamp formatting applies. No template preservation version change.

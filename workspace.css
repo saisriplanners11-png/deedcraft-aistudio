@@ -1,33 +1,37 @@
-/* Shared deed workspace styles. */
+/* Paper & Saffron deed workspace. */
 .wizard-app.modern-workspace {
-  --dc-ink:#172b40; --dc-paper:#fff; --dc-ground:#f3f6fa;
-  --dc-rule:#d7e1eb; --dc-rule-soft:#eaf0f5; --dc-body:#40556a;
-  --dc-muted:#52677b; --dc-muted-soft:#607287;
-  --dc-gold:#087f82; --dc-gold-light:#a3cbd0; --dc-gold-bg:#eaf7f7;
+  --dc-ink:#24312a; --dc-paper:#fff; --dc-ground:#f7f4ed;
+  --dc-rule:#deded1; --dc-rule-soft:#f2f0e7; --dc-body:#39483d;
+  --dc-muted:#536052; --dc-muted-soft:#576455;
+  --dc-gold:#32483b; --dc-gold-light:#bcc8b7; --dc-gold-bg:#edf0e6;
   --dc-green:#176247; --dc-green-bg:#edf8f2; --dc-green-line:#a4ccb8;
   --dc-danger:#ac303b; --dc-danger-bg:#fff1f3; --dc-danger-line:#e1b2bb;
-  --dc-hero:#142e48; --dc-hero-text:#fff; --dc-hero-muted:#cfdeeb;
-  --dc-hero-rule:#3d5870; --dc-hero-progress:#64d7cb;
-  --workspace-control-border:#97aabd; --workspace-focus:#087f82;
-  --workspace-font:'Segoe UI',Roboto,Arial,sans-serif;
-  --workspace-action:#087f82; --workspace-action-hover:#056669; --workspace-on-action:#fff;
-  --workspace-header:#10283f; --workspace-shadow:0 4px 18px #19324d08;
+  --dc-hero:#304339; --dc-hero-text:#fff; --dc-hero-muted:#e0e9df;
+  --dc-hero-rule:#667b6c; --dc-hero-progress:#f2c464;
+  --workspace-control-border:#919b8d; --workspace-focus:#32483b;
+  --workspace-font:'Source Sans 3','Noto Sans Telugu','Segoe UI',sans-serif;
+  --workspace-heading:'Instrument Sans',var(--workspace-font);
+  --workspace-rail:#fbf9f2; --workspace-field:#faf8f2;
+  --workspace-saffron:#f2c464; --workspace-saffron-hover:#edb84c; --workspace-on-saffron:#322510;
+  --workspace-action:#32483b; --workspace-action-hover:#25392b; --workspace-on-action:#fff;
+  --workspace-header:#fff; --workspace-shadow:0 4px 18px #24312a0c;
   --workspace-gutter:32px;
   color-scheme:light; font:15px/1.55 var(--workspace-font); background:var(--dc-ground); color:var(--dc-ink);
 }
 .wizard-app.modern-workspace[data-theme=dark] {
-  color-scheme:dark; --dc-ink:#e7eff7; --dc-paper:#182b3d; --dc-ground:#101e2c;
-  --dc-rule:#3d5267; --dc-rule-soft:#23394d; --dc-body:#c4d2df;
-  --dc-muted:#b5c7d7; --dc-muted-soft:#a3b7c9; --dc-gold:#72d8d0;
-  --dc-gold-light:#477f83; --dc-gold-bg:#203e46; --dc-green:#a2dfbd;
+  color-scheme:dark; --dc-ink:#f2f5ee; --dc-paper:#29362d; --dc-ground:#1d2620;
+  --dc-rule:#526257; --dc-rule-soft:#344238; --dc-body:#d5e0d5;
+  --dc-muted:#c7d4c7; --dc-muted-soft:#bdcbbb; --dc-gold:#b9d6b7;
+  --dc-gold-light:#647e67; --dc-gold-bg:#344938; --dc-green:#a2dfbd;
   --dc-green-bg:#203d35; --dc-green-line:#568773; --dc-danger:#ffb9c1;
   --dc-danger-bg:#442b38; --dc-danger-line:#a66876;
-  --workspace-control-border:#70899f; --workspace-focus:#72d8d0;
-  --workspace-action:#72d8d0; --workspace-action-hover:#9ae7df; --workspace-on-action:#102b36;
+  --workspace-control-border:#819583; --workspace-focus:#b9d6b7;
+  --workspace-action:#b9d6b7; --workspace-action-hover:#d2e6d0; --workspace-on-action:#203026;
+  --workspace-header:#29362d; --workspace-rail:#26332a; --workspace-field:#303e34;
   --workspace-shadow:0 4px 18px #00000012;
 }
 .wizard-app.modern-workspace :is(h1,h2,h3,h4,button,input,select,textarea) { font-family:var(--workspace-font); letter-spacing:normal; }
-.wizard-app.modern-workspace :is(h1,h2,h3,h4) { color:var(--dc-ink); line-height:1.3; }
+.wizard-app.modern-workspace :is(h1,h2,h3,h4) { font-family:var(--workspace-heading); color:var(--dc-ink); line-height:1.3; }
 .wizard-app.modern-workspace h1 { font-size:28px; font-weight:700; }
 .wizard-app.modern-workspace h2 { font-size:20px; font-weight:650; }
 .wizard-app.modern-workspace h3 { font-size:17px; font-weight:650; }
@@ -43,49 +47,87 @@
 .wizard-app.modern-workspace button:disabled { opacity:.55; cursor:not-allowed; }
 .wizard-app.modern-workspace :is(button,a,input,select,textarea,summary):focus-visible { outline:3px solid var(--workspace-focus)!important; outline-offset:3px; }
 .wizard-app.modern-workspace .dc-icon-button { min-width:44px; min-height:44px; }
+/* Keep the navigation and footer outside the scrolling form. */
+.wizard-app.modern-workspace:has(> .shell) {
+  display:flex; flex-direction:column; height:100dvh; min-height:0;
+}
 .wizard-app.modern-workspace .app-top {
-  position:relative; inset:auto; padding:16px var(--workspace-gutter); min-height:84px;
-  background:var(--workspace-header); color:#fff; border:0; box-shadow:0 2px 10px #10283f20; gap:20px;
+  position:relative; inset:auto; flex:none; padding:10px var(--workspace-gutter); min-height:64px;
+  background:var(--workspace-header); color:var(--dc-ink); border:0; border-bottom:1px solid var(--dc-rule); gap:16px;
 }
-.wizard-app.modern-workspace .brand { border:0; color:#fff; min-width:0; flex-shrink:0; }
-.wizard-app.modern-workspace .brand-name { color:#fff; font:700 25px/1.15 var(--workspace-font); }
-.wizard-app.modern-workspace .brand-name small { color:#b9d0e2; margin-top:5px; font-size:10px; letter-spacing:.16em; }
-.wizard-app.modern-workspace .brand-mark { background:#24465d; color:#8ce1d8; border:1px solid #537386; border-radius:10px; }
-.wizard-app.modern-workspace .header-actions { gap:10px; }
-.wizard-app.modern-workspace .header-actions button { background:#203d55; border-color:#567084; color:#fff; }
-.wizard-app.modern-workspace .header-actions button:hover { background:#30546e; }
-.wizard-app.modern-workspace .header-actions .new-deed { background:#087f82; border-color:#53b7b5; }
+.wizard-app.modern-workspace .brand { border:0; min-width:0; flex-shrink:0; }
+.wizard-app.modern-workspace .brand-name { color:var(--dc-ink); font:700 24px/1.15 var(--workspace-heading); }
+.wizard-app.modern-workspace .brand-name small { display:none; }
+.wizard-app.modern-workspace .brand-mark {
+  background:var(--workspace-action); color:var(--workspace-on-action);
+  border:0; border-radius:8px; font:700 21px/1 var(--workspace-heading);
+}
+.wizard-app.modern-workspace .header-actions { gap:8px; }
 .wizard-app.modern-workspace .header-actions .theme-toggle { min-width:44px; width:44px; padding:10px; }
-.wizard-app.modern-workspace .shell { display:block; max-width:none; width:100%; min-width:0; min-height:calc(100dvh - 84px); }
-.wizard-app.modern-workspace .stage { width:100%; max-width:none; min-width:0; margin:0; padding:24px var(--workspace-gutter) 40px; }
-.wizard-app.modern-workspace .workflow-navigation {
-  margin:20px var(--workspace-gutter) 0; padding:0; min-width:0;
-  border:1px solid var(--dc-rule); border-radius:12px; background:var(--dc-paper); box-shadow:var(--workspace-shadow);
+.wizard-app.modern-workspace .shell {
+  display:grid; flex:1; grid-template-columns:232px minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr) auto; align-items:stretch;
+  max-width:none; width:100%; min-width:0; min-height:0; margin:0;
 }
-.wizard-app.modern-workspace .workflow-nav-context { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; padding:10px 16px; border-bottom:1px solid var(--dc-rule-soft); }
-.wizard-app.modern-workspace .workflow-nav-context>strong { font-size:16px; }
-.wizard-app.modern-workspace .workflow-nav-context>span { margin-left:auto; font-size:13px; color:var(--dc-muted); }
-.wizard-app.modern-workspace .workflow-nav-context button { display:flex; align-items:center; gap:8px; color:var(--dc-gold); border:0; background:transparent; }
-.wizard-app.modern-workspace .workflow-nav-context button[aria-current] { background:var(--dc-gold-bg); }
-.wizard-app.modern-workspace .workflow-steps { display:flex; list-style:none; gap:6px; padding:10px; margin:0; min-width:0; overflow-x:auto; scrollbar-width:thin; overscroll-behavior-x:contain; }
-.wizard-app.modern-workspace .workflow-steps li { flex:1 0 auto; min-width:0; }
+.wizard-app.modern-workspace .shell:has(.workflow-navigation[data-expanded=false]) {
+  grid-template-columns:58px minmax(0,1fr);
+}
+.wizard-app.modern-workspace .stage {
+  grid-column:2; grid-row:1; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable;
+  width:100%; max-width:none; min-width:0; min-height:0; margin:0;
+  padding:26px var(--workspace-gutter) 32px;
+}
+.wizard-app.modern-workspace .workflow-navigation {
+  display:flex; flex-direction:column; grid-column:1; grid-row:1 / -1;
+  margin:0; padding:12px 10px 14px; min-width:0; min-height:0;
+  border-right:1px solid var(--dc-rule); background:var(--workspace-rail);
+}
+.wizard-app.modern-workspace .workflow-rail-header { display:flex; justify-content:flex-end; }
+.wizard-app.modern-workspace .workflow-rail-toggle {
+  display:grid; place-items:center; width:38px; min-height:38px;
+  padding:0; background:var(--dc-gold-bg); color:var(--dc-ink);
+}
+.wizard-app.modern-workspace .workflow-rail-content { display:flex; flex-direction:column; min-height:0; }
+.wizard-app.modern-workspace .workflow-rail-content[hidden] { display:none; }
+.wizard-app.modern-workspace .workflow-nav-context {
+  display:grid; gap:5px; padding:5px 1px 9px; border-bottom:1px solid var(--dc-rule);
+}
+.wizard-app.modern-workspace .workflow-nav-context>strong { padding-inline:8px; font:700 15px/1.4 var(--workspace-heading); }
+.wizard-app.modern-workspace .workflow-nav-context>span { padding-inline:8px; font-size:13px; color:var(--dc-muted); }
+.wizard-app.modern-workspace .workflow-nav-context button {
+  display:flex; align-items:center; gap:8px; color:var(--dc-ink); border:0; background:transparent; text-align:left;
+}
+.wizard-app.modern-workspace .workflow-nav-context button[aria-current] {
+  background:var(--dc-gold-bg); box-shadow:inset 3px 0 var(--workspace-saffron);
+}
+.wizard-app.modern-workspace .workflow-steps {
+  display:grid; list-style:none; gap:3px; padding:7px 4px; margin:0; min-width:0; min-height:0;
+  overflow:auto; scrollbar-width:thin; overscroll-behavior:contain;
+}
 .wizard-app.modern-workspace .workflow-steps button {
-  display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:54px;
-  padding:10px 12px; white-space:nowrap; border-color:transparent; background:transparent; color:var(--dc-body);
+  display:flex; align-items:center; justify-content:flex-start; gap:7px; width:100%; min-height:44px;
+  padding:7px 8px; text-align:left; border-color:transparent; background:transparent; color:var(--dc-body);
 }
 .wizard-app.modern-workspace .workflow-steps button:hover { background:var(--dc-rule-soft); }
-.wizard-app.modern-workspace .workflow-steps strong { font-size:13px; font-weight:600; }
-.wizard-app.modern-workspace .workflow-step-number { display:grid; place-items:center; width:26px; height:26px; flex-shrink:0; border:1px solid var(--dc-rule); border-radius:50%; font-size:12px; color:var(--dc-muted); background:var(--dc-paper); }
+.wizard-app.modern-workspace .workflow-steps strong { flex:1; font-size:14px; font-weight:600; line-height:1.25; }
+.wizard-app.modern-workspace .workflow-step-number {
+  display:grid; place-items:center; width:23px; height:23px; flex-shrink:0;
+  border-radius:6px; font-size:12px; color:var(--dc-muted);
+}
 .wizard-app.modern-workspace .workflow-step-state { display:flex; color:var(--dc-danger); }
 .wizard-app.modern-workspace .workflow-step-state:empty { display:none; }
 .wizard-app.modern-workspace .workflow-step-state small { font-size:11px; color:var(--dc-muted); }
-.wizard-app.modern-workspace .workflow-steps .complete .workflow-step-number { background:var(--dc-green-bg); color:var(--dc-green); border-color:var(--dc-green-line); }
-.wizard-app.modern-workspace .workflow-steps .active { color:var(--dc-gold); background:var(--dc-gold-bg); border-color:var(--dc-gold-light); }
-.wizard-app.modern-workspace .workflow-steps .active .workflow-step-number { background:var(--workspace-action); color:var(--workspace-on-action); border-color:var(--workspace-action); }
+.wizard-app.modern-workspace .workflow-steps .complete .workflow-step-number { background:var(--dc-green-bg); color:var(--dc-green); }
+.wizard-app.modern-workspace .workflow-steps .active {
+  color:var(--dc-ink); background:var(--dc-gold-bg); box-shadow:inset 3px 0 var(--workspace-saffron);
+}
+.wizard-app.modern-workspace .workflow-steps .active .workflow-step-number {
+  background:var(--workspace-saffron); color:var(--workspace-on-saffron);
+}
 .wizard-app.modern-workspace .workflow-mobile-navigation { display:none; }
 .wizard-app.modern-workspace .compact-step-header { border:0; background:transparent; margin:0 0 20px; padding:0; }
 .wizard-app.modern-workspace .stage-head { padding:0; margin:0; border:0; background:transparent; }
-.wizard-app.modern-workspace .stage-head h1 { font:700 28px/1.25 var(--workspace-font); }
+.wizard-app.modern-workspace .stage-head h1 { font:700 clamp(26px,3vw,38px)/1.17 var(--workspace-heading); letter-spacing:-.025em; }
 .wizard-app.modern-workspace .stage-head p { color:var(--dc-muted); font-size:14px; margin-top:6px; }
 .wizard-app.modern-workspace .step-position { border:1px solid var(--dc-rule); background:var(--dc-paper); border-radius:20px; color:var(--dc-body); padding:5px 12px; font:600 12px/1.5 var(--workspace-font); }
 .wizard-app.modern-workspace :is(.panel,.deed-section,.setup-card,.party-record-card,.property-schedule-card,.representative-card,.template-panel,.link-record,.document-picker,.document-add,.property-context,.export-card,.review-group,.dashboard-section,.overview-card,.dashboard-readiness,.library-empty,.saved-deed-card,.payment-record,.plan-refresh-review) {
@@ -96,7 +138,7 @@
 .wizard-app.modern-workspace :is(.workflow-section-heading,.party-card-heading,.property-card-heading,.document-card-heading,.payment-record-heading,.finish-section-heading) { border-color:var(--dc-rule-soft); }
 .wizard-app.modern-workspace .workflow-section-heading { background:var(--dc-paper); border-radius:12px 12px 0 0; padding:18px 22px; }
 .wizard-app.modern-workspace .deed-section>div:first-child { background:var(--dc-rule-soft); border-radius:11px 11px 0 0; padding:14px 20px!important; }
-.wizard-app.modern-workspace .deed-section h2 { font:650 17px/1.4 var(--workspace-font)!important; letter-spacing:normal; color:var(--dc-ink); }
+.wizard-app.modern-workspace .deed-section h2 { font:650 17px/1.4 var(--workspace-heading)!important; letter-spacing:normal; color:var(--dc-ink); }
 .wizard-app.modern-workspace .deed-section>div:last-child { padding:20px!important; }
 .wizard-app.modern-workspace :is(.record-heading-icon,.workflow-section-number,.record-kind,.finish-heading-icon,.review-icon,.overview-step-number,.payment-record-number,.export-file-icon) { border-radius:9px; background:var(--dc-gold-bg); color:var(--dc-gold); }
 .wizard-app.modern-workspace .deed-field-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; gap:20px!important; }
@@ -104,10 +146,10 @@
 .wizard-app.modern-workspace .deed-field { grid-column:span 1!important; }
 .wizard-app.modern-workspace .deed-field[data-span="full"] { grid-column:1 / -1!important; }
 .wizard-app.modern-workspace .deed-field[data-span="wide"] { grid-column:span 2!important; }
-.wizard-app.modern-workspace .deed-field>span:first-child>span:first-child { font:600 13px/1.5 var(--workspace-font)!important; text-transform:none!important; letter-spacing:normal!important; color:var(--dc-ink)!important; }
+.wizard-app.modern-workspace .deed-field>span:first-child>span:first-child { font:600 14px/1.5 var(--workspace-font)!important; text-transform:none!important; letter-spacing:normal!important; color:var(--dc-ink)!important; }
 .wizard-app.modern-workspace :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=file]) {
   max-width:100%; min-width:0; min-height:44px; height:auto; padding:10px 12px!important;
-  color:var(--dc-ink); background:var(--dc-paper); border:1px solid var(--workspace-control-border); border-radius:8px;
+  color:var(--dc-ink); background:var(--workspace-field); border:1px solid var(--workspace-control-border); border-radius:8px;
   font:15px/1.45 var(--workspace-font)!important; box-shadow:none;
 }
 .wizard-app.modern-workspace :is(input,select,textarea):not([type=checkbox]):not([type=radio]):hover { border-color:var(--dc-gold); }
@@ -123,11 +165,22 @@
 .wizard-app.modern-workspace .schedule-switcher button.active { background:var(--dc-gold-bg); color:var(--dc-gold); border-color:var(--dc-gold-light); }
 .wizard-app.modern-workspace .repayment-total { background:var(--dc-hero); color:var(--dc-hero-text); }
 .wizard-app.modern-workspace .repayment-total input[readonly] { background:transparent; color:inherit; border:0; font-size:26px!important; font-weight:700!important; }
-.wizard-app.modern-workspace .navigation { position:static; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:20px 0 0; margin-top:24px; background:transparent; border-top:1px solid var(--dc-rule); }
+.wizard-app.modern-workspace .navigation {
+  position:static; grid-column:2; grid-row:2; display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+  padding:10px var(--workspace-gutter) max(10px,env(safe-area-inset-bottom));
+  margin:0; background:var(--dc-paper); border:0; border-top:1px solid var(--dc-rule); border-radius:0;
+}
+.wizard-app.modern-workspace .navigation .primary { margin-left:auto; }
+.wizard-app.modern-workspace :is(.navigation .primary,.dashboard-cta) {
+  background:var(--workspace-saffron); color:var(--workspace-on-saffron); border-color:var(--workspace-saffron);
+}
+.wizard-app.modern-workspace :is(.navigation .primary,.dashboard-cta):hover {
+  background:var(--workspace-saffron-hover); border-color:var(--workspace-saffron-hover);
+}
 .wizard-app.modern-workspace :is(.saved-deeds-dashboard,.template-library) { max-width:none; width:100%; margin:0; padding:32px var(--workspace-gutter) 48px; }
 .wizard-app.modern-workspace :is(.saved-deeds-heading,.template-heading) { border-bottom:1px solid var(--dc-rule); padding-bottom:20px; }
 .wizard-app.modern-workspace .saved-deed-card { padding:20px; gap:20px; }
-.wizard-app.modern-workspace .saved-deed-card h2 { font:650 18px/1.4 var(--workspace-font); }
+.wizard-app.modern-workspace .saved-deed-card h2 { font:650 18px/1.4 var(--workspace-heading); }
 .wizard-app.modern-workspace .saved-deed-symbol { background:var(--dc-gold-bg); color:var(--dc-gold); border-radius:10px; }
 .wizard-app.modern-workspace .library-toolbar { padding:14px; margin:20px 0 16px; gap:16px; }
 .wizard-app.modern-workspace .dashboard-hero { border:0; border-radius:12px; padding:28px; background:var(--dc-hero); color:var(--dc-hero-text); }
@@ -135,7 +188,7 @@
 .wizard-app.modern-workspace .dashboard-hero h2 { color:var(--dc-hero-text); font-size:28px; }
 .wizard-app.modern-workspace .dashboard-hero p { color:var(--dc-hero-muted); }
 .wizard-app.modern-workspace .dashboard-stats>div { border-radius:10px; padding:18px; box-shadow:var(--workspace-shadow); }
-.wizard-app.modern-workspace .dashboard :is(h2,h3) { font-family:var(--workspace-font); }
+.wizard-app.modern-workspace .dashboard :is(h2,h3) { font-family:var(--workspace-heading); }
 .wizard-app.modern-workspace .finish-banner { background:var(--dc-gold-bg); border:1px solid var(--dc-gold-light); border-radius:12px; padding:24px; }
 .wizard-app.modern-workspace .export-card { padding:22px; }
 .wizard-app.modern-workspace .template-panel { padding:22px; margin:20px 0; }
@@ -152,13 +205,30 @@
   .wizard-app.modern-workspace .deed-field-grid { grid-template-columns:repeat(2,minmax(0,1fr))!important; }
 }
 @media (max-width:767px) {
+  .wizard-app.modern-workspace .shell,
+  .wizard-app.modern-workspace .shell:has(.workflow-navigation[data-expanded=false]) {
+    grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto;
+  }
+  .wizard-app.modern-workspace .workflow-navigation {
+    grid-area:1 / 1; max-height:36dvh; padding:4px var(--workspace-gutter);
+    border-right:0; border-bottom:1px solid var(--dc-rule);
+  }
+  .wizard-app.modern-workspace .workflow-rail-content { overflow:auto; }
+  .wizard-app.modern-workspace .workflow-steps { display:none; }
+  .wizard-app.modern-workspace .stage { grid-area:2 / 1; scrollbar-gutter:auto; }
+  .wizard-app.modern-workspace .navigation { grid-area:3 / 1; }
+  .wizard-app.modern-workspace .navigation { flex-wrap:nowrap; }
+  .wizard-app.modern-workspace .navigation button { width:auto; min-width:0; white-space:normal; }
+  .wizard-app.modern-workspace .navigation .primary { order:0; }
+  .wizard-app.modern-workspace .navigation > span { display:none; }
+
   .wizard-app.modern-workspace .workflow-mobile-navigation { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; gap:8px; align-items:end; padding:10px; border-top:1px solid var(--dc-rule-soft); }
   .wizard-app.modern-workspace .workflow-mobile-navigation label { display:grid; gap:4px; min-width:0; font-size:12px; }
   .wizard-app.modern-workspace .workflow-mobile-navigation select { width:100%; }
   .wizard-app.modern-workspace .workflow-mobile-navigation button { padding:10px; display:grid; place-items:center; }
   .wizard-app.modern-workspace .app-top { flex-wrap:wrap; }
   .wizard-app.modern-workspace .header-actions { width:100%; justify-content:flex-start; }
-  .wizard-app.modern-workspace .workflow-nav-context>span { margin-left:0; width:100%; }
+
 }
 @media (max-width:639px) {
   .wizard-app.modern-workspace { --workspace-gutter:12px; }
@@ -184,7 +254,7 @@
 .wizard-app.modern-workspace #step-review { scroll-margin-top:5rem; }
 @media (max-width: 600px) {
   .wizard-app.modern-workspace :is(.step-quick-actions button, .navigation button, .document-upload button) { min-height:44px; }
-  .wizard-app.modern-workspace .navigation > span { flex-basis:100%; order:1; }
+  .wizard-app.modern-workspace .navigation > span { display:none; }
 }
 
 .wizard-app.modern-workspace .required-field-note { color:var(--dc-ink, inherit); font-size:11px; font-weight:600; }

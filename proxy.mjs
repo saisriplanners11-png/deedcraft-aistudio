@@ -9,7 +9,7 @@
 // dev server, `vite preview`, and server.mjs for production — all from here, so
 // there is one implementation of the forwarding rule.
 
-import { withGeminiMedia } from './gemini-media.mjs';
+import { logGeminiExtraction, withGeminiMedia } from './gemini-media.mjs';
 
 const UPSTREAM = 'https://api.anthropic.com';
 const GEMINI_UPSTREAM = 'https://generativelanguage.googleapis.com/v1beta';
@@ -44,9 +44,12 @@ const geminiPart = part => {
   return null;
 };
 
-export const geminiRequest = request => {
+const ROUTINE_READS = new Set(['text', 'scan', 'identity', 'authority', 'payment']);
+const LOW_THINKING_MODELS = new Set(['gemini-3.6-flash', 'gemini-3.8-flash']);
+
+export const geminiRequest = (request, task, model = request.model) => {
   const schema = request.output_config?.format?.schema;
-  const isIdentityRead = /Transcribe only the selected ID holder/.test(request.system || '');
+  const routine = ROUTINE_READS.has(task) || (!task && /Transcribe only the selected ID holder/.test(request.system || ''));
   const functionDeclarations = (request.tools || []).map(tool => ({
     name: tool.name,
     description: tool.description,
@@ -60,11 +63,7 @@ export const geminiRequest = request => {
     })),
     generationConfig: {
       maxOutputTokens: request.max_tokens,
-      // Aadhaar reads are short, schema-bound transcription, not legal
-      // reasoning. Gemini 3.8 Flash otherwise defaults to medium thinking,
-      // adding substantial latency and sometimes exhausting the output cap
-      // before it returns the requested structured fields.
-      ...(isIdentityRead ? { thinkingConfig: { thinkingLevel: 'LOW' } } : {}),
+      ...(routine && LOW_THINKING_MODELS.has(model) ? { thinkingConfig: { thinkingLevel: 'LOW' } } : {}),
       ...(schema ? { responseMimeType: 'application/json', responseJsonSchema: schema } : {}),
     },
     ...(request.system ? { systemInstruction: { parts: [{ text: request.system }] } } : {}),
@@ -79,6 +78,7 @@ export const geminiRequest = request => {
 const anthropicResponse = (response, model) => {
   const candidate = response.candidates?.[0];
   const content = (candidate?.content?.parts || []).flatMap((part, index) => {
+    if (part.thought) return [];
     if (part.text !== undefined) return [{ type: 'text', text: part.text }];
     if (part.functionCall) return [{
       type: 'tool_use', id: part.functionCall.id || `gemini-tool-${index}`,
@@ -88,7 +88,9 @@ const anthropicResponse = (response, model) => {
   });
   return {
     id: `gemini-${Date.now()}`, type: 'message', role: 'assistant', model, content,
-    stop_reason: candidate?.finishReason === 'MAX_TOKENS' ? 'max_tokens' : 'end_turn', stop_sequence: null,
+    stop_reason: candidate?.finishReason === 'MAX_TOKENS' ? 'max_tokens'
+      : response.promptFeedback?.blockReason || ['SAFETY', 'PROHIBITED_CONTENT', 'SPII'].includes(candidate?.finishReason) ? 'refusal' : 'end_turn',
+    stop_sequence: null,
     usage: { input_tokens: response.usageMetadata?.promptTokenCount || 0, output_tokens: response.usageMetadata?.candidatesTokenCount || 0 },
   };
 };
@@ -127,20 +129,39 @@ export function createProxyHandler(getConfig, options = {}) {
         // use that identifier so extraction, vision and verification can each
         // select the right Gemini model.
         const model = request.model || config.geminiModel;
-        const payload = await withGeminiMedia(geminiRequest(request), {
+        const taskHeader = req.headers['x-deedcraft-extraction'];
+        const task = ROUTINE_READS.has(taskHeader) || taskHeader === 'visual' ? taskHeader : undefined;
+        const payload = await withGeminiMedia(geminiRequest(request, task, model), {
           apiKey, signal: controller.signal, store: options.mediaStore,
           send: async body => {
-            const upstream = await fetch(`${GEMINI_UPSTREAM}/models/${encodeURIComponent(model)}:generateContent`, {
-              method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body),
-            });
-            const payload = await upstream.json();
-            if (!upstream.ok) throw Object.assign(new Error(payload.error?.message || 'Gemini request failed.'), { status: upstream.status });
-            return payload;
+            const started = performance.now();
+            let status = 502;
+            let usage;
+            try {
+              const upstream = await fetch(`${GEMINI_UPSTREAM}/models/${encodeURIComponent(model)}:generateContent`, {
+                method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body),
+              });
+              status = upstream.status;
+              const result = await upstream.json();
+              if (!upstream.ok) {
+                const delay = result.error?.details?.find?.(detail => /^\d+(?:\.\d+)?s$/.test(detail.retryDelay || ''))?.retryDelay;
+                throw Object.assign(new Error(result.error?.message || 'Gemini request failed.'), {
+                  status, retryAfter: upstream.headers.get('retry-after') || delay?.slice(0, -1),
+                });
+              }
+              usage = result.usageMetadata;
+              return result;
+            } finally {
+              if (task) logGeminiExtraction(task, started, status, usage, options.log);
+            }
           },
         });
-        return json(res, 200, anthropicResponse(payload, request.model));
+        return json(res, 200, anthropicResponse(payload, model));
       } catch (err) {
-        if (err.status) return json(res, err.status, { error: { type: 'gemini_error', message: err.message } });
+        if (err.status) {
+          if (err.retryAfter) res.setHeader('Retry-After', err.retryAfter);
+          return json(res, err.status, { error: { type: 'gemini_error', message: err.message } });
+        }
         return json(res, 502, { error: { type: 'proxy_error', message: `Could not reach the Gemini API: ${err?.message || err}` } });
       }
     }

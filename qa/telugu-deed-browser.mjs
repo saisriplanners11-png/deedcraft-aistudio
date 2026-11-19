@@ -19,11 +19,29 @@ try {
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.getByRole('button', { name: 'Create your first deed' }).click();
   await page.locator('.workflow-steps button').nth(9).click();
-  await page.getByLabel(/include typed by stamp/i).check();
+  const stampToggle = page.getByLabel('Include Typed By stamp', { exact: true });
   const stamp = page.locator('.typing-stamp-fields');
-  await stamp.getByLabel('Name', { exact: true }).fill('Demo Typist');
+  const buttons = page.locator('#workspace-main').getByRole('button');
+  assert.equal(await buttons.count(), 2);
+  for (const name of ['Download English (.docx)', 'Download Telugu (.docx)']) {
+    assert(await page.getByRole('button', { name, exact: true }).isVisible());
+  }
+  assert(await stampToggle.isChecked());
+  assert.equal(await stamp.getByLabel('Name', { exact: true }).inputValue(), 'Gundlapelli Sampath');
+  assert.equal(await stamp.getByLabel('Place (optional)', { exact: true }).inputValue(), 'Sircilla');
+  assert.equal(await stamp.getByLabel(/mobile number/i).inputValue(), '98662 70006');
+  await stamp.getByLabel('Place (optional)', { exact: true }).fill('');
+  assert.equal(await stamp.getByLabel('Name', { exact: true }).inputValue(), 'Gundlapelli Sampath');
+  await stampToggle.uncheck();
+  assert.equal(await stamp.count(), 0);
+  await page.getByRole('button', { name: 'Saved deeds', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Continue / Edit', exact: true }).first().click();
+  await page.locator('.generation-columns').waitFor();
+  assert.equal(await stampToggle.isChecked(), false);
+  await stampToggle.check();
+  assert.equal(await stamp.getByLabel('Place (optional)', { exact: true }).inputValue(), '');
   await stamp.getByLabel('Place (optional)', { exact: true }).fill('Sircilla');
-  await stamp.getByLabel(/mobile number/i).fill('9876543210');
   const download = async name => {
     await page.getByRole('button', { name, exact: true }).click();
     const warning = page.getByRole('button', { name: 'Download Anyway' });
@@ -37,8 +55,8 @@ try {
     const bytes = await readFile(await file.path());
     return { name: file.suggestedFilename(), bytes: Array.from(bytes) };
   };
-  const english = await download('Download Word 2007 deed (.docx)');
-  const telugu = await download('Download Telugu Word deed (.docx)');
+  const english = await download('Download English (.docx)');
+  const telugu = await download('Download Telugu (.docx)');
   assert.match(telugu.name, /[ -]Telugu\.docx$/);
   assert.notEqual(english.name, telugu.name);
   const output = await page.evaluate(async ([english, telugu]) => {
@@ -65,11 +83,11 @@ try {
   assert.match(output.english, /SALE DEED/i);
   assert.match(output.telugu, /[\u0c05-\u0c39]/u);
   for (const xml of [output.english, output.telugu]) {
-    assert.match(xml, /98765 43210/);
+    assert.match(xml, /98662 70006/);
   }
-  assert.match(output.english, /DEMO TYPIST/);
+  assert.match(output.english, /GUNDLAPELLI SAMPATH/);
   assert.match(output.english, /Sircilla/);
-  assert.doesNotMatch(output.telugu, /DEMO TYPIST|Sircilla/i);
+  assert.doesNotMatch(output.telugu, /GUNDLAPELLI SAMPATH|Sircilla/i);
   assert.match(output.telugu, /సిరిసిల్ల/);
   assert.equal((output.telugu.match(/<w:sectPr\b/g) || []).length, (output.english.match(/<w:sectPr\b/g) || []).length);
   assert.match(output.fixture, /<w:b\s*\/>.*?123\/A.*?అను దేవి/s);

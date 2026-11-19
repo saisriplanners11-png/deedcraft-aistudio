@@ -44,6 +44,15 @@ export function getClient(): Anthropic {
 
 /** Turn an SDK or proxy failure into something a drafter can act on. */
 export function readableError(e: any): Error {
+  const raw = String(e?.message ?? e);
+  if (/GEMINI_API_KEY is not set/.test(raw)) return new Error('Set GEMINI_API_KEY on the server and retry the upload.');
+  if (e?.error?.error?.type === 'gemini_error' || e?.error?.type === 'gemini_error' || /gemini_error/.test(raw)) {
+    if ([401, 403].includes(e.status)) return new Error('Gemini rejected access. Check the server’s Gemini key and model access.');
+    if (e.status === 402) return new Error('Gemini requires payment for this request. Check billing or prepaid credits for the configured project.');
+    if (e.status === 429) return new Error('Gemini reached its request or token quota. Retry when quota is available.');
+    return new Error(`Gemini could not read this source (HTTP ${e.status}). Retry the upload or review the affected fields.`);
+  }
+  if (e?.status === 429 && /server is busy/i.test(raw)) return new Error('The server is busy reading documents. Wait a moment and retry.');
   if (e instanceof Anthropic.AuthenticationError) {
     return new Error('The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.local, then restart the server.');
   }
@@ -57,7 +66,6 @@ export function readableError(e: any): Error {
     return new Error('Could not reach the API. Is the dev server still running (`npm run dev`)?');
   }
 
-  const raw = String(e?.message ?? e);
   // The proxy's own "no key set" reply, surfaced verbatim.
   if (/no_api_key|ANTHROPIC_API_KEY is not set/.test(raw)) {
     return new Error(

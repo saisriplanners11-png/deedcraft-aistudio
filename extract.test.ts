@@ -11,12 +11,12 @@ describe('link deed extraction mapping', () => {
     expect(profileFields('phase1:houseTax')).toEqual(expect.arrayContaining(['houseTaxReceiptNo', 'bltNo', 'localBodyName', 'taxPaidDate']));
     expect(profileFields('phase1:houseTax')).not.toContain('vltNo');
   });
-  it('limits a Phase 1 link deed to its title, jurisdiction, schedule and valuation facts', () => {
+  it('allows original party and property evidence from a link deed without current transaction facts', () => {
     const fields = profileFields('phase1:linkDoc');
     expect(fields).toEqual(expect.arrayContaining(['linkDocNo', 'district', 'surveyNo', 'boundaryNorth', 'extentSqYards']));
     expect(fields).toEqual(expect.arrayContaining(['govtRate', 'structValue']));
-    expect(fields).not.toContain('executantAadhaar');
-    expect(fields).not.toContain('claimantAadhaar');
+    expect(fields).toEqual(expect.arrayContaining(['executantAadhaar', 'claimantAadhaar']));
+    for (const field of ['consid', 'executionDate', 'stampValue', 'executantOccupation', 'claimantMobile']) expect(fields).not.toContain(field);
   });
 
   it('limits a party upload to that current party only', () => {

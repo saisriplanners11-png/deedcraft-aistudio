@@ -159,8 +159,12 @@ export function PaymentCard({
     setSteps([{ title: `Reading the ${spec.label.toLowerCase()}`, state: 'running' }]);
     setOpen(true);
     try {
-      const { values, detectedMode, unreadable } = await extractPayment(payment.mode, files, controller.signal);
+      const { values: read, detectedMode, unreadable } = await extractPayment(payment.mode, files, controller.signal);
       if (controller.signal.aborted || readController.current !== controller) return;
+      const values = Object.fromEntries(Object.entries(read).filter(([key, value]) => {
+        const previous = payment[key as keyof Payment];
+        return !previous || previous === value || payment.filled?.includes(key);
+      })) as Partial<Payment>;
       const keys = Object.keys(values);
       const expected = ['amount', ...(spec.shows.ref ? ['refNo'] : []), ...(spec.shows.bank ? ['bank'] : []), ...(spec.shows.branch ? ['branch'] : []), 'date', ...(spec.shows.parties ? ['payer', 'payee'] : [])];
       const label = (key: string) => ({ amount: 'Amount', refNo: spec.refLabel, bank: spec.bankLabel || 'Bank', branch: spec.branchLabel || 'Branch', date: 'Date', payer: 'Vendee', payee: 'Vendor' } as Record<string, string>)[key] || key;

@@ -14,7 +14,7 @@ import { newPayment, type Payment } from './payments';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
 import type { TemplateFieldCandidate, TemplateFieldValues } from './template-fields';
 
-export const EXTRACTION_VERSION = 'evidence-v12-link-parties';
+export const EXTRACTION_VERSION = 'evidence-v13-verified-pages';
 export type Role = 'property' | 'executant' | 'claimant' | 'payment' | 'link' | 'unassigned' | 'party-person';
 export type Candidate = {
   id: string; field: string; value: string; role: Role; record: string;

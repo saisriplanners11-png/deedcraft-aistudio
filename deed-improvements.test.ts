@@ -178,7 +178,7 @@ describe('requested deed improvements', () => {
   });
   it('keeps disputed claimant names unaccepted', async () => {
     mock.disagree = true;
-    const file = Object.assign(new Blob(['identity'], { type: 'text/plain' }), { name: 'id.txt' }) as File;
+    const file = Object.assign(new Blob(['RAVI KUMAR DOB 02/01/2000 Aadhaar 1234-5678-9012'], { type: 'text/plain' }), { name: 'id.txt' }) as File;
     const result = await extractUpload(file, new AbortController().signal, () => {}, undefined, 'party:claimant');
     expect(result.candidates.find(candidate => candidate.field === 'claimantName')?.status).toBe('uncertain');
   });

@@ -11,6 +11,14 @@ export async function buildTemplateRuntime() {
       entryPoints: [join(root, 'template-runtime.ts')], bundle: true, platform: 'node', format: 'esm', write: false,
       plugins: [{ name: 'server-template-assets', setup(builder) {
         // Sample rendering needs payment formatting, never extraction or PDF workers.
+        builder.onResolve({ filter: /^pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs\?url$/ }, args => ({
+          path: args.path,
+          namespace: 'browser-worker',
+        }));
+        builder.onLoad({ filter: /.*/, namespace: 'browser-worker' }, () => ({
+          loader: 'js',
+          contents: 'export default "";',
+        }));
         builder.onLoad({ filter: /[/\\]claude\.ts$/ }, () => ({ loader: 'js', contents: 'export const EXTRACT_MODEL = "unused"; export function getClient() { throw new Error("Extraction is unavailable in template validation."); } export const readableError = String;' }));
         builder.onLoad({ filter: /[/\\]extract\.ts$/ }, () => ({ loader: 'js', contents: 'export async function fileToVisualParts() { throw new Error("Extraction is unavailable in template validation."); }' }));
         builder.onLoad({ filter: /[/\\]template\.ts$/ }, () => ({ loader: 'js', contents: `

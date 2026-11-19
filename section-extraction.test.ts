@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, profileFields, requiresFullVisualConfirmation, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
+import { acreGuntasToSqYards, cleanCandidate, extractSections, extractUpload, prepare, profileFields, sameTranscription, sectionFields, structuredArray, type ExtractionProgress } from './upload-extraction';
 import { appStateFor, newDraft, resolveDraft, type Candidate, type SourceResult } from './source-draft';
 
 it('retains source name qualifiers without absorbing separate identity details', () => {
@@ -12,36 +12,98 @@ it('retains source name qualifiers without absorbing separate identity details',
     .toBe('Bank');
 });
 
-const api = vi.hoisted(() => ({ calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce:false, step2Gate: undefined as Promise<void> | undefined, extraReads: [] as Record<string, unknown>[] }));
+const api = vi.hoisted(() => ({
+  calls: [] as any[], active: 0, peak: 0, truncateOnce: false, transientOnce: false,
+  step2Gate: undefined as Promise<void> | undefined, extraReads: [] as Record<string, unknown>[],
+  scanText: new Map<number, string>(), disputed: new Set<string>(), omitted: new Set<number>(),
+}));
+const printed = {
+  linkDocNo: ['1263/2016', 'Document No. 1263/2016'],
+  linkDocType: ['Sale Deed', 'SALE DEED'],
+  linkDocDate: ['2016-02-27', 'Executed on 27 February 2016'],
+  sro: ['SIRCILLA SRO', 'Sub-Registrar: SIRCILLA SRO'],
+  district: ['RAJANNA SIRCILLA', 'District: RAJANNA SIRCILLA'],
+  mandal: ['SIRCILLA', 'Mandal: SIRCILLA'],
+  village: ['KOTHAPETA', 'Village: KOTHAPETA'],
+  locality: ['LAKSHMI NAGAR', 'Locality: LAKSHMI NAGAR'],
+  plotNo: ['16', 'Plot No. 16'],
+  extentSqYards: ['157.22', 'Extent: 157.22 sq. yards'],
+  boundaryNorth: ['ROAD', 'North: ROAD'],
+  boundarySouth: ['PLOT 15', 'South: PLOT 15'],
+  boundaryEast: ['PLOT 17', 'East: PLOT 17'],
+  boundaryWest: ['OPEN LAND', 'West: OPEN LAND'],
+  govtRate: ['1200', 'Basic rate: 1200 per sq. yard'],
+  structValue: ['0', 'Structure value: 0'],
+};
 vi.mock('./claude', () => ({
-  EXTRACT_MODEL: 'read', VISION_MODEL: 'verify', VERIFY_MODEL: 'verify', readableError: (e: Error) => e,
+  EXTRACT_MODEL: 'read', VISION_MODEL: 'vision', VERIFY_MODEL: 'verify', readableError: (error: Error) => error,
   getClient: () => ({ messages: { create: async (body: any) => {
-    api.calls.push(body); api.active++; api.peak = Math.max(api.peak, api.active);
+    api.calls.push(body);
+    api.active++;
+    api.peak = Math.max(api.peak, api.active);
     try {
       await new Promise(resolve => setTimeout(resolve, 3));
-      if(api.transientOnce){api.transientOnce=false;throw Object.assign(new Error('API error 500'),{status:500});}
+      if (api.transientOnce) { api.transientOnce = false; throw Object.assign(new Error('API error 500'), { status: 500 }); }
       const schema = body.tools[0].input_schema.properties;
+      const content = body.messages[0].content as ({ type: string; text?: string })[];
+      const byPage = new Map<number, string>();
+      let currentPage: number | undefined;
+      for (const part of content.slice(0, -1)) {
+        const header = part.text?.match(/^SOURCE PAGE (\d+):/);
+        if (header) { currentPage = Number(header[1]); byPage.set(currentPage, ''); }
+        else if (currentPage !== undefined && part.type === 'text') byPage.set(currentPage, (byPage.get(currentPage) || '') + part.text);
+        else if (currentPage !== undefined && part.type === 'image') byPage.set(currentPage, api.scanText.get(currentPage) || '');
+      }
       let input;
       if (schema.pages) {
-        const numbers = body.messages[0].content.flatMap((p: any) => p.type === 'text' ? [...p.text.matchAll(/SOURCE PAGE (\d+):/g)].map((m: any) => Number(m[1])) : []);
-        input = { pages: numbers.map((number: number) => ({ number, text: `Page ${number}: SALE DEED; document 1263/2016; CS 1323/2016; prior title 6028/2012; executed 27 February 2016; plot 16; Sircilla; extent 157.22 sq.yards.`, kind: number === 1 ? 'deed' : 'schedule', drawing: false })) };
+        input = { pages: [...byPage].filter(([page]) => !api.omitted.has(page)).map(([number, text]) => ({
+          number, text, kind: /schedule/i.test(text) ? 'schedule' : /deed/i.test(text) ? 'deed' : 'other', drawing: false,
+          areas: /schedule/i.test(text) ? ['schedule', 'valuation'] : /deed/i.test(text) ? ['registration', 'parties'] : [],
+        })) };
       } else {
-        const fields = schema.candidates.items.properties.field.enum;
-        if (fields.some((field: string) => field.startsWith('link'))) await api.step2Gate;
+        const fields = schema.candidates.items.properties.field.enum as string[];
+        if (fields.includes('linkDocNo')) await api.step2Gate;
         if (api.truncateOnce && fields.includes('linkDocNo') && fields.length > 2) {
           api.truncateOnce = false;
           return { stop_reason: 'max_tokens', content: [] };
         }
-        const values: Record<string,string> = { linkDocNo: '1263/2016', linkDocType: 'Sale Deed', linkDocDate: '2016-02-27', sro: 'SIRCILLA SRO', district: 'RAJANNA SIRCILLA', mandal: 'SIRCILLA', village: 'KOTHAPETA', locality: 'LAKSHMI NAGAR', plotNo: '16', extentSqYards: '157.22', boundaryNorth: 'ROAD', boundarySouth: 'PLOT 15', boundaryEast: 'PLOT 17', boundaryWest: 'OPEN LAND', govtRate: '1200', structValue: '0' };
-        input = { candidates: fields.filter((f: string) => values[f]).map((field: string) => ({ field, value: values[field], role: field.startsWith('link') ? 'link' : 'property', record: 'primary', page: 1, quote: values[field], region: 'Source label', historical: false, handwritten: false })).concat(api.extraReads.filter(candidate => fields.includes(candidate.field))), plan: null, notes: [] };
+        const candidates = Object.entries(printed).flatMap(([field, [value, quote]]) => {
+          const page = [...byPage].find(([, text]) => text.includes(quote))?.[0];
+          if (!fields.includes(field) || !page) return [];
+          return [{ field, value, quote, role: field.startsWith('link') ? 'link' : 'property', record: 'primary', page, region: 'Source label', historical: false, handwritten: false }];
+        });
+        const all = [...candidates, ...api.extraReads.filter(candidate => fields.includes(String(candidate.field)))];
+        input = {
+          candidates: all.filter(candidate => body.model !== 'verify' || !api.disputed.has(String(candidate.field))),
+          plan: null, notes: [],
+        };
       }
       return { stop_reason: 'end_turn', content: [{ type: 'tool_use', name: 'record_transcription', input }] };
     } finally { api.active--; }
   } } }),
 }));
 
-const pages = (count: number) => Array.from({length: count}, (_,i) => ({number:i+1,region:`Page ${i+1}`,parts:[{type:'text' as const,text:`source page ${i+1}`}]}));
-beforeEach(() => { api.calls=[]; api.active=0; api.peak=0; api.truncateOnce=false; api.transientOnce=false; api.step2Gate=undefined; api.extraReads=[]; });
+const nativeTitle = Object.entries(printed).filter(([key]) => key.startsWith('link')).map(([, [, quote]]) => quote).join('\n');
+const nativeSchedule = 'SCHEDULE OF PROPERTY\n' + Object.entries(printed).filter(([key]) => !key.startsWith('link')).map(([, [, quote]]) => quote).join('\n');
+const pages = (count: number) => Array.from({ length: count }, (_, index) => {
+  const number = index + 1;
+  const text = [
+    number === 1 ? nativeTitle : '',
+    number === count ? nativeSchedule : '',
+    ...api.extraReads.filter(item => item.page === number).map(item => String(item.quote)),
+  ].filter(Boolean).join('\n') || 'Form 60 declaration, supporting attachment.';
+  return { number, region: 'Page ' + number, text, parts: [{ type: 'text' as const, text }] };
+});
+const scan = (count: number) => pages(count).map(page => {
+  api.scanText.set(page.number, page.text);
+  return { number: page.number, region: page.region, parts: [{ type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/png' as const, data: 'c2Nhbg==' } }] };
+});
+const callsForEvidence = () => api.calls.filter(call => call.tools[0].input_schema.properties.pages);
+const callsForVisual = () => api.calls.flatMap(call => call.messages[0].content.filter((part: { type: string }) => part.type === 'image'));
+beforeEach(() => {
+  api.calls = []; api.active = 0; api.peak = 0; api.truncateOnce = false; api.transientOnce = false; api.step2Gate = undefined;
+  api.extraReads = []; api.scanText.clear(); api.disputed.clear(); api.omitted.clear();
+});
 
 describe('shared document section extraction', () => {
   it('projects the original parties by instrument while retaining their independent evidence', async () => {
@@ -197,12 +259,20 @@ describe('shared document section extraction', () => {
     expect(resolveDraft(draft).values['property|secondary|surveyNo']).toBe(survey);
   });
 
-  it('uses independent original-image confirmation for every Step 2 upload type', () => {
-    for (const profile of ['phase1:houseTax', 'phase1:titleDeed', 'phase1:nala', 'phase1:permissions'] as const) {
-      expect(requiresFullVisualConfirmation(profile)).toBe(true);
+  it('confirms Step 2 values against original pixels after the shared scan read', async () => {
+    for (const [profile, field, value, quote] of [
+      ['phase1:houseTax', 'bltNo', '0012', 'PTIN: 0012'],
+      ['phase1:titleDeed', 'titleDeedNo', '0008', 'Pattadar Title Deed No. 0008'],
+      ['phase1:nala', 'nalaOrderNo', '05/07', 'NALA Order No. 05/07'],
+      ['phase1:permissions', 'permBuildingPermitNo', 'T-12', 'Building permission No. T-12'],
+    ] as const) {
+      api.calls = [];
+      api.extraReads = [{ field, value, quote, role: 'link', record: 'primary', page: 1, region: 'Supporting record', historical: false, handwritten: false }];
+      const result = await extractSections(scan(1), [], new AbortController().signal, () => {}, undefined, profile);
+      expect(result.candidates).toEqual([expect.objectContaining({ field, value, status: 'accepted' })]);
+      expect(callsForEvidence()).toHaveLength(1);
+      expect(callsForVisual()).toHaveLength(2);
     }
-    expect(requiresFullVisualConfirmation('phase1:linkDoc')).toBe(false);
-    expect(requiresFullVisualConfirmation('party:executant')).toBe(false);
   });
 
   it('converts NALA Acre-Gunta notation to square yards', () => {
@@ -214,14 +284,9 @@ describe('shared document section extraction', () => {
     expect(acreGuntasToSqYards('0.50')).toBeNull();
   });
   it('recovers a transient provider failure without losing the document details',async()=>{
-    const sections=sectionFields('phase1:linkDoc');
-    const scheduleFieldCount=sections.filter(s=>['step3','step4','step5'].includes(s.id)).reduce((n,s)=>n+s.fields.length,0);
-    const expectedChunks=2+Math.ceil(scheduleFieldCount/10);
     api.transientOnce=true;
     const result=await extractSections(pages(3),[],new AbortController().signal,()=>{},undefined,'phase1:linkDoc');
-    // Whichever chunk's first attempt eats the injected 500 retries once and
-    // succeeds; every other chunk is unaffected — one extra call overall.
-    expect(api.calls.filter(c=>c.tools[0].input_schema.properties.candidates)).toHaveLength(expectedChunks+1);
+    expect(api.calls.filter(call => JSON.stringify(call) === JSON.stringify(api.calls[0]))).toHaveLength(2);
     expect(result.candidates.find(c=>c.field==='linkDocNo')).toMatchObject({value:'1263/2016',status:'accepted'});
     expect(result.candidates).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: 'govtRate', value: '1200', role: 'property', status: 'accepted' }),
@@ -237,7 +302,7 @@ describe('shared document section extraction', () => {
     ]));
     expect(profileFields('phase1:linkDoc')).toEqual(expect.arrayContaining(['govtRate', 'structValue']));
     expect(profileFields('phase1:linkDoc')).not.toEqual(expect.arrayContaining(['consid', 'stampValue', 'stampPaperMargin']));
-    expect(result.notes).toContain('No native schedule heading was found; examined pages 3 visually.');
+    expect(result.notes).toHaveLength(0);
   });
   it('accepts serialized, singleton and page-keyed evidence responses without discarding source text', () => {
     expect(structuredArray('[{"number":5,"text":"Schedule"}]')).toEqual([{number:5,text:'Schedule'}]);
@@ -245,31 +310,54 @@ describe('shared document section extraction', () => {
     expect(structuredArray({'5':{text:'Schedule'}})).toEqual([{number:5,text:'Schedule'}]);
     expect(structuredArray('invalid JSON')).toEqual([]);
   });
-  it('falls back to every later page when a scanned link deed has no native schedule index', async () => {
-    const events: ExtractionProgress[]=[]; const partial: SourceResult[]=[];
-    const result=await extractSections(pages(81),[],new AbortController().signal,e=>events.push(e),r=>partial.push(r),'phase1:linkDoc');
-    // The opening remains fast, while a scan with no native text gets a bounded
-    // all-later-pages schedule pass so a schedule on page 5/20/81 is not lost.
-    expect(api.calls.filter(c=>c.tools[0].input_schema.properties.pages)).toHaveLength(0);
-    const calls=api.calls.filter(c=>c.tools[0].input_schema.properties.candidates && !c.tools[0].input_schema.properties.candidates.items.properties.field.enum.includes('executantName'));
-    expect(calls.every(c=>c.model==='read')).toBe(true);
-    expect(calls.every(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum.length<=10)).toBe(true);
+  it('indexes a 15-page scan once and sends at most 30 page images through extraction and verification', async () => {
+    const result = await extractSections(scan(15), [], new AbortController().signal, () => {}, undefined, 'phase1:linkDoc');
+    expect(callsForEvidence()).toHaveLength(5);
+    const pagesRead = callsForEvidence().flatMap(call => call.tools[0].input_schema.properties.pages.items.properties.number.enum);
+    expect(pagesRead).toEqual(Array.from({ length: 15 }, (_, i) => i + 1));
+    expect(callsForVisual()).toHaveLength(17);
+    expect(callsForVisual().length).toBeLessThanOrEqual(30);
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'linkDocNo', page: 1, status: 'accepted' }),
+      expect.objectContaining({ field: 'boundaryNorth', page: 15, value: 'ROAD', status: 'accepted' }),
+    ]));
+  });
+
+  it('keeps a late scan schedule and independently checked title after an unreadable page', async () => {
+    api.omitted.add(5);
+    const partial: SourceResult[] = [];
+    const result = await extractSections(scan(81), [], new AbortController().signal, () => {}, r => partial.push(r), 'phase1:linkDoc');
+    expect(api.calls.some(call => call.messages[0].content.some((part: any) => part.text === 'SOURCE PAGE 81:'))).toBe(true);
     expect(api.peak).toBeGreaterThan(1);
-    const step2Call=calls.find(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum.includes('linkDocNo'))!;
-    const pageMentions=(call:any)=>[...new Set(call.messages[0].content.flatMap((p:any)=>p.type==='text'?[...p.text.matchAll(/SOURCE PAGE (\d+):/g)].map((m:any)=>Number(m[1])):[]))];
-    const scheduleCalls=calls.filter(c=>pageMentions(c).some((n:number)=>n>=3));
-    expect(scheduleCalls.length).toBeGreaterThan(1);
-    expect(pageMentions(step2Call)).toEqual([1,2]);
-    expect(scheduleCalls.every(c=>pageMentions(c).length && pageMentions(c).every((n:number)=>n>=3))).toBe(true);
-    expect(api.calls.some(c=>c.messages[0].content.some((p:any)=>p.text?.includes('SOURCE PAGE 81:')))).toBe(true);
-    const fields=[step2Call,...scheduleCalls].flatMap(c=>c.tools[0].input_schema.properties.candidates.items.properties.field.enum);
-    expect(fields).not.toContain('consid'); expect(fields).not.toContain('executantName');
-    expect(result.candidates.every(c=>c.status==='accepted')).toBe(true);
-    const states=events.filter((e): e is Exclude<ExtractionProgress,string>=>typeof e!=='string');
-    expect(states.filter(e=>e.state==='running').map(e=>e.id)).toEqual(expect.arrayContaining(['step2','step3','step4']));
+    expect(result.notes.some(note => note.includes('Page 5'))).toBe(true);
     expect(partial.length).toBeGreaterThan(1);
-    expect(new Set(result.candidates.map(c=>c.id)).size).toBe(result.candidates.length);
-    expect(result.candidates.find(c=>c.field==='linkDocNo')).toMatchObject({value:'1263/2016',status:'accepted',page:1});
+    expect(new Set(result.candidates.map(c => c.id)).size).toBe(result.candidates.length);
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'linkDocNo', page: 1, status: 'accepted' }),
+      expect.objectContaining({ field: 'plotNo', page: 81, status: 'accepted' }),
+    ]));
+  });
+
+  it('rejects hallucinated page references and leaves failures of independent confirmation for review', async () => {
+    api.disputed.add('linkDocNo');
+    api.extraReads = [{
+      field: 'linkSro', value: 'Made Up SRO', quote: 'Sub-Registrar Made Up SRO', role: 'link',
+      record: 'primary', page: 99, region: 'Endorsement', historical: false, handwritten: false,
+    }];
+    const result = await extractSections(pages(3), [], new AbortController().signal, () => {}, undefined, 'phase1:linkDoc');
+    expect(result.candidates).not.toEqual(expect.arrayContaining([expect.objectContaining({ field: 'linkSro' })]));
+    expect(result.candidates.find(c => c.field === 'linkDocNo')).toMatchObject({ page: 1, status: 'uncertain' });
+    expect(callsForVisual()).toHaveLength(0);
+    expect(callsForEvidence()).toHaveLength(0);
+  });
+
+  it('retains Telugu source quotations and verifies a schedule from its cited page', async () => {
+    const quote = 'ఉత్తరం: రహదారి';
+    const document = [{ number: 1, region: 'Telugu schedule', text: quote, parts: [{ type: 'text' as const, text: quote }] }];
+    api.extraReads = [{ role: 'property', record: 'primary', field: 'boundaryNorth', value: 'Road', page: 1, quote, historical: false, handwritten: false, region: 'Schedule' }];
+    const result = await extractSections(document, [], new AbortController().signal, () => {}, undefined, 'property-schedule');
+    expect(result.candidates).toEqual([expect.objectContaining({ value: 'Road', quote, status: 'accepted' })]);
+    expect(callsForVisual()).toHaveLength(0);
   });
 
   it('publishes jurisdiction and property while the document-details worker is still waiting on the provider', async () => {
@@ -309,7 +397,7 @@ describe('shared document section extraction', () => {
     api.truncateOnce=true;
     const result=await extractSections(pages(3),[],new AbortController().signal,()=>{},undefined,'phase1:linkDoc');
     expect(result.candidates.filter(c=>c.role==='link').map(c=>c.field)).toEqual(expect.arrayContaining(['linkDocNo','linkDocType','linkDocDate']));
-    expect(result.notes).toContain('No native schedule heading was found; examined pages 3 visually.');
+    expect(result.notes).toHaveLength(0);
   });
 
   it('reads jurisdiction, schedule and valuation from a short link deed when its schedule is on page 1', async () => {
@@ -321,7 +409,7 @@ describe('shared document section extraction', () => {
       expect.objectContaining({ field: 'govtRate', value: '1200', role: 'property', status: 'accepted' }),
       expect.objectContaining({ field: 'structValue', value: '0', role: 'property', status: 'accepted' }),
     ]));
-    expect(result.notes).toContain('No native schedule heading was found; examined pages 1 visually.');
+    expect(result.notes).toHaveLength(0);
   });
 
   it('keeps Phase 1 property projection on the existing primary property across all document cards', () => {

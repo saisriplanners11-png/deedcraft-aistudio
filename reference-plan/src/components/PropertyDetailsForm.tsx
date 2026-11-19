@@ -4,7 +4,7 @@ import { PropertyDetails, PropertyType, HouseDetails, BoundaryDimensions } from 
 import { calculateSqMtrs, parseDimensionToNumber } from '../utils/dimensionUtils';
 import { Calculator, Building, MapPin, Hash, Home, Ruler, Check, CheckSquare, Square, FileText, Sparkles, RefreshCw, Plus, Trash2, Layers, Upload, Loader2 } from 'lucide-react';
 import { parseDocumentFile } from '../services/sketchAiService';
-import mammoth from 'mammoth';
+import { planDocumentInput } from '../../../plan-document-input';
 
 interface PropertyDetailsFormProps {
   property: PropertyDetails;
@@ -98,31 +98,23 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     structureType?: string;
   } | null>(null);
 
+  const documentRead = React.useRef<AbortController | null>(null);
+  const applyDocument = React.useRef(onApplyExtractedData);
+  applyDocument.current = onApplyExtractedData;
+  React.useEffect(() => () => documentRead.current?.abort(), []);
+
   const handleDocumentFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    documentRead.current?.abort();
+    const controller = new AbortController();
+    documentRead.current = controller;
     setIsUploadingDoc(true);
     try {
-      let textContent = '';
-      if (file.name.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        textContent = result.value;
-      }
-
-      let base64 = undefined;
-      if (!textContent) {
-        const reader = new FileReader();
-        base64 = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      }
-
-      const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-      const extracted = await parseDocumentFile(base64, mimeType, textContent || undefined);
+      const input = await planDocumentInput(file, controller.signal);
+      const extracted = await parseDocumentFile(input, 'property', controller.signal);
+      if (controller.signal.aborted) return;
       
       const rawExecs = extracted.executants || (Array.isArray(extracted.executant) ? extracted.executant : (extracted.executant ? [extracted.executant] : []));
       const rawClaims = extracted.claimants || (Array.isArray(extracted.claimant) ? extracted.claimant : (extracted.claimant ? [extracted.claimant] : []));
@@ -133,7 +125,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       const extractedStruct = extracted.house?.structureType || extracted.house?.plinthPrefix || (extracted.houses && extracted.houses[0]?.structureType);
 
       setExtractedInfo({
-        houseNo: extracted.houseNo || (extracted.nearHNo ? extracted.nearHNo.match(/([0-9]+[-/][0-9]+(?:[-/][a-zA-Z0-9]+)?)/)?.[1] : undefined),
+        houseNo: extracted.houseNo,
         plotNo: extracted.plotNo,
         surveyNo: extracted.surveyNo,
         areaSqYards: extracted.areaSqYards,
@@ -145,8 +137,8 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         structureType: extractedStruct,
       });
 
-      if (onApplyExtractedData) {
-        onApplyExtractedData(extracted);
+      if (applyDocument.current) {
+        applyDocument.current(extracted);
       } else {
         onChange({
           ...property,
@@ -164,10 +156,14 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         });
       }
     } catch (err: any) {
+      if (controller.signal.aborted) return;
       alert('డ్యాక్యుమెంట్ పార్సింగ్ విఫలమైంది: ' + (err.message || 'Error'));
     } finally {
-      setIsUploadingDoc(false);
-      e.target.value = '';
+      if (documentRead.current === controller) {
+        documentRead.current = null;
+        setIsUploadingDoc(false);
+        e.target.value = '';
+      }
     }
   };
   const isMeters = boundaries?.dimensionUnit === 'Metres';

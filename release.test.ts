@@ -51,8 +51,10 @@ describe('Release source, parties and preservation',()=>{
     const state=make(a,b), {text,output,manifest}=await generate(state);
     expect(text).toContain('RELEASE DEED BETWEEN CO-OWNERS');
     expect(text).toContain('Alice HAS RELEASED HER UNDIVIDED 1/3');
-    expect((text.match(/SIGNATURE OF THE RELEASOR/g)||[]).length).toBe(a);
-    expect((text.match(/SIGNATURE OF THE RELEASEE/g)||[]).length).toBe(b);
+    const closing = text.slice(text.indexOf('SIGN/S OF THE RELEASOR'));
+    expect(closing).toMatch(/SIGN\/S OF THE RELEASORS?\..*SIGN\/S OF THE RELEASEES?\./);
+    expect(closing).toMatch(/WITNESSES[^\n]*\n1\.\n2\./);
+    expect(closing).not.toMatch(/Alice|Bob|Seller \d|Buyer \d|SIGNATURE OF THE RELEASE/i);
     expect(text.match(/Hereinafter called the "RELEASORS?"/g)?.length).toBe(1);
     expect(text.match(/Hereinafter called the "RELEASEES?"/g)?.length).toBe(1);
     expect(text).toContain(b===1?'in his name':'in their names');

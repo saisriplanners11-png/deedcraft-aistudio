@@ -71,9 +71,16 @@ For further reduction, use direct browser uploads to private object storage and
 let Gemini fetch a short-lived signed URL. This requires a separate authenticated
 upload flow and moves document transfer to the storage provider's bandwidth
 allowance. Keep API keys server-side and never make identity documents public.
-An OCR/text-first mode can reduce traffic further, but should be evaluated on real
-Telugu scans, handwritten annotations, tables and identity fields before replacing
-the current visual checks. No such accuracy tradeoff is enabled in this change.
+Deed extraction indexes native document text locally. Scanned pages and pages
+with visual layout use small OCR batches. Section reads reuse their page-numbered
+evidence and confirmation reads check the original cited page. The 15-page
+synthetic Link Document regression limits media inputs to 30 and tests extraction
+from the last page. Run `node qa/payment-request-queue.mjs` to check payment
+request counts and shared queue cancellation.
+
+Aggregate `ai_extraction_request` events to measure model calls, elapsed time
+and input, output, cached and thinking tokens when Gemini supplies those counts.
+The logs omit source material. Set `AI_EXTRACTION_LOG=false` to disable them.
 
 References: [Gemini Files API](https://ai.google.dev/gemini-api/docs/files) and
 [file input methods](https://ai.google.dev/gemini-api/docs/file-input-methods).

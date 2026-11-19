@@ -11,8 +11,14 @@ const response = { kind: 'authority', details: { documentNo: 'AUTH-QA-2026', boo
   { role: 'principal', values: { Name: 'OWNER TWO', Relation: 'S/O', RelativeName: 'PARENT TWO', Village: 'SECOND VILLAGE' }, principalNames: [], quote: 'Principals: OWNER TWO, S/O PARENT TWO' },
   { role: 'attorney', values: { Name: 'AGENT ONE', Relation: 'S/O', RelativeName: 'AGENT PARENT', Village: 'AGENT VILLAGE' }, principalNames: ['OWNER ONE'], quote: 'Attorney / GPA holder: AGENT ONE. AGENT ONE explicitly represents both OWNER ONE and OWNER TWO.' },
 ], notes: [] };
+response.detailQuotes = { documentNo: 'Document No. AUTH-QA-2026', bookNumber: 'Book 1', documentDate: 'on 2026-10-01', sro: 'at TEST SRO', sroCode: 'code TEST-01', adjustedAmount: 'Adjusted stamp duty: 12500.50' };
+response.people[1].quote = 'OWNER TWO, S/O PARENT TWO';
+response.people[2].quote = 'Attorney / GPA holder: AGENT ONE';
+response.people[2].representationQuote = 'AGENT ONE represents OWNER ONE.';
 // Repeat a holder appearance to verify one card per distinct individual.
 response.people.push({ ...response.people[2] }, { role: 'attorney', values: { Name: 'AGENT TWO', Relation: 'S/O', RelativeName: 'SECOND PARENT' }, principalNames: ['OWNER TWO'], quote: 'AGENT TWO represents OWNER TWO.' });
+response.people.at(-1).representationQuote = 'AGENT TWO represents OWNER TWO.';
+const source = text + ' Adjusted stamp duty: 12500.50. AGENT ONE represents OWNER ONE. AGENT TWO represents OWNER TWO.';
 const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 try {
   for (const mode of real ? ['gpa'] : ['gpa','agpa']) {
@@ -39,9 +45,9 @@ try {
     if(mode==='gpa') {
       const chooser = page.waitForEvent('filechooser');
       await panel.getByRole('button', { name: 'Choose file(s) or photo', exact: true }).click();
-      await (await chooser).setFiles({name:'synthetic-gpa.txt',mimeType:'text/plain',buffer:Buffer.from(text)});
+      await (await chooser).setFiles({name:'synthetic-gpa.txt',mimeType:'text/plain',buffer:Buffer.from(source)});
     }
-    else {const transfer=await page.evaluateHandle(text=>{const data=new DataTransfer();data.items.add(new File([text],'synthetic-agpa.txt',{type:'text/plain'}));return data;},text);await panel.locator('.document-upload').dispatchEvent('drop',{dataTransfer:transfer});}
+    else {const transfer=await page.evaluateHandle(text=>{const data=new DataTransfer();data.items.add(new File([text],'synthetic-agpa.txt',{type:'text/plain'}));return data;},source);await panel.locator('.document-upload').dispatchEvent('drop',{dataTransfer:transfer});}
     await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
     await panel.getByText('GPA/AGPA authority details and Principal executants filled.',{exact:false}).waitFor({timeout:180000});

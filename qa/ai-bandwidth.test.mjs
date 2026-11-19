@@ -4,6 +4,20 @@ import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { createGeminiMediaStore, withGeminiMedia } from '../gemini-media.mjs';
 import { createProxyHandler, geminiRequest } from '../proxy.mjs';
+import { planDocumentContract, verifiedPlanDocument } from '../reference-plan/document-evidence.mjs';
+
+test('plan extraction keeps scoped, independently confirmed source facts', () => {
+  const plotNo = { value: '007', quote: 'Plot No. 007' };
+  const houseNo = { value: '6-2-24', quote: 'Near H.No. 6-2-24' };
+  const name = { value: 'SAMPLE BUYER', quote: 'Purchaser: SAMPLE BUYER' };
+  const first = { plotNo, houseNo, claimants: [{ name }], surveyNo: { value: '11/2', quote: 'Survey No. 11/2' } };
+  const second = { plotNo, houseNo, claimants: [{ name }] };
+  const text = 'Plot No. 007\nNear H.No. 6-2-24\nPurchaser: SAMPLE BUYER';
+  assert.deepEqual(verifiedPlanDocument(first, second, text, 'property'), { plotNo: '007' });
+  assert.deepEqual(verifiedPlanDocument(first, second, text, 'parties'), { claimants: [{ name: 'SAMPLE BUYER' }] });
+  assert.equal('claimants' in planDocumentContract('property').schema.properties, false);
+  assert.equal('plotNo' in planDocumentContract('parties').schema.properties, false);
+});
 
 const bytes = Buffer.alloc(256 * 1024, 0xab);
 const input = (data = bytes, text = 'Extract the identity.', mimeType = 'image/png') => ({
@@ -42,12 +56,16 @@ function provider() {
 const signal = () => new AbortController().signal;
 const quiet = () => {};
 
-test('Gemini identity transcription uses low thinking while other reads keep provider defaults', () => {
+test('Gemini uses low thinking for routine reads and the configured default for complex visuals', () => {
   const base = { model: 'gemini-3.8-flash', max_tokens: 3000, messages: [{ role: 'user', content: 'ID image' }] };
   const identity = geminiRequest({ ...base, system: 'Transcribe only the selected ID holder from the supplied source pixels.' });
   assert.deepEqual(identity.generationConfig, { maxOutputTokens: 3000, thinkingConfig: { thinkingLevel: 'LOW' } });
-  const deed = geminiRequest({ ...base, system: 'Extract property schedule facts.' });
-  assert.deepEqual(deed.generationConfig, { maxOutputTokens: 3000 });
+  for (const task of ['text', 'scan', 'identity', 'authority', 'payment']) {
+    assert.deepEqual(geminiRequest(base, task).generationConfig.thinkingConfig, { thinkingLevel: 'LOW' });
+    assert.deepEqual(geminiRequest(base, task, 'gemini-3.6-flash').generationConfig.thinkingConfig, { thinkingLevel: 'LOW' });
+  }
+  assert.deepEqual(geminiRequest(base, 'visual').generationConfig, { maxOutputTokens: 3000 });
+  assert.deepEqual(geminiRequest(base, 'text', 'other-model').generationConfig, { maxOutputTokens: 3000 });
 });
 
 test('same source uploads once while all independent reads and tool definitions remain intact', async () => {
@@ -198,25 +216,32 @@ test('wizard proxy sends Gemini file references and preserves structured respons
   const p = provider(), store = createGeminiMediaStore(p);
   const originalFetch = globalThis.fetch;
   const messages = [];
+  const logs = [];
   globalThis.fetch = async (url, init) => {
     messages.push(JSON.parse(init.body));
     assert.equal(init.headers['x-goog-api-key'], 'proxy-key');
     assert.ok(messages.at(-1).contents[0].parts[0].fileData);
-    return ok({ candidates: [{ content: { parts: [{ functionCall: { name: 'record_transcription', args: { candidates: [] } } }] }, finishReason: 'STOP' }] });
+    return ok({ candidates: [{ content: { parts: [
+      { thought: true, text: 'Contents must stay private' },
+      { functionCall: { name: 'record_transcription', args: { candidates: [] } } },
+    ] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 40, thoughtsTokenCount: 7, candidatesTokenCount: 9, cachedContentTokenCount: 3 } });
   };
-  const handler = createProxyHandler(() => ({ extractionProvider: 'gemini', geminiApiKey: 'proxy-key', draftModel: 'draft' }), { mediaStore: store });
+  const handler = createProxyHandler(() => ({ extractionProvider: 'gemini', geminiApiKey: 'proxy-key', draftModel: 'draft' }), { mediaStore: store, log: line => logs.push(JSON.parse(line)) });
   const server = createServer((req, res) => handler(req, res));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     const body = JSON.stringify({ model: 'vision', max_tokens: 4000, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: bytes.toString('base64') } }] }] });
     const response = await new Promise((resolve, reject) => {
-      const req = httpRequest({ hostname: '127.0.0.1', port: server.address().port, path: '/api/anthropic/v1/messages', method: 'POST', headers: { 'content-type': 'application/json' } }, res => {
+      const req = httpRequest({ hostname: '127.0.0.1', port: server.address().port, path: '/api/anthropic/v1/messages', method: 'POST', headers: { 'content-type': 'application/json', 'x-deedcraft-extraction': 'scan' } }, res => {
         const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString()) }));
       }); req.on('error', reject); req.end(body);
     });
     assert.equal(response.status, 200);
     assert.equal(response.body.content[0].type, 'tool_use');
     assert.equal(response.body.content[0].name, 'record_transcription');
+    assert.equal(response.body.content.length, 1);
+    const [usage] = logs;
+    assert.deepEqual({ ...usage, elapsedMs: 0 }, { event: 'ai_extraction_request', provider: 'gemini', task: 'scan', requests: 1, status: 200, elapsedMs: 0, inputTokens: 40, cachedTokens: 3, outputTokens: 9, thinkingTokens: 7 });
     assert.equal(p.uploads.length, 1);
   } finally { globalThis.fetch = originalFetch; await new Promise(resolve => server.close(resolve)); }
 });

@@ -7,6 +7,16 @@ import { emptySaleAuthority, type AuthorityExtraction, type AuthorityPerson } fr
 export const AUTHORITY_PERSON_FIELDS = ['Name', 'Relation', 'RelativeName', 'Dob', 'Age', 'Occupation', 'HNo', 'Locality', 'Village', 'Mandal', 'District', 'State', 'PinCode', 'Aadhaar', 'Mobile', 'Pan'];
 export const AUTHORITY_DETAIL_FIELDS = ['documentNo', 'bookNumber', 'documentDate', 'sro', 'sroCode', 'adjustedAmount'];
 const nameKey = (name: string) => name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+const differentIdentity = (a: Record<string, string>, b: Record<string, string>) =>
+  ['Aadhaar', 'Pan', 'Dob'].some(key => a[key] && b[key] && nameKey(a[key]) !== nameKey(b[key]));
+const sameName = (a: string, b: string) => !!a && !!b && nameKey(a) === nameKey(b);
+
+function representedIds(names: string[], ids: string[], principalNames: string[]): string[] {
+  return [...new Set(names.flatMap(name => {
+    const matches = ids.filter((_, index) => sameName(name, principalNames[index]));
+    return matches.length === 1 ? matches : [];
+  }))];
+}
 
 export function cleanAuthorityRead(raw: any, sourceName: string, page: number): Omit<AuthorityExtraction, 'id' | 'documentIds'> {
   const notes: string[] = [];
@@ -61,7 +71,9 @@ export function applyAuthorityPerson(draft: Draft, person: AuthorityPerson, role
   const principals = partyRecords(appStateFor(next), 'executant');
   next.saleAuthority.attorneys = attorneys.map(attorney => {
     const evidence = authority.extractions?.flatMap(extraction => extraction.people).find(candidate => candidate.id === attorney.extractedPersonId);
-    const linked = principals.flatMap((principal, index) => evidence?.principalNames.some(name => nameKey(name) === nameKey(principal.values.executantName || '')) ? [index ? principal.id : state.primaryExecutantId || 'primary'] : []);
+    const linked = representedIds(evidence?.principalNames || [],
+      principals.map((principal, index) => index ? principal.id : state.primaryExecutantId || 'primary'),
+      principals.map(principal => principal.values.executantName));
     return { ...attorney, principalIds: [...new Set([...attorney.principalIds, ...linked])] };
   });
   return next;
@@ -73,7 +85,8 @@ export function applyGpaExtraction(draft: Draft, authority: import('./sale-optio
   const collect = (role: 'principal' | 'attorney') => {
     const principals: AuthorityPerson[] = [];
     for (const person of result.people.filter(p => p.role === role && p.values.Name && p.quote)) {
-      const match = principals.find(p => nameKey(p.values.Name) === nameKey(person.values.Name) && !['Aadhaar', 'Pan', 'Dob'].some(k => p.values[k] && person.values[k] && p.values[k] !== person.values[k]));
+      const match = principals.find(p => sameName(p.values.Name, person.values.Name) && !differentIdentity(p.values, person.values)
+        && (p.quote === person.quote || ['Aadhaar', 'Pan'].some(key => p.values[key] && p.values[key] === person.values[key])));
       if (match) {
         match.principalNames = [...new Set([...match.principalNames, ...person.principalNames])];
         for (const [key, value] of Object.entries(person.values)) {
@@ -89,22 +102,33 @@ export function applyGpaExtraction(draft: Draft, authority: import('./sale-optio
   if (!principals.length) throw new Error('No verified GPA/AGPA principals found. Existing executants were retained.');
   const manual = Object.fromEntries(Object.entries(draft.manual).filter(([key]) => !key.startsWith('executant|')));
   const ids = principals.map((_, i) => i ? crypto.randomUUID() : 'primary');
-  principals.forEach((person, i) => {
-    for (const key of AUTHORITY_PERSON_FIELDS) manual['executant|' + ids[i] + '|executant' + key] = person.values[key] || '';
-    manual['executant|' + ids[i] + '|executantPartyType'] = PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))!;
-  });
   const state = appStateFor(draft);
   const previous = partyRecords(state, 'executant');
+  principals.forEach((person, i) => {
+    for (const key of AUTHORITY_PERSON_FIELDS) manual['executant|' + ids[i] + '|executant' + key] = person.values[key] || '';
+    const records = previous.filter(record => sameName(record.values.executantName, person.values.Name)
+      && !differentIdentity(Object.fromEntries(AUTHORITY_PERSON_FIELDS.map(key => [key, record.values['executant' + key]])), person.values));
+    if (records.length === 1 && principals.filter(principal => sameName(principal.values.Name, person.values.Name)).length === 1) {
+      const oldId = previous.indexOf(records[0]) ? records[0].id : state.primaryExecutantId || 'primary';
+      const prefix = 'executant|' + oldId + '|';
+      for (const [key, value] of Object.entries(draft.manual)) {
+        if (key.startsWith(prefix) && value) manual['executant|' + ids[i] + '|' + key.slice(prefix.length)] = value;
+      }
+    }
+    manual['executant|' + ids[i] + '|executantPartyType'] = PARTY_CAPACITY_OPTIONS.find(p => p.startsWith('Principal'))!;
+  });
+  const names = principals.map(person => person.values.Name);
   const nextAuthority = { ...authority, attorneys: authority.attorneys.map(attorney => {
     const evidence = authority.extractions?.flatMap(e => e.people).find(p => p.id === attorney.extractedPersonId);
     const names = evidence?.principalNames || previous.filter((p, i) => attorney.principalIds.includes(i ? p.id : state.primaryExecutantId || 'primary')).map(p => p.values.executantName);
-    return { ...attorney, principalIds: ids.filter((_, i) => names.some(name => name && nameKey(name) === nameKey(principals[i].values.Name))) };
+    return { ...attorney, principalIds: representedIds(names, ids, principals.map(person => person.values.Name)) };
   }) };
   if (holders.length) nextAuthority.attorneys = holders.map(holder => {
-    const existing = authority.attorneys.find(attorney => nameKey(attorney.values.Name || '') === nameKey(holder.values.Name) && !['Aadhaar', 'Pan', 'Dob'].some(key => attorney.values[key] && holder.values[key] && attorney.values[key] !== holder.values[key]));
+    const matches = authority.attorneys.filter(attorney => sameName(attorney.values.Name, holder.values.Name) && !differentIdentity(attorney.values, holder.values));
+    const existing = matches.length === 1 && holders.filter(person => sameName(person.values.Name, holder.values.Name)).length === 1 ? matches[0] : undefined;
     return { id: existing?.id || crypto.randomUUID(), documents: existing?.documents, extractedPersonId: holder.id,
-      values: Object.fromEntries(AUTHORITY_PERSON_FIELDS.map(key => [key, holder.values[key] || ''])),
-      principalIds: ids.filter((_, index) => holder.principalNames.some(name => nameKey(name) === nameKey(principals[index].values.Name))) };
+      values: { ...Object.fromEntries(AUTHORITY_PERSON_FIELDS.map(key => [key, holder.values[key] || ''])), ...Object.fromEntries(Object.entries(existing?.values || {}).filter(([, value]) => !!value)) },
+      principalIds: representedIds(holder.principalNames, ids, names) };
   });
   for (const key of ['documentNo', 'bookNumber', 'documentDate', 'sro', 'sroCode'] as const) nextAuthority[key] = result.details[key] || '';
   nextAuthority.adjustedAmount = authority.adjustedAmount?.trim() ? authority.adjustedAmount : result.details.adjustedAmount || '';
