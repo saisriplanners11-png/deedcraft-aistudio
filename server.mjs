@@ -10,6 +10,8 @@ import { createProxyHandler, PROXY_PREFIX } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
 import { createTemplateApi } from './template-api.mjs';
 import { sendStatic } from './static-response.mjs';
+import express from 'express';
+import { createApplicationApi } from './applications/api.mjs';
 
 const PORT = Number(process.env.PORT) || 4173;
 const DIST = fileURLToPath(new URL('./dist/', import.meta.url));
@@ -34,6 +36,10 @@ const proxy = createProxyHandler(() => ({
 }));
 const referencePlanApi = createReferencePlanApi();
 const templateApi = createTemplateApi({ production: true });
+const applicationApi = express().use('/api/applications', createApplicationApi({
+  apiKey: process.env.GEMINI_API_KEY,
+  model: process.env.GEMINI_EXTRACT_MODEL || process.env.GEMINI_MODEL,
+}));
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
@@ -44,6 +50,7 @@ const MIME = {
 };
 
 createServer(async (req, res) => {
+  if (/^\/api\/applications(?:\/|\?|$)/.test(req.url || '')) return applicationApi(req, res);
   if (req.url?.startsWith('/api/templates')) return templateApi(req, res);
   if (req.url?.startsWith(PROXY_PREFIX)) return proxy(req, res, () => {});
   if (req.url?.startsWith('/api/analyze-sketch') || req.url?.startsWith('/api/parse-document')) return referencePlanApi(req, res);

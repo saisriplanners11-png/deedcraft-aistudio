@@ -38,6 +38,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
     "@google/genai": "^2.4.0",
+    "@paddleocr/paddleocr-js": "0.4.2",
     "@tailwindcss/vite": "^4.1.14",
     "@tesseract.js-data/eng": "1.0.0",
     "@tesseract.js-data/tel": "1.0.0",
@@ -49,6 +50,7 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "mammoth": "^1.12.3",
+    "onnxruntime-web": "1.24.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",

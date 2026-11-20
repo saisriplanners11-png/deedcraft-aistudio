@@ -26,6 +26,7 @@ export type Candidate = {
 export type SourcePlan = { record: string; drawing: PlanDrawing; linked: boolean; page: number };
 export type SourceResult = {
   candidates: Candidate[]; plans: SourcePlan[]; notes: string[];
+  textPreview?: true;
   /** Browser-side timings make slow source pages visible without logging evidence. */
   timing?: { totalMs: number; pagesMs: Record<string, number> };
 };
@@ -215,6 +216,20 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     next = { ...draft, sources: draft.sources.map(s => s.id === action.sourceId ? { ...s, ...action.patch, id: s.id, revision: s.revision } : s) };
     const original = next.sources.find(source => source.id === action.sourceId);
     const result = action.patch.result;
+    if (result?.candidates.length && original?.readMode === 'local' && original.assignment
+      && /^(?:party:|guardian:|party-person$)/.test(original.profile || '')) {
+      const { role, record } = original.assignment;
+      const resolved = resolveDraft(draft).values;
+      const mismatch = result.candidates.some(candidate => {
+        if (candidate.role !== role || !/(?:Aadhaar|Pan|Dob|(?<!Relative|Relation)Name)$/.test(candidate.field)) return false;
+        const previous = resolved[fieldKey(role, record, candidate.field)];
+        return !!previous && exact(previous).replace(/[ -]/g, '') !== exact(candidate.value).replace(/[ -]/g, '');
+      });
+      if (mismatch) {
+        const checked = { ...result, candidates: [], notes: [...result.notes, 'The upload conflicts with the identity in this record. Check the document before entering its details.'] };
+        next = { ...next, sources: next.sources.map(source => source === original ? { ...source, result: checked } : source) };
+      }
+    }
     if (result && original?.readMode === 'local' && original.assignment?.role === 'payment' && original.profile?.startsWith('payment:')) {
       const record = original.assignment.record;
       const mode = resolveDraft(draft).values[fieldKey('payment', record, 'mode')];

@@ -2,7 +2,7 @@ import { createWorker, OEM, PSM } from 'tesseract.js';
 import workerUrl from 'tesseract.js/dist/worker.min.js?url';
 
 /** Tesseract jobs do not support AbortSignal directly. Release the worker when the upload stops. */
-function untilStopped<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+export function untilStopped<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
     const abort = () => reject(signal.reason);
     signal.addEventListener('abort', abort, { once: true });
@@ -40,7 +40,7 @@ async function enhanceIdentityImage(input: Blob, signal: AbortSignal): Promise<B
 
 export async function openLocalOcr(signal: AbortSignal) {
   const setup = AbortSignal.any([signal, AbortSignal.timeout(90000)]);
-  const opening = createWorker('eng+tel', OEM.LSTM_ONLY, {
+  const opening = createWorker('eng', OEM.LSTM_ONLY, {
     workerPath: workerUrl,
     // The worker selects the quickest supported WASM core, including a scalar fallback.
     corePath: new URL('/ocr/v7/core/', window.location.origin).href,
@@ -62,7 +62,14 @@ export async function openLocalOcr(signal: AbortSignal) {
     read: async (image: Blob, enhanceIdentity = false) => {
       const scan = AbortSignal.any([signal, AbortSignal.timeout(90000)]);
       const input = enhanceIdentity ? await enhanceIdentityImage(image, scan) : image;
-      const result = await untilStopped(worker.recognize(input, { rotateAuto: true }), scan);
+      let result = await untilStopped(worker.recognize(input, { rotateAuto: true }), scan);
+      if (enhanceIdentity && result.data.confidence < 65) {
+        // Aadhaar cards place short lines around the portrait and QR code.
+        await untilStopped(worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT }), scan);
+        const sparse = await untilStopped(worker.recognize(input, { rotateAuto: true }), scan);
+        await untilStopped(worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO }), scan);
+        if (sparse.data.text.trim() && sparse.data.confidence >= result.data.confidence + 8) result = sparse;
+      }
       // Automatic deskew handles small angles. Retry sideways and upside-down pages
       // when the first transcription is weak, keeping all attempts within the same timeout.
       if (result.data.confidence < 65) {

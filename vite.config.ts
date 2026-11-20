@@ -6,6 +6,19 @@ import { createProxyHandler } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
 import { createTemplateApi } from './template-api.mjs';
 import { localOcrAssets } from './local-ocr-assets';
+import { createApplicationApi } from './applications/api.mjs';
+
+function applicationApi(env: Record<string, string>): Plugin {
+  const handler = createApplicationApi({
+    apiKey: env.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+    model: env.GEMINI_EXTRACT_MODEL || process.env.GEMINI_EXTRACT_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL,
+  });
+  return {
+    name: 'applications-api',
+    configureServer: server => void server.middlewares.use('/api/applications', handler),
+    configurePreviewServer: server => void server.middlewares.use('/api/applications', handler),
+  };
+}
 
 function templateLibraryApi(env: Record<string, string>): Plugin {
   let handler: ReturnType<typeof createTemplateApi>;
@@ -55,7 +68,12 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), localOcrAssets(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env)],
+    plugins: [react(), tailwindcss(), localOcrAssets(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env), applicationApi(env)],
+    optimizeDeps: {
+      // Keep the SDK's relative worker URL intact while converting its CommonJS dependencies.
+      exclude: ['@paddleocr/paddleocr-js'],
+      include: ['clipper-lib', '@techstark/opencv-js', 'js-yaml'],
+    },
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),
@@ -64,6 +82,6 @@ export default defineConfig(({ mode }) => {
       'process.env.VERIFY_MODEL': JSON.stringify(geminiExtraction ? geminiVerifyModel : (env.VERIFY_MODEL ?? '')),
     },
     server: { port: 5173, open: false, watch: { ignored: ['**/tmp/**', '**/output/**', '**/template-storage/**'] }, fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/template-storage/**', resolve(env.TEMPLATE_STORAGE_DIR || process.env.TEMPLATE_STORAGE_DIR || 'template-storage').replace(/\\/g, '/') + '/**'] } },
-    build: { outDir: 'dist', sourcemap: false, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), step13ReferencePlan: resolve(__dirname, 'step13-reference-plan/index.html') } } },
+    build: { outDir: 'dist', sourcemap: false, rollupOptions: { input: { main: resolve(__dirname, 'index.html'), applications: resolve(__dirname, 'applications/index.html'), referencePlan: resolve(__dirname, 'reference-plan/index.html'), step13ReferencePlan: resolve(__dirname, 'step13-reference-plan/index.html') } } },
   };
 });

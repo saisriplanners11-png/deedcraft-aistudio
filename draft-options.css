@@ -1,0 +1,80 @@
+.wizard-app .draft-options {
+  margin-bottom: 36px;
+}
+
+.wizard-app .draft-options h1 {
+  margin: 0 0 18px;
+  color: var(--dc-ink);
+  font-size: clamp(26px, 4vw, 38px);
+  letter-spacing: -.035em;
+}
+
+.draft-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wizard-app .draft-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  min-height: 88px;
+  border: 1px solid var(--dc-rule);
+  border-radius: 12px;
+  background: var(--dc-paper);
+  color: var(--dc-ink);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+}
+
+.wizard-app .draft-option:hover {
+  border-color: var(--dc-gold);
+  background: var(--dc-gold-bg);
+}
+
+.wizard-app .draft-option:focus-visible {
+  outline: 2px solid var(--dc-gold);
+  outline-offset: 3px;
+}
+
+.wizard-app .draft-option:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+
+.draft-option-icon {
+  color: var(--dc-gold);
+}
+
+.draft-option strong,
+.draft-option span span {
+  display: block;
+}
+
+.draft-option strong {
+  margin-bottom: 3px;
+  font-size: 17px;
+}
+
+.draft-option span span {
+  color: var(--dc-body);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.wizard-app .saved-deeds-heading h2 {
+  margin: 0;
+  color: var(--dc-ink);
+  font-size: clamp(23px, 3vw, 30px);
+  letter-spacing: -.025em;
+}
+
+@media (max-width: 620px) {
+  .draft-options-grid {
+    grid-template-columns: 1fr;
+  }
+}

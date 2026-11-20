@@ -118,9 +118,12 @@ const enclosure: Record<string, Rule[]> = {
   lrsApplication: land.slice(2, 4), lrsProceeding: land.slice(4), houseTax: tax, assessment: [],
 };
 const houseLabel = '(?:Bearing\\s+)?H\\.?\\s*No\\.?|(?:House|Door) (?:No\\.?|Number)';
-const ptinLabel = '(?:P\\.?T\\.?I\\.?N\\.?|P\\.?T\\.?I\\.?\\s+No\\.?|Property Tax Identification(?: Number| No\\.?)?|Property Tax ID)' + numberLabel;
+const ptinLabel = '(?:P\\.?T\\.?I\\.?N\\.?(?:\\s*\\(Property Tax Identification Number\\))?|P\\.?T\\.?I\\.?\\s+No\\.?|Property Tax Identification(?: Number| No\\.?)?|Property Tax ID)' + numberLabel;
 const assessmentLabel = 'Assessment (?:No\\.?|Number)';
 const pairedLabels: Rule[] = [['houseNo', houseLabel, identifier], ['ptin', ptinLabel, identifier], ['assessment', assessmentLabel, identifier]];
+const assessmentHeading = /^House Tax Assessment Details\s*:?$/i;
+const endAssessment = /^(?:Current Demand|Arrear|Collection) Details\s*:?$/i;
+const expandedPtin = /^PTIN\s*\(Property\s+Tax\s+Identification\s+Number\)\s*[:=]?\s*\d+[ \t]*$/gim;
 const headings = /^(?:registered\s+)?(?:sale deed(?: through (?:gpa|agpa))?|deed of sale|gift (?:settlement )?deed|gift settlement|mortgage deed|deed of mortgage|rectification deed|supplemental deed|release deed|reconveyance deed|deed of reconveyance|general power of attorney|agreement of sale cum gpa)\s*$/i;
 const scheduleHeading = /^(?:property schedule|schedule(?:\s+of\s+(?:the\s+)?property)?)(?:\s*[-:–]?\s*\(?[A-Z0-9]+\)?)?\s*[:.]?$/i;
 const boundariesHeading = /^(?:boundaries of (?:the )?(?:flat|apartment)|(?:property |apartment |flat )?boundaries)\s*:?$/i;
@@ -159,9 +162,9 @@ const printedLine = (line: Line) => line.text.replace(/^[|)]+\s*/, '').split(/\t
 const trimPunctuation = (value: string) => value.replace(/[,;:\s]+$/, '').trim();
 const latinName = (value: string) => /^[A-Za-z][A-Za-z .'’()-]{2,99}$/.test(value) &&
   !/\b(?:india|government|enrolment|signature|district|mandal|aadhaar|mobile|female|male|authority|address)\b/i.test(value) ? value : '';
-const dobLine = /(?:^|[/\s])(?:D\.?O\.?B\.?|Date of Birth|పుట్టిన తేద[ీి]|జన్మ తేద[ీి])\s*:?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})\s*$/iu;
+const dobLine = /(?:^|[/\s])(?:D\.?[O0]\.?B\.?|Date of Birth|పుట్టిన తేద[ీి]|జన్మ తేద[ీి])\s*:?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})\s*$/iu;
 const yearOfBirthLine = /(?:^|[/\s])(?:Year of Birth|Y\.?O\.?B\.?)\s*:?\s*(\d{4})\s*$/i;
-const cardGender = /^(?:[\u0c00-\u0c7f\s\u200c\u200d]+\s*\/\s*)?(male|female|other|పురుషుడు|స్త్రీ)$/iu;
+const cardGender = /^(?:[\u0c00-\u0c7f\s\u200c\u200d]*\/\s*)?(male|female|other|పురుషుడు|స్త్రీ)$/iu;
 const postalFields: Rule[] = [
   ['HNo', houseLabel, identifier], ['Locality', 'Locality|Colony', name], ['Village', 'VTC|Village|Town|City', name],
   ['Mandal', 'Mandal', name], ['District', 'District', name], ['State', 'State', name], ['PinCode', 'PIN(?:\\s*Code)?', pin],
@@ -364,6 +367,37 @@ function matchFields(line: Line, rules: ReturnType<typeof rule>[]): Map<string, 
   return fields;
 }
 
+/** The Panchayat Raj assessment printout wraps the PTIN label and lists the door on its own line in one property summary. */
+function readAssessmentSummary(lines: Line[]) {
+  const heading = lines.findIndex(line => assessmentHeading.test(line.text));
+  if (heading < 0) return;
+  const end = lines.findIndex((line, index) => index > heading && endAssessment.test(line.text));
+  if (end < 0) return;
+  const section = lines.slice(heading + 1, end);
+  const text = section.map(line => line.text).join('\n');
+  if (section.some(line => assessmentHeading.test(line.text))) return;
+  const wrapped = [...text.matchAll(expandedPtin)];
+  if (wrapped.length !== 1 || !wrapped[0][0].includes('\n')) return;
+  const quote = wrapped[0][0];
+  const line = { page: lines[heading].page, text: quote };
+  const rules = pairedLabels.map(rule);
+  const fields = matchFields({ ...line, text: quote.replace(/\s+/g, ' ') }, rules);
+  if (!fields.has('ptin')) return;
+
+  const labelled = section.flatMap(source => splitCells(source.text).flatMap(cell => {
+    const values = matchFields({ ...source, text: cell }, rules);
+    return [...values].map(([field, value]) => ({ source, field, value }));
+  }));
+  const houses = labelled.filter(item => item.field === 'houseNo');
+  const assessments = labelled.filter(item => item.field === 'assessment');
+  const hasDifferentPtin = labelled.some(item => item.field === 'ptin' && item.value !== fields.get('ptin'));
+  if (houses.length !== 1 || assessments.length > 1 || hasDifferentPtin) return { line, fields, pairedHouseLine: undefined };
+
+  const house = houses[0];
+  fields.set('houseNo', house.value);
+  return { line: { ...line, text: quote + '\n' + house.source.text }, fields, pairedHouseLine: house.source };
+}
+
 /** Labelled rows from text PDFs, DOCX tables and OCR can put the value on the next line. */
 function readLabelledLines(lines: Line[], rules: ReturnType<typeof rule>[]) {
   const rows = alignedRows(lines, rules).flatMap(({ line, fields }) =>
@@ -424,6 +458,11 @@ export function readLocalDocumentFields(pages: LocalPage[], profile: string, rec
   };
   const houseRows = (subset: Line[], table = false) => {
     const rules = pairedLabels.map(rule);
+    const summaries = table ? pages.flatMap(page => {
+      const summary = readAssessmentSummary(subset.filter(line => line.page === page));
+      return summary ? [summary] : [];
+    }) : [];
+    const pairedHouseLines = new Set(summaries.map(summary => summary.pairedHouseLine));
     const labelled = subset.flatMap(line => {
       const direct = matchFields(line, rules);
       if (direct.size) return [{ line, fields: direct }];
@@ -431,7 +470,11 @@ export function readLocalDocumentFields(pages: LocalPage[], profile: string, rec
       const fields = new Map(readings);
       return fields.size === readings.length ? [{ line, fields }] : readings.map(reading => ({ line, fields: new Map([reading]) }));
     });
-    const rows = table ? [...labelled, ...alignedRows(subset, [...pairedLabels, ...tax].map(rule), true)] : labelled;
+    const rows = table ? [
+      ...labelled.filter(row => !(pairedHouseLines.has(row.line) && row.fields.size === 1 && row.fields.has('houseNo'))),
+      ...alignedRows(subset, [...pairedLabels, ...tax].map(rule), true),
+      ...summaries,
+    ] : labelled;
     const printedPtin = rows.some(row => row.fields.has('ptin'));
     for (const { line, fields } of rows) {
       const houseNo = fields.get('houseNo') || '';

@@ -27,11 +27,9 @@ Set `ANTHROPIC_API_KEY` in `.env.local` on the server. The key is never compiled
 
 ### Document extraction without AI credits
 
-Turn **AI extraction** off in the deed workspace and upload through the usual document controls. The browser reads supported printed fields from searchable PDFs, Word documents and text files and fills them automatically. Scans and photos use English and Telugu OCR on the device. Edit the filled fields directly if a correction is needed. Manual entries take priority.
+Turn **AI extraction** off and upload through a supported document card. The browser reads searchable PDFs, Word documents and text directly, and uses English PaddleOCR for photos and scans with Tesseract as a fallback. Supported fields fill in the assigned record. Read issues are available in **Local uploads and results**.
 
-Local reading covers clearly labelled Link Deed, tax, enclosure, property, identity and supported payment proof fields. It reads a scanned region even if a PDF contains a separate searchable header, and keeps labelled rows aligned in Word and PDF forms. Supported Aadhaar letters can supply a printed relative's name from the line between the cardholder's name and the numbered address. A relationship type is extracted only if printed. Unfamiliar layouts, ambiguous details and handwriting may require manual entry. Dedicated GPA/AGPA authority evidence and additional template fields still need manual entry in local mode. Turn the switch on to use cloud extraction for a subsequent upload.
-
-A readable written mobile number takes priority over the number printed on Aadhaar. For handwriting the local reader cannot read, enter the values directly or attach a text file with labelled Mobile and Occupation lines to the same party. Local reading runs in the background so you can continue editing.
+Local matching preserves manual entries and leaves unsupported fields blank. Dedicated GPA/AGPA authority, entity authorization, and custom template fields use manual entry or cloud extraction. DeedCraft serves the local OCR models and runtime itself.
 
 To use Gemini for uploaded-file extraction while retaining Anthropic for drafting, add this to `.env.local` and restart the app:
 

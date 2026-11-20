@@ -79,6 +79,7 @@ import './workspace-density.css';
 import './friendly-workspace.css';
 import './workspace-fonts.css';
 import './workspace.css';
+import './draft-options.css';
 import { WorkflowNavigation } from './workflow-navigation';
 import { ScreenGuide, GettingStartedGuide } from './screen-guide';
 import { DocumentUpload, ReviewIssues } from './workflow-ui';
@@ -246,13 +247,13 @@ function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
 function SourceFeedback({ sources }: { sources: Source[]; visibleFields?: string[] }) {
   const needsClearerUpload = sources.some(source => source.status === 'error' || !!source.error
     || source.result?.notes.some(note => /could not be read/i.test(note))
-    || (source.readMode === 'local' && source.status === 'done' && !source.result?.candidates.length));
+    || (source.readMode === 'local' && source.status === 'done' && !source.result?.textPreview && !source.result?.candidates.length));
   const pending = sources.some(source => source.status === 'queued' || source.status === 'reading');
   const finished = sources.filter(source => source.status === 'done');
   if (!sources.length) return null;
   return <div role="status" className="source-review-status">
     {pending && <p>Reading documents. You can keep editing.</p>}
-    {finished.length > 0 && <p>Read: {finished.map(source => source.name).join(', ')}. Check the filled fields against the originals.</p>}
+    {finished.map(source => <p key={source.id}>Read: {source.name}. {source.result?.textPreview ? 'Use Read again to match fields.' : source.readMode === 'local' && !source.result?.candidates.length ? 'No supported fields were matched.' : 'Check the filled fields against the original.'}</p>)}
     {needsClearerUpload && <p className="notice">Some details could not be filled. Enter them below or upload a clearer copy.</p>}
   </div>;
 }
@@ -990,19 +991,22 @@ export default function WizardApp() {
               return { ...s, [sourceId]: index < 0 ? [...steps, event] : steps.map((step,i) => i === index ? event : step) };
             });
         };
-        if (cache.current.has(key)) result = await cache.current.get(key)!;
-        else if (local) {
+        if (local) {
           const { extractLocally } = await import('./local-upload-extraction');
-          result = await extractLocally(files, controller.signal, () => {}, profile, reconveyance);
-        } else {
+          const localResult = cache.current.has(key) ? await cache.current.get(key)!
+            : await extractLocally(files, controller.signal, profile, reconveyance);
+          if (valid()) {
+            if (localResult.candidates.length && !localResult.notes.length) cache.current.set(key, Promise.resolve(localResult));
+            job({ status: 'done', result: localResult, durationMs: performance.now() - started });
+          }
+          return;
+        }
+        if (cache.current.has(key)) result = await cache.current.get(key)!;
+        else {
           result = await extractUpload(files, controller.signal, report, result => { if (valid()) job({ result }); }, profile);
         }
         if (valid()) {
           if (result.candidates.length > 0 && result.candidates.every(c => c.status === 'accepted') && result.notes.length === 0) cache.current.set(key, Promise.resolve(result));
-          if (local) {
-            job({ status: 'done', result, durationMs: performance.now() - started, error: undefined });
-            return;
-          }
           setUploadSteps(s => ({ ...s, [sourceId]: (s[sourceId] || []).map(step => step.state === 'running' ? { ...step, state: 'done' as const } : step) }));
           job({ status: 'done', result, durationMs: performance.now() - started, error: undefined });
           const uncertain = result.candidates.filter(candidate => candidate.status === 'uncertain');
@@ -1022,7 +1026,8 @@ export default function WizardApp() {
     } catch (error: any) {
       if (valid()) {
         if (!local) setUploadSteps(s=>({...s,[sourceId]:(s[sourceId]||[]).map(step=>step.state==='running'||step.state==='queued'?{...step,state:'error' as const}:step)}));
-        job({ status: 'error', error: error.message || 'This upload could not be read.' });
+        const message = error.message || 'This upload could not be read.';
+        job({ status: 'error', error: message });
       }
     } finally {
       controllers.current.delete(sourceId);
@@ -1583,7 +1588,22 @@ export default function WizardApp() {
     <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
     {templateLibraryError && <p className="notice" role="alert">Shared template library: {templateLibraryError} <button onClick={() => void refreshPublishedTemplate()}>Retry</button></p>}
     {templatesView ? <TemplateLibrary onClose={() => setTemplatesView(false)} onPublished={() => void refreshPublishedTemplate()} /> : libraryView ? <main id="workspace-main" tabIndex={-1} className="saved-deeds-dashboard">
-      <div className="saved-deeds-heading"><div><h1>Saved deeds</h1><p>{savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'} · Stored in this browser</p></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
+      <section className="draft-options" aria-labelledby="draft-options-title">
+        <h1 id="draft-options-title">Start a draft</h1>
+        <div className="draft-options-grid">
+          <button type="button" className="draft-option" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>
+            <FileText className="draft-option-icon" size={24} aria-hidden="true" />
+            <span><strong>Documents</strong><span>Draft a deed using the guided document workflow.</span></span>
+            <ArrowRight size={18} aria-hidden="true" />
+          </button>
+          <a className="draft-option" href="/applications/index.html">
+            <ListChecks className="draft-option-icon" size={24} aria-hidden="true" />
+            <span><strong>Applications</strong><span>Fill and print CARD, market value and stamp forms.</span></span>
+            <ArrowRight size={18} aria-hidden="true" />
+          </a>
+        </div>
+      </section>
+      <div className="saved-deeds-heading"><div><h2>Saved deeds</h2><p>{savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'} · Stored in this browser</p></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
       {storageError && <p className="notice" role="alert">{storageError}</p>}
       {savedDeeds.length > 0 && <div className="paper-library-grid"><section className="paper-library-list"><h2>Your drafts</h2>
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
@@ -1652,7 +1672,7 @@ export default function WizardApp() {
             {source.result?.notes.map((note, index) => <p key={index}>{note}</p>)}
             {(sourceFiles[source.id] || []).map((file, index) =>
               <button type="button" className="quiet" key={index} onClick={() => saveBlob(file, file.name)}>Download {file.name}</button>)}
-            {!aiExtraction && !!(sourceFiles[source.id]?.length && (source.error || source.result?.candidates.some(candidate => candidate.status === 'uncertain'))) &&
+            {!aiExtraction && !!(sourceFiles[source.id]?.length && (source.error || source.result?.textPreview || source.result?.candidates.some(candidate => candidate.status === 'uncertain'))) &&
               <button type="button" className="quiet" onClick={() => retryUpload(source)}>Read {source.name} again</button>}
           </li>)}</ul>
         </details>}

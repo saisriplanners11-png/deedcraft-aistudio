@@ -75,7 +75,7 @@ export function SaleAuthorityEditor({ state, onChange, onApplyPerson, onApplyGpa
     if (!mounted.current) return;
     if (!aiExtraction) {
       setExtractionError('');
-      setProgress('Documents attached. Enter authority and representation details manually while AI extraction is off.');
+      setProgress('Documents attached. Enter authority details manually or use cloud extraction.');
       return;
     }
     setDialog({ names: files.map(file => file.name), label: authorityUpload ? `${state.saleDocument?.toUpperCase()} authority document` : 'Attorney identity / supporting document', result: '' });

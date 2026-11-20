@@ -5,6 +5,23 @@ import { draftReducer, fieldKey, newDraft, resolveDraft, type Source } from './s
 const page = (text: string, number = 1) => ({ text, number, region: 'Synthetic document · Page ' + number });
 
 describe('local document reading', () => {
+  it('maps an OCR birth-date label to the assigned identity and blocks a conflicting person', () => {
+    const result = readLocalDocumentFields([page('Government of India\nSample Resident\n5/D0B: 02/11/1979\n/FEMALE\n2233 4455 6677')], 'party:executant');
+    const source: Source = {
+      id: 'local-card', revision: 0, name: 'Identity', hash: 'fixture', status: 'reading', readMode: 'local',
+      profile: 'party:executant', assignment: { role: 'executant', record: 'second-person' },
+    };
+    const draft = draftReducer(newDraft(), { type: 'add', source });
+    const read = (target: typeof draft) => draftReducer(target, { type: 'job', draftId: target.id, sourceId: source.id, sourceRevision: 0, patch: { status: 'done', result } });
+    expect(resolveDraft(read(draft)).values).toMatchObject({
+      'executant|second-person|executantDob': '1979-11-02',
+      'executant|second-person|executantGender': 'Female',
+      'executant|second-person|executantAadhaar': '223344556677',
+    });
+    const edited = draftReducer(draft, { type: 'manual', key: 'executant|second-person|executantName', value: 'Different Person' });
+    expect(resolveDraft(read(edited)).values).toEqual({ 'executant|second-person|executantName': 'DIFFERENT PERSON' });
+  });
+
   it('keeps each tax row and chooses the printed PTIN over assessment and demand numbers', () => {
     const result = readLocalDocumentFields([page(`CURE Property Tax Receipt Details
 H.No. | PTIN | Assessment No. | Demand No.
