@@ -126,6 +126,7 @@ const scheduleHeading = /^(?:property schedule|schedule(?:\s+of\s+(?:the\s+)?pro
 const boundariesHeading = /^(?:boundaries of (?:the )?(?:flat|apartment)|(?:property |apartment |flat )?boundaries)\s*:?$/i;
 const finishSchedule = /^(?:witness(?:es)?\b|signature(?:s)?\b|form\s+(?:32\s*a|60|61)\b|in witness whereof\b)/i;
 const aadhaarNumber = (value: string) => /^[2-9]\d{3}(?:[ -]?\d{4}){2}$/.test(value) ? value.replace(/[ -]/g, '') : '';
+const maskedAadhaarSuffix = (value: string) => value.match(/^(?:[xX*•]{4}[ -]?){2}(\d{4})$/u)?.[1] || '';
 const gender = (value: string) => ['Male', 'Female', 'Other'].find(option => option.toLowerCase() === value.toLowerCase()) || '';
 const birthDate = (value: string) => {
   const parsed = date(value);
@@ -189,22 +190,24 @@ function readAadhaarPage(lines: Line[]): IdentityReading[] {
   const caption = lines.findIndex(line => aadhaarCaption.test(printedLine(line)));
   const isLetter = caption >= 0 && (uidai.test(pageText) || govtIndia.test(pageText));
   const isCard = !isLetter && govtIndia.test(pageText) && lines.some(line => dobLine.test(printedLine(line)) || yearOfBirthLine.test(printedLine(line)))
-    && lines.some(line => /^[2-9]\d{3}[ -]\d{4}[ -]\d{4}$/.test(printedLine(line)));
+    && lines.some(line => aadhaarNumber(printedLine(line)) || maskedAadhaarSuffix(printedLine(line)));
   if (!isLetter && !isCard) return [];
 
   const readings: IdentityReading[] = [];
   const add = (line: Line, field: string, value: string) => { if (value) readings.push({ line, field, value }); };
+  const addNumber = (line: Line, value: string) => {
+    add(line, 'Aadhaar', aadhaarNumber(value));
+    add(line, 'MaskedAadhaarSuffix', maskedAadhaarSuffix(value));
+  };
   const postalLines = new Set<Line>();
   if (isLetter) {
     for (const [index, line] of lines.entries()) {
       const number = printedLine(line).match(aadhaarCaption);
       if (!number) continue;
       const next = lines[index + 1];
-      const inline = aadhaarNumber(number[1].trim());
-      if (inline) add(line, 'Aadhaar', inline);
-      else if (!number[1].trim() && next) {
-        add({ ...line, text: line.text + '\n' + next.text }, 'Aadhaar', aadhaarNumber(printedLine(next)));
-      }
+      const inline = number[1].trim();
+      if (inline) addNumber(line, inline);
+      else if (next) addNumber({ ...line, text: line.text + '\n' + next.text }, printedLine(next));
     }
     const toIndex = lines.slice(0, caption).findIndex(line => /^To\s*:?\s*$/i.test(printedLine(line)));
     const enrolment = lines.slice(0, caption).findIndex(line => /\bEnroll?ment\s+No\b/i.test(printedLine(line)));
@@ -270,10 +273,7 @@ function readAadhaarPage(lines: Line[]): IdentityReading[] {
     const sex = after && printedLine(after).match(cardGender);
     if (sex) add(after, 'Gender', sex[1] === 'పురుషుడు' ? 'Male' : sex[1] === 'స్త్రీ' ? 'Female' : gender(sex[1]));
   }
-  if (isCard) for (const line of lines) {
-    const value = printedLine(line);
-    if (/^[2-9]\d{3}[ -]\d{4}[ -]\d{4}$/.test(value)) add(line, 'Aadhaar', aadhaarNumber(value));
-  }
+  if (isCard) for (const line of lines) addNumber(line, printedLine(line));
   for (const [lineIndex, line] of lines.entries()) {
     const columns = splitCells(line.text);
     for (const [index, column] of columns.entries()) {
@@ -285,6 +285,18 @@ function readAadhaarPage(lines: Line[]): IdentityReading[] {
     }
   }
   return readings;
+}
+
+/** A separate card back can supply postal fields when it prints the same full identifier. */
+function readAadhaarBack(lines: Line[], expectedNumber: string): IdentityReading[] {
+  if (!uidai.test(lines.map(line => line.text).join('\n'))) return [];
+  const address = lines.findIndex(line => /^Address\s*:/i.test(line.text));
+  const numbers = lines.filter(line => aadhaarNumber(printedLine(line)));
+  if (address < 0 || numbers.length !== 1 || aadhaarNumber(printedLine(numbers[0])) !== expectedNumber) return [];
+  const end = lines.indexOf(numbers[0]);
+  if (end <= address) return [];
+  const rules = postalFields.filter(([field]) => field !== 'Mobile').map(rule);
+  return readLabelledLines(lines.slice(address + 1, end), rules).map(({ line, field, value }) => ({ line, field, value }));
 }
 
 function identityScope(profile: string) {
@@ -506,19 +518,24 @@ export function readLocalDocumentFields(pages: LocalPage[], profile: string, rec
     };
     const aadhaar = pages.flatMap(page => readAadhaarPage(lines.filter(line => line.page === page)));
     const distinct = (field: string) => new Set(aadhaar.filter(item => item.field === field).map(item => item.value.toLowerCase())).size;
-    const identityPages = new Set(aadhaar.map(item => item.line.page)).size;
+    const identityPages = new Set(aadhaar.map(item => item.line.page));
+    const fullNumber = aadhaar.find(item => item.field === 'Aadhaar')?.value;
+    const endings = new Set(aadhaar.filter(item => item.field === 'Aadhaar' || item.field === 'MaskedAadhaarSuffix')
+      .map(item => item.value.slice(-4)));
     const noteReadings = (page: LocalPage) => {
       const noteLines = lines.filter(line => line.page === page);
       if (!noteLines.every(line => contactRules.some(({ match }) => match.test(line.text)))) return [];
       return noteLines.flatMap(line => readContactLine(line, true));
     };
-    if (distinct('Aadhaar') > 1 || (identityPages > 1 && distinct('Name') > 1)) {
+    if (distinct('Aadhaar') > 1 || endings.size > 1 || (identityPages.size > 1 && distinct('Name') > 1)) {
       notes.push('The Aadhaar readings show conflicting identities. Upload one clear Aadhaar document for this party.');
     } else if (aadhaar.length) {
       // A contact-only text attachment belongs to the one ID in this upload.
       const contactPages = distinct('Name') === 1 && distinct('Aadhaar') === 1
         ? pages.filter(page => page.separateContactNote) : [];
-      for (const { line, field, value, writtenContact } of [...aadhaar, ...contactPages.flatMap(noteReadings)]) {
+      const addressReadings = fullNumber && distinct('Name') === 1 ? pages.filter(page => !identityPages.has(page))
+        .flatMap(page => readAadhaarBack(lines.filter(line => line.page === page), fullNumber)) : [];
+      for (const { line, field, value, writtenContact } of [...aadhaar, ...addressReadings, ...contactPages.flatMap(noteReadings)]) {
         addIdentity(line, field, value, writtenContact);
       }
     } else {

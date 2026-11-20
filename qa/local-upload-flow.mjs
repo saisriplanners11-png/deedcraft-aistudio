@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { expect } from 'playwright/test';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PDFDocument, StandardFonts, popGraphicsState, pushGraphicsState, setTextRenderingMode, TextRenderingMode } from 'pdf-lib';
 import { Document, Packer, Paragraph, Table, TableCell, TableRow } from 'docx';
 
 const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome' });
 try {
-  const page = await browser.newPage({ viewport: { width: 1140, height: 900 } });
+  const mobile = process.env.PLAYWRIGHT_MOBILE === '1';
+  const page = await browser.newPage(mobile ? devices['Pixel 7'] : { viewport: { width: 1140, height: 900 } });
+  if (mobile) await page.addInitScript(() => Object.defineProperty(navigator, 'hardwareConcurrency', { value: 4 }));
   const cloud = [];
   const external = [];
   const browserErrors = [];
@@ -29,7 +31,17 @@ try {
   });
   await page.goto(port);
   await page.getByRole('button', { name: /New deed/ }).first().click();
-  const step = label => page.getByRole('navigation', { name: 'Deed steps' }).getByRole('button', { name: label }).click();
+  const nav = page.getByRole('navigation', { name: 'Deed steps' });
+  const step = async label => {
+    if (!mobile) return nav.getByRole('button', { name: label }).click();
+    const expand = nav.getByRole('button', { name: 'Expand deed steps' });
+    if (await expand.isVisible()) await expand.click();
+    const select = nav.getByLabel('Jump to section');
+    const options = await select.locator('option').evaluateAll(items => items.map(({ text, value }) => ({ text, value })));
+    const option = options.find(({ text }) => label.test(text.replace(/^(\d+)\./, '$1')));
+    assert(option, 'Missing mobile navigation option for ' + label);
+    await select.selectOption(option.value);
+  };
   await step(/^1\s+Deed setup/i);
   await page.getByLabel('Schedule 1 property type').locator('select').selectOption({ label: 'Part Open Place' });
   await step(/^2\s+Link Deed & Enclosures/i);
@@ -43,7 +55,7 @@ try {
   await page.getByRole('button', { name: /Link Document No\./i }).click();
   await page.getByRole('button', { name: /Property Tax \/ Assessment/i }).click();
   await page.getByRole('button', { name: 'Continue with 2 documents' }).click();
-  const deedInput = page.locator('[data-title-point="linkDoc"] input[type=file]');
+  const deedInput = page.locator('[data-title-point="linkDoc"] input[type=file]').first();
   const pdf = await PDFDocument.create();
   const pdfPage = pdf.addPage();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -55,7 +67,7 @@ try {
   const linkFile = { name: 'Synthetic link deed.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()) };
   await deedInput.setInputFiles(linkFile);
   const review = page.getByRole('dialog', { name: 'Review local extraction' });
-  const linkCard = page.locator('[data-title-point="linkDoc"]');
+  const linkCard = page.locator('[data-title-point="linkDoc"]').first();
   await expect(linkCard.locator('[data-deed-field="linkDocNo"] input')).toHaveValue('1263/2016', { timeout: 30000 });
   await expect(linkCard.locator('[data-deed-field="linkDocType"] input')).toHaveValue('SALE DEED');
   await expect(review).toHaveCount(0);
@@ -66,20 +78,30 @@ try {
   await step(/^2\s+Link Deed & Enclosures/i);
 
   // Exercise the production OCR assets with a real raster image and no cloud mocks.
-  const scanText = lines => page.evaluate(lines => {
+  const scanText = (lines, options = {}) => page.evaluate(({ lines, transparent, rotate, mime }) => {
     const canvas = document.createElement('canvas');
     canvas.width = 1250;
     canvas.height = 450;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!transparent) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     ctx.fillStyle = '#000';
     ctx.font = '36px Arial';
     lines.forEach((line, index) => ctx.fillText(line, 60, 78 + index * 65));
-    return canvas.toDataURL('image/png').split(',')[1];
-  }, lines);
+    if (!rotate) return canvas.toDataURL(mime || 'image/png', .87).split(',')[1];
+    const photo = document.createElement('canvas');
+    photo.width = canvas.height;
+    photo.height = canvas.width;
+    const camera = photo.getContext('2d');
+    camera.translate(photo.width, 0);
+    camera.rotate(Math.PI / 2);
+    camera.drawImage(canvas, 0, 0);
+    return photo.toDataURL(mime || 'image/png', .87).split(',')[1];
+  }, { lines, ...options });
   const scan = await scanText(['GHMC Property Tax Receipt', 'H.No.: 6-2-24', 'PTIN: 1105008210', 'Receipt No: 42/2026',
-    'Transaction Date: 19/11/2026']);
+    'Transaction Date: 19/11/2026'], { transparent: true });
   await page.locator('[data-title-point="houseTax"] input[type=file]').setInputFiles({
     name: 'Synthetic scanned receipt.png', mimeType: 'image/png', buffer: Buffer.from(scan, 'base64'),
   });
@@ -87,6 +109,37 @@ try {
   await expect(page.getByLabel('H.No. for PTIN pair 1')).toHaveValue('6-2-24');
   await expect(page.getByLabel('PTIN for H.No. 2')).toHaveValue('1105008210');
   assert.deepEqual(browserErrors, []);
+
+  // A scanner app can export image-only pages and an invisible OCR layer with stale text.
+  const scanPdf = await PDFDocument.create();
+  const corruptOverlay = await scanPdf.embedFont(StandardFonts.Helvetica);
+  const header = await scanPdf.embedJpg(Buffer.from(await scanText([
+    'SALE DEED', 'Document No: 1263/2016', 'Execution Date: 27-02-2016', 'SRO: Sircilla',
+  ], { mime: 'image/jpeg' }), 'base64'));
+  const schedule = await scanPdf.embedJpg(Buffer.from(await scanText([
+    'SCHEDULE OF THE PROPERTY', 'Mandal: Sircilla', 'Survey No: 795/B&D', 'Extent: 157.22 Sq. Yards',
+    'East: Camera test lane', 'Market Value per Sq.Yard: Rs. 1,000',
+  ], { mime: 'image/jpeg' }), 'base64'));
+  for (const [image, overlay] of [[header, true], [schedule, false]]) {
+    const sheet = scanPdf.addPage([625, 290]);
+    sheet.drawImage(image, { x: 0, y: 32, width: 625, height: 225 });
+    if (overlay) {
+      sheet.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible));
+      ['SALE DEED', 'Document No: 9999/2016', 'Execution Date: 22-03-2016', 'SRO: Example Office'].forEach((text, index) =>
+        sheet.drawText(text, { font: corruptOverlay, size: 15, x: 35, y: 218 - 32 * index }));
+      sheet.pushOperators(popGraphicsState());
+      sheet.drawText('Scanned with a phone', { font: corruptOverlay, size: 9, x: 430, y: 10 });
+    }
+  }
+  await page.getByRole('button', { name: /Add another Link Document/i }).click();
+  const scannedCard = page.locator('[data-title-point="linkDoc"]').last();
+  await scannedCard.locator('input[type=file]').setInputFiles({
+    name: 'Camera scans.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await scanPdf.save()),
+  });
+  await expect(scannedCard.locator('[data-deed-field="linkDocNo"] input')).toHaveValue('1263/2016', { timeout: 120000 });
+  await step(/^4\s+Property Schedules/i);
+  await expect(page.locator('[data-deed-field="boundaryEast"] :is(input,textarea)')).toHaveValue('Camera test lane');
+  await step(/^2\s+Link Deed & Enclosures/i);
 
   const textFile = (name, text) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
   const enclosures = [
@@ -146,10 +199,20 @@ try {
   await expect(uploads.getByRole('button', { name: 'Download payment-proof.pdf' })).toBeVisible();
   for (const [stepNumber, side, name] of [[7, 'executant', 'Synthetic Seller'], [8, 'claimant', 'Synthetic Buyer']]) {
     await step(new RegExp('^' + stepNumber + '\\s+'));
+    if (side === 'claimant') {
+      const rotatedCard = await scanText(['Government of India', name, 'DOB: 21/10/1990', 'Female', 'XXXX XXXX 6677'],
+        { mime: 'image/jpeg', rotate: true });
+      await page.locator('.party-identity-upload input[type=file]').first().setInputFiles({
+        name: 'Sideways Aadhaar.jpeg', mimeType: 'image/jpeg', buffer: Buffer.from(rotatedCard, 'base64'),
+      });
+      await expect(page.locator('[data-deed-field="claimantName"] input').first()).toHaveValue('SYNTHETIC BUYER', { timeout: 120000 });
+      await expect(page.locator('[data-deed-field="claimantDob"] input').first()).toHaveValue('1990-10-21');
+      await expect(page.locator('[data-deed-field="claimantAadhaar"] input').first()).toHaveValue('');
+    }
     const id = 'Government of India\nTo\n' + name + '\nSample Parent,\n1-2-3,\nPIN Code: 505301\nMobile: 91234 56789\nYour Aadhaar No. :\n2233 4455 6677';
-    await page.locator('.party-identity-upload input[type=file]').first().setInputFiles([
-      textFile(side + '-id.txt', id), textFile(side + '-contact.txt', 'Mobile: 98765 43210\nOccupation: Business'),
-    ]);
+    const identityFiles = [textFile(side + '-id.txt', id), textFile(side + '-contact.txt', 'Mobile: 98765 43210\nOccupation: Business')];
+    if (side === 'executant') identityFiles.unshift({ name: 'Unreadable.png', mimeType: 'image/png', buffer: Buffer.from('Not an image') });
+    await page.locator('.party-identity-upload input[type=file]').first().setInputFiles(identityFiles);
     await expect(page.locator('[data-deed-field="' + side + 'Name"] input').first()).toHaveValue(name.toUpperCase());
     await expect(page.locator('[data-deed-field="' + side + 'RelativeName"] input').first()).toHaveValue('SAMPLE PARENT');
     await expect(page.locator('[data-deed-field="' + side + 'Mobile"] input').first()).toHaveValue(/^98765 ?43210$/);
@@ -167,11 +230,12 @@ try {
   await expect(agreements.locator('[data-deed-field="supplementalDocNo"] input')).toHaveValue('84/2025');
   assert.deepEqual(cloud, [], 'Local readings make zero cloud extraction requests');
   assert.deepEqual(external, [], 'OCR imports its assets from DeedCraft');
+  assert.deepEqual(browserErrors, []);
   await step(/^2\s+Link Deed & Enclosures/i);
   await mode.check();
   await deedInput.setInputFiles(linkFile);
   await expect.poll(() => cloud.length).toBeGreaterThan(0);
-  console.log('PASS: eight Step 2 cards, a PDF with a searchable header and scanned body, table-form jurisdiction, schedule, flat agreements, party and payment autofill. Local PDF, DOCX, text and PNG made zero cloud calls. Re-enabling AI routed the same picker to cloud extraction.');
+  console.log('PASS: local autofill from a transparent PNG, sideways masked Aadhaar JPEG, multi-page camera PDF, mixed PDF, searchable PDF, DOCX and text. Local uploads made zero cloud calls.');
 } finally {
   await browser.close();
 }

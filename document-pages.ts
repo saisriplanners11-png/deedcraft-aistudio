@@ -164,7 +164,12 @@ async function preparePdf(bytes: Uint8Array, signal: AbortSignal, localImages: b
           const operators = await page.getOperatorList();
           if (localImages) {
             const { width, height } = page.getViewport({ scale: 1 });
-            untranscribedRaster = rasterNeedsTranscription(operators, pdfjs.OPS, width * height, textPositions);
+            // Scanner exports can include a stale hidden text layer over a photograph.
+            // Prefer what is visible when such a layer covers a significant scanned region.
+            const hiddenText = operators.fnArray.some((op, index) => op === pdfjs.OPS.setTextRenderingMode
+              && [3, 7].includes(operators.argsArray[index]?.[0]));
+            untranscribedRaster = rasterNeedsTranscription(operators, pdfjs.OPS, width * height, hiddenText ? [] : textPositions);
+            if (hiddenText && untranscribedRaster) text = '';
           } else {
             const ops = operators.fnArray;
             const imageOps = new Set([
@@ -253,21 +258,30 @@ async function prepareOne(file: File, signal: AbortSignal, localImages: boolean)
       throw new Error('Use a PDF, Word document, text file, JPEG, PNG, WebP or GIF image.');
     }
     const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
     try {
       signal.throwIfAborted();
       const scale = Math.min(1, 2800 / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const context = canvas.getContext('2d');
       if (!context) throw new Error('This browser could not display the image.');
+      if (localImages) {
+        // Give transparent screenshots a white background and preserve the resulting text pixels.
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', .96));
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, localImages ? 'image/png' : 'image/jpeg', .96));
       if (!blob) throw new Error('The uploaded image could not be read.');
       pages.push({ number: 1, region: 'Uploaded photograph',
         parts: localImages ? [] : [imagePart(new Uint8Array(await blob.arrayBuffer()), 'image/jpeg')],
         ...(localImages ? { localImage: async () => blob } : {}) });
-    } finally { bitmap.close(); }
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+      bitmap.close();
+    }
   }
   return { pages, notes, dispose };
 }
@@ -282,7 +296,19 @@ export async function prepareDocument(input: File | File[], signal: AbortSignal,
   const dispose = async () => { await Promise.allSettled(cleanups.map(cleanup => cleanup())); };
   try {
     for (const [fileIndex, file] of files.entries()) {
-      const prepared = await prepareOne(file, signal, localImages);
+      let prepared: Prepared;
+      try {
+        prepared = await prepareOne(file, signal, localImages);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (!localImages) throw error;
+        const message = error instanceof Error && error.name === 'PasswordException'
+          ? 'This PDF is password-protected. Upload an unlocked copy to read its details.'
+          : 'This file could not be read. Re-export it as a PDF or upload a clearer PNG or JPEG.';
+        if (files.length === 1) throw new Error(message, { cause: error });
+        notes.push(file.name + ': ' + message);
+        continue;
+      }
       cleanups.push(prepared.dispose);
       for (const page of prepared.pages) pages.push({ ...page, number: pages.length + 1, fileIndex, region: file.name + ' · ' + page.region });
       notes.push(...prepared.notes.map(note => file.name + ': ' + note));

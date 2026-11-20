@@ -63,6 +63,15 @@ export async function openLocalOcr(signal: AbortSignal) {
       const scan = AbortSignal.any([signal, AbortSignal.timeout(90000)]);
       const input = enhanceIdentity ? await enhanceIdentityImage(image, scan) : image;
       const result = await untilStopped(worker.recognize(input, { rotateAuto: true }), scan);
+      // Automatic deskew handles small angles. Retry sideways and upside-down pages
+      // when the first transcription is weak, keeping all attempts within the same timeout.
+      if (result.data.confidence < 65) {
+        for (const angle of [Math.PI / 2, -Math.PI / 2, Math.PI]) {
+          scan.throwIfAborted();
+          const rotated = await untilStopped(worker.recognize(input, { rotateRadians: angle }), scan);
+          if (rotated.data.confidence >= 65 && rotated.data.confidence >= result.data.confidence + 8) return rotated.data.text;
+        }
+      }
       return result.data.text;
     },
     close: () => worker.terminate(),

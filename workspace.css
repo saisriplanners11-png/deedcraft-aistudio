@@ -286,3 +286,151 @@
 .local-upload-list ul { padding:0; list-style:none; }
 .local-upload-list li + li { margin-top:12px; }
 .local-upload-list li p { margin:4px 0; }
+
+/* Paper & Saffron reference layouts for the library and deed forms. */
+.wizard-app.modern-workspace .saved-deeds-dashboard:not(.template-library) {
+  max-width:1310px; margin-inline:auto; padding-block:35px;
+}
+.wizard-app.modern-workspace .saved-deeds-heading h1 { font-size:clamp(28px,3vw,42px); margin:0; }
+.wizard-app.modern-workspace .saved-deeds-heading p { margin:3px 0 0; color:var(--dc-muted); }
+.wizard-app.modern-workspace .saved-deeds-heading > button { display:none; }
+.wizard-app.modern-workspace .paper-library-grid {
+  display:grid; grid-template-columns:minmax(0,1fr) 307px; gap:17px; align-items:start; margin-top:14px;
+}
+.wizard-app.modern-workspace .paper-library-list {
+  min-width:0; padding:19px 20px; background:var(--dc-paper); border:1px solid var(--dc-rule); border-radius:12px;
+}
+.wizard-app.modern-workspace .paper-library-list .library-toolbar { padding:0; border:0; margin:10px 0 6px; }
+.wizard-app.modern-workspace .paper-library-list .saved-deeds-list { gap:0; }
+.wizard-app.modern-workspace .paper-library-list .saved-deed-card {
+  padding:10px 0; border:0; border-bottom:1px solid var(--dc-rule); border-radius:0!important; box-shadow:none;
+}
+.wizard-app.modern-workspace .paper-library-list .saved-deed-card:last-child { border-bottom:0; }
+.wizard-app.modern-workspace .paper-library-list .saved-deed-card h2 { font-size:15px; }
+.wizard-app.modern-workspace .paper-library-list .saved-deed-symbol { width:36px; height:36px; }
+.wizard-app.modern-workspace .paper-draft-menu { position:relative; }
+.wizard-app.modern-workspace .paper-draft-menu summary {
+  display:grid; place-items:center; width:36px; min-height:36px; list-style:none; letter-spacing:1px;
+  border:1px solid var(--dc-rule); border-radius:8px; cursor:pointer;
+}
+.wizard-app.modern-workspace .paper-draft-menu summary::-webkit-details-marker { display:none; }
+.wizard-app.modern-workspace .paper-draft-menu[open] { z-index:2; }
+.wizard-app.modern-workspace .paper-draft-menu > div {
+  position:absolute; inset:calc(100% + 4px) 0 auto auto; display:grid; gap:4px; padding:6px;
+  width:max-content; max-width:80vw; border:1px solid var(--dc-rule); border-radius:8px;
+  background:var(--dc-paper); box-shadow:0 8px 20px #24312a26;
+}
+.wizard-app.modern-workspace .paper-featured-draft { border-radius:13px; overflow:hidden; background:#304339; color:#f1f7ed; }
+.wizard-app.modern-workspace .paper-featured-top { display:flex; justify-content:space-between; gap:8px; padding:14px 15px; font-size:13px; }
+.wizard-app.modern-workspace .paper-document-preview { min-height:182px; display:grid; place-items:center; background:#52685a; overflow:hidden; }
+.wizard-app.modern-workspace .paper-document-preview > div {
+  display:grid; align-content:start; gap:8px; width:139px; min-height:155px; padding:14px 13px; border-radius:3px;
+  background:#fffdf6; color:#24312a; transform:rotate(-7deg) translateY(6px); box-shadow:10px 10px #ebeadb66,0 10px 24px #17271d66;
+}
+.wizard-app.modern-workspace .paper-document-preview b { width:max-content; border:1px solid #a5b2a4; border-radius:3px; padding:0 4px; }
+.wizard-app.modern-workspace .paper-document-preview strong { font:650 17px/1.25 var(--workspace-heading); }
+.wizard-app.modern-workspace .paper-document-preview span { height:2px; background:#bec9bb; }
+.wizard-app.modern-workspace .paper-featured-info { padding:16px; }
+.wizard-app.modern-workspace .paper-featured-info :is(h2,p) { color:inherit; margin:0 0 6px; overflow-wrap:anywhere; }
+.wizard-app.modern-workspace .paper-featured-info label { display:block; font-size:13px; margin:12px 0 10px; }
+.wizard-app.modern-workspace .paper-featured-info label strong { float:right; }
+.wizard-app.modern-workspace .paper-featured-info progress { display:block; width:100%; height:8px; accent-color:var(--workspace-saffron); }
+.wizard-app.modern-workspace .paper-featured-info .primary { width:100%; background:var(--workspace-saffron); color:var(--workspace-on-saffron); border-color:var(--workspace-saffron); }
+.wizard-app.modern-workspace .paper-library-tools { margin-top:18px; }
+.wizard-app.modern-workspace .paper-library-tools > summary { width:max-content; max-width:100%; cursor:pointer; color:var(--dc-muted); }
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .workflow-nav-context > span { display:none; }
+.wizard-app.modern-workspace .paper-rail-group { padding:10px 9px 2px; text-transform:uppercase; letter-spacing:.055em; color:var(--dc-muted); font-size:11px; font-weight:650; }
+.wizard-app.modern-workspace .paper-overview-grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:10px; align-items:start; }
+.wizard-app.modern-workspace .paper-overview-grid .overview-grid { grid-template-columns:minmax(0,1fr); gap:0; }
+.wizard-app.modern-workspace .paper-overview-grid .overview-card {
+  display:flex; align-items:center; flex-direction:row-reverse; justify-content:space-between; text-align:left; gap:8px;
+  min-height:38px; padding:6px 0; border:0; border-bottom:1px solid var(--dc-rule); border-radius:0!important; box-shadow:none;
+}
+.wizard-app.modern-workspace .paper-overview-grid .overview-card :is(small,.overview-card-arrow,.overview-card-top b) { display:none; }
+.wizard-app.modern-workspace .paper-overview-grid .overview-card-top { width:auto; margin:0; }
+.wizard-app.modern-workspace .paper-overview-grid .overview-card:hover { transform:none; background:var(--dc-rule-soft); }
+.wizard-app.modern-workspace .paper-overview-grid .review-shortcut { width:100%; margin-top:10px; }
+.wizard-app.modern-workspace .paper-schedule-sheet {
+  border:1px solid var(--dc-rule); border-radius:13px; background:var(--dc-paper); min-width:0;
+}
+.wizard-app.modern-workspace .paper-schedule-sheet > .document-upload {
+  margin:0; border:0; border-bottom:1px solid var(--dc-rule); border-radius:12px 12px 0 0; padding:14px clamp(12px,2vw,25px);
+}
+.wizard-app.modern-workspace .paper-schedule-sheet > .schedule-switcher {
+  margin:0; border:0; border-bottom:1px solid var(--dc-rule); border-radius:0;
+}
+.wizard-app.modern-workspace .paper-schedule-sheet .property-schedule-card { margin:0; border:0; box-shadow:none; padding:clamp(12px,2vw,25px); }
+.wizard-app.modern-workspace .paper-schedule-sheet .property-add-card { margin:0 12px 12px; }
+.wizard-app.modern-workspace .paper-form-index {
+  display:flex; flex-wrap:wrap; gap:5px; padding:5px 8px; background:var(--workspace-field); border-block:1px solid var(--dc-rule); margin:12px 0 18px;
+}
+.wizard-app.modern-workspace .paper-form-index button { border:0; background:transparent; color:var(--dc-ink); padding:5px 8px; min-height:36px; }
+.wizard-app.modern-workspace .paper-form-index button:hover { background:var(--dc-gold-bg); }
+.wizard-app.modern-workspace .schedule-sheet-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 20px; }
+.wizard-app.modern-workspace .schedule-sheet-fields > .deed-section { grid-column:1/-1; }
+.wizard-app.modern-workspace .schedule-sheet-fields > div:nth-child(2) { border-left:1px solid var(--dc-rule); padding-left:20px; }
+.wizard-app.modern-workspace .schedule-sheet-fields .deed-section { border:0!important; box-shadow:none; }
+.wizard-app.modern-workspace .schedule-sheet-fields .deed-section > div:first-child { background:transparent; padding:10px 0!important; }
+.wizard-app.modern-workspace .schedule-sheet-fields .deed-section > div:last-child { padding:0 0 16px!important; }
+.wizard-app.modern-workspace .schedule-sheet-fields h2 { scroll-margin-top:16px; }
+.wizard-app.modern-workspace .schedule-sheet-fields > div .deed-field-grid { grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:12px 14px!important; }
+@media(max-width:1023px) {
+  .wizard-app.modern-workspace .paper-overview-grid,.wizard-app.modern-workspace .schedule-sheet-fields { grid-template-columns:minmax(0,1fr); }
+  .wizard-app.modern-workspace .schedule-sheet-fields > div:nth-child(2) { border:0; padding:0; }
+}
+@media(max-width:767px) {
+  .wizard-app.modern-workspace .paper-library-grid { grid-template-columns:minmax(0,1fr); }
+  .wizard-app.modern-workspace .paper-library-list { padding:12px; }
+  .wizard-app.modern-workspace .paper-library-list .saved-deed-card { gap:8px; }
+}
+.wizard-app.modern-workspace .paper-setup-columns {
+  display:grid; grid-template-columns:minmax(0,1.18fr) minmax(0,1fr); align-items:start; gap:12px;
+}
+.wizard-app.modern-workspace .paper-setup-columns .setup-fields { grid-template-columns:minmax(0,1fr); }
+@media(max-width:767px) {
+  .wizard-app.modern-workspace .paper-setup-columns { grid-template-columns:minmax(0,1fr); }
+}
+.wizard-app.modern-workspace .paper-schedule-tabs {
+  display:flex; align-items:center; flex-wrap:wrap; gap:7px; padding:8px clamp(12px,2vw,25px); border-bottom:1px solid var(--dc-rule);
+}
+.wizard-app.modern-workspace .paper-schedule-tabs .add-document-row { background:none; border:0; margin:0; padding:0; min-width:0; }
+.wizard-app.modern-workspace .paper-schedule-tabs button { min-height:36px; padding:6px 10px; }
+.wizard-app.modern-workspace .paper-current-schedule { background:var(--dc-gold-bg); border:1px solid var(--dc-rule); padding:7px 10px; border-radius:8px; font-weight:650; }
+.wizard-app.modern-workspace .paper-schedule-sheet .property-card-heading { margin-bottom:8px; padding-block:0 8px; }
+.wizard-app.modern-workspace .paper-schedule-sheet .property-card-heading p { display:none; }
+.wizard-app.modern-workspace .paper-library-list .deed-search { border:0; padding:0; gap:8px; }
+.wizard-app.modern-workspace .paper-party-fields {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:14px;
+}
+.wizard-app.modern-workspace .paper-party-fields .deed-field-grid { grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:12px 14px!important; }
+@media(max-width:1023px) { .wizard-app.modern-workspace .paper-party-fields { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:380px) {
+  .wizard-app.modern-workspace :is(.paper-party-fields,.schedule-sheet-fields) .deed-field-grid { grid-template-columns:minmax(0,1fr)!important; }
+}
+
+/* Compact field metrics from the earlier workspace, within the current layout. */
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .deed-field>span:first-child>span:first-child {
+  font:600 12px/1.35 var(--workspace-font)!important;
+}
+.wizard-app.modern-workspace .shell:not([data-step="10"]) :is(.setup-field,.field,.typing-stamp-fields) label,
+.wizard-app.modern-workspace .shell:not([data-step="10"]) :is(.setup-field,.field)>span,
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .typing-stamp-fields>label {
+  font-size:12px;
+}
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .deed-field-grid { gap:10px 12px!important; }
+.wizard-app.modern-workspace .shell:not([data-step="10"]) :is(.field,.deed-field) { gap:4px; }
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .stage :is(input,select,textarea):not([type=checkbox],[type=radio],[type=file]) {
+  min-height:36px!important; padding:6px 9px!important; border-radius:6px;
+  font:13px/1.4 var(--workspace-font)!important;
+}
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .stage textarea { min-height:68px!important; }
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .deed-section>div:first-child { padding:8px 14px!important; }
+.wizard-app.modern-workspace .shell:not([data-step="10"]) .deed-section>div:last-child { padding:12px 14px!important; }
+.wizard-app.modern-workspace .schedule-sheet-fields .deed-section>div:first-child { padding-inline:0!important; }
+.wizard-app.modern-workspace .schedule-sheet-fields .deed-section>div:last-child { padding-inline:0!important; }
+@media(max-width:639px) {
+  .wizard-app.modern-workspace .shell:not([data-step="10"]) .stage :is(input,select,textarea):not([type=checkbox],[type=radio],[type=file]) {
+    min-height:40px!important; font-size:16px!important;
+  }
+  .wizard-app.modern-workspace .shell:not([data-step="10"]) .stage textarea { min-height:68px!important; }
+}

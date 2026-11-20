@@ -334,8 +334,7 @@ function RecordFieldGroup({
       : (['executionDate', 'stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(f.id) ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
         ?? resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
   if ('stampValue' in form) form.stampValue = stampPaperValue(form);
-  return <PlacementRecord scope={role} id={record}>
-    {groups.map(g => (
+  const renderGroup = (g: import('./fields').Group) => (
       <FieldGroup
         key={g.title}
         afterField={afterField}
@@ -344,7 +343,15 @@ function RecordFieldGroup({
         form={form}
         setField={(id, v) => id === 'executionDate' ? edit('property', 'transaction', id, v) : edit(role, record, id, v)}
       />
-    ))}
+  );
+  const propertySheet = role === 'property' && step === 3;
+  const boundaries = groups.filter(group => /^(Boundaries|Dimensions)/.test(group.title));
+  return <PlacementRecord scope={role} id={record}>
+    {propertySheet ? <div className="schedule-sheet-fields">
+      <div>{groups.filter(group => group.title === 'Property identification').map(renderGroup)}</div>
+      <div>{boundaries.map(renderGroup)}</div>
+      {groups.filter(group => group.title !== 'Property identification' && !boundaries.includes(group)).map(renderGroup)}
+    </div> : hidePartyType && groups.length === 2 ? <div className="paper-party-fields">{groups.map(renderGroup)}</div> : groups.map(renderGroup)}
     {onDelete && <IconButton label={deleteLabel || `Delete ${label || role}`} onClick={onDelete} />}
   </PlacementRecord>;
 }
@@ -890,6 +897,9 @@ export default function WizardApp() {
     }));
   };
   const visibleSavedDeeds = savedDeeds.filter(deed => [deed.name, deed.deedType, ...deed.claimantNames, ...partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant'))].join(' ').toLowerCase().includes(deedSearch.toLowerCase())).sort((a, b) => deedSort === 'type' ? a.deedType.localeCompare(b.deedType) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const featuredDeed = savedDeeds.reduce<SavedDeed | undefined>((latest, deed) =>
+    !latest || Date.parse(deed.updatedAt) > Date.parse(latest.updatedAt) ? deed : latest, undefined);
+  const featuredProgress = libraryView && featuredDeed ? buildViewModel(appStateFor(featuredDeed.draft), () => {}).pct : 0;
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
     if (role === 'property' && ['stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(field)) record = 'transaction';
@@ -1573,22 +1583,36 @@ export default function WizardApp() {
     <header className="app-top"><a href="#" className="brand" onClick={event => { event.preventDefault(); void showLibrary(); }}><span className="brand-mark" aria-hidden="true">D</span><span className="brand-name">DeedCraft <small>MULTI-INSTRUMENT</small></span></a><div className="header-actions"><button type="button" className="theme-toggle" onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>{!libraryView && <IconButton icon={FolderOpen} label="Saved deeds" onClick={() => void showLibrary()} />}<button type="button" onClick={() => { void (async () => { if (await saveBeforeSwitch()) setTemplatesView(true); })(); }}><FileText size={16} aria-hidden="true" />Templates</button><button className="new-deed" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div></header>
     {templateLibraryError && <p className="notice" role="alert">Shared template library: {templateLibraryError} <button onClick={() => void refreshPublishedTemplate()}>Retry</button></p>}
     {templatesView ? <TemplateLibrary onClose={() => setTemplatesView(false)} onPublished={() => void refreshPublishedTemplate()} /> : libraryView ? <main id="workspace-main" tabIndex={-1} className="saved-deeds-dashboard">
-      <div className="saved-deeds-heading"><div><p className="eyebrow">YOUR WORK</p><h1>Saved deeds</h1></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
+      <div className="saved-deeds-heading"><div><h1>Saved deeds</h1><p>{savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'} · Stored in this browser</p></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
       {storageError && <p className="notice" role="alert">{storageError}</p>}
-      <div className="library-context"><span><FolderOpen size={16} aria-hidden="true" /> {savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'}</span><span>Stored in this browser · Keep using this device to access your drafts</span></div>
-      <div className="library-toolbar"><button type="button" disabled={backupBusy || loadingLibrary} onClick={() => void exportSavedBackup()}>Export saved-deeds backup</button><input ref={backupInput} type="file" hidden accept=".json,application/json" onChange={event => void importSavedBackup(event.target.files?.[0])} /><button type="button" disabled={backupBusy || loadingLibrary} onClick={() => backupInput.current?.click()}>Import saved-deeds backup</button><small>The backup includes deed details, uploaded files and custom templates. Keep the file private when moving it to another computer.</small></div>
-      {backupNotice && <p role="status">{backupNotice}</p>}
-      {savedDeeds.length > 0 && <GettingStartedGuide />}
+      {savedDeeds.length > 0 && <div className="paper-library-grid"><section className="paper-library-list"><h2>Your drafts</h2>
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
       {savedDeeds.length > 0 && !visibleSavedDeeds.length && <p role="status">No deeds match “{deedSearch}”. <button type="button" className="quiet" onClick={() => setDeedSearch('')}>Clear search</button></p>}
-      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length ? <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
+      <div className="saved-deeds-list">{visibleSavedDeeds.map(deed => {
         const name = deed.name || partyRecords(appStateFor(deed.draft), 'claimant').map(p => partyDisplayName(p.values, 'claimant')).filter(Boolean).join(', ') || deed.claimantNames?.join(', ') || `Untitled ${deed.deedType.toLowerCase()}`;
         return <article className="saved-deed-card" key={deed.id}><div className="saved-deed-symbol" aria-hidden="true"><FileText size={26} strokeWidth={1.5} /></div>
           <div><h2>{name}</h2><p>{deed.draft.instrumentId === 'agreement_of_sale' ? 'Agreement of Sale Cum GPA' : deed.deedType} · Last edited {new Date(deed.updatedAt).toLocaleString('en-IN')}</p><div className="saved-deed-meta"><span title="Source documents" aria-label={`${deed.draft.sources.length} source documents`}><Files size={13} aria-hidden="true" />{deed.draft.sources.length}</span><span title="Last viewed step"><ListChecks size={13} aria-hidden="true" />{STEPS[normalizeWorkflowStep(deed.draft.instrumentId, deed.draft.step)]?.label || 'Overview'}</span><span>{savedTemplateStatus(deed, defaultTemplates).label}{savedTemplateStatus(deed, defaultTemplates).earlier ? ' · Updating to current default' : ''}</span></div></div>
-          <div className="saved-deed-actions" role="group" aria-label="Deed actions"><IconButton icon={Pencil} label="Continue / Edit" onClick={() => openSaved(deed)} /><button type="button" onClick={() => duplicateSaved(deed, name)}>Duplicate This Document</button>{deed.name && <button type="button" onClick={() => renameSaved(deed)}>Rename</button>}<IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div>
+          <div className="saved-deed-actions" role="group" aria-label="Deed actions"><button type="button" className="primary" onClick={() => openSaved(deed)}>Continue / Edit</button><details className="paper-draft-menu"><summary aria-label={`More actions for ${name}`}>•••</summary><div><button type="button" onClick={() => duplicateSaved(deed, name)}>Duplicate This Document</button>{deed.name && <button type="button" onClick={() => renameSaved(deed)}>Rename</button>}<IconButton label={`Delete ${deed.claimantNames?.join(', ') || 'deed'}`} onClick={() => void removeSaved(deed)} /></div></details></div>
         </article>; })}
-      </div> : <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
-    </main> : <div className="shell">
+      </div></section>
+        {featuredDeed && <aside className="paper-featured-draft" aria-label="Most recently edited deed">
+          <div className="paper-featured-top"><span>Recently edited</span><span>{featuredDeed.deedType}</span></div>
+          <div className="paper-document-preview" aria-hidden="true"><div><b>D</b><strong>{featuredDeed.deedType}</strong><span /><span /><span /></div></div>
+          <div className="paper-featured-info">
+            <h2>{featuredDeed.name || featuredDeed.claimantNames?.join(', ') || `Untitled ${featuredDeed.deedType.toLowerCase()}`}</h2>
+            <p>{STEPS[normalizeWorkflowStep(featuredDeed.draft.instrumentId, featuredDeed.draft.step)]?.label || 'Draft overview'}</p>
+            <label>Draft progress <strong>{featuredProgress}%</strong><progress max={100} value={featuredProgress} /></label>
+            <button type="button" className="primary" onClick={() => openSaved(featuredDeed)}>Resume draft →</button>
+          </div>
+        </aside>}
+      </div>}
+      {loadingLibrary ? <p role="status">Loading saved deeds…</p> : savedDeeds.length === 0 && <section className="library-empty"><div className="empty-document"><FileText size={32} strokeWidth={1.5} aria-hidden="true" /></div><p className="eyebrow">FROM DOCUMENTS TO A DRAFT</p><h2>Your next deed starts here</h2><p>Bring your documents, review the details, and prepare your deed in one guided workspace.</p><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}>{creatingDeed ? 'Preparing your workspace…' : 'Create your first deed'} <ArrowRight size={17} aria-hidden="true" /></button><small>Your entries are saved automatically as you work.</small><ol className="getting-started"><li><b>01</b><span><strong>Set up your deed</strong>Choose the instrument and property type.</span></li><li><b>02</b><span><strong>Add & review details</strong>Upload documents or enter details manually.</span></li><li><b>03</b><span><strong>Review & download</strong>Resolve open checks and generate your deed.</span></li></ol></section>}
+      <details className="paper-library-tools"><summary>Saved-deed backups and help</summary>
+      <div className="library-toolbar"><button type="button" disabled={backupBusy || loadingLibrary} onClick={() => void exportSavedBackup()}>Export saved-deeds backup</button><input ref={backupInput} type="file" hidden accept=".json,application/json" onChange={event => void importSavedBackup(event.target.files?.[0])} /><button type="button" disabled={backupBusy || loadingLibrary} onClick={() => backupInput.current?.click()}>Import saved-deeds backup</button><small>The backup includes deed details, uploaded files and custom templates. Keep the file private when moving it to another computer.</small></div>
+      {backupNotice && <p role="status">{backupNotice}</p>}
+        <GettingStartedGuide />
+      </details>
+    </main> : <div className="shell" data-step={step}>
       <WorkflowNavigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={notices.map(notice => notice.step)} title={deedDefinition.label} onNavigate={goto} />
 
       <main id="workspace-main" tabIndex={-1} className="stage">
@@ -1596,8 +1620,7 @@ export default function WizardApp() {
         {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
         <header className="compact-step-header">
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div>{step !== 9 && <p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p>}
-          {step >= 0 && step < 8 && <div className="step-quick-actions"><button type="button" className="primary" onClick={() => goto(followingStep)}>Next: {STEPS[followingStep]?.label}</button>
-          {notices.some(issue => issue.step === step) && <a href="#step-review">Details to check</a>}</div>}</div>
+          {step >= 0 && step < 8 && notices.some(issue => issue.step === step) && <div className="step-quick-actions"><a href="#step-review">Details to check</a></div>}</div>
         </header>
         {step >= 1 && step <= 8 && <div className="extraction-mode">
           <label>
@@ -1652,19 +1675,13 @@ export default function WizardApp() {
               <div className="progress-bar" role="progressbar" aria-label="Applicable fields entered" aria-valuenow={vm.pct} aria-valuemin={0} aria-valuemax={100}><div className="progress-fill" style={{ width: `${vm.pct}%` }} /></div>
             </div>
           </section>
-          <button type="button" className="review-shortcut" onClick={() => goto(8)}><span className="review-shortcut-icon"><Check size={20} aria-hidden="true" /></span><span><strong>{notices.length ? `${notices.length} details need a closer look` : 'Ready for a final review'}</strong><small>{notices.length ? 'See outstanding details, grouped by drafting section.' : 'Read through your deed and confirm the details.'}</small></span><ArrowRight size={20} aria-hidden="true" /></button>
+
           <div className="dashboard-stats">
             <div><span className="metric-icon"><Files size={20} aria-hidden="true" /></span><strong>{vm.filled}<span> / {vm.applicableCount}</span></strong><span>Applicable fields entered</span></div>
             <div><span className="metric-icon"><CircleCheck size={20} aria-hidden="true" /></span><strong>{workflowSteps.filter(s => s.id <= 8 && vm.doneIds.includes(s.id)).length}<span> / {workflowSteps.filter(s => s.id <= 8).length}</span></strong><span>Drafting steps complete</span></div>
             <div><span className="metric-icon"><ListChecks size={20} aria-hidden="true" /></span><strong>{vm.openCount}</strong><span>Readiness checks open</span></div>
           </div>
-          <div className="dashboard-details">
-          <section className="dashboard-section" aria-label="Party summaries"><h2>Parties and representatives</h2>{(['executant', 'claimant'] as const).flatMap(side => partyRecords(state, side).map((party, index) => {
-            const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id;
-            const count = state.partyPeopleByParty?.[partyKey(side, id)]?.representatives.length || 0;
-            const open = notices.filter(n => n.step === (side === 'executant' ? 6 : 7)).length;
-            return <div className="party-summary" key={side + id}><b>{partyDisplayName(party.values, side) || 'Unnamed ' + side}</b><span>{party.values[side + 'PartyType'] || 'Individual'}{isEntity(party.values, side) ? ' · ' + count + ' representative(s)' : ''} · {open ? open + ' outstanding details on this side' : 'Complete'}</span><button type="button" className="quiet" onClick={() => goto(side === 'executant' ? 6 : 7)}>Edit {side}</button></div>;
-          }))}</section></div>
+          <div className="paper-overview-grid">
           <section className="dashboard-section" aria-labelledby="workflow-title">
             <div className="dashboard-section-head"><div><p className="eyebrow">WORKFLOW</p><h2 id="workflow-title">Your drafting steps</h2></div><span>Choose any step to continue</span></div>
             {[1, 2, 3, 4].map(phase => <div className="dashboard-phase" key={phase}>
@@ -1679,21 +1696,28 @@ export default function WizardApp() {
               ))}</div>
             </div>)}
           </section>
+          <div className="paper-overview-side">
           <section className="dashboard-section dashboard-readiness" aria-labelledby="readiness-title">
             <div className="dashboard-section-head"><div><p className="eyebrow">FINAL REVIEW</p><h2 id="readiness-title">Readiness checks</h2></div><span>{vm.openCount === 0 ? 'All checks complete' : `${vm.openCount} still open`}</span></div>
             <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
+            <button type="button" className="review-shortcut" onClick={() => goto(8)}><span className="review-shortcut-icon"><Check size={20} aria-hidden="true" /></span><span><strong>{notices.length ? `${notices.length} details need a closer look` : 'Ready for a final review'}</strong><small>{notices.length ? 'See outstanding details, grouped by drafting section.' : 'Read through your deed and confirm the details.'}</small></span><ArrowRight size={20} aria-hidden="true" /></button>
           </section>
+          <div className="dashboard-details">
+          <section className="dashboard-section" aria-label="Party summaries"><h2>Parties and representatives</h2>{(['executant', 'claimant'] as const).flatMap(side => partyRecords(state, side).map((party, index) => {
+            const id = index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : party.id;
+            const count = state.partyPeopleByParty?.[partyKey(side, id)]?.representatives.length || 0;
+            const open = notices.filter(n => n.step === (side === 'executant' ? 6 : 7)).length;
+            return <div className="party-summary" key={side + id}><b>{partyDisplayName(party.values, side) || 'Unnamed ' + side}</b><span>{party.values[side + 'PartyType'] || 'Individual'}{isEntity(party.values, side) ? ' · ' + count + ' representative(s)' : ''} · {open ? open + ' outstanding details on this side' : 'Complete'}</span><button type="button" className="quiet" onClick={() => goto(side === 'executant' ? 6 : 7)}>Edit {side}</button></div>;
+          }))}</section></div>
+          </div>
+          </div>
         </div>}
 
         {step === 0 && <div className="setup-step">
           <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
-          <section className="setup-card" aria-labelledby="setup-property-title">
-            <div className="workflow-section-heading"><span className="workflow-section-number">01</span><div><h2 id="setup-property-title">Property type <span lang="te">ఆస్తి రకం</span></h2><p>Choose the property covered by this schedule.</p></div></div>
-            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><IconButton label={`Delete property schedule ${activePropertyIndex + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: activePropertyId })} />
-              <ScheduleTypeControl municipal={municipalGift} key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values[propertyRecords.find(record => record.id === activePropertyId)?.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
-          </section>
+          <div className="paper-setup-columns">
           <section className="setup-card" aria-labelledby="setup-deed-title">
-            <div className="workflow-section-heading"><span className="workflow-section-number">02</span><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
+            <div className="workflow-section-heading"><div><h2 id="setup-deed-title">Deed &amp; draft form</h2><p>Select the legal instrument and the form to use.</p></div></div>
             <div className="setup-card-content setup-fields">
               <PlacementSlot sectionId="setup-deed" anchorFieldId="instrumentId" position="before" />
               <label className="setup-field"><span>Deed type <span lang="te">దస్తావేజు రకం</span></span>
@@ -1717,6 +1741,12 @@ export default function WizardApp() {
               <PlacementSlot sectionId="setup-deed" />
             </div>
           </section>
+          <section className="setup-card" aria-labelledby="setup-property-title">
+            <div className="workflow-section-heading"><div><h2 id="setup-property-title">Property type <span lang="te">ఆస్తి రకం</span></h2><p>Choose the property covered by this schedule.</p></div></div>
+            <div className="setup-card-content"><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="before" /><IconButton label={`Delete property schedule ${activePropertyIndex + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: activePropertyId })} />
+              <ScheduleTypeControl municipal={municipalGift} key={activePropertyId} scheduleNumber={activePropertyIndex + 1} category={propertyRecords.find(record => record.id === activePropertyId)?.category || ''} stage={propertyRecords.find(record => record.id === activePropertyId)?.values[propertyRecords.find(record => record.id === activePropertyId)?.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', activePropertyId, 'category', value); if (stage) edit('property', activePropertyId, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} /><PlacementSlot sectionId="setup-property" anchorFieldId="category" position="after" /><PlacementSlot sectionId="setup-property" /></div>
+          </section>
+          </div>
           <p className="workflow-footnote">Your choices carry forward to the document and property sections.</p>
         </div>}
 
@@ -1830,8 +1860,13 @@ export default function WizardApp() {
         </LinkStageGate>}
 
         {step === 3 && <LinkStageGate status={linkStageStatus('step4')} loading="Extracting the property schedule from the property documents…">
-          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
+          <div className="paper-schedule-sheet">
           <ScopedSectionUpload label="Property Schedule" busy={!!sourceBusyFor('property', activePropertyId)} onUpload={files => void runUpload(files, { role: 'property', record: activePropertyId }, 'property-schedule')} />
+          <div className="paper-schedule-tabs">
+          {propertyRecords.length === 1 && <span className="paper-current-schedule">Schedule 1</span>}
+          <ScheduleSwitcher records={propertyRecords} activeId={activePropertyId} onReorder={ids => dispatch({ type: 'record-order', scope: 'property', ids })} onSelect={id => dispatch({ type: 'active-property', id })} />
+            <button type="button" className="quiet" onClick={addProperty}>+ Add another property</button>
+          </div>
           <SourceFeedback sources={draft.sources.filter(source => source.profile === 'property-schedule' && source.assignment?.record === activePropertyId)} visibleFields={[...GROUPS.filter(group => group.step === 3).flatMap(group => group.fields.map(field => field.id)), ...PROPERTY_DIMENSIONS.fields.map(field => field.id), 'category', 'unit']} />
           {propertyRecords.filter(record => record.id === activePropertyId).map(record => {
             const id = record.id;
@@ -1844,12 +1879,24 @@ export default function WizardApp() {
             })).filter(group => group.fields.length);
             const boundaries = propertyGroups.map(group => group.title.startsWith('Boundaries')).lastIndexOf(true);
             propertyGroups.splice(boundaries + 1, 0, PROPERTY_DIMENSIONS);
+            const sectionNames = [...propertyGroups.map(group => group.title), ...(isHouseCategory(record.category) ? ['Structure Details'] : [])];
             return <section className="panel property-schedule-card" key={record.id}>
               <div className="property-card-heading"><span className="record-heading-icon"><House size={21} aria-hidden="true" /></span><div><h2>{multipleProperties ? `Schedule ${i + 1} · Property details` : 'Property details'}</h2><p>Identification, extent and boundaries for this schedule</p></div><span className="record-kind">Schedule {i + 1}</span><IconButton label={`Delete property schedule ${i + 1}`} onClick={() => dispatch({ type: 'remove-record', role: 'property', record: id })} /></div>
               <ScheduleTypeControl municipal={municipalGift} scheduleNumber={i + 1} category={record.category} stage={record.values[record.category === 'Flat' ? 'flatStage' : 'houseStage'] || ''} onChange={(value, stage) => { edit('property', id, 'category', value); if (stage) edit('property', id, value === 'Flat' ? 'flatStage' : 'houseStage', stage); }} />
               {multipleProperties && <div className="add-document-row"><IconButton icon={Pencil} label={`Edit documents for property ${i + 1}`} onClick={() => { dispatch({ type: 'active-property', id }); goto(1); }} /></div>}
               <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} visibleFields={[...GROUPS.filter(g => g.step === 3).flatMap(g => g.fields.map(f => f.id)), 'category', 'unit']} />
               <ReviewQueue sources={draft.sources.filter(s => s.assignment?.role === 'link' && (s.assignment.propertyRecord || 'primary') === id)} record={id} edit={edit} />
+              <nav className="paper-form-index" aria-label="Property schedule sections">
+                {sectionNames.map(title => <button key={title} type="button" onClick={event => {
+                  const sheet = event.currentTarget.closest('.property-schedule-card');
+                  const heading = Array.from(sheet?.querySelectorAll<HTMLElement>('.deed-section h2') ?? [])
+                    .find(item => item.textContent?.trim().startsWith(title));
+                  if (!heading) return;
+                  heading.tabIndex = -1;
+                  heading.focus({ preventScroll: true });
+                  heading.scrollIntoView({ block: 'start' });
+                }}>{title.replace('Property identification', 'Identification').replace('Structure & Annexure I-A', 'Annexure I-A').replace('Landowner–developer agreements', 'Development agreements')}</button>)}
+              </nav>
               <RecordFieldGroup role="property" record={id} category={record.category} step={3} groupsOverride={propertyGroups} resolved={resolved} edit={edit}
                 fallbackValues={{ bearingHNo: record.values.bearingHNo || '' }} />
 
@@ -1864,7 +1911,7 @@ export default function WizardApp() {
             </section>;
           })}
           {propertyRecords.length === 0 && <Empty>No property identified yet. Fill in property details above first.</Empty>}
-          <div className="add-document-row property-add-card"><span><House size={17} aria-hidden="true" />More than one property?</span><button type="button" className="primary" onClick={addProperty}>+ Add another property</button></div>
+          </div>
         </LinkStageGate>}
 
         {step === 4 &&
@@ -2076,9 +2123,9 @@ export default function WizardApp() {
         </section>}
       </main>
       {step >= 0 && <footer className="navigation">
-          <button disabled={step <= -1} onClick={() => goto(previousStep)}>{step <= 0 ? 'Overview' : STEPS[previousStep]?.label || 'Overview'}</button>
+          <button disabled={step <= -1} onClick={() => goto(previousStep)}>{step === 10 ? STEPS[previousStep]?.label : '← Previous step'}</button>
           <span><strong>Saved as you work</strong><small>You can go back and change any detail.</small></span>
-          {step < STEPS.length - 1 && <button className="primary" onClick={() => goto(followingStep)}>{step < 0 ? 'Start at Step 01' : `Continue → ${STEPS[followingStep]?.label ?? 'Generate'}`}</button>}
+          {step < 9 && <button className="primary" onClick={() => goto(followingStep)}>Next step →</button>}
       </footer>}
     </div>}
   </div></TemplatePlacementSurface>;

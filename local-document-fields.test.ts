@@ -208,4 +208,18 @@ Sale Consideration: 10,00,000`, 2),
     expect(conflict.candidates).toEqual([]);
     expect(conflict.notes[0]).toMatch(/conflicting identities/i);
   });
+
+  it('reads a masked card without supplying a full Aadhaar number and scopes separate address pages to a matching card', () => {
+    const front = (id: string) => page(`Government of India\nSample Person\nDOB: 21/10/1990\nFemale\n${id}`);
+    const back = (id: string, number: number) => page(`Unique Identification Authority of India\nAddress:\nHouse No: 6-2-24\nPIN Code: 505301\n${id}`, number);
+    const masked = readLocalDocumentFields([front('XXXX XXXX 6677'), back('2233 4455 6677', 2)], 'party:claimant');
+    expect(masked.candidates.map(candidate => candidate.field)).toEqual(['claimantDob', 'claimantName', 'claimantGender']);
+    const matched = readLocalDocumentFields([front('2233 4455 6677'), back('2233 4455 6677', 2)], 'party:claimant');
+    expect(matched.candidates.filter(candidate => candidate.page === 2)).toEqual([
+      expect.objectContaining({ field: 'claimantHNo', value: '6-2-24' }),
+      expect.objectContaining({ field: 'claimantPinCode', value: '505301' }),
+    ]);
+    const mismatched = readLocalDocumentFields([front('2233 4455 6677'), back('9988 7766 5544', 2)], 'party:claimant');
+    expect(mismatched.candidates.every(candidate => candidate.page === 1)).toBe(true);
+  });
 });

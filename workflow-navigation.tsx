@@ -2,7 +2,7 @@ import React, { useId, useLayoutEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 type WorkflowNavigationProps = {
-  steps: { id: number; label: string }[];
+  steps: { id: number; label: string; phase: number }[];
   current: number;
   completed: number[];
   attention: number[];
@@ -48,13 +48,17 @@ export function WorkflowNavigation({ steps, current, completed, attention, title
         const status = needsReview ? 'Needs review' : done ? 'Complete' : 'To complete';
         const optional = step.id >= 10;
         const label = `${position + 1} ${step.label} — ${status}${optional ? ' — Optional' : ''}`;
-        return <li key={step.id}>
+        const phaseLabel = ['', 'Setup & sources', steps.some(item => item.id === 5) ? 'Property & payment' : 'Property', 'Parties', 'Review & finish'][step.phase];
+        return <React.Fragment key={step.id}>
+          {current !== 10 && step.phase !== steps[position - 1]?.phase && <li className="paper-rail-group" aria-hidden="true">{phaseLabel}</li>}
+          <li>
           <button type="button" className={`${current === step.id ? 'active ' : ''}${done ? 'complete' : ''}`} aria-label={label} title={label} aria-current={current === step.id ? 'step' : undefined} onClick={() => onNavigate(step.id)}>
             <span className="workflow-step-number" aria-hidden="true">{done ? <Check size={14} /> : position + 1}</span>
             <strong aria-hidden="true">{step.label}</strong>
             <span className="workflow-step-state" aria-hidden="true">{needsReview ? <AlertCircle size={15} /> : optional ? <small>Optional</small> : null}</span>
           </button>
-        </li>;
+          </li>
+        </React.Fragment>;
       })}</ol>
       <div className="workflow-mobile-navigation">
         <button type="button" aria-label="Previous section" disabled={index < 0} onClick={() => onNavigate(index > 0 ? steps[index - 1].id : -1)}><ArrowLeft size={16} aria-hidden="true" /></button>
