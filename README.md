@@ -25,11 +25,7 @@ npm start
 
 Set `ANTHROPIC_API_KEY` in `.env.local` on the server. The key is never compiled into browser assets. The application needs the Node server or Vite proxy for AI extraction; it is not a static-only deployment.
 
-### Document extraction without AI credits
-
-Turn **AI extraction** off and upload through a supported document card. The browser reads searchable PDFs, Word documents and text directly, and uses English PaddleOCR for photos and scans with Tesseract as a fallback. Supported fields fill in the assigned record. Read issues are available in **Local uploads and results**.
-
-Local matching preserves manual entries and leaves unsupported fields blank. Dedicated GPA/AGPA authority, entity authorization, and custom template fields use manual entry or cloud extraction. DeedCraft serves the local OCR models and runtime itself.
+Document uploads use AI extraction. Manual entry remains available.
 
 To use Gemini for uploaded-file extraction while retaining Anthropic for drafting, add this to `.env.local` and restart the app:
 

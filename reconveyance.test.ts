@@ -107,7 +107,7 @@ describe('Reconveyance source rendering and workflow', () => {
       const state = mortgageState(count,mode,title);
       const result = await generate(state);
       const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-      expect(text).toContain('Deed Of Reconveyance');
+      expect(text).toMatch(/^\s*DEED OF RECONVEYANCE OF\s+(?:DEPOSIT OF TITLE DEEDS|MORTGAGE DEED)\b/);
       expect(text).toContain(`Value of Rs.${repaymentFor(state).total}`);
       expect(text).toMatch(/interest of Rs\.0(?![.][0-9])/);
       expect(text.match(/additional mortgage/g)?.length || 0).toBe(count - 1);

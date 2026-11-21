@@ -65,8 +65,8 @@ describe('v6 full-deed compatibility', () => {
     const legacy = new Uint8Array(await readFile(new URL('./sale-deed-template.docx', import.meta.url)));
     const source: DeedTemplateSource | undefined = kind === 'legacy-custom' ? { kind: 'custom', name: 'legacy.docx', hash: 'qa', bytes: legacy, validation: await validateSaleDeedTemplate(legacy, 'legacy.docx') } : undefined;
     const { result, text } = await generate(state, source);
-    expect(text).toContain('Through Bank: Amount of Rs.1,00,000/- paid through bank by the Vendee, namely BANK BUYER, to the Vendor, namely BANK SELLER.');
-    expect(text).toContain('Through Bank: Amount of Rs.2,00,000/- paid through bank by the Vendee, namely QA BUYER, to the Vendor, namely QA SELLER.');
+    expect(text).toContain('Through Bank: Amount of Rs.1,00,000/- paid through bank by the Vendee, namely Bank Buyer, to the Vendor, namely Bank Seller.');
+    expect(text).toContain('Through Bank: Amount of Rs.2,00,000/- paid through bank by the Vendee, namely Qa Buyer, to the Vendor, namely Qa Seller.');
     expect(text.match(/Through Bank:/g)).toHaveLength(2);
     expect(text).not.toContain('Housing Loan:');
     expect(text).not.toContain('UPI/Online:');
@@ -83,7 +83,7 @@ describe('v6 full-deed compatibility', () => {
     const source: DeedTemplateSource | undefined = kind === 'legacy-custom' ? { kind: 'custom', name: 'legacy.docx', hash: 'qa', bytes: legacy, validation: await validateSaleDeedTemplate(legacy, 'legacy.docx') } : undefined;
     const { result, text } = await generate(state, source);
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
-    for (const name of ['1. QA SELLER', '2. SECOND SELLER', '1. QA BUYER', '2. SECOND BUYER', '3. THIRD BUYER']) expect(opening).toContain(name);
+    for (const name of ['1. QA SELLER', '2. Second Seller', '1. Qa Buyer', '2. Second Buyer', '3. Third Buyer']) expect(opening).toContain(name);
     expect(opening).toContain('Holding Undivided Share of 60%');
     expect(text).toContain('SIGNATURES OF VENDORS');
     const signatures = text.slice(text.indexOf('SIGNATURES OF VENDORS'), text.indexOf('WITNESSES:'));

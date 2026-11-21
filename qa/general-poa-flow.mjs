@@ -35,7 +35,7 @@ for (const property of properties) for (const variant of variants) for (const cu
   assert.doesNotMatch(text, /legal heirs, successors|legal representatives and permitted assigns/i);
   assert.equal((text.match(/The Plan of schedule property is annexed hereto\./g) || []).length, 1);
   assert.equal((text.match(/The schedule property is not the assigned property\./g) || []).length, 1);
-  assert.match(text, new RegExp(`appoint my ${variant === variants[1] ? 'son' : 'friend'} SAMPLE PURCHASER as`));
+  assert.match(text, new RegExp(`appoint my ${variant === variants[1] ? 'son' : 'friend'} Sample Purchaser as`));
   assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
   assert.match(text, /24-10-2026/); assert.match(text, /01-10-2026/); assert.match(text, /TITLE-44/);
   assert.match(text, /Rs.7,65,432/); assert.match(text, /ABCDE1234F/); assert.match(text, /PQRST5678L/);
@@ -52,7 +52,7 @@ for (const property of properties) for (const variant of variants) for (const cu
   assert.match(xml, /w:top="8208"/);
   assert.equal((xml.match(/<w:trHeight w:val="2800"/g) || []).length, 2);
   const form = text.slice(text.indexOf('PHOTOGRAPHS AND FINGERPRINTS'));
-  assert(form.indexOf('SAMPLE VENDOR') < form.indexOf('SAMPLE PURCHASER'));
+  assert(form.indexOf('Sample Vendor') >= 0 && form.indexOf('Sample Vendor') < form.indexOf('Sample Purchaser'));
   for (const entry of reference.filter(entry => !['word/document.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml'].includes(entry.name))) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
   if (!custom) {
     assert.equal(manifest.templateVersionId, 'general-poa-v4');
@@ -74,19 +74,19 @@ assert(closingTable, 'retain the supplied deed signature and witness table');
 const closingParagraphs = [...closingTable.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => match[0]);
 assert(closingParagraphs.slice(0, -1).every(paragraph => /<w:keepNext\b/.test(paragraph)), 'keep witness numbers with their heading and deed signature');
 assert.doesNotMatch(closingParagraphs.at(-1), /<w:keepNext\b/, 'do not attach deed witnesses to the next Section 32A page');
-assert.match(text, /appoint my son ATTORNEY ONE, daughter ATTORNEY TWO and nephew ATTORNEY THREE as/);
+assert.match(text, /appoint my son Attorney One, daughter Attorney Two and nephew Attorney Three as/);
 assert.equal((text.match(/WHEREAS, (?:I|We) have full confidence/g) || []).length, 1);
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
 assert.doesNotMatch(text, /VENDOR\/S|VENDEE\/S/);
 const form = text.slice(text.indexOf('PHOTOGRAPHS AND FINGERPRINTS'));
 let previous = -1;
-for (const person of ['SAMPLE VENDOR', 'PRINCIPAL TWO', 'ATTORNEY ONE', 'ATTORNEY TWO', 'ATTORNEY THREE']) { assert(form.indexOf(person) > previous, person); previous = form.indexOf(person); assert.equal(form.split(person).length - 1, 1); }
+for (const person of ['Sample Vendor', 'Principal Two', 'Attorney One', 'Attorney Two', 'Attorney Three']) { assert(form.indexOf(person) > previous, person); previous = form.indexOf(person); assert.equal(form.split(person).length - 1, 1); }
 await writeFile('tmp/general-poa-qa/multiple-family.docx', output);
 state.additionalClaimants[1].values.poaRelationshipCustom = '';
 await assert.rejects(() => render(state, variants[1]), /family relationship/);
 state.draft = 'General Power of Attorney';
 const ordinary = await render(state, variants[0]);
-assert.match(await rt.docxToText(new Uint8Array(await ordinary.result.blob.arrayBuffer())), /appoint my friend ATTORNEY ONE, friend ATTORNEY TWO and friend ATTORNEY THREE as/);
+assert.match(await rt.docxToText(new Uint8Array(await ordinary.result.blob.arrayBuffer())), /appoint my friend Attorney One, friend Attorney Two and friend Attorney Three as/);
 for (const removed of ['Friend/Relationship', 'Executant PAN', 'TO SELL AND CONVEY', 'TO RECEIVE', 'Registered Deed:']) {
   const damaged = await rt.readZip(bytes), document = damaged.find(entry => entry.name === 'word/document.xml');
   document.data = new TextEncoder().encode(new TextDecoder().decode(document.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => rt.replaceRunText(paragraph, new RegExp(removed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), () => 'REMOVED')));

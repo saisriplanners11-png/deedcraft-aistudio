@@ -45,6 +45,11 @@
 .wizard-app .payment-audit{border-radius:9px}
 .wizard-app .workflow-step-5 .payment-fields{padding:2px 18px 20px!important;gap:16px!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
 .wizard-app .payment-fields .payment-field>span:last-child{font-size:11px!important}
+.wizard-app .payment-party-field{grid-column:span 2;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.wizard-app .payment-party-options{min-width:0;margin:0;padding:0;border:0}
+.wizard-app .payment-party-options legend{padding:0;margin-bottom:6px;font-size:12px;font-weight:600}
+.wizard-app .payment-party-options .payment-option{overflow-wrap:anywhere}
+@media(max-width:620px){.wizard-app .payment-party-field{grid-column:1/-1}}
 .wizard-app .payment-field-error{color:var(--dc-danger);font-size:12px!important;font-weight:500}
 .wizard-app .payment-field input[aria-invalid=true]{border-color:var(--dc-danger)!important;background:var(--dc-danger-bg)!important}
 .wizard-app .payment-record-footer{padding:14px 18px!important;background:var(--dc-paper)!important;align-items:center!important;gap:12px!important}

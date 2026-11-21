@@ -21,6 +21,10 @@ export function isPropertyPlaceNameField(field: string): boolean {
   return PLACE_NAME_FIELDS.has(field);
 }
 
+/** Spaced title case for names outside the opening identity text. */
+export const formatDeedPartyName = (value: string): string =>
+  titleCasePlaceName(value, true).replace(/\bAnd\b/g, 'and');
+
 export function normalizePropertyPlaceName(field: string, value: string, preserveSpacing = false): string {
   return isPropertyPlaceNameField(field) ? titleCasePlaceName(value, preserveSpacing) : value;
 }

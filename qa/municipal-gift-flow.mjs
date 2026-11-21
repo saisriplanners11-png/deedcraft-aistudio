@@ -22,7 +22,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   const text = await rt.docxToText(bytes);
   assert.equal(manifest.templateVersionId, 'gift-municipal-v4');
   assert.deepEqual(result.unmapped, []);
-  assert.match(text, /SAMPLE PURCHASER/);
+  assert.match(text, /SAMPLE PURCHASER/i);
   assert.doesNotMatch(text, /Represented by its Commissioner|constitute under Hyderabad Municipal Corporation Act/);
   assert.match(text, /public purpose free of any cost and consideration/);
   assert.match(text, /Sale Deed dated 02-01-2020/);
@@ -30,7 +30,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
   assert.match(text, /13-10-2026/); assert.match(text, /ABCDE1234F/);
   assert.doesNotMatch(text, /natural love|Relationship|STATEMENT OF MARKET VALUE|ANNEXURE|FAMILY MEMBER|DD-MM-YYYY|Donor\/s|has\/have|is\/are/);
   assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 1);
-  if (donors === 2) assert.match(text, /SECOND DONOR/);
+  if (donors === 2) assert.match(text, /SECOND DONOR/i);
   const entries = await rt.readZip(bytes);
   for (const entry of sourceEntries.filter(entry => entry.name !== 'word/document.xml')) assert.deepEqual(entries.find(item => item.name === entry.name)?.data, entry.data, entry.name);
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
@@ -87,7 +87,7 @@ for (const id of ['ordinary-plot', 'ordinary-open', 'ordinary-dismantled', 'ordi
  state.additionalClaimants=[{id:'second',values:{...state.form,claimantName:'SECOND CLAIMANT'},docNames:[]}];
  const output=await render(state),text=await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
  assert.match(text,/30 square yards equivalent to 25\.08 square meters/);
- assert.match(text,/ENTERED CLAIMANT/);assert.match(text,/SECOND CLAIMANT/);assert.match(text,/PQRST5678L/);
+ assert.match(text,/ENTERED CLAIMANT/i);assert.match(text,/SECOND CLAIMANT/i);assert.match(text,/PQRST5678L/);
  assert.doesNotMatch(text,/Represented by its Commissioner|constitute under Hyderabad Municipal Corporation Act/);
 }
 console.log('PASS: Municipal Gift full claimant identities, four land schedules with calculated square metres, multiple recipients/properties and independent linked titles; source package formatting preserved.');
@@ -101,10 +101,10 @@ for (const version of ['v1', 'v2', 'v3']) for (const entity of [false, true]) fo
  const source = { kind: 'custom', name: version, bytes, hash: '', validation: await rt.validateMunicipalGiftTemplate(bytes) };
  const result = await rt.fillGiftDeed({ ...rt.mergeValues(state), 'Gift Variant': 'municipal-gift' }, rt.rewritesFor(state), rt.scheduleMergesFor(state), source);
  const text = await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
- assert.match(text, /THE MUNICIPAL COUNCIL, SIRCILLA, constitute under Hyderabad Municipal Corporation Act 1965\. Represented by its Commissioner/);
+ assert.match(text, /(?:THE MUNICIPAL COUNCIL, SIRCILLA|The Municipal Council, Sircilla), constitute under Hyderabad Municipal Corporation Act 1965\. Represented by its Commissioner/);
  assert.match(text, /include its successors in office and permitted assigns, of the OTHER PART/);
  assert.equal((text.match(/Represented by its Commissioner/g) || []).length, 1);
- if (mixed) { assert.match(text, /OTHER RECIPIENT/); assert.match(text, /OTHER PARENT/); }
+ if (mixed) { assert.match(text, /OTHER RECIPIENT/i); assert.match(text, /OTHER PARENT/); }
  assert.doesNotMatch(text, /INACTIVE PERSONAL NAME|<[^<>]+>/);
  assert.equal(JSON.stringify(state), before);
  if (version === 'v3' && entity) await writeFile('tmp/municipal-gift/qa/council-recipient.docx', new Uint8Array(await result.blob.arrayBuffer()));
@@ -120,7 +120,7 @@ for (const version of ['v1', 'v2', 'v3']) {
  const output = await rt.fillGiftDeed({ ...rt.mergeValues(state), 'Gift Variant': 'municipal-gift' }, rt.rewritesFor(state), rt.scheduleMergesFor(state), custom);
  const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
  assert.deepEqual(output.unmapped, []);
- assert.match(text, /PRESERVED RECIPIENT/);
+ assert.match(text, /Preserved Recipient/);
  assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner|FAMILY MEMBER|ANNEXURE/);
 }
 console.log('PASS: Municipal v1, v2 and v3 custom sources retain entered recipients and remain separate from regular Gift.');

@@ -90,20 +90,65 @@ try {
   await step('05 Market Value');
   await expect(p.getByLabel('Basic rate per Sq. Yard (₹)',{exact:false})).toHaveValue('1,000');
   await expect(p.getByLabel('Structure valuation (₹)',{exact:false})).toHaveValue('0');
-  for(const [name,key] of [['07 Executant Details','SELLER'],['08 Claimant Details','BUYER']]) {
+  for(const [name,key] of [['06 Executant Details','SELLER'],['07 Claimant Details','BUYER']]) {
     await step(name); assert.equal(await value('Full name'),''); await p.locator('input[type=file]').first().setInputFiles(payload(key)); await idle(); assert.equal(await value('Full name'),key==='SELLER'?'CURRENT SELLER':'CURRENT BUYER');
+    const role = key === 'SELLER' ? 'executant' : 'claimant';
+    await p.getByRole('button', { name: `Add blank ${role} instead`, exact: true }).click();
+    await p.getByLabel(/^Full name/i).last().fill(`Second ${key}`);
   }
   await step('05 Market Value'); await p.getByLabel('Basic rate per Sq. Yard (₹)',{exact:false}).fill('1000'); await p.getByLabel('Sale consideration (₹)',{exact:false}).fill('100000');
   await expect(p.getByLabel('Calculated market value (extent × basic rate)', { exact: false })).toHaveValue('1,57,220');
-  await step('06 Payment Details'); await step('+ Cheque');
+  await step('08 Payment Details'); await step('+ Cheque');
   const amount=p.getByLabel('Amount (₹)',{exact:true}); await amount.fill('100001'); assert.equal(await amount.inputValue(),'1,00,000');
   await p.locator('input[type=file]').first().setInputFiles({name:'cheque.txt',mimeType:'text/plain',buffer:Buffer.from(Object.values(payment).map(([,quote])=>quote).join('\n'))});
   await p.waitForFunction(()=>document.querySelector('input[value="123456"]')!==null);
   await p.getByRole('button',{name:'Close',exact:true}).click();
-  await p.getByLabel('Vendee (purchaser)',{exact:true}).fill('Edited Buyer');
-  await p.getByLabel('Vendor (seller)',{exact:true}).fill('Edited Seller');
-  assert.equal(await p.getByLabel('Vendee (purchaser)',{exact:true}).inputValue(),'Edited Buyer');
-  assert.equal(await p.getByLabel('Vendor (seller)',{exact:true}).inputValue(),'Edited Seller');
+  for (const [label, first, second] of [
+    ['Vendee (purchaser)', 'Current Buyer', 'Second Buyer'],
+    ['Vendor (seller)', 'Current Seller', 'Second Seller'],
+  ]) {
+    const group = p.getByRole('group', { name: label, exact: true });
+    await group.getByRole('checkbox', { name: first, exact: true }).check();
+    const secondParty = group.getByRole('checkbox', { name: second, exact: true });
+    await secondParty.check();
+    await secondParty.uncheck();
+    await expect(group.getByRole('checkbox', { name: first, exact: true })).toBeChecked();
+    await secondParty.check();
+    await expect(group.getByRole('checkbox', { checked: true })).toHaveCount(2);
+  }
+  await step('10 Generate Deed');
+  await p.getByRole('button', { name: 'Download English (.docx)', exact: true }).click();
+  const downloadAnyway = p.getByRole('button', { name: 'Download Anyway', exact: true });
+  await downloadAnyway.waitFor();
+  const [download] = await Promise.all([p.waitForEvent('download'), downloadAnyway.click()]);
+  assert.equal(await download.failure(), null);
+
+  await p.waitForFunction(async () => {
+    const { listSavedDeeds } = await import('/saved-deeds.ts');
+    return (await listSavedDeeds()).some(({ draft }) =>
+      Object.entries(draft.manual).some(([key, value]) => key.endsWith('|payer') && value === 'Current Buyer and Second Buyer') &&
+      Object.entries(draft.manual).some(([key, value]) => key.endsWith('|payee') && value === 'Current Seller and Second Seller'));
+  });
+  await p.reload();
+  await p.getByRole('button', { name: 'Continue / Edit' }).first().click();
+  await step('05 Market Value');
+  const consideration = p.getByRole('textbox', { name: 'Sale consideration (₹)', exact: true });
+  await consideration.fill('');
+  await consideration.pressSequentially('90000');
+  await expect(consideration).toHaveValue('90,000');
+  await expect(p.getByText(/Recorded payments exceed the consideration/)).toBeVisible();
+  await p.getByRole('button', { name: 'Review payments', exact: true }).click();
+  for (const label of ['Vendee (purchaser)', 'Vendor (seller)']) {
+    await expect(p.getByRole('group', { name: label, exact: true }).getByRole('checkbox', { checked: true })).toHaveCount(2);
+  }
+  const vendeeGroup = p.getByRole('group', { name: 'Vendee (purchaser)', exact: true });
+  await vendeeGroup.getByRole('button', { name: 'Enter names manually', exact: true }).click();
+  const manualVendee = vendeeGroup.getByRole('textbox', { name: 'Vendee (purchaser) name', exact: true });
+  await expect(manualVendee).toHaveValue('Current Buyer and Second Buyer');
+  await manualVendee.fill('Edited Buyer');
+  await expect(manualVendee).toHaveValue('Edited Buyer');
+  await amount.fill('90000');
+  await expect(p.getByText('Reconciled with consideration', { exact: true })).toBeVisible();
   assert.deepEqual(errors,[]);
   console.log('PASS: one Link Document upload fills jurisdiction, property schedule, boundaries, market value and multiple Part open place H.No./PTIN pairs; adding a pair preserves earlier values and does not require another upload.');
 } finally {await browser.close();}

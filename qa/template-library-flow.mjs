@@ -189,7 +189,7 @@ try {
   await customer.getByRole('button', { name: '+ Add another property', exact: true }).click();
   await customer.getByRole('button', { name: /^01\s*Deed setup/ }).click();
   await customer.locator('[aria-label="Schedule 2 property type"] select').selectOption({ label: 'Vacant Plot' });
-  await customer.getByRole('button', { name: /^07\s*Executant Details/ }).click();
+  await customer.getByRole('button', { name: /^6\s+Executant Details/ }).click();
   await customer.getByLabel('Property 1 — Access Note', { exact: true }).fill('Property one');
   await customer.getByLabel('Property 2 — Access Note', { exact: true }).fill('Property two');
   await customer.locator('.party-record-card').first().getByLabel('Vendor 1 — Vendor Consent', { exact: true }).selectOption('true');

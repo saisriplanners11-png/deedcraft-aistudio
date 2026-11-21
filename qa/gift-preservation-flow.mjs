@@ -68,7 +68,7 @@ for (const municipal of [false, true]) for (const side of ['executant', 'claiman
   const { result } = await rt.renderArtifact(compiled, 'docx');
   const text = await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()));
   assert.deepEqual(result.unmapped, []);
-  assert.match(text, /GUARDIAN PERSON/); assert.match(text, /MINOR CHILD/); assert.match(text, /Mother/);
+  assert.match(text, /GUARDIAN PERSON/); assert.match(text, /MINOR CHILD/i); assert.match(text, /Mother/);
   if (side === 'executant') assert.match(text, /COURT-42 dated 02-01-2026/);
   if (municipal) {
     assert.match(text, /Mixed Case Village/); assert.match(text, /30 square yards equivalent to 25.08 square meters/);

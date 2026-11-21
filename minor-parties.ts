@@ -26,7 +26,7 @@ function minorVendeeGuardianRecital(values: Record<string, string>): string {
   const family: Record<string, string> = { father: 'Father', mother: 'Mother', grandfather: 'Grand Father', grandmother: 'Grand Mother' };
   const normalized = relationship.toLowerCase().replace(/[\s-]+/g, '');
   const guardian = family[normalized] ? 'natural ' + family[normalized] : relationship;
-  const relation = [v('Relation'), v('RelativeName').toLocaleUpperCase('en-IN')].filter(Boolean).join(' ');
+  const relation = [v('Relation'), v('RelativeName')].filter(Boolean).join(' ');
   const parts = [`is under guardianship of ${possessive} ${guardian} ${v('Name').toLocaleUpperCase('en-IN')}${relation ? ' ' + relation : ''}`];
   const age = ageFrom(v('Dob'));
   if (age) parts.push(`Aged ${age} years${v('Dob') ? ' (DOB:' + deedDate(v('Dob')) + ')' : ''}`);
@@ -80,7 +80,7 @@ export function minorGuardianRecital(values: Record<string, string>, side: strin
   if (!isMinorParty(values, side)) return '';
   const v = (key: string) => (values[side + key] || '').trim();
   const parts = ['a minor represented by ' + (v('GuardianRelationship') || 'guardian') + ': ' + v('GuardianName').toLocaleUpperCase('en-IN')];
-  const relation = [v('GuardianRelation'), v('GuardianRelativeName').toLocaleUpperCase('en-IN')].filter(Boolean).join(' ');
+  const relation = [v('GuardianRelation'), v('GuardianRelativeName')].filter(Boolean).join(' ');
   if (relation) parts.push(relation);
   const age = ageFrom(v('GuardianDob')); if (age) parts.push('aged ' + age + ' years');
   if (v('GuardianDob')) parts.push('DOB: ' + deedDate(v('GuardianDob')));

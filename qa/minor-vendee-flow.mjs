@@ -72,10 +72,10 @@ for (const [instrumentId, variantId, deedType, mode, file] of cases) {
     const xml = new TextDecoder().decode((await rt.readZip(output)).find(e => e.name === 'word/document.xml').data);
     const paragraphs = xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g).map(paragraphText);
     for (const index of [1, 2]) {
-      const paragraph = paragraphs.find(p => p.includes(`MINOR CHILD ${index}`) && p.includes('(MINOR)'));
+      const paragraph = paragraphs.find(p => p.toUpperCase().includes(`MINOR CHILD ${index}`) && p.includes('(MINOR)'));
       assert(paragraph, `${variantId}/${entry}: minor and guardian remain in one identity paragraph`);
       assert.match(paragraph, /DOB:\s*04-08-2016\), \(MINOR\)/);
-      assert(paragraph.indexOf(`MINOR CHILD ${index}`) < paragraph.indexOf('(MINOR)'));
+      assert(paragraph.toUpperCase().indexOf(`MINOR CHILD ${index}`) < paragraph.indexOf('(MINOR)'));
       assert(paragraph.trimStart().startsWith(`${index}. `), paragraph);
       if (shared && index === 1) {
         assert.doesNotMatch(paragraph, /Under the Guardianship|GUARDIAN PERSON/);

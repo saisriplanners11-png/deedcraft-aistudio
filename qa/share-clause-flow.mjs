@@ -133,9 +133,9 @@ for (const mode of ['ordinary', 'gpa', 'agpa', 'gift']) {
     : await rt.fillSaleDeed(rt.mergeValues(state), schedules[0].variant, rt.rewritesFor(state), schedules, source);
   const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
   for (const name of ['BLANK OWNER', 'BLANK RECIPIENT']) {
-    assert(text.includes(name), `${mode}: blank-share party must remain in the deed`);
+    assert(text.toUpperCase().includes(name), `${mode}: blank-share party must remain in the deed`);
     assert.doesNotMatch(text, new RegExp(name + '[^\\n]*undivided share', 'i'));
-    assert.doesNotMatch(text, new RegExp('\\(2\\) ' + name + ' —'));
+    assert.doesNotMatch(text, new RegExp('\\(2\\) ' + name + ' —', 'i'));
   }
   assert.doesNotMatch(text, /____%/);
   if (mode === 'gift') assert.doesNotMatch(text, /holding.*undivided share|following undivided shares|50%|30%|25%|15%/i);

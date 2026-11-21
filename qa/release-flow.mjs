@@ -51,7 +51,7 @@ const multi=await render(multiple);
 const signatureBlock = multi.text.slice(multi.text.indexOf('SIGN/S OF THE RELEASOR'));
 assert.match(signatureBlock, /SIGN\/S OF THE RELEASORS\..*SIGN\/S OF THE RELEASEES\./);
 assert.match(signatureBlock, /WITNESSES[^\n]*\n1\.\n2\./);
-assert.doesNotMatch(signatureBlock, /SAMPLE VENDOR|SAMPLE PURCHASER|RELEASOR PERSON|RELEASEE PERSON|SIGNATURE OF THE RELEASE/);
+assert.doesNotMatch(signatureBlock, /SAMPLE VENDOR|SAMPLE PURCHASER|RELEASOR PERSON|RELEASEE PERSON|SIGNATURE OF THE RELEASE/i);
 for(const scope of ['primary','property-2']) for(const i of [1,2]) for(const prefix of ['TITLE','RECT','SUPP','VLT','LAYOUT','APP','PROC','PASSBOOK','KHATA','NALA','RECEIPT','PERMIT']) assert.ok(multi.text.includes(`${prefix}-${scope}-${i}`),prefix+' '+scope+' '+i);
 assert.equal(JSON.stringify(multiple),before);
 await writeFile('tmp/release/qa/multiple.docx',multi.output);

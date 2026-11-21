@@ -48,7 +48,7 @@ export function WorkflowNavigation({ steps, current, completed, attention, title
         const status = needsReview ? 'Needs review' : done ? 'Complete' : 'To complete';
         const optional = step.id >= 10;
         const label = `${position + 1} ${step.label} — ${status}${optional ? ' — Optional' : ''}`;
-        const phaseLabel = ['', 'Setup & sources', steps.some(item => item.id === 5) ? 'Property & payment' : 'Property', 'Parties', 'Review & finish'][step.phase];
+        const phaseLabel = ['', 'Setup & sources', 'Property', steps.some(item => item.id === 5) ? 'Parties & payments' : 'Parties', 'Review & finish'][step.phase];
         return <React.Fragment key={step.id}>
           {current !== 10 && step.phase !== steps[position - 1]?.phase && <li className="paper-rail-group" aria-hidden="true">{phaseLabel}</li>}
           <li>

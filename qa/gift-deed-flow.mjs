@@ -37,7 +37,7 @@ for(const id of ['ordinary-plot','ordinary-open','ordinary-dismantled','ordinary
  assert.doesNotMatch(text,/is\/are|has\/have|owner\/s|Donor\/s|Donee\/s|property hereby sold|50%|____%/i);
  assert.match(text,donors>1?/Donors further declare that they have/:/Donor further declares that the Donor has/);
  assert.match(text,donees>1?/Donees hereby accept/:/Donee hereby accepts/);
- if(donors>1)assert.match(text,/SECOND DONOR/);if(donees>1)assert.match(text,/SECOND DONEE/);
+ if(donors>1)assert.match(text,/SECOND DONOR/i);if(donees>1)assert.match(text,/SECOND DONEE/i);
  if(id.includes('plot')||id.includes('house')||id.includes('flat'))await writeFile(`tmp/gift/qa/${id}-${donors}-${donees}.docx`,bytes);
 }
 console.log('PASS: Gift relationship, grammar and schedules in 32 property/party combinations.');

@@ -1,5 +1,6 @@
 import type { AppState } from './logic';
 import { partyDisplayName } from './party-entities';
+import { formatDeedPartyName } from './place-names';
 import { claimantRepresentationForOutput, minorClaimantValues } from './minor-parties';
 import { formatDeedAmount, moneyPaise as mortgagePaise } from './deed-money';
 
@@ -53,14 +54,14 @@ export function releaseParties(state: AppState, side: 'executant'|'claimant') {
     gender: (side === 'claimant' ? minorClaimantValues(values) : values)[side + 'Gender'] || '' }));
 }
 export function releaseScheduleValues(state: AppState, scheduleId: string): Record<string,string> {
-  const shares=(side:'executant'|'claimant')=>releaseParties(state,side).map(p=>({...p,share:(side==='executant'?state.releaseData?.releasedBySchedule:state.releaseData?.allocatedBySchedule)?.[scheduleId]?.[p.id]||''}));
+  const shares=(side:'executant'|'claimant')=>releaseParties(state,side).map(p=>({...p,name:formatDeedPartyName(p.name),share:(side==='executant'?state.releaseData?.releasedBySchedule:state.releaseData?.allocatedBySchedule)?.[scheduleId]?.[p.id]||''}));
   return { 'Release Releasor Shares':JSON.stringify(shares('executant')), 'Release Recipient Shares':JSON.stringify(shares('claimant')), 'Release Legacy Share':scheduleId==='primary' ? state.form.releasedShare||'' : '' };
 }
 export function releaseValues(state: AppState): Record<string,string> {
   const sellers=releaseParties(state,'executant'), buyers=releaseParties(state,'claimant');
   const family=state.draft==='Family Release';
   const relations=(state.releaseData?.relationships||[]).filter(r=>r.wording.trim() && sellers.some(p=>p.id===r.releasorId) && buyers.some(p=>p.id===r.releaseeId));
-  const relationship=family ? relations.map(r=>`${sellers.find(p=>p.id===r.releasorId)!.name} is ${r.wording.trim()} of ${buyers.find(p=>p.id===r.releaseeId)!.name}.`).join(' ') : 'The Releasor/s and Releasee/s are co-owners of the Schedule Property.';
+  const relationship=family ? relations.map(r=>`${formatDeedPartyName(sellers.find(p=>p.id===r.releasorId)!.name)} is ${r.wording.trim()} of ${formatDeedPartyName(buyers.find(p=>p.id===r.releaseeId)!.name)}.`).join(' ') : 'The Releasor/s and Releasee/s are co-owners of the Schedule Property.';
   return { 'Release Variant':family?'family-release':'co-owner-release', 'Release Relationship Recital':relationship,
     'Release Errors':JSON.stringify(releaseErrors(state)), 'Total Value of Property Rs./-':formatDeedAmount(state.form.totalPropertyValue||''),
     'Share Value of Property Rs./-':formatDeedAmount(state.form.consid||state.form.releaseConsideration||''),

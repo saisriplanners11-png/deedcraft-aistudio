@@ -9,7 +9,8 @@ const placement = { stepId: 'property-schedules', sectionId: 'property-identific
 const occurrence = [{ placeholder: field.placeholder, text: '', part: 'word/document.xml', variants: [], supported: true }];
 describe('template field placement', () => {
   it('offers eight entry steps with unique stable sections and anchors', () => {
-    expect(PLACEMENT_CATALOG.map(step => step.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(PLACEMENT_CATALOG.map(step => step.index)).toEqual([0, 1, 2, 3, 4, 6, 7, 5]);
+    expect(PLACEMENT_CATALOG.find(step => step.id === 'payment-details')?.label).toBe('Step 8 — Payment Details');
     const sections = PLACEMENT_CATALOG.flatMap(step => step.sections);
     expect(new Set(sections.map(section => section.id)).size).toBe(sections.length);
     for (const section of sections) expect(new Set(section.anchors.map(anchor => anchor.id)).size).toBe(section.anchors.length);

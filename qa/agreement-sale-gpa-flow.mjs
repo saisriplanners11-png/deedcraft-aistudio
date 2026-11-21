@@ -93,7 +93,7 @@ const result = await rt.fillAgreementSaleGpaDeed({ ...rt.mergeValues(state), 'Ag
 const output = new Uint8Array(await result.blob.arrayBuffer());
 const text = await rt.docxToText(output), form = text.slice(text.indexOf('PHOTOGRAPHS AND FINGERPRINTS'));
 assert.equal((text.match(/SCHEDULE OF PROPERTY/g) || []).length, 2);
-const expected = [...Array.from({ length: 7 }, (_, i) => `PRINCIPAL ${i + 1}`), ...Array.from({ length: 4 }, (_, i) => `ATTORNEY ${i + 1}`)];
+const expected = [...Array.from({ length: 7 }, (_, i) => `Principal ${i + 1}`), ...Array.from({ length: 4 }, (_, i) => `Attorney ${i + 1}`)];
 let previous = -1;
 for (const person of expected) { const position = form.indexOf(person); assert(position > previous, person); assert.equal(form.split(person).length - 1, 1); previous = position; }
 assert.match(form, /P-HOUSE-7/); assert.match(form, /A-HOUSE-4/);
@@ -138,7 +138,7 @@ for (const variant of ['with-possession', 'without-possession']) {
   assert.match(renderedText, /__-10-2026/, variant + ': preserve blank signing day');
   assert.match(renderedXml.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/)[0], /w:top="8352"/, variant + ': preserve selected stamp space');
   assert.match(renderedText, /25%/, variant + ': preserve optional entered share');
-  const noShareIdentity = renderedText.split('\n').find(line => line.includes('NO SHARE PRINCIPAL') && line.includes('Aged'));
+  const noShareIdentity = renderedText.split('\n').find(line => line.toUpperCase().includes('NO SHARE PRINCIPAL') && line.includes('Aged'));
   assert(noShareIdentity);
   assert.doesNotMatch(noShareIdentity, /share of|%/i, variant + ': do not invent shares for blank parties');
   checkSignatureBlocks(await rt.readZip(rendered));

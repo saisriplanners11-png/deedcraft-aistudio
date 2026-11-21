@@ -9,7 +9,11 @@ describe('Gift workflow skips payments', () => {
     expect(stepsFor('Sale').map(step => step.id)).toContain(5);
     expect(adjacentWorkflowStep('Gift', 4, 1)).toBe(6);
     expect(adjacentWorkflowStep('Gift', 6, -1)).toBe(4);
-    expect(adjacentWorkflowStep('Sale', 4, 1)).toBe(5);
+    expect(stepsFor('Sale').slice(4, 9).map(step => step.id)).toEqual([4, 6, 7, 5, 8]);
+    expect(adjacentWorkflowStep('Sale', 7, 1)).toBe(5);
+    expect(adjacentWorkflowStep('Sale', 5, 1)).toBe(8);
+    expect(adjacentWorkflowStep('Sale', 8, -1)).toBe(5);
+    expect(adjacentWorkflowStep('Sale', 5, -1)).toBe(7);
   });
   it('opens old Gift payment steps at parties without changing saved facts', () => {
     const saved = { ...newDraft(), instrumentId: 'gift' as const, variantId: 'family-gift', step: 5, manual: { 'property|primary|giftRelationship': 'daughter' } };

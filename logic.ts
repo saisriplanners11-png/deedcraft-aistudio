@@ -566,7 +566,7 @@ export { ageFrom, todayISO } from './party-age';
 
 /** Legal-party identity values are displayed and generated in deed-style capitals. */
 export function uppercasePartyIdentity(field: string, value: string): string {
-  return /^(?:(?:executant|claimant)(?:Name|RelativeName|EntityName|GuardianName|GuardianRelativeName)|person(?:Name|RelationName))$/.test(field)
+  return /^(?:(?:executant|claimant)(?:Name|EntityName|GuardianName)|personName)$/.test(field)
     ? value.toLocaleUpperCase('en-IN')
     : value;
 }

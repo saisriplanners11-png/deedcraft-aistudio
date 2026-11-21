@@ -23,8 +23,8 @@ for (const [instrumentId, variantId, draft, files] of groups) for (const file of
   const entries = await rt.readZip(new Uint8Array(await result.blob.arrayBuffer()));
   const xml = new TextDecoder().decode(entries.find(entry => entry.name === 'word/document.xml').data);
   const texts = [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => [...match[0].matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(run => run[1]).join(''));
-  const first = texts.find(text => text.includes('CLAIMANT ONE') && /Aged/.test(text));
-  const second = texts.find(text => text.includes('CLAIMANT TWO') && /Aged/.test(text));
+  const first = texts.find(text => text.toUpperCase().includes('CLAIMANT ONE') && /Aged/.test(text));
+  const second = texts.find(text => text.toUpperCase().includes('CLAIMANT TWO') && /Aged/.test(text));
   assert(first && second, file + ': every repeated claimant has one complete identity recital');
   for (const value of ['FIRST STATE', '500111', 'FIRST1234A', '111122223333']) { assert(first.includes(value), file + ': first claimant ' + value); assert(!second.includes(value), file + ': first claimant detail leaked'); }
   for (const value of ['SECOND STATE', '500222', 'SECOND1234B', '444455556666']) { assert(second.includes(value), file + ': second claimant ' + value); assert(!first.includes(value), file + ': second claimant detail leaked'); }

@@ -27,7 +27,7 @@ for (const [id] of rt.saleMatrixCases) {
   if (id.startsWith('ordinary')) assert.doesNotMatch(tail, /HOLDER OF|SAMPLE VENDOR/, id);
   else {
     assert.match(tail, id.startsWith('agpa') ? /A\.G\.P\.A\. HOLDER OF/ : /G\.P\.A\. HOLDER OF/, id);
-    assert.match(tail, /SAMPLE VENDOR/, id);
+    assert.match(tail, /Sample Vendor/, id);
     assert(tail.indexOf('HOLDER OF') < tail.search(/SIGNATURES? OF VENDORS?/), id);
   }
   if (id.endsWith('-plot')) await writeFile(new URL(id + '.docx', out), output);
@@ -38,7 +38,7 @@ const values = rt.mergeValues(state);
 const schedules = rt.scheduleMergesFor(state);
 const result = await rt.fillSaleDeed(values, schedules[0].variant, rt.rewritesFor(state), schedules, source);
 const tail = (await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()))).split('DECLARATION').pop();
-assert.match(tail, /SAMPLE VENDOR, SECOND PRINCIPAL/);
+assert.match(tail, /Sample Vendor, Second Principal/);
 assert.deepEqual(result.unmapped, []);
 const entries = await rt.readZip(bytes);
 const doc = entries.find(entry => entry.name === 'word/document.xml');
@@ -65,7 +65,7 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) {
   const result = await rt.fillSaleDeed(rt.mergeValues(sample), schedules[0].variant, rt.rewritesFor(sample), schedules, replacementSource);
   const tail = (await rt.docxToText(new Uint8Array(await result.blob.arrayBuffer()))).split('DECLARATION').pop();
   if (mode === 'ordinary') assert.doesNotMatch(tail, /HOLDER OF/);
-  else { assert.match(tail, /HOLDER OF/); assert.match(tail, /SAMPLE VENDOR/); assert(tail.indexOf('HOLDER OF') < tail.search(/SIGNATURES? OF VENDORS?/)); }
+  else { assert.match(tail, /HOLDER OF/); assert.match(tail, /Sample Vendor/); assert(tail.indexOf('HOLDER OF') < tail.search(/SIGNATURES? OF VENDORS?/)); }
 }
 const incompleteEntries = await rt.readZip(bytes);
 const incompleteDoc = incompleteEntries.find(entry => entry.name === 'word/document.xml');

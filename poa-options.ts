@@ -1,6 +1,7 @@
 import { GIFT_RELATIONSHIPS } from './gift-options';
 import { partyRecords, type AppState } from './logic';
 import { partyDisplayName } from './party-entities';
+import { formatDeedPartyName } from './place-names';
 import { claimantRepresentationForOutput } from './minor-parties';
 
 export const GENERAL_POA_VARIANTS = ['general-power-of-attorney', 'general-power-of-attorney-family'];
@@ -23,7 +24,7 @@ export function poaRelationshipErrors(state: AppState): string[] {
 
 export function poaValues(state: AppState): Record<string, string> {
   if (state.deedType !== 'GPA/Power of Attorney') return {};
-  const phrases = attorneysFor(state).map(record => `${isFamilyPoa(state) ? poaRelationship(record.values) || '________' : 'friend'} ${partyDisplayName(record.values, 'claimant') || '________'}`);
+  const phrases = attorneysFor(state).map(record => `${isFamilyPoa(state) ? poaRelationship(record.values) || '________' : 'friend'} ${formatDeedPartyName(partyDisplayName(record.values, 'claimant')) || '________'}`);
   const attorneys = phrases.length <= 2 ? phrases.join(' and ') : `${phrases.slice(0, -1).join(', ')} and ${phrases.at(-1)}`;
   const manyPrincipals = partyRecords(state, 'executant').length > 1;
   const manyAttorneys = attorneysFor(state).length > 1;

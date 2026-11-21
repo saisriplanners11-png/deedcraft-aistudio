@@ -1,4 +1,5 @@
 import { formatDeedAmount } from './deed-money';
+import { formatDeedPartyName } from './place-names';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { PlacementAnchor, PlacementSlot } from './template-placement-context';
 import { FileUp, Trash2 } from 'lucide-react';
@@ -64,6 +65,57 @@ function PInput({
   );
 }
 
+type PaymentPartyOption = { id: string; name: string };
+
+function paymentPartyNames(options: PaymentPartyOption[]) {
+  const names = options.map(option => formatDeedPartyName(option.name));
+  if (names.length <= 1) return names[0] || '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+function PaymentPartyField({ fieldId, label, value, partyIds, options, onChange, filled }: {
+  fieldId: 'payer' | 'payee';
+  label: string;
+  value: string;
+  partyIds?: string;
+  options: PaymentPartyOption[];
+  onChange: (value: string, partyIds: string) => void;
+  filled: boolean;
+}) {
+  const [manual, setManual] = useState(false);
+  const savedOptions = (partyIds || '').split(',').flatMap(id => options.filter(option => option.id === id));
+  const formattedValue = formatDeedPartyName(value);
+  const legacyMatches = options.filter(option => formatDeedPartyName(option.name) === formattedValue);
+  const selected = partyIds
+    ? paymentPartyNames(savedOptions) === formattedValue ? savedOptions : []
+    : legacyMatches.length === 1 ? legacyMatches : [];
+  const showManual = manual || Boolean(value && !selected.length);
+
+  return <div className="payment-party-field">
+    <PlacementAnchor sectionId="payment-records" fieldId={fieldId}>
+      <fieldset className="payment-party-options">
+        <legend>{label}</legend>
+        {options.map(option => <Check key={option.id} label={formatDeedPartyName(option.name)}
+          on={!manual && selected.some(item => item.id === option.id)}
+          onToggle={checked => {
+            const ids = new Set(manual ? [] : selected.map(item => item.id));
+            if (checked) ids.add(option.id);
+            else ids.delete(option.id);
+            const next = options.filter(item => ids.has(item.id));
+            setManual(false);
+            onChange(paymentPartyNames(next), next.map(item => item.id).join(','));
+          }} />)}
+        {!options.length && <small>No named parties entered yet.</small>}
+        {!showManual && <button type="button" className="quiet" onClick={() => setManual(true)}>Enter names manually</button>}
+        {showManual && <PInput fieldId={fieldId + '-manual'} label={`${label} name`} value={value} onChange={name => {
+          setManual(true);
+          onChange(name, '');
+        }} filled={filled} />}
+      </fieldset>
+    </PlacementAnchor>
+  </div>;
+}
+
 function Check({
   on, onToggle, label, note, tone = 'ink',
 }: {
@@ -123,14 +175,15 @@ function ModeTabs({ mode, onPick }: { mode: PayMode; onPick: (m: PayMode) => voi
  * way the same record is edited, and the fields shown follow the mode.
  */
 export function PaymentCard({
-  index, payment, onPatch, onRemove, canRemove, onLocalUpload,
+  index, payment, vendors, vendees, onPatch, onRemove, canRemove,
 }: {
   index: number;
   payment: Payment;
+  vendors: PaymentPartyOption[];
+  vendees: PaymentPartyOption[];
   onPatch: (patch: Partial<Payment>) => boolean | void;
   onRemove: () => void;
   canRemove: boolean;
-  onLocalUpload?: (files: File[]) => void;
 }) {
   const spec = modeSpec(payment.mode);
   const [busy, setBusy] = useState(false);
@@ -149,7 +202,6 @@ export function PaymentCard({
   const amount = Number(payment.amount) || 0;
 
   async function onFiles(files: File[]) {
-    if (onLocalUpload) { onLocalUpload(files); return; }
     readController.current?.abort();
     const controller = new AbortController();
     readController.current = controller;
@@ -212,6 +264,13 @@ export function PaymentCard({
     if (onPatch(patch) === false) setAmountError('This amount would make the payment total exceed the sale consideration. The previous value has been kept.');
     else if (k === 'amount') setAmountError('');
   };
+  const setParty = (field: 'payer' | 'payee') => (name: string, ids: string) => {
+    onPatch({
+      [field]: name,
+      [`${field}PartyIds`]: ids,
+      filled: (payment.filled ?? []).filter(key => key !== field),
+    });
+  };
 
   return (
     <div className="payment-record" style={css(`background:${C.paper};border:1px solid ${C.rule};border-left:3px solid ${C.gold}`)}>
@@ -269,7 +328,7 @@ export function PaymentCard({
         <span className="payment-upload-icon"><FileUp size={22} aria-hidden="true" /></span>
         <span style={css('display:flex;flex-direction:column;gap:2px;min-width:0')}>
           <span style={css(`font-family:${C.serif};font-size:13.5px;font-weight:600;color:${busy ? C.gold : C.ink}`)}>
-            {busy ? 'Reading…' : onLocalUpload ? 'Upload payment proof to fill readable details' : payment.docName || `Upload the ${spec.label.toLowerCase()} — its details are read and filled in below`}
+            {busy ? 'Reading…' : payment.docName || `Upload the ${spec.label.toLowerCase()} — its details are read and filled in below`}
           </span>
           <span style={css(`font-size:10.5px;color:${C.mutedSoft}`)}>{spec.docLabel}</span>
         </span>
@@ -303,8 +362,8 @@ export function PaymentCard({
         <PInput fieldId="date" label="Date" type="date" value={payment.date} onChange={set('date')} filled={(payment.filled ?? []).includes('date')} />
         {spec.shows.parties ? (
           <>
-            <PInput fieldId="payer" label="Vendee (purchaser)" span={2} value={payment.payer} onChange={set('payer')} filled={(payment.filled ?? []).includes('payer')} />
-            <PInput fieldId="payee" label="Vendor (seller)" span={2} value={payment.payee} onChange={set('payee')} filled={(payment.filled ?? []).includes('payee')} />
+            <PaymentPartyField fieldId="payer" label="Vendee (purchaser)" value={payment.payer} partyIds={payment.payerPartyIds} options={vendees} onChange={setParty('payer')} filled={(payment.filled ?? []).includes('payer')} />
+            <PaymentPartyField fieldId="payee" label="Vendor (seller)" value={payment.payee} partyIds={payment.payeePartyIds} options={vendors} onChange={setParty('payee')} filled={(payment.filled ?? []).includes('payee')} />
           </>
         ) : null}
         <PlacementSlot sectionId="payment-records" />

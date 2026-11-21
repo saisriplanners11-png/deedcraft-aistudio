@@ -74,7 +74,7 @@ for (const [instrument, variant, deedType, draft, mode, version, file] of cases)
       }
     }
     if (instrument === 'sale' && mode !== 'ordinary') {
-      assert.match(text, mode === 'gpa' ? /for SAMPLE VENDOR/ : /representing SAMPLE VENDOR/);
+      assert.match(text, mode === 'gpa' ? /for Sample Vendor/ : /representing Sample Vendor/);
       assert.match(text, mode === 'gpa' ? /Authority SRO/ : /AUTHORITY SRO/);
       assert.match(text, mode === 'gpa' ? /G\.P\.A\. HOLDER OF/ : /A\.G\.P\.A\. HOLDER OF/);
       if (mode === 'gpa') assert.match(text, /Book BOOK-777/);

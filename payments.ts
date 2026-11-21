@@ -16,6 +16,7 @@ import { readWithRetry } from './extraction-request';
 
 export type PayMode = 'rtgs' | 'cheque' | 'dd' | 'upi' | 'cash' | 'housing-loan' | 'through-bank';
 
+
 export type Payment = {
   id: string;
   mode: PayMode;
@@ -31,6 +32,9 @@ export type Payment = {
   date: string;
   payer: string;
   payee: string;
+  /** Selected party record IDs, in the order used to write the saved names. */
+  payerPartyIds?: string;
+  payeePartyIds?: string;
   /** The instrument image this payment was read from, if any. */
   docName?: string;
   /** Fields that were populated from an uploaded instrument. */

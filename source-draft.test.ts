@@ -11,12 +11,24 @@ const source = (id: string, candidates: Candidate[]): Source => ({ id, name: `${
 const draftWith = (...sources: Source[]): Draft => ({ ...newDraft(), sources });
 
 describe('source-backed drafts', () => {
-  it('applies the consideration limit to local payment amounts while retaining valid proof evidence', () => {
+  it('restores older selected payment names in spaced title case and preserves manual entries', () => {
+    const draft = { ...newDraft(), manual: {
+      'payment|one|mode': 'cash',
+      'payment|one|payer': 'CURRENT BUYER and SECOND BUYER',
+      'payment|one|payerPartyIds': 'primary,buyer-2',
+      'payment|one|payee': 'MANUAL SELLER',
+    } };
+    const [payment] = appStateFor(draft).payments;
+    expect(payment.payer).toBe('Current Buyer and Second Buyer');
+    expect(payment.payee).toBe('MANUAL SELLER');
+  });
+
+  it('applies the consideration limit to extracted payment amounts while retaining valid proof evidence', () => {
     let draft = newDraft();
     for (const [key, value] of [['property|transaction|consid', '1000'], ['payment|payment-1|mode', 'cheque']]) {
       draft = draftReducer(draft, { type: 'manual', key, value });
     }
-    const proof: Source = { id: 'proof', revision: 0, hash: 'test', name: 'Proof.pdf', profile: 'payment:cheque', readMode: 'local',
+    const proof: Source = { id: 'proof', revision: 0, hash: 'test', name: 'Proof.pdf', profile: 'payment:cheque',
       status: 'reading', assignment: { role: 'payment', record: 'payment-1' } };
     draft = draftReducer(draft, { type: 'add', source: proof });
     const result = { candidates: [

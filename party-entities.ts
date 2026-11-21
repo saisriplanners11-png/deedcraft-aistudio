@@ -63,7 +63,7 @@ export function entityRecital(values: Record<string, string>, side: PartySide, p
 export function representativeRecital(p: PartyRepresentative): string {
   const designation = p.designation.trim().replace(/[:\s]+$/, '');
   const text = [(designation ? designation + ': ' : '') + (p.name.toLocaleUpperCase('en-IN') || '____')];
-  if (p.relationName) text.push([p.relation, p.relationName.toLocaleUpperCase('en-IN')].filter(Boolean).join(' '));
+  if (p.relationName) text.push([p.relation, p.relationName].filter(Boolean).join(' '));
   const age = p.dob ? ageFrom(p.dob) : p.age;
   if (age) text.push('aged ' + age + ' years');
   if (p.dob) text.push('(DOB: ' + date(p.dob) + ')');

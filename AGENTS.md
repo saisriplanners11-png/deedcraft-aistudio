@@ -102,7 +102,6 @@ COM-23 also extends the floor-wise plinth summary to every deed with a house sch
 
 10-11-2026 COM-22 correction: all deeds retain only the issuing-authority selector. Remove Enclosure details and appended enclosure sentences. Change only the existing recital office designation to Tahsildar & Jt. Sub-Registrar when selected, followed by its existing office name/code. Runtime preservation version: 2026-11-10.6.
 
-
 10-11-2026 explicit PTY-01 update: new claimant Minor cards capture only minor identity; Guardian claimants capture their own adult identity and relationship. A minor selects one or more stable Guardian claimant IDs independently of names or list order. Print “Under the Guardianship of” for each assigned guardian using that adult’s current details. Missing/deleted/type-changed guardians block generation until reassigned. Multiple minors may share a guardian. No old-draft migration is requested. Runtime preservation version: 2026-11-10.7.
 
 COM-24 (10-11-2026): blank property schedule bindings omit their labels and dependent wording, including empty labelled rows. Preserve entered values, zero, source formatting and per-property isolation. Unavailable plot/survey/house identifiers are optional. Keep regression coverage for preview and actual Word downloads. Runtime preservation version: 2026-11-10.8.
@@ -131,3 +130,5 @@ COM-24 (10-11-2026): blank property schedule bindings omit their labels and depe
 18-11-2026: Release signature captions use the template layout without party names or numbered party-signature rows. Keep both witness lines and the party details in the deed body.
 
 19-11-2026 COM-25 update. Generate Deed shows the English and Telugu Word downloads and the editable Typed By stamp. Drafts without a saved stamp choice default to checked. Prefill Gundlapelli Sampath, Sircilla, and 98662 70006 when no stamp details have been saved. Keep an explicit opt-out and existing typed-by details, including intentionally blank entries. Word template controls are in Reverify and the separate plan PDF download is in the optional plan steps. Existing Word stamp formatting applies. No template preservation version change.
+
+21-11-2026 SRC-02/03 update: the user explicitly requested complete removal of local OCR and extraction without AI, superseding the earlier local-reader, preview and matching updates. Document uploads now use AI extraction only. Remove the mode switch, local engines, models, dependencies and related UI. Preserve saved attachments, evidence, extracted facts and manual entries. No Word rendering or template preservation version change.

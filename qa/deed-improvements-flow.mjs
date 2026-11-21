@@ -64,7 +64,7 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   assert(tops.length > stampCount && !tops.slice(stampCount).some(top => top === '8352' || top === '8640'), label + ': continuation margins');
   assert.doesNotMatch(text.slice(text.indexOf('SCHEDULE OF PROPERTY')), /NALA converted extent:/i, label);
   assert.doesNotMatch(text, /\b(?:Vendor|Vendee|Executant|Principal|Attorney|First Party|Second Party)\/s\b|\bhas\/have\b|\bis\/are\b|\bI\/We\b/i, label);
-  if (candidateVariant === 'municipal-gift') { assert.match(text, /SAMPLE PURCHASER/, label); assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner/, label); }
+  if (candidateVariant === 'municipal-gift') { assert.match(text, /SAMPLE PURCHASER/i, label); assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner/, label); }
   if (instrumentId === 'sale') { assert.match(text, /Vendor has agreed/, label); assert.match(text, /Vendees have agreed/, label); }
   cases++;
 }

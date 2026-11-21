@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { createProxyHandler } from './proxy.mjs';
 import { createReferencePlanApi } from './reference-plan/api.mjs';
 import { createTemplateApi } from './template-api.mjs';
-import { localOcrAssets } from './local-ocr-assets';
 import { createApplicationApi } from './applications/api.mjs';
 
 function applicationApi(env: Record<string, string>): Plugin {
@@ -68,12 +67,7 @@ export default defineConfig(({ mode }) => {
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), localOcrAssets(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env), applicationApi(env)],
-    optimizeDeps: {
-      // Keep the SDK's relative worker URL intact while converting its CommonJS dependencies.
-      exclude: ['@paddleocr/paddleocr-js'],
-      include: ['clipper-lib', '@techstark/opencv-js', 'js-yaml'],
-    },
+    plugins: [react(), tailwindcss(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env), applicationApi(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),

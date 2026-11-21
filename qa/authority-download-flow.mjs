@@ -46,13 +46,13 @@ for (const mode of ['gpa', 'agpa']) {
   };
   for (const template of [source, { kind: 'built-in' }]) {
     const text = await render(template);
-    for (const expected of ['OWNER ONE', 'OWNER TWO', 'AGENT ONE', 'AGENT TWO', 'OWNER PARENT ONE', 'AGENT PARENT TWO', '333344445555', '555566667777', 'MANUAL OWNER VILLAGE', 'AGENT VILLAGE TWO', 'AUTH-42', mode === 'gpa' ? 'Authority SRO' : 'AUTHORITY SRO']) assert(text.includes(expected), `${mode}: missing ${expected}`);
+    for (const expected of ['OWNER ONE', 'OWNER TWO', 'AGENT ONE', 'AGENT TWO', 'OWNER PARENT ONE', 'AGENT PARENT TWO', '333344445555', '555566667777', 'MANUAL OWNER VILLAGE', 'AGENT VILLAGE TWO', 'AUTH-42', mode === 'gpa' ? 'Authority SRO' : 'AUTHORITY SRO']) assert(text.toUpperCase().includes(expected.toUpperCase()), `${mode}: missing ${expected}`);
     const association = mode === 'gpa' ? 'for' : 'representing';
-    assert(text.includes('AGENT ONE (' + association + ' OWNER ONE)'));
-    assert(text.includes('AGENT TWO (' + association + ' OWNER TWO)'));
+    assert(text.toUpperCase().includes(('AGENT ONE (' + association + ' OWNER ONE)').toUpperCase()));
+    assert(text.toUpperCase().includes(('AGENT TWO (' + association + ' OWNER TWO)').toUpperCase()));
     const declaration = text.slice(text.lastIndexOf('DECLARATION'));
     assert(declaration.includes(mode === 'gpa' ? 'G.P.A. HOLDER OF' : 'A.G.P.A. HOLDER OF'));
-    assert(declaration.includes('OWNER ONE, OWNER TWO'));
+    assert(declaration.includes('Owner One, Owner Two'));
     assert.doesNotMatch(text, /(?:Holding Undivided Share|share of)\s*50%/i);
     assert.doesNotMatch(text, /<[^<>]+>/);
   }

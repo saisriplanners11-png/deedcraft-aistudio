@@ -66,7 +66,7 @@ for (const [instrumentId, variantId, deedType, draft, file, mode] of modes) {
     assert.deepEqual(result.unmapped, [], context);
     assert.equal(manifest.preservationVersion, rt.DEED_PRESERVATION_VERSION);
     assert.equal(JSON.stringify(state), before, context + ': saved facts must not change');
-    for (const value of ['__-10-2026', 'ABCDE1234F', 'PQRST5678L', 'SECOND RECIPIENT', 'TITLE-42']) assert(text.includes(value), context + ': ' + value);
+    for (const value of ['__-10-2026', 'ABCDE1234F', 'PQRST5678L', 'SECOND RECIPIENT', 'TITLE-42']) assert((value === "SECOND RECIPIENT" ? text.toUpperCase() : text).includes(value), context + ': ' + value);
     assert.doesNotMatch(text, /88%|STALE OWNER|9999 Sq\. Yards|01-01-2000|99,99,999/, context);
     const sections = [...xml.matchAll(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)].map(match => match[0]);
     assert.match(sections[0], /w:top="8640"/, context);

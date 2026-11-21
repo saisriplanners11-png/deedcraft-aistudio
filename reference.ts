@@ -8,7 +8,7 @@ export const STEPS = [
     { id: 2, label: 'Jurisdiction', sub: 'Confirm the location, registration office and deed date', phase: 2 },
     { id: 3, label: 'Property Schedules', sub: 'Describe each property, its area and boundaries', phase: 2 },
     { id: 4, label: 'Market Value', sub: 'Check property rates and the entered document value', phase: 2 },
-    { id: 5, label: 'Payment Details', sub: 'Record payments and check the remaining balance', phase: 2 },
+    { id: 5, label: 'Payment Details', sub: 'Record payments and check the remaining balance', phase: 3 },
     { id: 6, label: 'Executant Details', sub: 'Seller / donor / first party', phase: 3 },
     { id: 7, label: 'Claimant Details', sub: 'Buyer / donee / second party', phase: 3 },
     { id: 8, label: 'Reverify', sub: 'Review missing details and check the draft', phase: 4 },

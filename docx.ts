@@ -7,6 +7,7 @@ import { partyPronouns } from './party-pronouns';
 import { reconveyanceBindingErrors, reconveyanceAmounts, mortgageInterestTotal, mortgagePaise, reconveyanceTemplateVersion } from './reconveyance';
 import { deedDate as deedDateForReconveyance, deedMobile } from './deed-format';
 import { formatDeedAmount, stampSheetCount } from './deed-money';
+import { formatDeedPartyName } from './place-names';
 import { giftPartyWording } from './gift-wording';
 import { regularGiftSourcePolicy } from './gift-template-policy';
 import { DEED_PRESERVATION_VERSION, preservationProfileFor, protectedSourceWording, type PreservationProfile } from './deed-preservation';
@@ -958,6 +959,50 @@ function orderRecitalParagraphs(xml: string): string {
   }
   for (const group of groups.values()) group.sort((a, b) => Number(a[2]) - Number(b[2]));
   return xml.replace(pattern, (_, group: string) => groups.get(group)!.shift()![0].replace(/<!--deed-order:[^>]+-->/, ''));
+}
+
+/** Apply title case rules and format party names at the source's page boundaries. */
+function formatDeedOpening(xml: string, rewrites: Rewrite[]): string {
+  const names = new Set<string>();
+  for (const rule of rewrites) {
+    if (!rule.partyRole && !/<(?:PRINCIPAL|ATTORNEY) NAME>/i.test(rule.find.source)) continue;
+    for (const record of rule.records || []) {
+      for (const [key, value] of Object.entries(record)) {
+        if (value.trim() && /^(?:Registration|Executant|Claimant|Principal|Attorney) Name$/i.test(key)) names.add(value.trim());
+      }
+    }
+  }
+  const alternatives = [...names].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
+  const identityName = new RegExp(`^(\\s*(?:\\d+\\.\\s*)?(?:M/s\\.\\s*)?)(${alternatives})(?=\\s*(?:[,.(]|[SDWC]\\s*/\\s*O\\b|$))`, 'iu');
+  const start = xml.indexOf('<w:body>') + '<w:body>'.length;
+  const end = xml.lastIndexOf('</w:body>');
+  if (start < '<w:body>'.length || end < start) return xml;
+  const body = xml.slice(start, end);
+  let continuation = false;
+  let inTitle = false;
+  let titleComplete = false;
+  let offset = 0;
+  const formatted = topLevelChildren(body).map(child => {
+    const between = body.slice(offset, child.start);
+    const block = body.slice(child.start, child.end);
+    offset = child.end;
+    if (/<w:pageBreakBefore\b(?![^>]*w:val="(?:false|0)")/.test(block)) continuation = true;
+    const paragraph = /^<w:p\b/.test(block);
+    const wording = paragraph ? plainText(block).trim() : '';
+    const startsTitle = /^(?:Sale Deed|(?:Deed of )?Gift(?: Settlement| Deed)|General Power of Attorney|Agreement of Sale|Deed of Reconveyance|Release Deed)\b/i.test(wording);
+    const titleLine = !titleComplete && (startsTitle || inTitle && /^(?:Deposit(?:e)? of Title Deeds?|Mortgage Deed|(?:Other Than )?Family Member|For Sale of Immovable Property|In Favour of Family Member|With(?:out)? Possession)\b/i.test(wording));
+    if (titleLine) inTitle = true;
+    else if (inTitle && wording) titleComplete = true;
+    const result = titleLine
+      ? block.replace(/(<w:t(?:\s[^>]*)?>)([\s\S]*?)(<\/w:t>)/g,
+        (_, open, text, close) => open + escapeXml(unescapeXml(text).toUpperCase()) + close)
+      : names.size && paragraph && /\b(?:Aged|R\/o|represented by|Hereinafter called)\b/i.test(wording)
+      ? replaceRunText(block, identityName, match => match[1] + (continuation ? formatDeedPartyName(match[2]) : match[2].toLocaleUpperCase('en-IN')))
+      : block;
+    if (/<w:sectPr\b|<w:br\b[^>]*w:type="page"/.test(block)) continuation = true;
+    return between + result;
+  });
+  return xml.slice(0, start) + formatted.join('') + body.slice(offset) + xml.slice(end);
 }
 
 function regularWeight(paragraph: string): string {
@@ -2085,7 +2130,7 @@ function agreementRegistrationForm(table: string, heading: string, rewrites: Rew
     const prefix = side === 'executant' ? 'Executant' : 'Claimant';
     return records.map(record => {
       const values = new Map(Object.entries(record).map(([key, value]) => [norm(key), value]));
-      const name = values.get(norm('Registration Name')) || values.get(norm(prefix + ' Name')) || '';
+      const name = formatDeedPartyName(values.get(norm('Registration Name')) || values.get(norm(prefix + ' Name')) || '');
       const relation = values.get(norm(prefix + ' Relation Name')) || '';
       const address = values.get(norm('Registration Address')) || values.get(norm(prefix + ' Address')) || '';
       const fields = [[name, relation].filter(Boolean).join(', '), address ? `R/o ${address}` : '', side === 'executant' ? 'EXECUTANT / PRINCIPAL' : 'CLAIMANT / ATTORNEY HOLDER'];
@@ -2285,7 +2330,7 @@ async function fillPropertyAuthorityDeed(values: Record<string, string>, rewrite
     return ++blanks <= 1;
   }).join('');
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0, start) + result + xml.slice(end)), values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  document.data = new TextEncoder().encode(formatDeedOpening(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0, start) + result + xml.slice(end)), values['Stamp Paper Margin'], values['Stamp Paper Count']), rewrites));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -2545,7 +2590,7 @@ export async function fillSaleDeed(
     }
   }
   xml = ensureStampPaperSpace(xml.slice(0, bodyStart) + body + xml.slice(bodyEnd), values['Stamp Paper Margin'], values['Stamp Paper Count']);
-  doc.data = new TextEncoder().encode(orderRecitalParagraphs(xml));
+  doc.data = new TextEncoder().encode(formatDeedOpening(orderRecitalParagraphs(xml), rewrites));
   for (const part of entries.filter(entry => /^word\/(?:header|footer)\d+\.xml$/.test(entry.name))) {
     const filled = new TextDecoder().decode(part.data).replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, p => fillParagraph(p, values_, missing, []));
     part.data = new TextEncoder().encode(filled);
@@ -2870,7 +2915,7 @@ async function fillMunicipalGiftDeed(values: Record<string, string>, rewrites: R
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
   let sectionIndex = 0;
   const numbered = (xml.slice(0, start) + result + xml.slice(end)).replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, section => sectionIndex++ === 0 ? section : section.replace(/(<w:pgNumType\b[^>]*?)\s+w:start="[^"]*"/g, '$1'));
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(numbered), values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  document.data = new TextEncoder().encode(formatDeedOpening(ensureStampPaperSpace(orderRecitalParagraphs(numbered), values['Stamp Paper Margin'], values['Stamp Paper Count']), rewrites));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -3005,7 +3050,7 @@ export async function fillGiftDeed(values: Record<string, string>, rewrites: Rew
       .replace(/<w:pgMar\b[^>]*\/>/, `<w:pgMar w:top="${top}" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>`);
   });
   const unmapped = [...new Set((plainText(result).match(/<[^<>]{2,60}>/g) || []).map(tag => tag.slice(1, -1).trim()))];
-  document.data = new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0, start) + result + xml.slice(end)), values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  document.data = new TextEncoder().encode(formatDeedOpening(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0, start) + result + xml.slice(end)), values['Stamp Paper Margin'], values['Stamp Paper Count']), rewrites));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing].sort(), unmapped: unmapped.sort() };
 }
 
@@ -3067,7 +3112,7 @@ export async function validateReconveyanceTemplate(bytes: Uint8Array): Promise<T
 }
 function reconveyanceNames(values: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(values).map(([key, value]) =>
-    [key, /^(?:(?:Executant|Claimant|Vendor|Vendee|Donor|Donee|Releasor|Releasee)(?: Relation)? Name|Bank Name|Registration Name)$/i.test(key)
+    [key, /^(?:(?:Executant|Claimant|Vendor|Vendee|Donor|Donee|Releasor|Releasee) Name|Bank Name|Registration Name)$/i.test(key)
       ? value.toLocaleUpperCase('en-IN') : value]));
 }
 
@@ -3087,8 +3132,12 @@ function reconveyanceProperCase(paragraph: string): string {
 
 function prepareReconveyanceSchedule(block: string, schedule: ScheduleMerge): string {
   const { variant, values, structureDetails } = schedule;
+  const dimensionLine = /^\s*(?:(?:boundary |property )?dimensions?\s*(?::|$)|(?:North|South|East|West)\s+dimension\b)/i;
+  block = block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, row =>
+    dimensionLine.test(plainText(row)) ? '' : row);
   block = block.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph =>
-    replaceRunText(paragraph, /^(\s*)Schedule of (?:the )?Property(\s*)$/i, match => match[1] + 'SCHEDULE OF THE PROPERTY' + match[2]));
+    dimensionLine.test(plainText(paragraph)) ? '' :
+      replaceRunText(paragraph, /^(\s*)Schedule of (?:the )?Property(\s*)$/i, match => match[1] + 'SCHEDULE OF THE PROPERTY' + match[2]));
   if (variant.startsWith('IF FLAT') && values.UDS) values['Extent in Sq.Meters'] = (Number(values.UDS.replace(/,/g, '')) * 0.836127).toFixed(2);
   block = prepareLandmarkBlock(block, values, variant, false);
   if (['IF DIMOLISHED HOUSE', 'IF PART OPEN PLACE'].includes(variant) && values['Survey No.'] &&
@@ -3173,7 +3222,7 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
   });
   const output = xml.slice(0, parts.start) + (opening + common + properties + closing).replace(/<w:(?:caps|smallCaps)\b[^>]*\/>/g, '') + xml.slice(parts.end);
   if (/<\s*(?:IF |BANK NAME|Principal Amount|Intrest Amount)/.test(plainText(output))) throw new Error('Unresolved Reconveyance conditional or amount binding.');
-  entry.data = new TextEncoder().encode(ensureStampPaperSpace(output, values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  entry.data = new TextEncoder().encode(formatDeedOpening(ensureStampPaperSpace(output, values['Stamp Paper Margin'], values['Stamp Paper Count']), rewrites));
   return { blob: new Blob([await writeZip(entries) as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), missing: [...missing], unmapped: [] };
 }
 
@@ -3385,6 +3434,6 @@ export async function fillReleaseDeed(values:Record<string,string>,rewrites:Rewr
       result=result.slice(0,boundary.end)+'<w:p><w:pPr>'+section+'</w:pPr></w:p>'+result.slice(boundary.end);
     }
   }
-  entry.data=new TextEncoder().encode(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0,parts.start)+result+xml.slice(parts.end)),values['Stamp Paper Margin'], values['Stamp Paper Count']));
+  entry.data=new TextEncoder().encode(formatDeedOpening(ensureStampPaperSpace(orderRecitalParagraphs(xml.slice(0,parts.start)+result+xml.slice(parts.end)),values['Stamp Paper Margin'], values['Stamp Paper Count']), rewrites));
   return {blob:new Blob([await writeZip(entries) as any],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),missing:[...missing],unmapped:[]};
 }

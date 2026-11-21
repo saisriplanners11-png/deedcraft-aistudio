@@ -95,7 +95,6 @@ import type { FieldRenderer } from './ui';
 // four — actual API concurrency is still throttled downstream, in
 // upload-extraction.ts's own apiQueue/pageQueue.
 const fileQueue = new WorkQueue(10);
-const localFileQueue = new WorkQueue(2);
 const ACCEPT = '.pdf,.docx,.txt,.md,image/jpeg,image/png,image/webp,image/gif';
 function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNotice }: { value: StructureDetails; defaultRoof: string; authority: string; onChange: (value: StructureDetails) => void; onNotice: (message: string) => void }) {
   const details = value || newStructureDetails();
@@ -138,7 +137,7 @@ function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNoti
           const stageRate = stage && stage.percent < 100 ? houseStageRate(row, authority, defaultRoof) : '';
           const legacyStage = !wall && !!row.stage && !stage;
           return <tr key={row.id}>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" aria-label="Total floors" value={details.totalFloors} readOnly={index > 0} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: index ? C.ground : C.paper }} /></td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" aria-label="Total floors" value={details.totalFloors} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: C.paper }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Floor number" disabled={wall} value={wall ? '' : row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Nature of Roof" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, rateOverride: undefined, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{roofOptions.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom nature of roof" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Stage" disabled={wall} value={wall ? '' : stage?.value ?? row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{legacyStage && <option value={row.stage}>{row.stage}</option>}{HOUSE_VALUATION_STAGES.map(option => <option key={option.value} value={option.value}>{option.label} ({option.percent}%)</option>)}</select>{legacyStage && <small>Choose a stage with a valuation percentage.</small>}</td>
@@ -246,14 +245,13 @@ function UnverifiedReviewDialog({ review, onConfirm, onDismiss }: {
 /** Keep upload feedback actionable; extracted values are shown in the form itself. */
 function SourceFeedback({ sources }: { sources: Source[]; visibleFields?: string[] }) {
   const needsClearerUpload = sources.some(source => source.status === 'error' || !!source.error
-    || source.result?.notes.some(note => /could not be read/i.test(note))
-    || (source.readMode === 'local' && source.status === 'done' && !source.result?.textPreview && !source.result?.candidates.length));
+    || source.result?.notes.some(note => /could not be read/i.test(note)));
   const pending = sources.some(source => source.status === 'queued' || source.status === 'reading');
   const finished = sources.filter(source => source.status === 'done');
   if (!sources.length) return null;
   return <div role="status" className="source-review-status">
     {pending && <p>Reading documents. You can keep editing.</p>}
-    {finished.map(source => <p key={source.id}>Read: {source.name}. {source.result?.textPreview ? 'Use Read again to match fields.' : source.readMode === 'local' && !source.result?.candidates.length ? 'No supported fields were matched.' : 'Check the filled fields against the original.'}</p>)}
+    {finished.map(source => <p key={source.id}>Read: {source.name}. Check the filled fields against the original.</p>)}
     {needsClearerUpload && <p className="notice">Some details could not be filled. Enter them below or upload a clearer copy.</p>}
   </div>;
 }
@@ -332,7 +330,7 @@ function RecordFieldGroup({
   for (const g of groups) for (const f of g.fields)
     form[f.id] = f.id === 'extentSqMeters' && sqMeters ? sqMeters
       : f.id === 'calculatedLandMarketValue' ? calculatedLandMarketValue
-      : (['executionDate', 'stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(f.id) ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
+      : (['consid', 'executionDate', 'stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(f.id) ? resolved.values[fieldKey('property', 'transaction', f.id)] : undefined)
         ?? resolved.values[fieldKey(role, record, f.id)] ?? fallbackValues?.[f.id] ?? defaults[f.id] ?? '';
   if ('stampValue' in form) form.stampValue = stampPaperValue(form);
   const renderGroup = (g: import('./fields').Group) => (
@@ -740,11 +738,6 @@ export default function WizardApp() {
   const cache = useRef(new Map<string, Promise<SourceResult>>());
   const [uploadSteps, setUploadSteps] = useState<Record<string, ExtractStep[]>>({});
   const [activeUpload, setActiveUpload] = useState<{ id: string; label: string; names: string[] } | null>(null);
-  const [aiExtraction, setAiExtraction] = useState(() => {
-    try { return localStorage.getItem('deedcraft-ai-extraction') !== 'off'; }
-    catch { return true; }
-  });
-  const aiExtractionRef = useRef(aiExtraction);
   const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
   // Record ids added via "Add another executant/claimant" before any evidence names them —
   // resolveDraft only lists a record once it has a value, so a freshly added blank/uploading
@@ -903,7 +896,7 @@ export default function WizardApp() {
   const featuredProgress = libraryView && featuredDeed ? buildViewModel(appStateFor(featuredDeed.draft), () => {}).pct : 0;
   const nextStep = workflowSteps.find(s => s.id <= 8 && !vm.doneIds.includes(s.id)) || STEPS[8];
   const edit = (role: Role, record: string, field: string, value: string) => {
-    if (role === 'property' && ['stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(field)) record = 'transaction';
+    if (role === 'property' && ['consid', 'stampPaperMargin', 'stampPaperCount', 'stampValue'].includes(field)) record = 'transaction';
     if (field === 'stampPaperCount' && value && !/^\d{1,3}$/.test(value)) return;
     const sro = resolveSroSelection(field, value);
     if (sro) {
@@ -914,14 +907,6 @@ export default function WizardApp() {
     }
     value = normalizePropertyPlaceName(field, value, true);
     value = uppercasePartyIdentity(field, value);
-    if (field === 'consid' && hasPaymentStep(state.deedType)) {
-      const consideration = Number(value);
-      const paid = state.payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-      if (Number.isFinite(consideration) && consideration < paid) {
-        setMessage(`Sale consideration cannot be lower than the already recorded payments (₹${paid.toLocaleString('en-IN')}).`);
-        return;
-      }
-    }
     // Extent (Sq. Meters) and NALA's square-yard equivalent are computed live
     // for display (see RecordFieldGroup/LinkRecordCard) straight from their
     // source figure, whichever way it arrived — no mirrored write needed here.
@@ -948,7 +933,6 @@ export default function WizardApp() {
   /** Reads one ordered source bundle, binding it to one record so it never spills into another. */
   async function runUpload(files: File[], assignment?: { role: Role; record: string; propertyRecord?: string }, profile: ExtractionProfile = 'general') {
     if (!files.length) return;
-    const local = !aiExtractionRef.current;
     const templateKeyAtUpload = activeTemplateKeyRef.current;
     const sourceId = crypto.randomUUID();
     setSourceFiles(old => ({ ...old, [sourceId]: files }));
@@ -956,25 +940,25 @@ export default function WizardApp() {
     controllers.current.get(sourceId)?.abort();
     const controller = new AbortController(); controllers.current.set(sourceId, controller);
     const option = profile.startsWith('phase1:') ? LINK_OPTIONS.find(item => item.id === profile.slice('phase1:'.length)) : undefined;
-    if (!local) setActiveUpload({
+    setActiveUpload({
       id: sourceId,
       label: option?.label || (assignment?.role === 'executant' ? 'Executant ID' : assignment?.role === 'claimant' ? 'Claimant ID' : 'Document'),
       names: files.map(file => file.name),
     });
     const valid = () => !controller.signal.aborted && current.current.id === draftId && (assignment?.role !== 'party-person' || Object.values(current.current.partyPeople || {}).some(p => [...p.representativeIds, ...p.memberIds].includes(assignment.record)));
     const job = (patch: any) => dispatch({ type: 'job', draftId, sourceId, sourceRevision: 0, patch });
-    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'queued', assignment, profile, readMode: local ? 'local' : undefined } });
-    if (!local) setUploadSteps(s => ({ ...s, [sourceId]: [] }));
+    dispatch({ type: 'add', source: { id: sourceId, revision: 0, name: files.map(file => file.name).join(' · '), hash: '', status: 'queued', assignment, profile } });
+    setUploadSteps(s => ({ ...s, [sourceId]: [] }));
     const started = performance.now();
     try {
-      await (local ? localFileQueue : fileQueue).run(async () => {
+      await fileQueue.run(async () => {
         if (!valid()) return;
         job({ status: 'reading' });
         const hash = await fileHash(files);
         if (!valid()) return;
         job({ hash });
         const reconveyance = current.current.instrumentId === 'reconveyance';
-        const key = JSON.stringify([draftId, hash, EXTRACTION_VERSION, profile, local, reconveyance, files.map(file => file.name)]);
+        const key = JSON.stringify([draftId, hash, EXTRACTION_VERSION, profile, reconveyance, files.map(file => file.name)]);
         let result: SourceResult;
         const report: Parameters<typeof extractUpload>[2] = event => {
             if (!valid()) return;
@@ -991,16 +975,6 @@ export default function WizardApp() {
               return { ...s, [sourceId]: index < 0 ? [...steps, event] : steps.map((step,i) => i === index ? event : step) };
             });
         };
-        if (local) {
-          const { extractLocally } = await import('./local-upload-extraction');
-          const localResult = cache.current.has(key) ? await cache.current.get(key)!
-            : await extractLocally(files, controller.signal, profile, reconveyance);
-          if (valid()) {
-            if (localResult.candidates.length && !localResult.notes.length) cache.current.set(key, Promise.resolve(localResult));
-            job({ status: 'done', result: localResult, durationMs: performance.now() - started });
-          }
-          return;
-        }
         if (cache.current.has(key)) result = await cache.current.get(key)!;
         else {
           result = await extractUpload(files, controller.signal, report, result => { if (valid()) job({ result }); }, profile);
@@ -1025,7 +999,7 @@ export default function WizardApp() {
       }, controller.signal);
     } catch (error: any) {
       if (valid()) {
-        if (!local) setUploadSteps(s=>({...s,[sourceId]:(s[sourceId]||[]).map(step=>step.state==='running'||step.state==='queued'?{...step,state:'error' as const}:step)}));
+        setUploadSteps(s=>({...s,[sourceId]:(s[sourceId]||[]).map(step=>step.state==='running'||step.state==='queued'?{...step,state:'error' as const}:step)}));
         const message = error.message || 'This upload could not be read.';
         job({ status: 'error', error: message });
       }
@@ -1051,12 +1025,6 @@ export default function WizardApp() {
     }
   };
   async function runTemplateExtraction(files: File[], record: TemplateRecord, existingSource?: Source) {
-    if (!aiExtractionRef.current) {
-      setTemplateFieldMessage('Enter additional template fields manually while AI extraction is off.');
-      const role = record.scope === 'executant' || record.scope === 'claimant' ? record.scope : 'property';
-      if (!existingSource) void runUpload(files, { role, record: record.id });
-      return;
-    }
     const fields = resolveTemplateFieldData(current.current, appStateFor(current.current), fieldContract).instances.filter(instance => instance.record.scope === record.scope && instance.record.id === record.id && instance.field.extractionEnabled).map(instance => instance.field);
     if (!files.length || !fields.length) return;
     const sourceId = crypto.randomUUID(); const draftId = current.current.id; const key = activeTemplateKeyRef.current; const generation = templateExtractionGeneration.current;
@@ -1078,10 +1046,6 @@ export default function WizardApp() {
     finally { controllers.current.delete(sourceId); if (generation === templateExtractionGeneration.current) setExtractingTemplateFields(false); }
   }
   async function readSavedTemplateFields() {
-    if (!aiExtractionRef.current) {
-      setTemplateFieldMessage('Enter additional template fields manually while AI extraction is off.');
-      return;
-    }
     const generation = templateExtractionGeneration.current;
     const sources = draft.sources.filter(source => source.profile !== 'template-fields' && sourceFiles[source.id]?.length);
     if (!sources.length) { setTemplateFieldMessage('No original documents are saved with this draft. Upload evidence using the additional-fields section.'); return; }
@@ -1307,6 +1271,11 @@ export default function WizardApp() {
   })();
   const executantRecords = partyRecords(state, 'executant');
   const claimantRecords = partyRecords(state, 'claimant');
+  const paymentPartyOptions = (side: 'executant' | 'claimant', records: typeof executantRecords) =>
+    records.map((record, index) => ({
+      id: index === 0 ? (side === 'executant' ? state.primaryExecutantId : state.primaryClaimantId) || 'primary' : record.id,
+      name: partyDisplayName(record.values, side).trim(),
+    })).filter(option => option.name);
   const previews = propertyRecords.map((record) => {
     const id = record.id;
     if (selectedPlanSvgs[id]) return { id, svg: selectedPlanSvgs[id], note: 'Reviewed plan selected for this schedule.', error: '' };
@@ -1524,7 +1493,10 @@ export default function WizardApp() {
   }
 
   const patchPayment = (record: string, patch: Partial<Payment>) => {
-    const error = paymentPatchError(state.payments, record, patch, state.form.consid);
+    const currentAmount = state.payments.find(payment => payment.id === record)?.amount;
+    const error = patch.amount !== undefined && patch.amount !== currentAmount
+      ? paymentPatchError(state.payments, record, patch, state.form.consid)
+      : null;
     if (error) { setMessage(error); return false; }
     for (const [key, value] of Object.entries(patch)) {
       const str = Array.isArray(value) ? value.join(',') : typeof value === 'boolean' ? (value ? 'true' : '') : String(value ?? '');
@@ -1554,8 +1526,6 @@ export default function WizardApp() {
     setPendingReviews(queue => queue.filter(item => item.id !== review.id));
   };
   const dismissUnverified = () => setPendingReviews(queue => queue.slice(1));
-  const localUploads = draft.sources.filter(source => source.readMode === 'local');
-  const localReadsInProgress = localUploads.filter(source => source.status === 'queued' || source.status === 'reading');
 
   return <TemplatePlacementSurface step={libraryView || templatesView ? -1 : step} activePropertyId={activePropertyId} draft={draft} contract={fieldContract} instances={templateFieldResolution.instances} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage}><div className={`wizard-app modern-workspace${showFieldHelp ? ' show-field-help' : ''}`} data-theme={theme}>
     {downloadWarning && downloadWarning.draftId === draft.id && downloadWarning.revision === draft.revision && downloadWarning.templateKey === templateKey &&
@@ -1642,40 +1612,6 @@ export default function WizardApp() {
           <div className="stage-head"><div className="step-title-line"><h1 id="workspace-title" tabIndex={-1}>{step < 0 ? 'Draft overview' : STEPS[step].label}</h1><span className="step-position">{step < 0 ? 'Overview' : `Step ${displayedStep} of ${workflowSteps.length}`}</span></div>{step !== 9 && <p>{step >= 0 ? STEPS[step].sub : `Everything you need to prepare your ${deedDefinition.label.toLowerCase()}, in one place.`}</p>}
           {step >= 0 && step < 8 && notices.some(issue => issue.step === step) && <div className="step-quick-actions"><a href="#step-review">Details to check</a></div>}</div>
         </header>
-        {step >= 1 && step <= 8 && <div className="extraction-mode">
-          <label>
-            <input type="checkbox" role="switch" checked={aiExtraction} aria-describedby="extraction-mode-description"
-              onChange={event => {
-                const enabled = event.target.checked;
-                aiExtractionRef.current = enabled;
-                setAiExtraction(enabled);
-                try { localStorage.setItem('deedcraft-ai-extraction', enabled ? 'on' : 'off'); } catch { /* Storage may be disabled. */ }
-              }} />
-            AI extraction
-          </label>
-          <span id="extraction-mode-description">{aiExtraction ? 'On · Cloud extraction' : 'Off · Local reading uses no AI credits'}</span>
-        </div>}
-        {!!localReadsInProgress.length && <p role="status" className="notice">
-          {localReadsInProgress.length === 1 ? 'Reading 1 upload on this device.' : 'Reading ' + localReadsInProgress.length + ' uploads on this device.'} You can keep editing.
-        </p>}
-        {localUploads.length > 0 && <details className="notice local-upload-list">
-          <summary>Local uploads and results ({localUploads.length})</summary>
-          <ul>{localUploads.map(source => <li key={source.id}>
-            <strong>{source.name}</strong>
-            {(source.status === 'queued' || source.status === 'reading') && <p>{source.status === 'queued' ? 'Waiting to be read' : 'Reading on this device'}</p>}
-            {(source.status === 'queued' || source.status === 'reading') &&
-              <button type="button" className="quiet" onClick={() => {
-                controllers.current.get(source.id)?.abort();
-                dispatch({ type: 'job', draftId: draft.id, sourceId: source.id, sourceRevision: source.revision, patch: { status: 'error', error: 'Reading cancelled.' } });
-              }}>Cancel reading {source.name}</button>}
-            {source.error && <p>{source.error}</p>}
-            {source.result?.notes.map((note, index) => <p key={index}>{note}</p>)}
-            {(sourceFiles[source.id] || []).map((file, index) =>
-              <button type="button" className="quiet" key={index} onClick={() => saveBlob(file, file.name)}>Download {file.name}</button>)}
-            {!aiExtraction && !!(sourceFiles[source.id]?.length && (source.error || source.result?.textPreview || source.result?.candidates.some(candidate => candidate.status === 'uncertain'))) &&
-              <button type="button" className="quiet" onClick={() => retryUpload(source)}>Read {source.name} again</button>}
-          </li>)}</ul>
-        </details>}
         {step >= 0 && step !== 9 && <ScreenGuide key={step} step={step} gift={draft.instrumentId === 'gift'} municipal={municipalGift} showFieldHelp={showFieldHelp} onFieldHelpChange={setShowFieldHelp} />}
         {[-1, 3, 6, 7, 8].includes(step) && <TemplateAdditionalFields draft={draft} contract={fieldContract} instances={templateFieldResolution.instances.filter(instance => !instance.field.placement)} dispatch={dispatch} onExtract={(files, record) => void runTemplateExtraction(files, record)} onReadSaved={() => void readSavedTemplateFields()} onCancel={cancelTemplateExtraction} sourceFiles={sourceFiles} busy={extractingTemplateFields} message={templateFieldMessage} filterScope={step === 3 ? 'property' : step === 6 ? 'executant' : step === 7 ? 'claimant' : undefined} />}
         {fieldContract.fields.some(field => field.placement) && (extractingTemplateFields || templateFieldMessage) && <div className="notice"><p role="status">{templateFieldMessage}</p>{extractingTemplateFields && <button type="button" onClick={cancelTemplateExtraction}>Cancel additional-field read</button>}</div>}
@@ -1705,7 +1641,7 @@ export default function WizardApp() {
           <section className="dashboard-section" aria-labelledby="workflow-title">
             <div className="dashboard-section-head"><div><p className="eyebrow">WORKFLOW</p><h2 id="workflow-title">Your drafting steps</h2></div><span>Choose any step to continue</span></div>
             {[1, 2, 3, 4].map(phase => <div className="dashboard-phase" key={phase}>
-              <h3><span className="phase-icon">{phase === 1 ? <FolderOpen size={17} aria-hidden="true" /> : phase === 2 ? <LayoutGrid size={17} aria-hidden="true" /> : phase === 3 ? <Users size={17} aria-hidden="true" /> : <CircleCheck size={17} aria-hidden="true" />}</span><span>{['', 'Setup & sources', !hasPaymentStep(state.deedType) ? 'Property' : 'Property & payment', 'Parties', 'Review & finish'][phase]}</span><i /></h3>
+              <h3><span className="phase-icon">{phase === 1 ? <FolderOpen size={17} aria-hidden="true" /> : phase === 2 ? <LayoutGrid size={17} aria-hidden="true" /> : phase === 3 ? <Users size={17} aria-hidden="true" /> : <CircleCheck size={17} aria-hidden="true" />}</span><span>{['', 'Setup & sources', 'Property', hasPaymentStep(state.deedType) ? 'Parties & payments' : 'Parties', 'Review & finish'][phase]}</span><i /></h3>
               <div className="overview-grid">{workflowSteps.filter(s => s.phase === phase).map(s => (
                 <button key={s.id} type="button" className={`overview-card${vm.doneIds.includes(s.id) ? ' done' : ''}${s.id >= 10 ? ' optional' : ''}`} onClick={() => goto(s.id)}>
                   <span className="overview-card-top"><b>{String(workflowSteps.indexOf(s) + 1).padStart(2, '0')}</b><em>{s.id >= 10 ? 'Optional plan' : vm.doneIds.includes(s.id) ? 'Complete' : 'To do'}</em></span>
@@ -1943,7 +1879,7 @@ export default function WizardApp() {
             <SourceFeedback sources={draft.sources.filter(s => s.assignment?.role === 'link')} visibleFields={GROUPS.filter(g => g.step === 4).flatMap(g => g.fields.map(f => f.id))} />
             {propertyRecords.map((record, index) => <div key={record.id} style={index ? { marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.rule}` } : undefined}>
               {propertyRecords.length > 1 && <h3 style={{ margin: '0 0 10px', fontFamily: C.serif, color: C.ink }}>Schedule {index + 1}{record.category ? ` — ${record.category}` : ''}</h3>}
-              <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift'} resolved={resolved} edit={edit}
+              <RecordFieldGroup role="property" record={record.id} category={record.category} step={4} omitConsideration={draft.instrumentId === 'gift' || index > 0} resolved={resolved} edit={edit}
                 renderField={isHouseCategory(record.category) ? (field, value) => field.id === 'structValue' ? <div>
                   <input aria-label={field.label} inputMode="decimal" value={formatMoneyInput(record.values.structValue ?? value)}
                     onChange={event => edit('property', record.id, STRUCTURE_VALUATION_OVERRIDE, event.target.value.replace(/,/g, ''))} />
@@ -1959,6 +1895,7 @@ export default function WizardApp() {
             <h2>Consideration value</h2>
             <p>The agreed sale consideration for this deed. Calculated market value remains available for validation and duty calculations.</p>
             <strong style={{ fontSize: 22, color: C.ink }}>{vm.considINR || 'Enter sale consideration'}</strong>
+            {hasPaymentStep(state.deedType) && vm.balanceN < 0 && <p role="status">Recorded payments exceed the consideration by {vm.balanceINR}. <button type="button" className="quiet" onClick={() => goto(5)}>Review payments</button></p>}
           </section>
           <section className="panel" aria-label="Consideration in words">
             <h2>Consideration in words</h2>
@@ -1969,19 +1906,19 @@ export default function WizardApp() {
 
         {step === 5 && hasPaymentStep(state.deedType) && <section className="panel payments">
           <div className="finish-section-heading"><span className="finish-heading-icon"><CreditCard size={22} aria-hidden="true" /></span><div><h2>Payment summary</h2><p>Add each payment separately. Upload proof to read its details, or enter them below.</p></div></div>
-          <div className="payment-summary-grid"><div><span>Sale consideration</span><strong>{vm.considINR || 'Not entered'}</strong><button type="button" className="quiet" onClick={() => goto(4)}>Edit consideration <ArrowRight size={13} aria-hidden="true" /></button></div><div><span>Payments recorded</span><strong>{vm.paidINR || '₹0'}</strong><small>{state.payments.length} payment {state.payments.length === 1 ? 'record' : 'records'}</small></div><div className={vm.payMatched ? 'is-reconciled' : ''}><span>{vm.payMatched ? 'Reconciliation' : 'Balance remaining'}</span><strong>{!state.form.consid.trim() ? 'Awaiting value' : vm.payMatched ? 'Matched' : vm.balanceINR || '₹0'}</strong><small>{vm.payMatched ? 'Payments match the consideration' : 'Compare payments with the sale consideration'}</small></div></div>
+          <div className="payment-summary-grid"><div><span>Sale consideration</span><strong>{vm.considINR || 'Not entered'}</strong><button type="button" className="quiet" onClick={() => goto(4)}>Edit consideration <ArrowRight size={13} aria-hidden="true" /></button></div><div><span>Payments recorded</span><strong>{vm.paidINR || '₹0'}</strong><small>{state.payments.length} payment {state.payments.length === 1 ? 'record' : 'records'}</small></div><div className={vm.payMatched ? 'is-reconciled' : ''}><span>{vm.payMatched ? 'Reconciliation' : vm.balanceN < 0 ? 'Overpaid by' : 'Balance remaining'}</span><strong>{!state.form.consid.trim() ? 'Awaiting value' : vm.payMatched ? 'Matched' : vm.balanceINR || '₹0'}</strong><small>{vm.payMatched ? 'Payments match the consideration' : 'Compare payments with the sale consideration'}</small></div></div>
           <div className="payment-list-heading"><h3>Payment records</h3><span>Choose a method for each payment</span></div>
           {!state.payments.length && <div className="payment-empty"><CreditCard size={22} aria-hidden="true" /><div><strong>No payment records yet</strong><p>Choose a payment method below to add the first record.</p></div></div>}
           {state.payments.map((p, i) => (
             <div key={p.id}><RecordMove scope="payment" id={p.id} ids={state.payments.map(item => item.id)} onChange={ids => dispatch({ type: 'record-order', scope: 'payment', ids })} /><PaymentCard index={i} payment={p} canRemove={true}
-              onLocalUpload={aiExtraction ? undefined : files => void runUpload(files, { role: 'payment', record: p.id }, `payment:${p.mode}`)}
+              vendors={paymentPartyOptions('executant', executantRecords)} vendees={paymentPartyOptions('claimant', claimantRecords)}
               onPatch={patch => patchPayment(p.id, patch)} onRemove={() => removePayment(p.id)} /></div>
           ))}
-          <AddPayment onAdd={addPayment} remaining={vm.balanceINR ? `Balance remaining: ${vm.balanceINR}` : ''} />
+          <AddPayment onAdd={addPayment} remaining={vm.balanceN > 0 ? `Balance remaining: ${vm.balanceINR}` : ''} />
           <div className="payment-total">
             <span>Consideration: {vm.considINR || '—'}</span>
             <span>Paid so far: {vm.paidINR || '—'}</span>
-            <span className={vm.payMatched ? 'ok' : ''}>{!state.form.consid.trim() ? 'Reconciliation pending: enter sale consideration' : vm.payMatched ? 'Reconciled with consideration' : vm.balanceINR ? `Short by ${vm.balanceINR}` : ''}</span>
+            <span className={vm.payMatched ? 'ok' : ''}>{!state.form.consid.trim() ? 'Reconciliation pending: enter sale consideration' : vm.payMatched ? 'Reconciled with consideration' : vm.balanceINR ? `${vm.balanceN < 0 ? 'Overpaid by' : 'Short by'} ${vm.balanceINR}` : ''}</span>
           </div>
         </section>}
 
@@ -2034,7 +1971,7 @@ export default function WizardApp() {
             })}
             <AddPartyRecord noun={noun} onAdd={addPartyRecord(role)} />
           </>;
-          return role === 'executant' && !isRelease && !isReconveyance ? <SaleAuthorityEditor key={draft.id} state={state} aiExtraction={aiExtraction} principalIds={records} onRecordOrder={ids => dispatch({ type: 'record-order', scope: 'executant', ids })} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
+          return role === 'executant' && !isRelease && !isReconveyance ? <SaleAuthorityEditor key={draft.id} state={state} principalIds={records} onRecordOrder={ids => dispatch({ type: 'record-order', scope: 'executant', ids })} onCapacityChange={changeCapacity} onDeleteAttorney={id => { const cleared = draftReducer(current.current, { type: 'remove-party', role: 'executant', record: id }); dispatch({ type: 'load', draft: { ...cleared, saleAuthority: { ...cleared.saleAuthority!, attorneys: cleared.saleAuthority!.attorneys.filter(item => item.id !== id) } } }); }} onChange={value => dispatch({ type: 'sale-authority', value })} onApplyGpa={(authority, result) => { try { const next = withReplacedExecutantOrder(current.current, applyGpaExtraction(current.current, authority, result)); setExtraPartyRecords(records => ({ ...records, executant: [] })); dispatch({ type: 'load', draft: next }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill GPA principals.'; } }} onApplyPerson={(person, role, targetId) => { try { dispatch({ type: 'load', draft: applyAuthorityPerson(current.current, person, role, targetId) }); return ''; } catch (error) { return error instanceof Error ? error.message : 'Could not fill this role.'; } }}>{parties}</SaleAuthorityEditor> : parties;
         })()}
 
 
@@ -2042,7 +1979,7 @@ export default function WizardApp() {
           <section className="template-field-summary" aria-label="Configured template fields"><h2>Template fields</h2>{templateFieldResolution.instances.filter(instance => instance.field.placement).map(instance => <div key={`${instance.field.id}:${instance.record.scope}:${instance.record.id}`}><strong>{instance.record.label} — {instance.field.label}</strong><span>{instance.value || '____'}</span>{instance.error && <p role="alert">{instance.error}</p>}<button type="button" onClick={() => gotoTemplateField(instance)}>Edit in {PLACEMENT_CATALOG.find(step => step.id === instance.field.placement?.stepId)?.label}</button></div>)}</section>
           <div className="finish-banner"><span className="finish-banner-icon"><ListChecks size={26} aria-hidden="true" /></span><div><span className="finish-kicker">FINAL REVIEW</span><h2>Give your deed a final check</h2><p>Review outstanding details and read the property schedule before downloading.</p></div><div className="finish-banner-metric"><strong>{vm.checks.filter(c => c.ok).length}<span> / {vm.checks.length}</span></strong><span>readiness checks complete</span></div></div>
           {generalPoa && <section aria-label="GPA appointment recital"><h2>Appointment recital</h2><p>{poaValues(state)['Poa Appointment Recital']}</p>{poaRelationshipErrors(state).map(error => <p key={error} role="status">{error}</p>)}</section>}
-          <ReviewIssues issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} /><details className="completed-checks"><summary>View all readiness checks · {vm.checks.filter(c => c.ok).length} of {vm.checks.length} complete</summary>
+          <ReviewIssues steps={workflowSteps} issues={notices} onNavigate={goto} onNavigateIssue={issue => { const instance = templateFieldResolution.instances.find(instance => issue.id === `template:${instance.field.id}:${instance.record.scope}:${instance.record.id}`); if (instance) gotoTemplateField(instance); else goto(issue.step); }} /><details className="completed-checks"><summary>View all readiness checks · {vm.checks.filter(c => c.ok).length} of {vm.checks.length} complete</summary>
           <ul className="checks">{vm.checks.map((c: any) => <li key={c.label} className={c.ok ? 'ok' : ''}><span className="mark">{c.mark}</span><span><b>{c.label}</b><small>{c.note}</small></span></li>)}</ul>
           </details>
           <details className="schedule-review"><summary>Read {scheduleMerges.length > 1 ? 'property schedules' : 'the property schedule'} <span>Preview the wording before download</span></summary>

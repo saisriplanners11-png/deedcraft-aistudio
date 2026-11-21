@@ -11,6 +11,7 @@ import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePti
 import { ageFrom, initialState, todayISO, uppercasePartyIdentity, withDerived, type AppState, type ValueRecord, type VendeeSharesBySchedule } from './logic';
 import type { PlanDrawing } from './registration-plan';
 import { newPayment, paymentPatchError, type Payment } from './payments';
+import { formatDeedPartyName } from './place-names';
 import { definitionFor, instrumentIdForLegacyType, type InstrumentId } from './instruments';
 import type { TemplateFieldCandidate, TemplateFieldValues } from './template-fields';
 import { isWrittenMobile } from './identity-contact';
@@ -26,7 +27,6 @@ export type Candidate = {
 export type SourcePlan = { record: string; drawing: PlanDrawing; linked: boolean; page: number };
 export type SourceResult = {
   candidates: Candidate[]; plans: SourcePlan[]; notes: string[];
-  textPreview?: true;
   /** Browser-side timings make slow source pages visible without logging evidence. */
   timing?: { totalMs: number; pagesMs: Record<string, number> };
 };
@@ -34,7 +34,6 @@ export type Source = {
   id: string; revision: number; name: string; hash: string; status: 'queued' | 'reading' | 'done' | 'error';
   /** Extraction scope, retained so section uploads can be displayed and filtered correctly. */
   profile?: string;
-  readMode?: 'local';
   /**
    * `fromRecord` scopes the assignment to the one AI-provided record identifier
    * the user actually confirmed (e.g. one person's name on a page that shows
@@ -216,7 +215,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
     next = { ...draft, sources: draft.sources.map(s => s.id === action.sourceId ? { ...s, ...action.patch, id: s.id, revision: s.revision } : s) };
     const original = next.sources.find(source => source.id === action.sourceId);
     const result = action.patch.result;
-    if (result?.candidates.length && original?.readMode === 'local' && original.assignment
+    if (result?.candidates.length && original?.assignment
       && /^(?:party:|guardian:|party-person$)/.test(original.profile || '')) {
       const { role, record } = original.assignment;
       const resolved = resolveDraft(draft).values;
@@ -230,7 +229,7 @@ export function draftReducer(draft: Draft, action: Action): Draft {
         next = { ...next, sources: next.sources.map(source => source === original ? { ...source, result: checked } : source) };
       }
     }
-    if (result && original?.readMode === 'local' && original.assignment?.role === 'payment' && original.profile?.startsWith('payment:')) {
+    if (result && original?.assignment?.role === 'payment' && original.profile?.startsWith('payment:')) {
       const record = original.assignment.record;
       const mode = resolveDraft(draft).values[fieldKey('payment', record, 'mode')];
       let rejectedField: string | undefined;
@@ -502,6 +501,8 @@ export function appStateFor(draft: Draft): AppState {
   if (!form.bltNo) form.bltNo = assessmentFor('primary', properties[0]?.values.category || '');
   const paymentRecords = inRecordOrder(forRole('payment'), draft.recordOrder?.payment, record => record.id);
   const payments: Payment[] = paymentRecords.filter(r => Object.keys(r.values).some(k => !['consid', 'executionDate', 'stampValue', 'stampPaperMargin'].includes(k))).map(r => ({ ...newPayment(), mode: '' as Payment['mode'], ...r.values, id: r.id,
+    payer: r.values.payerPartyIds ? formatDeedPartyName(r.values.payer || '') : r.values.payer || '',
+    payee: r.values.payeePartyIds ? formatDeedPartyName(r.values.payee || '') : r.values.payee || '',
     filled: (r.values.filled || '').split(',').filter(Boolean), advance: r.values.advance === 'true', tds: r.values.tds === 'true' }));
   const unresolvedFields = Object.keys(conflicts).filter(key => {
     if (key in draft.manual) return false;

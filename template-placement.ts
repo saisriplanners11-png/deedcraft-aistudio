@@ -1,5 +1,5 @@
 import { GROUPS, LINK_OPTIONS, TITLE_SECTION_IDS, PERSON_FIELDS, partyEntityFields, type Group } from './fields';
-import { STEPS } from './reference';
+import { stepsFor } from './workflow-steps';
 export interface FieldPlacement { stepId: string; sectionId: string; anchorFieldId?: string; position: 'before' | 'after' | 'end'; order: number }
 export interface PlacementSection { id: string; label: string; scope: string; anchors: { id: string; label: string }[] }
 export interface PlacementStep { id: string; index: number; label: string; sections: PlacementSection[] }
@@ -33,7 +33,8 @@ for (const [role, step] of [['executant', 6], ['claimant', 7]] as const) {
     { id: role + '-people', label: 'Representatives / members', scope: role, anchors: anchors(PERSON_FIELDS) },
   ];
 }
-export const PLACEMENT_CATALOG: PlacementStep[] = stepIds.map((id, index) => ({ id, index, label: `Step ${index + 1} — ${STEPS[index].label}`, sections: sections[index] }));
+export const PLACEMENT_CATALOG: PlacementStep[] = stepsFor('Sale').filter(step => step.id < stepIds.length)
+  .map(({ id: index, label }, position) => ({ id: stepIds[index], index, label: `Step ${position + 1} — ${label}`, sections: sections[index] }));
 export const placementStepIndex = (placement?: FieldPlacement) => PLACEMENT_CATALOG.find(step => step.id === placement?.stepId)?.index;
 export const placementSection = (id: string) => PLACEMENT_CATALOG.flatMap(step => step.sections).find(section => section.id === id);
 export function sectionForGroup(group: Group): string | undefined {

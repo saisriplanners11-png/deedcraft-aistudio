@@ -71,7 +71,7 @@ try {
   await (await downloadEvent).saveAs('tmp/general-poa-qa/browser-family.docx');
   const runtime = await loadTemplateRuntime();
   const text = await runtime.docxToText(new Uint8Array(await readFile('tmp/general-poa-qa/browser-family.docx')));
-  assert.match(text, /appoint my son ATTORNEY ONE and niece ATTORNEY TWO as/);
+  assert.match(text, /appoint my son Attorney One and niece Attorney Two as/);
   await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).first().click();
   await page.locator('.workflow-steps button').nth(7).click();
   assert.equal(await relationships.nth(0).inputValue(), 'son');

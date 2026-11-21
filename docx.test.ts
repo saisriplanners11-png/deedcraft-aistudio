@@ -496,8 +496,8 @@ describe('sale deed template merge', () => {
     const result=await fillSaleDeed(mergeValues(state),'IF OPEN PLOT',rewritesFor(state));
     const text=await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(text.match(/98765 43210/g)).toHaveLength(1);
-    expect(text).toMatch(/SECOND,[\s\S]*\(Hereinafter called the "VENDORS?"\)/);
-    expect(text).not.toMatch(/SECOND,[\s\S]*Cell No:/);
+    expect(text).toMatch(/Second,[\s\S]*\(Hereinafter called the "VENDORS?"\)/);
+    expect(text).not.toMatch(/Second,[\s\S]*Cell No:/);
   });
 
   it('removes empty claimant mobile, PAN and locality recitals without disturbing nearby details', async () => {
@@ -708,6 +708,29 @@ describe('sale deed template merge', () => {
     expect(text).not.toContain('Cheque: Amount of Rs.6,00,000/-');
   });
 
+  it.each([
+    ['cash', 'Cash'], ['rtgs', 'RTGS/NEFT'], ['cheque', 'Cheque'], ['dd', 'Demand Draft'],
+    ['upi', 'UPI/Online'], ['housing-loan', 'Housing Loan'], ['through-bank', 'Through Bank'],
+  ] as const)('prints title-case payment names in the downloaded %s clause for a vacant plot', async (mode, label) => {
+    const state = { ...initialState, category: 'Vacant Plot', form: {
+      ...initialState.form, executantName: 'PREMSAGAR G', executantRelativeName: 'M. Rama Rao',
+      executantRelation: 'S/O', executantOccupation: 'Civil Engineer', claimantName: 'ANIL',
+    }, additionalClaimants: [
+      { id: 'sampath', values: { claimantName: 'SAMPATH' }, docNames: [] },
+      { id: 'bhargavi', values: { claimantName: 'BHARGAVI' }, docNames: [] },
+    ], payments: [{ ...newPayment(mode), amount: '100000', payer: 'ANIL, SAMPATH and BHARGAVI', payee: 'PREMSAGAR G' }] };
+    const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
+    const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
+    expect(printed).toMatch(/^PREMSAGAR G,/m);
+    expect(printed).toContain('S/O M. Rama Rao');
+    expect(printed).toContain('Occupation: Civil Engineer');
+    expect(printed).toMatch(/^1\. Anil,/m);
+    expect(printed).toMatch(/^2\. Sampath,/m);
+    expect(printed).toMatch(/^3\. Bhargavi,/m);
+    const receipt = printed.split('\n').find(line => line.startsWith(`${label}: Amount of Rs.1,00,000/-`));
+    expect(receipt).toContain('Anil, Sampath and Bhargavi, to the Vendor, namely Premsagar G');
+  });
+
   it('prints House identity spacing, payment names and verbatim boundaries in Word', async () => {
     const state = { ...initialState, category: 'Residential', form: {
       ...initialState.form, executantName: 'MAIN SELLER', claimantName: 'MAIN BUYER',
@@ -845,10 +868,10 @@ describe('sale deed template merge', () => {
     expect(text).toContain('Document No. 100/2020');
     expect(text).toContain('Document No. 200/2021');
     expect(text).toContain('VENDOR ONE');
-    expect(text).toContain('VENDOR TWO');
+    expect(text).toContain('Vendor Two');
     expect(text).toContain('1111 1111 1111');
     expect(text).toContain('3333 3333 3333');
-    expect(text).toContain('PURCHASER TWO');
+    expect(text).toContain('Purchaser Two');
     expect(text).toContain('SCHEDULE OF PROPERTY - 1');
     expect(text).toContain('SCHEDULE OF PROPERTY - 2');
     expect(text.match(/DECLARATION/g)).toHaveLength(1);
@@ -871,17 +894,17 @@ describe('sale deed template merge', () => {
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     expect(opening).toContain('1. VENDOR ONE');
-    expect(opening).toContain('2. VENDOR TWO');
-    expect(opening).toContain('1. PURCHASER ONE');
-    expect(opening).toContain('2. PURCHASER TWO');
+    expect(opening).toContain('2. Vendor Two');
+    expect(opening).toContain('1. Purchaser One');
+    expect(opening).toContain('2. Purchaser Two');
     expect(opening).toContain('Holding Undivided Share of Schedule 1: 55% (0.55 Sq. Yards); Schedule 2: 25% (0.25 Sq. Yards)');
     expect(opening).toContain('Holding Undivided Share of Schedule 1: 45% (0.45 Sq. Yards); Schedule 2: 75% (0.75 Sq. Yards)');
     expect(opening).toContain('Holding Undivided Share of Schedule 1: 60% (0.6 Sq. Yards); Schedule 2: 25% (0.25 Sq. Yards)');
     expect(opening).toContain('Holding Undivided Share of Schedule 1: 40% (0.4 Sq. Yards); Schedule 2: 75% (0.75 Sq. Yards)');
     const partyLines = opening.split('\n');
     for (const [first, last, closing] of [
-      ['1. VENDOR ONE', '2. VENDOR TWO', '(Hereinafter called the "VENDORS") of the ONE PART.'],
-      ['1. PURCHASER ONE', '2. PURCHASER TWO', '(Hereinafter called the "VENDEES") of the OTHER PART.'],
+      ['1. VENDOR ONE', '2. Vendor Two', '(Hereinafter called the "VENDORS") of the ONE PART.'],
+      ['1. Purchaser One', '2. Purchaser Two', '(Hereinafter called the "VENDEES") of the OTHER PART.'],
     ]) {
       const firstLine = partyLines.find(line => line.startsWith(first))!;
       const lastLine = partyLines.find(line => line.startsWith(last))!;
@@ -895,18 +918,18 @@ describe('sale deed template merge', () => {
     }
     const first = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 1'), text.indexOf('SCHEDULE OF PROPERTY - 2'));
     const second = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 2'), text.indexOf('DECLARATION'));
-    expect(first).toContain('(1) PURCHASER ONE — 60% (0.6 Sq. Yards); (2) PURCHASER TWO — 40% (0.4 Sq. Yards)');
-    expect(first).toContain('(1) VENDOR ONE — 55% (0.55 Sq. Yards); (2) VENDOR TWO — 45% (0.45 Sq. Yards)');
+    expect(first).toContain('(1) Purchaser One — 60% (0.6 Sq. Yards); (2) Purchaser Two — 40% (0.4 Sq. Yards)');
+    expect(first).toContain('(1) Vendor One — 55% (0.55 Sq. Yards); (2) Vendor Two — 45% (0.45 Sq. Yards)');
     expect(first.indexOf('The vendors convey')).toBeLessThan(first.indexOf('The vendees acquire'));
-    expect(second).toContain('(1) PURCHASER ONE — 25% (0.25 Sq. Yards); (2) PURCHASER TWO — 75% (0.75 Sq. Yards)');
-    expect(second).toContain('(1) VENDOR ONE — 25% (0.25 Sq. Yards); (2) VENDOR TWO — 75% (0.75 Sq. Yards)');
-    expect(first).not.toContain('PURCHASER ONE — 25%');
-    expect(second).not.toContain('PURCHASER ONE — 60%');
+    expect(second).toContain('(1) Purchaser One — 25% (0.25 Sq. Yards); (2) Purchaser Two — 75% (0.75 Sq. Yards)');
+    expect(second).toContain('(1) Vendor One — 25% (0.25 Sq. Yards); (2) Vendor Two — 75% (0.75 Sq. Yards)');
+    expect(first).not.toContain('Purchaser One — 25%');
+    expect(second).not.toContain('Purchaser One — 60%');
     const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(4);
     expect(signatures).not.toMatch(/\d+\. ________________/);
     expect(signatures).not.toContain('VENDOR ONE');
-    expect(signatures).not.toContain('PURCHASER ONE');
+    expect(signatures).not.toContain('Purchaser One');
     expect(signatures).toContain('WITNESSES:');
     const signatureXml = new TextDecoder().decode((await readZip(new Uint8Array(await result.blob.arrayBuffer())))
       .find(entry => entry.name === 'word/document.xml')!.data);
@@ -926,20 +949,20 @@ describe('sale deed template merge', () => {
     expect(opening).toContain('ONLY VENDOR');
     expect(opening).not.toContain('1. ONLY VENDOR');
     expect(opening).toContain('(Hereinafter called the "VENDOR") of the ONE PART.');
-    expect(opening).toContain('1. FIRST BUYER');
-    expect(opening).toContain('2. SECOND BUYER');
+    expect(opening).toContain('1. First Buyer');
+    expect(opening).toContain('2. Second Buyer');
     expect(opening.split('(Hereinafter called the "VENDEES") of the OTHER PART.')).toHaveLength(2);
-    expect(opening.split('\n').find(line => line.startsWith('1. FIRST BUYER'))).not.toContain('Hereinafter called');
-    expect(opening.split('\n').find(line => line.startsWith('2. SECOND BUYER'))).toContain('(Hereinafter called the "VENDEES") of the OTHER PART.');
-    expect(text).toContain('(1) FIRST BUYER — 70%');
-    expect(text).not.toContain('(2) SECOND BUYER —');
+    expect(opening.split('\n').find(line => line.startsWith('1. First Buyer'))).not.toContain('Hereinafter called');
+    expect(opening.split('\n').find(line => line.startsWith('2. Second Buyer'))).toContain('(Hereinafter called the "VENDEES") of the OTHER PART.');
+    expect(text).toContain('(1) First Buyer — 70%');
+    expect(text).not.toContain('(2) Second Buyer —');
     expect(text).not.toContain('____%');
     const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures).toContain('________________');
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(3);
     expect(signatures).not.toMatch(/\d+\. ________________/);
     expect(signatures).not.toContain('ONLY VENDOR');
-    expect(signatures).not.toContain('SECOND BUYER');
+    expect(signatures).not.toContain('Second Buyer');
   });
 
   it('puts the party closing clauses only after the third person on each side', async () => {
@@ -959,7 +982,7 @@ describe('sale deed template merge', () => {
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     const lines = opening.split('\n');
     for (const [prefix, role, part] of [['VENDOR', 'VENDORS', 'ONE'], ['BUYER', 'VENDEES', 'OTHER']]) {
-      const partyLines = [1, 2, 3].map(index => lines.find(line => line.startsWith(`${index}. ${prefix} ${['ONE', 'TWO', 'THREE'][index - 1]}`))!);
+      const partyLines = [1, 2, 3].map(index => lines.find(line => line.toUpperCase().startsWith(`${index}. ${prefix} ${['ONE', 'TWO', 'THREE'][index - 1]}`))!);
       expect(partyLines.every(Boolean)).toBe(true);
       expect(partyLines[0]).not.toContain('Hereinafter called');
       expect(partyLines[1]).not.toContain('Hereinafter called');
