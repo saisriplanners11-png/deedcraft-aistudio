@@ -120,7 +120,7 @@ for (const version of ['v1', 'v2', 'v3']) {
  const output = await rt.fillGiftDeed({ ...rt.mergeValues(state), 'Gift Variant': 'municipal-gift' }, rt.rewritesFor(state), rt.scheduleMergesFor(state), custom);
  const text = await rt.docxToText(new Uint8Array(await output.blob.arrayBuffer()));
  assert.deepEqual(output.unmapped, []);
- assert.match(text, /Preserved Recipient/);
+ assert.match(text, /PRESERVED RECIPIENT/);
  assert.doesNotMatch(text, /MUNICIPAL COUNCIL, SIRCILLA|Represented by its Commissioner|FAMILY MEMBER|ANNEXURE/);
 }
 console.log('PASS: Municipal v1, v2 and v3 custom sources retain entered recipients and remain separate from regular Gift.');

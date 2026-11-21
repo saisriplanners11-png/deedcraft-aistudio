@@ -66,8 +66,8 @@ describe('Reconveyance source rendering and workflow', () => {
     const single = await read();
     expect(single).toContain('Ground Floor: 100.2 Sq. Ft.; Total Plinth Area: 100.2 Sq. Ft.');
     expect(single).not.toContain('First Floor');
-    expect(single).toContain('MIXED CASE RELEASOR');
-    expect(single).toContain('MIXED CASE RELEASEE');
+    expect(single).toContain('Mixed Case Releasor');
+    expect(single).toContain('Mixed Case Releasee');
     expect(single).not.toMatch(/\b(?:vendors?|vendees?)\b/i);
     expect(single).toContain('West Plot.');
     expect(single).toContain('SCHEDULE OF THE PROPERTY');

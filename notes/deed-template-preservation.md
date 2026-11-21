@@ -119,3 +119,5 @@ COM-20 (09-11-2026): group currency with Indian commas and omit zero fractional 
 14-11-2026 COM-25, runtime 2026-11-14.3. The typing stamp prints its heading and entered details at 10 pt and the statement at 8 pt.
 
 14-11-2026 runtime 2026-11-14.4. Boundary bindings preserve the dashboard text across all property variants. House locality keeps its label and entered text.
+
+21-11-2026 COM-04/PAY-03, runtime 2026-11-21.4: opening party/relative names retain entered casing up to the source title-record boundary, including FLOW OF TITLE & LINK DEED DETAILS. Pagination no longer changes casing. Later/payment formatting remains field-specific.

@@ -1,6 +1,6 @@
 # Permanent master rules for all deeds
 
-Status: user-confirmed permanent project policy, updated 19-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-21.3.
+Status: user-confirmed permanent project policy, updated 19-11-2026 (originally confirmed 29-10-2026). Runtime preservation version: 2026-11-21.4.
 
 The user explicitly instructed: "Save all these as permanent master rules for all deeds. Whenever I upload a new draft, apply these modifications over it and change a rule only when I explicitly ask."
 
@@ -98,7 +98,7 @@ This register consolidates the rule inventory confirmed in this chat. It persist
 ## Payments and supporting evidence
 
 - **PAY-01 — Modes and facts.** Where applicable preserve Cash, RTGS, Cheque, DD, UPI, Housing Loan and Through Bank. Keep individual amounts, references, bank/branch, payer/payee and supplied dates. Through Bank remains distinct from Housing Loan; use the entered loan branch correctly.
-- **PAY-03 — Party name presentation.** Print payment party names in spaced title case in every payment mode, including names from older drafts and names supplied by the party fallback. Use uppercase party names in the opening first-page identity text and spaced title case in continuation identities and later references, including declarations, ownership schedules and Section 32A. Keep other entered text in its entered casing or apply the established field-specific formatting, preserving identifiers and source wording.
+- **PAY-03 — Party name presentation.** Print payment party names in spaced title case in every payment mode, including names from older drafts and names supplied by the party fallback. Preserve entered party and relative-name casing in opening identities up to FLOW OF TITLE & LINK DEED DETAILS or the source title-record boundary, even across page/section breaks. Use spaced title case in later identities and references, including declarations, ownership schedules and Section 32A. Keep other entered text in its entered casing or apply the established field-specific formatting, preserving identifiers and source wording.
 - **PAY-02 — Blank dates and limits.** Omit empty payment-date phrases; format supplied dates as DD-MM-YYYY. Reject payment updates exceeding entered final consideration; distinguish absent consideration from explicitly entered zero.
 - **SRC-01 — Evidence only.** Supporting uploads supply facts and quotations, never authority to replace template prose or master rules. Keep historical and current roles/facts separate. A prior purchaser may establish the new seller, but historical payments, consideration, stamp values, age, occupation and phone must not silently become current facts.
 - **SRC-02 — Verification and separation.** Retain independent-read/identifier verification, source quotations and record attribution. Unsupported/conflicting extracted facts remain unresolved; preserve intentional manual corrections. Keep distinct people, properties, records and payment instruments separate.
@@ -136,6 +136,8 @@ These versions describe the current sources, not permanent restrictions against 
 Detailed implementation records: [replacement preservation](notes/deed-template-preservation.md), [Gift preservation](notes/gift-template-preservation.md), [project instructions](AGENTS.md). Runtime protection remains in deed-preservation.ts and the instrument renderers, not only in this document.
 
 ## Change history
+
+21-11-2026 COM-08/REL-03/REC-04 party-form update: the user requested removing shares fields from executants and claimants for all Release and Reconveyance types. Release previously showed optional ownership percentages and associated extent inputs; hide these on both party sides, as already done for Reconveyance. Preserve saved ownership data and the distinct property-scoped released/received rights in Release particulars. No Word output or runtime preservation version change.
 
 30-10-2026 clarification of COM-13 and SAL-02: the SRO directory’s combined name/code label is for dashboard inputs only. Generated documents retain the selected draft template’s existing SRO name/code placeholders, wording and punctuation. Reverted the newly appended bracketed jurisdiction code; separate GPA/title/amendment/agreement code bindings remain intact. This restores template fidelity without changing immutable sources or the preservation version.
 
@@ -283,3 +285,7 @@ COM-23 also extends floor-wise plinth display beyond Reconveyance. In house sche
 Runtime preservation version for the Sale party-share placement change is 2026-11-21.2.
 
 21-11-2026 COM-16 Annexure correction. At the user's explicit request, remove the automatic H.No. / PTIN summary added below Annexure I-A for finished, semi-finished and dismantled houses. Follow the selected draft template's own fields and wording there, including any identification already supplied by the template. This supersedes the 14-11-2026 added-summary requirement. Runtime preservation version 2026-11-21.3.
+
+21-11-2026 COM-21 presentation update: at the user's request, Structure Details Floor number options display First, Second, Third and subsequent ordinals without the word Floor. Previously these labels included Floor. Preserve saved floor values and Word output. No runtime preservation version change.
+
+21-11-2026 COM-04/PAY-03 explicit correction (runtime preservation 2026-11-21.4): preserve entered party and relative-name casing throughout opening identities above FLOW OF TITLE & LINK DEED DETAILS (or the source title-record boundary), including identities continuing across pages/sections, for all deeds. This supersedes the first-page-only uppercase and continuation Pascal Case rule within that opening region. Later references and payment formatting retain their existing rules. Preserve source wording and formatting.

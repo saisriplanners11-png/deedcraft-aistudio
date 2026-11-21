@@ -961,8 +961,8 @@ function orderRecitalParagraphs(xml: string): string {
   return xml.replace(pattern, (_, group: string) => groups.get(group)!.shift()![0].replace(/<!--deed-order:[^>]+-->/, ''));
 }
 
-/** Apply title case rules and format party names at the source's page boundaries. */
-function formatDeedOpening(xml: string, rewrites: Rewrite[]): string {
+/** Preserve opening identity casing until title recitals, independently of pagination. */
+export function formatDeedOpening(xml: string, rewrites: Rewrite[]): string {
   const names = new Set<string>();
   for (const rule of rewrites) {
     if (!rule.partyRole && !/<(?:PRINCIPAL|ATTORNEY) NAME>/i.test(rule.find.source)) continue;
@@ -986,9 +986,9 @@ function formatDeedOpening(xml: string, rewrites: Rewrite[]): string {
     const between = body.slice(offset, child.start);
     const block = body.slice(child.start, child.end);
     offset = child.end;
-    if (/<w:pageBreakBefore\b(?![^>]*w:val="(?:false|0)")/.test(block)) continuation = true;
     const paragraph = /^<w:p\b/.test(block);
     const wording = paragraph ? plainText(block).trim() : '';
+    if (/^(?:\d+\.\s*)?(?:FLOW OF TITLE\s*&?\s*LINK DEED DETAILS|Registered Deed\s*:|NOW THIS\b|SCHEDULE OF (?:THE )?PROPERTY\b)/i.test(wording)) continuation = true;
     const startsTitle = /^(?:Sale Deed|(?:Deed of )?Gift(?: Settlement| Deed)|General Power of Attorney|Agreement of Sale|Deed of Reconveyance|Release Deed)\b/i.test(wording);
     const titleLine = !titleComplete && (startsTitle || inTitle && /^(?:Deposit(?:e)? of Title Deeds?|Mortgage Deed|(?:Other Than )?Family Member|For Sale of Immovable Property|In Favour of Family Member|With(?:out)? Possession)\b/i.test(wording));
     if (titleLine) inTitle = true;
@@ -998,13 +998,12 @@ function formatDeedOpening(xml: string, rewrites: Rewrite[]): string {
         open + text.replace(/\uE100[^\uE101]*\uE101|&(?:#\d+|#x[\da-f]+|[a-z]+);|[^&\uE100]+|./gi, part =>
           /^[&\uE100]/.test(part) ? part : part.toUpperCase()) + close)
       : names.size && paragraph && /\b(?:Aged|R\/o|represented by|Hereinafter called)\b/i.test(wording)
-      ? replaceRunText(block, identityName, match => match[1] + (continuation ? formatDeedPartyName(match[2]) : match[2].toLocaleUpperCase('en-IN')))
+      ? replaceRunText(block, identityName, match => match[1] + (continuation ? formatDeedPartyName(match[2]) : match[2]))
       : block;
-    if (paragraph && /\b(?:Aged|R\/o|Hereinafter called)\b/i.test(wording)) {
+    if (continuation && paragraph && /\b(?:Aged|R\/o|Hereinafter called)\b/i.test(wording)) {
       result = replaceRunText(result, /\b([SDWC]\s*\/\s*O)\s+([^,;()]+?)(?=\s*(?:[,;()]|\bAged\b))/gi, match =>
-        match[1].toUpperCase() + ' ' + (continuation ? formatDeedPartyName(match[2]) : match[2].toLocaleUpperCase('en-IN')));
+        match[1].toUpperCase() + ' ' + (continuation ? formatDeedPartyName(match[2]) : match[2]));
     }
-    if (/<w:sectPr\b|<w:br\b[^>]*w:type="page"/.test(block)) continuation = true;
     return between + result;
   });
   return xml.slice(0, start) + formatted.join('') + body.slice(offset) + xml.slice(end);
@@ -3256,7 +3255,7 @@ export async function fillReconveyanceDeed(values: Record<string, string>, rewri
     if (!allowIncomplete && (!v.linkDocNo || !deedDateForReconveyance(v.linkDocDate) || !v.linkSro || !v.linkSroCode || mortgagePaise(v.mortgageAmount || '') === null)) throw new Error('Complete each mortgage number, date, amount, SRO and SRO code.');
     return { ...merged, ...linkEnclosureValues(v), 'Link Doct.No.': v.linkDocNo, 'Link Doct.Date': deedDateForReconveyance(v.linkDocDate), 'MORTGAGE AMOUNT': formatDeedAmount(v.mortgageAmount), 'Sub Registrar': v.linkSro, 'Sub Registrar Code': v.linkSroCode };
   };
-  let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank && !parts.bankOnly ? parts.person : parts.common).join(''), merged, rewrites.filter(rule => rule.partyRole).map(rule => ({ ...rule, records: rule.records?.map(reconveyanceNames) })));
+  let opening = fill(parts.chunks.slice(bank ? parts.bank + 1 : parts.person + 1, bank && !parts.bankOnly ? parts.person : parts.common).join(''), { ...merged, ...Object.fromEntries(Object.entries(values).filter(([key]) => / name$/i.test(key))) }, rewrites.filter(rule => rule.partyRole));
   let common = parts.chunks.slice(parts.common, parts.first).map(chunk => {
     const text = plainText(chunk);
     if (/WHEREAS, the Releasee\/s had further created/.test(text)) return records.slice(1).map(record => fill(chunk, mortgage(record))).join('');
@@ -3401,11 +3400,11 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
   const perPerson=shares.filter(p=>releasedTotal([p]));
   const rows=(schedule.structureDetails?.rows||[]).filter(row=>!isCompoundWall(row));
   if (schedule.variant === 'IF HOUSE' || schedule.variant === 'IF HOUSE SEMI FINISHED') {
-    block = housePlinthDescription(block, schedule.structureDetails);
+    block = housePlinthDescription(block, schedule.structureDetails, aggregate);
     block=block.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g,row=>{
       const text=plainText(row);
       if(/In First Floor/i.test(text) && /<Shared Plinth Area>/i.test(text)) return '';
-      if(/In Ground Floor/i.test(text) && /<Shared Plinth Area>/i.test(text)) return total ? rows.filter(r=>r.builtUpAreaSqFt.trim()).map(r=>replaceRunText(replaceRunText(row,/In Ground Floor/i,()=> 'In '+r.floorNo+' Floor'),/<Shared Plinth Area>/gi,()=>releasedExtent(r.builtUpAreaSqFt,total))).join('') : '';
+      if(/In Ground Floor/i.test(text) && /<Shared Plinth Area>/i.test(text)) return total ? rows.filter(r=>r.builtUpAreaSqFt.trim()).map(r=>replaceRunText(replaceRunText(row,/In Ground Floor/i,()=> 'In '+r.floorNo+(/floor/i.test(r.floorNo)?'':' Floor')),/<Shared Plinth Area>/gi,()=>releasedExtent(r.builtUpAreaSqFt,total))).join('') : '';
       return row;
     });
   }
@@ -3420,10 +3419,18 @@ function releasePropertyBlock(block:string, schedule:ScheduleMerge, values:Recor
         if(person.name) paragraph=replaceRunText(paragraph,/THE RELEASOR\/S HAS\/HAVE RELEASED HIS\/HER\/THEIR/i,()=>person.name+' HAS RELEASED '+(person.gender==='Male'?'HIS':person.gender==='Female'?'HER':'THEIR'));
         // Flat portions have built-up/parking areas, not invented ground/first floors.
         if(schedule.variant.includes('FLAT')) paragraph=replaceRunText(paragraph,/ including Plinth area:[\s\S]*$/i,()=>[v['Shared Built-up Area']?' including built-up area '+v['Shared Built-up Area']+' square feet':'',v['Shared Car Parking Area']?', car parking area '+v['Shared Car Parking Area']+' square feet':''].join('')+'.');
-        for(const [floor,pattern] of [['Ground',/Ground Floor:\s*(<Nature of House>\s*)?<\s*Shared Plinth Area>\s*square feets/gi],['First',/First Floor:\s*(<Nature of House>\s*)?<\s*Shared Plinth Area>\s*square feets/gi]] as const) {
-          const area=rows.find(r=>r.floorNo.toLowerCase().includes(floor.toLowerCase()))?.builtUpAreaSqFt||'';
-          const shared=releasedExtent(area,person.share);
-          paragraph=replaceRunText(paragraph,pattern,match=>shared?`${floor} Floor: ${match[1] || ''}${shared} square feets`:'');
+        if (!schedule.variant.includes('FLAT')) {
+          const floorDetails = rows.filter(row => row.floorNo.trim()).map(row => {
+            const area = releasedExtent(row.builtUpAreaSqFt, person.share);
+            const floor = /floor/i.test(row.floorNo) ? row.floorNo.trim() : row.floorNo.trim() + ' Floor';
+            const nature = row.structureType === 'Other / Custom Structure'
+              ? row.customStructureType || v['Nature of House'] || ''
+              : STRUCTURE_TYPE_OPTIONS.includes(row.structureType) ? v['Roof Material'] || v['Nature of House'] || '' : row.structureType || v['Nature of House'] || '';
+            return `${floor}: ${nature}${nature && area ? ' ' : ''}${area}${area ? ' square feets' : ''}`;
+          }).join(' & ');
+          paragraph = replaceRunText(paragraph,
+            /Ground Floor:\s*(?:<\s*Nature of House>\s*)?<\s*Shared Plinth Area>\s*square feets\s*&\s*First Floor:\s*(?:<\s*Nature of House>\s*)?<\s*Shared Plinth Area>\s*square feets/gi,
+            () => floorDetails);
         }
         return fillReleaseParagraph(paragraph,v,[]);
       }).join('')+allocations.filter(a=>releasedTotal([a])).map(a=>paragraphLike(p,`${a.name}: received share ${releaseShareWithExtent(a.share, values, schedule.variant)} of the Schedule Property.`)).join('');

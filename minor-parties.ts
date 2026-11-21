@@ -27,7 +27,7 @@ function minorVendeeGuardianRecital(values: Record<string, string>): string {
   const normalized = relationship.toLowerCase().replace(/[\s-]+/g, '');
   const guardian = family[normalized] ? 'natural ' + family[normalized] : relationship;
   const relation = [v('Relation'), v('RelativeName')].filter(Boolean).join(' ');
-  const parts = [`is under guardianship of ${possessive} ${guardian} ${v('Name').toLocaleUpperCase('en-IN')}${relation ? ' ' + relation : ''}`];
+  const parts = [`is under guardianship of ${possessive} ${guardian} ${v('Name')}${relation ? ' ' + relation : ''}`];
   const age = ageFrom(v('Dob'));
   if (age) parts.push(`Aged ${age} years${v('Dob') ? ' (DOB:' + deedDate(v('Dob')) + ')' : ''}`);
   if (v('Occupation')) parts.push('occu:' + v('Occupation'));
@@ -73,13 +73,13 @@ export function minorGuardianRecital(values: Record<string, string>, side: strin
     if (isMinorParty(minor, side)) return minorVendeeGuardianRecital(minor);
   }
   if ((values[side + 'PartyType'] || '').startsWith('Guardian') && values[side + 'WardName']) {
-    let recital = 'acting as ' + (values[side + 'GuardianRelationship'] || 'guardian') + ' and guardian of minor ' + values[side + 'WardName'].toLocaleUpperCase('en-IN') + (values[side + 'WardDob'] ? ', DOB: ' + deedDate(values[side + 'WardDob']) : '');
+    let recital = 'acting as ' + (values[side + 'GuardianRelationship'] || 'guardian') + ' and guardian of minor ' + values[side + 'WardName'] + (values[side + 'WardDob'] ? ', DOB: ' + deedDate(values[side + 'WardDob']) : '');
     if (side === 'executant' && values[side + 'CourtOrderNo']) recital += ', acting under permission of ' + (values[side + 'CourtName'] || '') + ', order ' + values[side + 'CourtOrderNo'] + ' dated ' + deedDate(values[side + 'CourtOrderDate'] || '');
     return recital;
   }
   if (!isMinorParty(values, side)) return '';
   const v = (key: string) => (values[side + key] || '').trim();
-  const parts = ['a minor represented by ' + (v('GuardianRelationship') || 'guardian') + ': ' + v('GuardianName').toLocaleUpperCase('en-IN')];
+  const parts = ['a minor represented by ' + (v('GuardianRelationship') || 'guardian') + ': ' + v('GuardianName')];
   const relation = [v('GuardianRelation'), v('GuardianRelativeName')].filter(Boolean).join(' ');
   if (relation) parts.push(relation);
   const age = ageFrom(v('GuardianDob')); if (age) parts.push('aged ' + age + ' years');

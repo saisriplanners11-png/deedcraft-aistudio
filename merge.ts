@@ -22,7 +22,7 @@ import { housePtinPairsForSources, parsePropertyHousePtinPairs, propertyHousePti
 
 import type { Rewrite, ScheduleMerge } from './docx';
 import { ALL_FIELDS, GROUPS, LINK_OPTIONS, STRUCTURE_TYPE_OPTIONS, SCHEDULE_VARIANT } from './fields';
-import { withDerived, deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, uppercasePartyIdentity, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
+import { withDerived, deedDate, money, partyRecords, scheduleRecords, linkDocumentRecordsForSchedule, supportingRecordsForSchedule, vendeeShareCents, words, type AppState, type SupportingRecord } from './logic';
 import { modeSpec, type Payment } from './payments';
 
 function shareExtent(state: AppState, schedule: ReturnType<typeof scheduleRecords>[number], cents: number, side: 'executant' | 'claimant', partyId: string): string {
@@ -70,7 +70,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
   for (const field of ALL_FIELDS) {
     if (!field.ph) continue;
     const names = Array.isArray(field.ph) ? field.ph : [field.ph];
-    let value = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, f[field.id] ?? ''), true);
+    let value = normalizePropertyPlaceName(field.id, f[field.id] ?? '', true);
     if (field.type === 'date') value = deedDate(value);
     if (house && /Aadhaar$/.test(field.id) && /^\d{12}$/.test(value.replace(/[\s-]/g, ''))) value = groupedIdentityDigits(value.replace(/-/g, ''), 4);
     if (/^(executant|claimant)Locality$/.test(field.id)) value = partyLocality(value);
@@ -164,7 +164,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
   // template line ("S/o Yellaiah"), same as before the fields were split.
   for (const side of ['executant', 'claimant'] as const) {
     const ph = side === 'executant' ? 'EXECUTANT RELATION NAME' : 'CLAIMANT RELATION NAME';
-    out[ph] = [f[`${side}Relation`]?.toUpperCase(), formatDeedPartyName(f[`${side}RelativeName`] || '')].filter(Boolean).join(' ');
+    out[ph] = [f[`${side}Relation`]?.toUpperCase(), f[`${side}RelativeName`] || ''].filter(Boolean).join(' ');
   }
 
   if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA', 'Deed Of Reconvayance'].includes(state.deedType)) {
@@ -349,7 +349,6 @@ export function rewritesFor(state: AppState): Rewrite[] {
     rewrites.push({ find: /<PRINCIPAL NAME>/i, replace: '', finalSuffix: /\s+represented herein[\s\S]*$/i, records: principalRecords });
     rewrites.push({ find: /<ATTORNEY NAME>/i, replace: '', finalSuffix: /\s+the Principal owner\/s[\s\S]*$/i, records: (state.saleAuthority?.attorneys || []).map(attorney => ({
       ...authorityPartyValues(attorney.values, 'Attorney'),
-      ...(state.saleDocument === 'gpa' ? { 'Attorney NAME': (attorney.values.Name || '').toLocaleUpperCase('en-IN') } : {}),
       'Attorney Share': scheduleRecords(state).map((schedule, index, schedules) => {
         const cents = vendeeShareCents(attorney.values.SharePercentage || '');
         if (cents === null) return '';

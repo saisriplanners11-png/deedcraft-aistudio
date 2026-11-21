@@ -37,6 +37,29 @@ describe('Release exact shares',()=>{
   });
 });
 describe('Release source, parties and preservation',()=>{
+  for (const stage of ['finished', 'semi']) it(`prints every ${stage} house floor in whole-property and released-share source recitals`, async () => {
+    const state = make();
+    state.category = 'Residential';
+    state.form.houseStage = stage === 'semi' ? 'Semi-Finished' : 'Finished';
+    const prototype = sampleState('ordinary-house-' + stage).structureDetailsBySchedule.primary!.rows[0];
+    state.structureDetailsBySchedule = { primary: {
+      totalFloors: '3',
+      rows: ['Ground Floor', 'First Floor', 'Second Floor'].map((floorNo, index) => ({
+        ...prototype, id: 'floor-' + index, floorNo,
+        structureType: 'Roof ' + index, builtUpAreaSqFt: String((index + 1) * 300),
+      })),
+    } };
+    const houseBytes = new Uint8Array(await readFile(new URL('./release-deed-template-v2.docx', import.meta.url)));
+    const { text } = await generate(state, {
+      kind: 'custom', bytes: houseBytes, hash: 'house-test', name: 'Release v2',
+      validation: await validateReleaseTemplate(houseBytes),
+    });
+    for (const [index, floor] of ['Ground Floor', 'First Floor', 'Second Floor'].entries()) {
+      expect(text).toContain(`${floor}: Roof ${index} ${(index + 1) * 300} square feets`);
+      expect(text).toContain(`${floor}: Roof ${index} ${((index + 1) * 100).toFixed(2)} square feets`);
+    }
+    expect(text).not.toMatch(/<\s*(?:Shared Plinth Area|Nature of House)\s*>/i);
+  });
   it('retains the exact immutable uploaded asset and rejects missing source bindings',async()=>{
     expect(createHash('sha256').update(bytes).digest('hex')).toBe('d3077f53109780af91f60d77299737ce5f190198d8a46a126e03eb7237db33f1');
     expect(source.kind==='custom'&&source.validation.errors).toEqual([]);

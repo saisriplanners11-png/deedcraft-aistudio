@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
-  appendRegistrationPlans, ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip, omitBlankScheduleFields, removeSourceTypingStamp,
+  formatDeedOpening, appendRegistrationPlans, ensureStampPaperSpace, docxToText, fillSaleDeed, scheduleText, replaceRunText, readZip, writeZip, omitBlankScheduleFields, removeSourceTypingStamp,
   validateSaleDeedTemplate, MAX_CUSTOM_TEMPLATE_BYTES, type DeedTemplateSource,
 } from './docx';
 import { ALL_FIELDS, newStructureDetail } from './fields';
@@ -487,7 +487,7 @@ describe('sale deed template merge', () => {
     additionalClaimants: [{ id: 'second', docNames: [], values: { claimantName: 'Second Buyer', claimantPartyType: capacity } }] };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    for (const name of ['FIRST SELLER', 'SECOND SELLER', 'FIRST BUYER', 'SECOND BUYER']) expect(text).toContain(capacity + ': ' + name);
+    for (const name of ['First Seller', 'Second Seller', 'First Buyer', 'Second Buyer']) expect(text).toContain(capacity + ': ' + name);
     expect(text.split(capacity + ': ')).toHaveLength(5);
   });
 
@@ -509,7 +509,7 @@ describe('sale deed template merge', () => {
     } };
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
-    const recital = text.match(/PURCHASER,[\s\S]*?OTHER PART\./)?.[0] || '';
+    const recital = text.match(/Purchaser,[\s\S]*?OTHER PART\./)?.[0] || '';
     expect(recital).toContain('R/o H.No.1-2-3, Sircilla Village');
     expect(recital).toContain('Aadhaar No: 1234 5678 9012,');
     expect(recital).not.toContain('Cell No:');
@@ -722,11 +722,11 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(printed).toMatch(/^PREMSAGAR G,/m);
-    expect(printed).toContain('S/O M. RAMA RAO');
+    expect(printed).toContain('S/O M. Rama Rao');
     expect(printed).toContain('Occupation: Civil Engineer');
-    expect(printed).toMatch(/^1\. Anil,/m);
-    expect(printed).toMatch(/^2\. Sampath,/m);
-    expect(printed).toMatch(/^3\. Bhargavi,/m);
+    expect(printed).toMatch(/^1\. ANIL,/m);
+    expect(printed).toMatch(/^2\. SAMPATH,/m);
+    expect(printed).toMatch(/^3\. BHARGAVI,/m);
     const receipt = printed.split('\n').find(line => line.startsWith(`${label}: Amount of Rs.1,00,000/-`));
     expect(receipt).toContain('Anil, Sampath and Bhargavi, to the Vendor, namely Premsagar G');
   });
@@ -868,7 +868,7 @@ describe('sale deed template merge', () => {
 
     expect(text).toContain('Document No. 100/2020');
     expect(text).toContain('Document No. 200/2021');
-    expect(text).toContain('VENDOR ONE');
+    expect(text).toContain('Vendor One');
     expect(text).toContain('Vendor Two');
     expect(text).toContain('1111 1111 1111');
     expect(text).toContain('3333 3333 3333');
@@ -894,13 +894,13 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
-    expect(opening).toContain('1. VENDOR ONE');
+    expect(opening).toContain('1. Vendor One');
     expect(opening).toContain('2. Vendor Two');
     expect(opening).toContain('1. Purchaser One');
     expect(opening).toContain('2. Purchaser Two');
     const partyLines = opening.split('\n');
     for (const [first, last, closing] of [
-      ['1. VENDOR ONE', '2. Vendor Two', '(Hereinafter called the "VENDORS") of the ONE PART.'],
+      ['1. Vendor One', '2. Vendor Two', '(Hereinafter called the "VENDORS") of the ONE PART.'],
       ['1. Purchaser One', '2. Purchaser Two', '(Hereinafter called the "VENDEES") of the OTHER PART.'],
     ]) {
       const firstLine = partyLines.find(line => line.startsWith(first))!;
@@ -923,7 +923,7 @@ describe('sale deed template merge', () => {
     const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(4);
     expect(signatures).not.toMatch(/\d+\. ________________/);
-    expect(signatures).not.toContain('VENDOR ONE');
+    expect(signatures).not.toContain('Vendor One');
     expect(signatures).not.toContain('Purchaser One');
     expect(signatures).toContain('WITNESSES:');
     const signatureXml = new TextDecoder().decode((await readZip(new Uint8Array(await result.blob.arrayBuffer())))
@@ -941,8 +941,8 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), 'IF OPEN PLOT', rewritesFor(state), scheduleMergesFor(state));
     const text = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
-    expect(opening).toContain('ONLY VENDOR');
-    expect(opening).not.toContain('1. ONLY VENDOR');
+    expect(opening).toContain('Only Vendor');
+    expect(opening).not.toContain('1. Only Vendor');
     expect(opening).toContain('(Hereinafter called the "VENDOR") of the ONE PART.');
     expect(opening).toContain('1. First Buyer');
     expect(opening).toContain('2. Second Buyer');
@@ -956,7 +956,7 @@ describe('sale deed template merge', () => {
     expect(signatures).toContain('________________');
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(3);
     expect(signatures).not.toMatch(/\d+\. ________________/);
-    expect(signatures).not.toContain('ONLY VENDOR');
+    expect(signatures).not.toContain('Only Vendor');
     expect(signatures).not.toContain('Second Buyer');
   });
 
@@ -997,7 +997,7 @@ describe('sale deed template merge', () => {
     const opening = text.slice(0, text.indexOf('FLOW OF TITLE'));
     expect(opening).toContain('(Hereinafter called the "VENDOR") of the ONE PART.');
     expect(opening).toContain('(Hereinafter called the "VENDEE") of the OTHER PART.');
-    expect(opening).not.toContain('1. ONLY VENDOR');
+    expect(opening).not.toContain('1. Only Vendor');
     expect(opening).not.toContain('1. ONLY BUYER');
   });
 
@@ -1262,5 +1262,24 @@ describe('Mandatory stamp-paper space', () => {
     expect(output.match(/<w:sectPr\b/g)).toHaveLength(2);
     expect(output).toContain('w:top="8208"');
     expect(output).toContain('w:top="1080"');
+  });
+});
+
+
+describe('opening identity casing', () => {
+  it.each(['FLOW OF TITLE & LINK DEED DETAILS:', 'Registered Deed:', 'NOW THIS DEED WITNESSETH'])('preserves entered names across pagination until %s', boundary => {
+    const paragraph = (text: string, properties = '') => `<w:p>${properties}<w:r><w:t>${text}</w:t></w:r></w:p>`;
+    const identity = '2. SECOND PARTY, S/O RELATIVE NAME, Aged 40, R/o Example';
+    const xml = '<w:document><w:body>' + paragraph('FIRST PARTY, Aged 50') +
+      paragraph('', '<w:pPr><w:sectPr/></w:pPr>') +
+      paragraph(identity, '<w:pPr><w:pageBreakBefore/></w:pPr>') +
+      paragraph('Mixed Name, W/O Mixed Relative, Aged 30') + paragraph(boundary) + paragraph(identity) + '</w:body></w:document>';
+    const result = formatDeedOpening(xml, [{find: /<EXECUTANT NAME>/i, replace: '', partyRole: 'executant', records: [
+      {'Registration Name': 'FIRST PARTY'}, {'Registration Name': 'SECOND PARTY'}, {'Registration Name': 'Mixed Name'}
+    ]}]);
+    const [opening, later] = result.split(boundary);
+    expect(opening).toContain(identity);
+    expect(opening).toContain('Mixed Name, W/O Mixed Relative');
+    expect(later).toContain('Second Party, S/O Relative Name');
   });
 });
