@@ -25,19 +25,25 @@ for (const mode of ['ordinary', 'gpa', 'agpa']) for (const vendors of [1, 2]) fo
   assert(remaining, 'Missing party boundary');
   const vendeeBlock = remaining.split('FLOW OF TITLE')[0];
   const share = /holding\s+(?:an\s+)?undivided share of/i;
-  assert.equal(share.test(vendorBlock), true, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendor clause`);
-  assert.equal(share.test(vendeeBlock), true, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendee clause`);
-  if (vendors > 1) assert.match(vendorBlock, /50%/);
-  if (vendees > 1) assert.match(vendeeBlock, /50%/);
+  const operativeStart = text.indexOf('NOW THIS SALE DEED WITNESSETH AS FOLLOWS:');
+  const scheduleStart = text.indexOf('SCHEDULE OF PROPERTY', operativeStart);
+  const operative = text.slice(operativeStart, scheduleStart);
+  assert.match(operative, /following undivided shares:/i);
+  assert.doesNotMatch(text.slice(scheduleStart), /following undivided shares:/i);
+  assert.doesNotMatch(text.slice(0, operativeStart), /holding.*undivided share|following undivided shares:/i);
+  assert.equal(share.test(vendorBlock), false, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendor clause`);
+  assert.equal(share.test(vendeeBlock), false, `${mode}: ${vendors} vendor(s), ${vendees} vendee(s) — vendee clause`);
+  if (vendors > 1) assert.doesNotMatch(vendorBlock, /50%/);
+  if (vendees > 1) assert.doesNotMatch(vendeeBlock, /50%/);
   if (vendors === 1 && vendees === 1) assert.match(text, /50%/);
 }
 const singleFlat = await render(rt.sampleState('ordinary-flat-finished'));
 assert.match(singleFlat, /undivided share of land/i, 'Flat land-area UDS is independent of party ownership allocation');
 const multiSchedule = await render(rt.sampleState('multiple'));
-assert.match(multiSchedule, /Schedule 1: 50% \(100 Sq\. Yards\); Schedule 2: 50% \(100 Sq\. Yards\)/);
+assert.match(multiSchedule, /following undivided shares:[^\n]*50% \(100 Sq\. Yards\)/);
 const entity = rt.sampleState('entity');
 assert.doesNotMatch(await render(entity), /holding\s+(?:an\s+)?undivided share of/i);
-console.log('PASS: independent vendor/vendee share clauses in 12 ordinary/GPA/AGPA combinations, saved single-party shares, multiple schedules, entities and flat land UDS.');
+console.log('PASS: Sale party shares appear only in operative clauses across 12 ordinary/GPA/AGPA combinations; multiple schedules, entities and flat land UDS remain supported.');
 
 for (const wording of ['50%', 'short', 'unsupported']) {
   const entries = await rt.readZip(bytes);
@@ -89,7 +95,7 @@ for (const mode of ['gpa', 'agpa']) {
   const state = rt.sampleState(mode + '-plot');
   state.saleAuthority.attorneys[0].values.SharePercentage = '37.25';
   const text = await render(state);
-  assert.match(text, /holding an undivided share of 37\.25%/i);
+  assert.match(text, /37\.25%/i);
   state.saleAuthority.attorneys[0].values.SharePercentage = '';
   assert.doesNotMatch(await render(state), /37\.25%|holding.*undivided share/i);
 }

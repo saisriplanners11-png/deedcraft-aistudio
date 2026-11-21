@@ -83,7 +83,7 @@ for (const [instrumentId, variantId, deedType, mode, file] of cases) {
       }
       const guardian = shared ? 1 : index;
       assert(paragraph.indexOf('(MINOR)') < paragraph.indexOf('Under the Guardianship'));
-      assert(paragraph.includes(`Under the Guardianship of ${index === 1 ? 'her' : 'his'} natural Grand ${guardian === 1 ? 'Father' : 'Mother'} GUARDIAN PERSON ${guardian} S/O ELDER ${guardian}`));
+      assert(paragraph.toUpperCase().includes(`Under the Guardianship of ${index === 1 ? 'her' : 'his'} natural Grand ${guardian === 1 ? 'Father' : 'Mother'} GUARDIAN PERSON ${guardian} S/O ELDER ${guardian}`.toUpperCase()));
       assert(paragraph.includes(guardian === 1 ? 'occu:Agriculture' : 'occu:Engineer'));
       assert(paragraph.includes(`GUARDIAN-HOUSE-${guardian}`));
       assert(paragraph.includes(guardian === 1 ? 'Cell No:90000 00001, Aadhaar No:555566667777' : 'Cell No:90000 00002, Aadhaar No:666677778888'));

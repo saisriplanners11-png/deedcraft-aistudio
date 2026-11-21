@@ -8,6 +8,7 @@ import type { Field, Group } from './fields';
 import { fieldHelp } from './field-help';
 import { normalizePropertyPlaceName } from './place-names';
 import type { Conflict, FieldEvidence } from './logic';
+import { uppercasePartyIdentity } from './logic';
 import { DOC_KINDS, type DocKind } from './extract';
 import { formatMoneyInput } from './deed-money';
 import { groupedIdentityDigits, isMobileNumber, MOBILE_NUMBER_ERROR } from './deed-format';
@@ -111,7 +112,7 @@ export function Input({
   // A saved execution date may predate the month-only control and still include
   // a day. Display its year/month in the native month picker without losing it
   // until the drafter changes the field.
-  const formatted = normalizePropertyPlaceName(field.id, rawShown, true);
+  const formatted = normalizePropertyPlaceName(field.id, uppercasePartyIdentity(field.id, rawShown), true);
   const shown = field.id === 'flatStage' ? flatStage(formatted) || formatted : field.type === 'month' && /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? formatted.slice(0, 7) : formatted;
 
   return (

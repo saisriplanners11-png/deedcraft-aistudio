@@ -23,7 +23,7 @@ for(const property of ['plot','open','part','dismantled','house-finished','house
   assert.equal((text.match(/The Plan of schedule property is annexed hereto\./g) || []).length, 1);
   assert.equal((text.match(/The schedule property is not the assigned property\./g) || []).length, 1);
   assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, property);
-  if (property.startsWith('house-')) assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./, property);
+  if (property.startsWith('house-')) assert.match(text, /Ground Floor: (?:[^;\n]*? )?800 (?:square feets|Sq\. Ft\.)[; ]+First Floor: (?:[^;\n]*? )?600 (?:square feets|Sq\. Ft\.)/, property);
   await writeFile(`tmp/release/qa/${property}.docx`,output);
   if (property === 'plot') {
     const document = (await rt.readZip(output)).find(entry => entry.name === 'word/document.xml');

@@ -120,7 +120,7 @@ export const SCHEDULE_VARIANT: Record<string, string> = {
 };
 
 export const HOUSE_CATEGORIES = ['Residential', 'Commercial', 'Flat'];
-export const HOUSE_PTIN_PAIR_CATEGORIES = [...HOUSE_CATEGORIES, 'Part open place'];
+export const HOUSE_PTIN_PAIR_CATEGORIES = [...HOUSE_CATEGORIES, 'Part open place', 'Demolished'];
 
 const party = (side: 'executant' | 'claimant'): Field[] => {
   const P = side === 'executant' ? 'Executant' : 'Claimant';

@@ -104,7 +104,7 @@ for (const version of ['v1', 'v2', 'v3']) for (const entity of [false, true]) fo
  assert.match(text, /(?:THE MUNICIPAL COUNCIL, SIRCILLA|The Municipal Council, Sircilla), constitute under Hyderabad Municipal Corporation Act 1965\. Represented by its Commissioner/);
  assert.match(text, /include its successors in office and permitted assigns, of the OTHER PART/);
  assert.equal((text.match(/Represented by its Commissioner/g) || []).length, 1);
- if (mixed) { assert.match(text, /OTHER RECIPIENT/i); assert.match(text, /OTHER PARENT/); }
+ if (mixed) { assert.match(text, /OTHER RECIPIENT/i); assert.match(text, /OTHER PARENT/i); }
  assert.doesNotMatch(text, /INACTIVE PERSONAL NAME|<[^<>]+>/);
  assert.equal(JSON.stringify(state), before);
  if (version === 'v3' && entity) await writeFile('tmp/municipal-gift/qa/council-recipient.docx', new Uint8Array(await result.blob.arrayBuffer()));

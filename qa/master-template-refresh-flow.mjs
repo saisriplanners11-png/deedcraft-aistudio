@@ -68,7 +68,7 @@ for (const [instrument, variant, deedType, draft, mode, version, file] of cases)
       assert.match(text, /The schedule property is not the assigned property\./);
       assert.match(text, /The Plan of schedule property is annexed hereto\./);
       if (property === 'house-semi') {
-        assert.match(text, /Ground Floor: 800 Sq\. Ft\.; First Floor: 600 Sq\. Ft\.; Total Plinth Area: 1400 Sq\. Ft\./);
+        assert.match(text, /having a plinth area of 1400 square feets consisting of Ground Floor: R\.C\.C\. Building 800 square feets First Floor: R\.C\.C\. Building 600 square feets/);
         assert.doesNotMatch(text, /Ground Floor:.*1400 square feets/);
         assert.match(text, /Built-up area particulars/);
       }

@@ -722,7 +722,7 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const printed = await docxToText(new Uint8Array(await result.blob.arrayBuffer()));
     expect(printed).toMatch(/^PREMSAGAR G,/m);
-    expect(printed).toContain('S/O M. Rama Rao');
+    expect(printed).toContain('S/O M. RAMA RAO');
     expect(printed).toContain('Occupation: Civil Engineer');
     expect(printed).toMatch(/^1\. Anil,/m);
     expect(printed).toMatch(/^2\. Sampath,/m);
@@ -757,7 +757,7 @@ describe('sale deed template merge', () => {
     expect(printed).toContain('Open Land  Of Venkateshwara Temple');
   });
 
-  it('prints each edited tax pair in the House annexure and removes bold from the opening SRO only', async () => {
+  it('uses source annexure fields without appending tax-pair summaries and removes bold from the opening SRO only', async () => {
     const state = { ...initialState, category: 'Residential', form: { ...initialState.form,
       executionDate: '2026-11-14', sro: 'Opening Office', housePtinPairs: JSON.stringify([
         { id: 'a', houseNo: '6-21', ptin: '0021' }, { id: 'b', houseNo: '6-22', ptin: '0022' },
@@ -766,7 +766,8 @@ describe('sale deed template merge', () => {
     const result = await fillSaleDeed(mergeValues(state), variantFor(state.category), rewritesFor(state), scheduleMergesFor(state));
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const printed = await docxToText(bytes);
-    expect(printed).toContain('H.No. 6-21 · PTIN / Assessment No. 0021; H.No. 6-22 · PTIN / Assessment No. 0022');
+    expect(printed).not.toContain('H.No. 6-21 · PTIN / Assessment No. 0021');
+    expect(printed).not.toContain('H.No. 6-22 · PTIN / Assessment No. 0022');
     const xml = new TextDecoder().decode((await readZip(bytes)).find(entry => entry.name === 'word/document.xml')!.data);
     const opening = xml.match(/<w:p(?=[\s>])(?:(?!<\/w:p>)[\s\S])*?Opening Office(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/)?.[0];
     expect(opening).toMatch(/<w:b w:val="0"\/>[^<]*(?:<[^>]+>[^<]*)*?Opening Office/);
@@ -897,10 +898,6 @@ describe('sale deed template merge', () => {
     expect(opening).toContain('2. Vendor Two');
     expect(opening).toContain('1. Purchaser One');
     expect(opening).toContain('2. Purchaser Two');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 55% (0.55 Sq. Yards); Schedule 2: 25% (0.25 Sq. Yards)');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 45% (0.45 Sq. Yards); Schedule 2: 75% (0.75 Sq. Yards)');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 60% (0.6 Sq. Yards); Schedule 2: 25% (0.25 Sq. Yards)');
-    expect(opening).toContain('Holding Undivided Share of Schedule 1: 40% (0.4 Sq. Yards); Schedule 2: 75% (0.75 Sq. Yards)');
     const partyLines = opening.split('\n');
     for (const [first, last, closing] of [
       ['1. VENDOR ONE', '2. Vendor Two', '(Hereinafter called the "VENDORS") of the ONE PART.'],
@@ -916,15 +913,13 @@ describe('sale deed template merge', () => {
       expect(lastLine).toContain(closing);
       expect(opening.split(closing)).toHaveLength(2);
     }
-    const first = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 1'), text.indexOf('SCHEDULE OF PROPERTY - 2'));
-    const second = text.slice(text.indexOf('SCHEDULE OF PROPERTY - 2'), text.indexOf('DECLARATION'));
-    expect(first).toContain('(1) Purchaser One — 60% (0.6 Sq. Yards); (2) Purchaser Two — 40% (0.4 Sq. Yards)');
-    expect(first).toContain('(1) Vendor One — 55% (0.55 Sq. Yards); (2) Vendor Two — 45% (0.45 Sq. Yards)');
-    expect(first.indexOf('The vendors convey')).toBeLessThan(first.indexOf('The vendees acquire'));
-    expect(second).toContain('(1) Purchaser One — 25% (0.25 Sq. Yards); (2) Purchaser Two — 75% (0.75 Sq. Yards)');
-    expect(second).toContain('(1) Vendor One — 25% (0.25 Sq. Yards); (2) Vendor Two — 75% (0.75 Sq. Yards)');
-    expect(first).not.toContain('Purchaser One — 25%');
-    expect(second).not.toContain('Purchaser One — 60%');
+    expect(opening).not.toMatch(/undivided share|\d+%/i);
+    const operative = text.slice(text.indexOf('NOW THIS SALE DEED WITNESSETH AS FOLLOWS'), text.indexOf('SCHEDULE OF PROPERTY - 1'));
+    expect(operative).toContain('(1) Purchaser One — 60% (0.6 Sq. Yards); (2) Purchaser Two — 40% (0.4 Sq. Yards)');
+    expect(operative).toContain('(1) Vendor One — 55% (0.55 Sq. Yards); (2) Vendor Two — 45% (0.45 Sq. Yards)');
+    expect(operative).toContain('(1) Purchaser One — 25% (0.25 Sq. Yards); (2) Purchaser Two — 75% (0.75 Sq. Yards)');
+    expect(operative).toContain('(1) Vendor One — 25% (0.25 Sq. Yards); (2) Vendor Two — 75% (0.75 Sq. Yards)');
+    expect(text.slice(text.indexOf('SCHEDULE OF PROPERTY - 1'))).not.toContain('following undivided shares');
     const signatures = text.slice(text.search(/SIGNATURES? OF VENDORS?/));
     expect(signatures.slice(0, signatures.indexOf('WITNESSES:')).match(/________________/g)).toHaveLength(4);
     expect(signatures).not.toMatch(/\d+\. ________________/);

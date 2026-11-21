@@ -1431,11 +1431,12 @@ export default function WizardApp() {
           const [role, record, field] = key.split('|');
           const label = fields.get(field);
           const printed = /(?:mobile|phone)$/i.test(field) ? deedMobile(value) : value;
-          return label && field !== 'stampValue' && printed.trim() ? [new Paragraph({ text: `${role} ${record} / ${label}: ${printed}` })] : [];
+          const reconveyanceDimension = deedDefinition.id === 'reconveyance' && /^dimension(?:North|South|East|West)$/.test(field);
+          return label && field !== 'stampValue' && !reconveyanceDimension && printed.trim() ? [new Paragraph({ text: `${role} ${record} / ${label}: ${printed}` })] : [];
         });
         if (stampTotal) details.push(new Paragraph({ text: `Stamp paper value (₹): ${stampTotal}` }));
         const blob = await Packer.toBlob(new Document({ sections: [{ children: [
-          new Paragraph({ text: `${deedDefinition.label} — Incomplete draft details`, heading: 'Heading1' }),
+          new Paragraph({ text: `${deedDefinition.label.toUpperCase()} — INCOMPLETE DRAFT DETAILS`, heading: 'Heading1' }),
           new Paragraph('The deed template could not be rendered. Review and complete the draft before use.'),
           ...[...new Set([...reasons, reason])].map(text => new Paragraph(text)), ...details,
         ] }] }));

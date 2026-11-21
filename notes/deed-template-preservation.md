@@ -114,7 +114,7 @@ COM-20 (09-11-2026): group currency with Indian commas and omit zero fractional 
 
 14-11-2026 House update, runtime 2026-11-14.1. Preserve the schedule’s dashboard boundary text, label party locality, group identity digits, and apply casing to payment names and bank particulars at merge time.
 
-14-11-2026 COM-16/22/27 (runtime preservation 2026-11-14.2): Step 2 and Property Schedule share editable property-scoped H.No./PTIN rows. House Annexure I-A lists those pairs in entered order. Repeatable dashboard records support manual ordering by stable ID. Word keeps the selected sequence within payment, title/enclosure, schedule, structure and party sections subject to instrument-specific rules. The opening SRO label and value use regular weight.
+14-11-2026 COM-16/22/27 (runtime preservation 2026-11-14.2): Step 2 and Property Schedule share editable property-scoped H.No./PTIN rows. The earlier added House Annexure I-A pair summary was removed on 21-11-2026 at the user's request. Annexure output follows the selected source template. Repeatable dashboard records support manual ordering by stable ID. Word keeps the selected sequence within payment, title/enclosure, schedule, structure and party sections subject to instrument-specific rules. The opening SRO label and value use regular weight.
 
 14-11-2026 COM-25, runtime 2026-11-14.3. The typing stamp prints its heading and entered details at 10 pt and the statement at 8 pt.
 

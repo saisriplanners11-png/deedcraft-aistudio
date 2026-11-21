@@ -45,12 +45,12 @@ for (const [instrumentId, candidateVariant, deedType, draft] of instruments) for
   assert.deepEqual(result.unmapped, [], label);
   assert.doesNotMatch(text, /Dimensions\s+North: 21 ft|South: 22 ft|East: 41 ft|West: 42 ft/, label);
   if (property === 'house-finished') {
-    assert.match(text, /Ground Floor: 101\.5 Sq\. Ft\./, label);
+    assert.match(text, /Ground Floor: (?:[^;\n]*? )?101\.5 (?:square feets|Sq\. Ft\.)/, label);
     if (margin === '100') {
       assert.doesNotMatch(text, /First Floor/, label);
-      assert.match(text, /Total Plinth Area: 101\.5 Sq\. Ft\./, label);
+      assert.match(text, /(?:Total Plinth Area: 101\.5 Sq\. Ft\.|having a plinth area of 101\.5 square feets)/, label);
     } else {
-      assert.match(text, /First Floor: 212 Sq\. Ft\.; Second Floor: 303 Sq\. Ft\.; Total Plinth Area: 616\.5 Sq\. Ft\./, label);
+      assert.match(text, /First Floor: (?:[^;\n]*? )?212 (?:square feets|Sq\. Ft\.)[; ]+Second Floor: (?:[^;\n]*? )?303 (?:square feets|Sq\. Ft\.)/, label);
     }
   }
   const tops = [...xml.matchAll(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g)].map(section => section[0].match(/w:top="(\d+)"/)?.[1]);

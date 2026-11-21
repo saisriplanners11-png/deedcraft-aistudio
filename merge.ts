@@ -101,12 +101,13 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
   out['Near / Adjacent'] = f.nearAdjacent || '';
   out['Landmark House No.'] = ['Demolished', 'Part open place'].includes(state.category) ? f.landmarkHNo || '' : f.nearHNo || '';
   out['Municipal House Nos.'] = f.bearingHNo || '';
+  if (['Demolished', 'Part open place'].includes(state.category)) out['Near H.No.'] = f.nearHNo || f.bearingHNo || '';
   const pairedHouseIds = parsePropertyHousePtinPairs(f.housePtinPairs || '');
   if (pairedHouseIds !== null) {
     const pairedOutput = propertyHousePtinOutput(f.housePtinPairs || '');
     out['Bearing H.No.'] = (state.category === 'Residential' && f.bearingHNo) || pairedOutput.houseNos;
     out['Municipal House Nos.'] = out['Bearing H.No.'];
-    if (state.category === 'Part open place') out['Near H.No.'] = pairedOutput.houseNos;
+    if (['Demolished', 'Part open place'].includes(state.category)) out['Near H.No.'] = pairedOutput.houseNos;
     out['P.T.I.No.'] = pairedOutput.ptins;
     out['P.T.I. No.'] = pairedOutput.ptins;
   }
@@ -163,7 +164,7 @@ export function mergeValues(state: AppState, partyForm?: AppState['form']): Reco
   // template line ("S/o Yellaiah"), same as before the fields were split.
   for (const side of ['executant', 'claimant'] as const) {
     const ph = side === 'executant' ? 'EXECUTANT RELATION NAME' : 'CLAIMANT RELATION NAME';
-    out[ph] = [f[`${side}Relation`]?.toUpperCase(), f[`${side}RelativeName`]].filter(Boolean).join(' ');
+    out[ph] = [f[`${side}Relation`]?.toUpperCase(), formatDeedPartyName(f[`${side}RelativeName`] || '')].filter(Boolean).join(' ');
   }
 
   if (['Gift', 'Agreement of Sale', 'Agreement of Sale Cum GPA', 'Deed Of Reconvayance'].includes(state.deedType)) {
@@ -498,9 +499,6 @@ export function scheduleMergesFor(state: AppState): ScheduleMerge[] {
     const explicitAssessment = preferredField('bltNo', ['houseTax', 'assessment']);
     const taxAssessment = taxRecords.find(item => item !== legacyVacantTax && item.values.assessmentPtinNo)?.values.assessmentPtinNo;
     const extractedPairs = parsePropertyHousePtinPairs(identificationPairs);
-    values['House Tax Identification Rows'] = extractedPairs?.map(row => [
-      row.houseNo && 'H.No. ' + row.houseNo, row.ptin && 'PTIN / Assessment No. ' + row.ptin,
-    ].filter(Boolean).join(' · ')).filter(Boolean).join('; ') || '';
     const pairedAssessment = extractedPairs === null ? '' : propertyHousePtinOutput(identificationPairs).ptins;
     const assessment = extractedPairs !== null ? pairedAssessment : explicitAssessment || record.values.bltNo || taxAssessment || '';
     titleValues['P.T.I.No.'] = assessment;
