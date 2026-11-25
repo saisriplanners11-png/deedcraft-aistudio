@@ -1,3 +1,4 @@
+import { accountStore, session } from '../../account';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -114,6 +115,8 @@ const INITIAL_BLANK_PLAN: PlanDocument = {
   },
 };
 
+const workingPlan = accountStore<PlanDocument>('guided-work');
+
 export default function App() {
   const [workspaceTheme, setWorkspaceTheme] = useState<'light' | 'dark'>('light');
   // App Mode: 'deed-plan' for Deed Document Preparation
@@ -126,6 +129,36 @@ export default function App() {
     const query = new URLSearchParams(window.location.search);
     return { draftId: query.get('draftId'), scheduleId: query.get('scheduleId'), sessionId: query.get('sessionId') };
   });
+  const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [workspaceSaveStatus, setWorkspaceSaveStatus] = useState('');
+  const planWrites = useRef(Promise.resolve());
+  const loadedPlan = useRef<PlanDocument>(INITIAL_BLANK_PLAN);
+  useEffect(() => {
+    if (bridgeContext.sessionId) return;
+    let mounted = true;
+    workingPlan.list().then(async ([saved]) => {
+      const restored = saved ? await workingPlan.open('current', saved) : INITIAL_BLANK_PLAN;
+      if (!mounted) return;
+      setDoc(current => {
+        if (current !== INITIAL_BLANK_PLAN) return current;
+        loadedPlan.current = restored;
+        return restored;
+      });
+      setWorkspaceLoaded(true);
+    }).catch(() => { if (mounted) setWorkspaceSaveStatus('Could not load your plan. Reload to retry.'); });
+    return () => { mounted = false; };
+  }, [bridgeContext.sessionId]);
+  useEffect(() => {
+    if (!workspaceLoaded || doc === loadedPlan.current) return;
+    const owner = session?.user.id;
+    setWorkspaceSaveStatus('Saving…');
+    const timer = window.setTimeout(() => {
+      const task = planWrites.current.catch(() => {}).then(() => workingPlan.save('current', doc, owner));
+      planWrites.current = task;
+      task.then(() => setWorkspaceSaveStatus('Saved')).catch(error => setWorkspaceSaveStatus('Save failed. ' + (error.message || 'Edit again to retry.')));
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [doc, workspaceLoaded]);
   const [bridgeSeeded, setBridgeSeeded] = useState(!bridgeContext.sessionId);
   const [pendingUse, setPendingUse] = useState(false);
   const bridgePost = (type: string, payload: object = {}) => window.parent.postMessage({ type, ...bridgeContext, ...payload }, window.location.origin);
@@ -465,6 +498,7 @@ export default function App() {
 
   return (
     <div data-theme={workspaceTheme} className="guided-plan-workspace min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
+      {workspaceSaveStatus && <p role="status">{workspaceSaveStatus}</p>}
       {/* Top Application Bar */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">

@@ -1,3 +1,4 @@
+import { accountFetch } from '../../../account';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StructuredGeometryPlan,
@@ -145,7 +146,7 @@ export const SketchVerificationWorkspace: React.FC<SketchVerificationWorkspacePr
     setIsScanning(true);
     setScanError(null);
     try {
-      const response = await fetch('/api/analyze-sketch', {
+      const response = await accountFetch('/api/analyze-sketch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: imgData, mimeType: mime }),

@@ -1,31 +1,8 @@
+import { accountStore } from './account';
 import type { PlanDocument, PartyDetails } from './plan-sketch-types';
 
-const DB_NAME = 'deedcraft-plan-library';
-const STORE = 'plans';
+const storage = accountStore<PlanDocument>('sketch-plan');
 const blankParty = (): PartyDetails => ({ name: '', relation: 'S/o', relativeName: '', age: '', occupation: '', address: '' });
-
-function database(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('Could not open the plan library.'));
-  });
-}
-
-async function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore, done: (value: T) => void) => void): Promise<T> {
-  const db = await database();
-  return new Promise<T>((resolve, reject) => {
-    let result: T;
-    const transaction = db.transaction(STORE, mode);
-    transaction.oncomplete = () => { db.close(); resolve(result); };
-    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Plan library operation failed.')); };
-    run(transaction.objectStore(STORE), value => { result = value; });
-  });
-}
 
 export function validateImportedPlan(value: unknown): PlanDocument {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('A plan must be a JSON object.');
@@ -92,25 +69,23 @@ export function validateImportedPlan(value: unknown): PlanDocument {
 
 export const planSketchLibrary = {
   async list(): Promise<PlanDocument[]> {
-    return (await transact<PlanDocument[]>('readonly', (store, done) => {
-      const request = store.getAll();
-      request.onsuccess = () => done(request.result as PlanDocument[]);
-    })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return (await storage.list()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   },
   async save(plan: PlanDocument, asCopy = false): Promise<PlanDocument> {
     const valid = validateImportedPlan(plan);
     const now = new Date().toISOString();
     const saved = { ...valid, id: asCopy || valid.id.startsWith('sample-') || valid.id.startsWith('plan-sketch-') ? crypto.randomUUID() : valid.id,
       title: asCopy ? `${valid.title} (Copy)` : valid.title, createdAt: asCopy ? now : valid.createdAt, updatedAt: now };
-    await transact<void>('readwrite', (store, done) => { store.put(saved); done(); });
+    await storage.save(saved.id, saved);
     return saved;
   },
-  async remove(id: string): Promise<void> { await transact<void>('readwrite', (store, done) => { store.delete(id); done(); }); },
+  async remove(id: string): Promise<void> { await storage.remove(id); },
   async import(value: unknown): Promise<number> {
     const plans = Array.isArray(value) ? value : [value];
     if (!plans.length || plans.length > 1000) throw new Error('The backup must contain 1 to 1000 plans.');
     const valid = plans.map(validateImportedPlan);
-    await transact<void>('readwrite', (store, done) => { valid.forEach(plan => store.put(plan)); done(); });
+    await storage.list();
+    for (const plan of valid) await storage.save(plan.id, plan);
     return valid.length;
   },
 };

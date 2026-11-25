@@ -1,0 +1,59 @@
+.dc-auth {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr);
+  max-width: 960px;
+  margin: clamp(20px, 8vh, 84px) auto;
+  width: calc(100% - 32px);
+  overflow: hidden;
+  border: 1px solid #d4ddd3;
+  border-radius: 20px;
+  box-shadow: 0 18px 45px #173c2514;
+  background: #fff;
+  color: #22382e;
+  font: 16px/1.5 system-ui, sans-serif;
+}
+.dc-auth-intro {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  padding: clamp(24px, 5vw, 48px);
+  color: #fff;
+  background: radial-gradient(ellipse at top right, #3c6654, #173b30 74%);
+}
+.dc-auth-intro p { color: #e0ebe4; max-width: 29ch; }
+.dc-auth-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.dc-auth-brand span {
+  display: grid; place-items: center; width: 36px; height: 36px;
+  border: 1px solid #c5d7c5; border-radius: 8px; font: italic 24px Georgia, serif;
+}
+.dc-auth h1, .dc-auth h2 {
+  font-family: Georgia, serif; font-weight: 400; line-height: 1.08;
+  font-size: clamp(34px, 5vw, 51px); letter-spacing: -0.035em; margin: 0 0 14px;
+}
+.dc-auth-panel { padding: clamp(24px, 5vw, 52px); }
+.dc-auth-panel > p { margin: 0 0 20px; color: #526257; }
+.dc-auth form, .dc-auth-actions { display: grid; gap: 12px; }
+.dc-auth label { display: block; font-weight: 600; }
+.dc-auth label br { display: none; }
+.dc-auth input, .dc-auth button {
+  min-height: 44px; width: 100%; padding: 9px 12px;
+  border: 1px solid #aebeb3; border-radius: 8px;
+  box-sizing: border-box; background: #fff; color: #22382e; font: inherit;
+}
+.dc-auth input { display: block; margin-top: 5px; }
+.dc-auth button { cursor: pointer; font-weight: 600; }
+.dc-auth button:hover { background: #eef6ef; }
+.dc-auth form button { color: #fff; background: #24523e; border-color: #24523e; }
+.dc-auth form button:hover { background: #1a3d2f; }
+.dc-auth button:disabled { opacity: 0.55; cursor: wait; }
+.dc-auth :focus-visible { outline: 3px solid #9a5912; outline-offset: 3px; }
+.dc-auth-actions { margin-top: 12px; }
+.dc-auth .dc-auth-notice { margin: 14px 0 0; }
+.dc-auth-notice:empty { display: none; }
+@media (max-width: 650px) {
+  .dc-auth { grid-template-columns: 1fr; }
+  .dc-auth-intro { gap: 16px; }
+  .dc-auth-intro h2 { font-size: 30px; }
+  .dc-auth-intro p { margin: 0; }
+}

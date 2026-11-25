@@ -1,3 +1,4 @@
+import { accountStore, session } from '../../account';
 import { clearSavedApplications, createSavedApplication, deleteSavedApplication, listSavedApplications, updateSavedApplication } from './saved-records';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -50,7 +51,7 @@ import {
   subtractOneDayDDMMYYYY,
 } from './types/forms';
 
-const DRAFT_STORAGE_KEY = 'card_forms_studio_draft_v1';
+const workingForms = accountStore<AllFormsState>('application-work');
 
 type WorkspaceView = 'builder' | 'report';
 
@@ -100,34 +101,21 @@ export default function App() {
   const [mvMode, setMvMode] = useState<MarketValueMode>('mvOpen');
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
-  const [formsState, setFormsState] = useState<AllFormsState>(() => {
-    try {
-      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<AllFormsState>;
-        const defaults = getEmptyFormsState();
-        const mvOpen = { ...defaults.mvOpen, ...parsed.mvOpen };
-        const mvHouse = { ...defaults.mvHouse, ...parsed.mvHouse };
-        const ec = { ...defaults.ec, ...parsed.ec };
-        const indent = { ...defaults.indent, ...parsed.indent };
-        return {
-          ccCopy: { ...defaults.ccCopy, ...parsed.ccCopy },
-          mvOpen: { ...mvOpen, date: normalizeDateToDDMMYYYY(mvOpen.date) },
-          mvHouse: { ...mvHouse, date: normalizeDateToDDMMYYYY(mvHouse.date) },
-          ec: {
-            ...ec,
-            periodFrom: normalizeDateToDDMMYYYY(ec.periodFrom),
-            periodTo: normalizeDateToDDMMYYYY(ec.periodTo),
-            date: normalizeDateToDDMMYYYY(ec.date),
-          },
-          indent: { ...indent, dated: normalizeDateToDDMMYYYY(indent.dated) },
-        };
-      }
-    } catch {
-      // Ignore storage read errors
-    }
-    return getEmptyFormsState();
-  });
+  const [formsState, setFormsState] = useState<AllFormsState>(getEmptyFormsState);
+  const [storageReady, setStorageReady] = useState(false);
+  const [draftStatus, setDraftStatus] = useState('');
+  const loadedForms = useRef<AllFormsState | null>(null);
+  const saves = useRef(Promise.resolve());
+  useEffect(() => {
+    let current = true;
+    workingForms.list().then(([stored]) => {
+      if (!current) return;
+      if (stored) { loadedForms.current = stored; setFormsState(stored); }
+      else loadedForms.current = formsState;
+      setStorageReady(true);
+    }).catch(() => { if (current) setDraftStatus('Drafts could not be loaded. Reload to retry.'); });
+    return () => { current = false; };
+  }, []);
 
   const [savedRecords, setSavedRecords] = useState<SavedRecord[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
@@ -170,14 +158,17 @@ export default function App() {
     fetchRecords();
   }, [fetchRecords]);
 
-  // Persist working input draft locally in browser
   useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(formsState));
-    } catch {
-      // Ignore quota errors
-    }
-  }, [formsState]);
+    if (!storageReady || loadedForms.current === formsState) return;
+    const owner = session?.user.id;
+    setDraftStatus('Saving…');
+    const timer = window.setTimeout(() => {
+      const task = saves.current.catch(() => {}).then(() => workingForms.save('current', formsState, owner));
+      saves.current = task;
+      task.then(() => setDraftStatus('Saved')).catch(error => setDraftStatus('Save failed. ' + (error.message || 'Edit again to retry.')));
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [formsState, storageReady]);
 
   const showToast = (msg: string) => {
     setFeedbackMessage(msg);
@@ -993,6 +984,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+      <p role="status">{draftStatus}</p>
       {/* 3-Zone Top Bar Contract */}
       <header className="no-print lg:sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-2 sm:px-6 flex flex-wrap items-center justify-between gap-x-5 gap-y-1">
         <div className="flex items-center gap-3">

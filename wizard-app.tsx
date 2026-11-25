@@ -1,3 +1,4 @@
+import { session } from './account';
 import { RecordMove } from './record-move';
 import { ReleaseFields } from './release-fields';
 import { releaseErrors } from './release';
@@ -85,7 +86,7 @@ import { ScreenGuide, GettingStartedGuide } from './screen-guide';
 import { DocumentUpload, ReviewIssues } from './workflow-ui';
 import { DEED_DEFINITIONS, INSTRUMENT_IDS, definitionFor } from './instruments';
 import { releaseGate } from './legal-registry';
-import { deleteDeed, listSavedDeeds, saveDeed, saveDeeds, type SavedDeed } from './saved-deeds';
+import { deleteDeed, listSavedDeeds, openSavedDeed, saveDeed, saveDeeds, type SavedDeed } from './saved-deeds';
 import { createDeedBackup, readDeedBackup } from './deed-backup';
 import type { FieldRenderer } from './ui';
 
@@ -128,7 +129,7 @@ function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNoti
   return <Section title="Structure Details" aside={<span style={{ fontSize: 11, color: C.muted }}>Annexure I-A</span>}>
     <div className="structure-table-scroll" role="region" aria-label="Structure details table" tabIndex={0} style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', minWidth: 1160, borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{['Total Floors*', 'Floor No.*', 'Nature of Roof*', 'Stage*', 'Building Age*', 'Measurement', 'Rate (₹)', 'Total Value (₹)', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
+        <thead><tr>{['Total Floors*', 'Floor No.*', 'Roof Type*', 'Stage*', 'Building Age*', 'Measurement', 'Rate (₹)', 'Total Value (₹)', 'Actions'].map(label => <th key={label} style={{ textAlign: 'left', padding: '9px 8px', color: C.paper, background: C.ink, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
         <tbody>{details.rows.map((row, index) => {
           const wall = isCompoundWall(row);
           const unit = structureUnit(row);
@@ -139,7 +140,7 @@ function StructureDetailsTable({ value, defaultRoof, authority, onChange, onNoti
           return <tr key={row.id}>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="1" aria-label="Total floors" value={details.totalFloors} onChange={event => setTotal(event.target.value)} style={{ width: 78, padding: 6, border: `1px solid ${C.goldLight}`, background: C.paper }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Floor number" disabled={wall} value={wall ? '' : row.floorNo} onChange={event => patchRow(row.id, { floorNo: event.target.value })} style={{ minWidth: 130, padding: 6 }}><option value="">Select…</option>{floorOptions.map(option => <option key={option} value={option}>{option.replace(/\s+floor$/i, '').replace(/^Floor\s+/i, '')}</option>)}</select></td>
-          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Nature of Roof" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, rateOverride: undefined, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{roofOptions.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom nature of roof" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
+          <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Roof Type" value={selectedRoof(row)} onChange={event => patchRow(row.id, { structureType: event.target.value, rateOverride: undefined, customStructureType: event.target.value === 'Other / Custom Structure' ? customRoof(row) : '' })} style={{ minWidth: 180, padding: 6 }}><option value="">Select…</option>{roofOptions.map(option => <option key={option} value={option}>{option}</option>)}</select>{selectedRoof(row) === 'Other / Custom Structure' && <input aria-label="Custom roof type" value={customRoof(row)} onChange={event => patchRow(row.id, { structureType: 'Other / Custom Structure', customStructureType: event.target.value })} placeholder="Describe roof" style={{ marginTop: 6, width: 160, padding: 6, border: `1px solid ${C.goldLight}` }} />}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><select aria-label="Stage" disabled={wall} value={wall ? '' : stage?.value ?? row.stage} onChange={event => patchRow(row.id, { stage: event.target.value })} style={{ minWidth: 150, padding: 6 }}><option value="">Select…</option>{legacyStage && <option value={row.stage}>{row.stage}</option>}{HOUSE_VALUATION_STAGES.map(option => <option key={option.value} value={option.value}>{option.label} ({option.percent}%)</option>)}</select>{legacyStage && <small>Choose a stage with a valuation percentage.</small>}</td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><input type="number" min="0" aria-label="Building age" disabled={wall} value={wall ? '' : row.buildingAge} onChange={event => patchRow(row.id, { buildingAge: event.target.value })} style={{ width: 80, padding: 6, border: `1px solid ${C.goldLight}` }} /></td>
           <td style={{ padding: 8, border: `1px solid ${C.rule}` }}><label><span>{unit}</span><input aria-label={`Measurement (${unit})`} type="number" min="0" step="any" value={structureMeasurement(row)} onChange={event => patchRow(row.id, { [wall ? 'runningFeet' : 'builtUpAreaSqFt']: event.target.value })} style={{ width: 100, padding: 6, border: `1px solid ${C.goldLight}` }} /></label></td>
@@ -816,9 +817,10 @@ export default function WizardApp() {
     generationManifest,
   });
   const persist = (deed: SavedDeed): Promise<void> => {
+    const owner = session?.user.id;
     const sequence = ++saveSequence.current;
     setSaveStatus('saving');
-    const task = saveQueue.current.catch(() => {}).then(() => saveDeed(deed));
+    const task = saveQueue.current.catch(() => {}).then(() => saveDeed(deed, owner));
     saveQueue.current = task;
     return task.then(() => {
       setSavedDeeds(old => [deed, ...old.filter(item => item.id !== deed.id)]
@@ -1180,7 +1182,12 @@ export default function WizardApp() {
     setLibraryView(true); setTemplatesView(false);
   }
 
-  function openSaved(saved: SavedDeed) {
+  async function openSaved(saved: SavedDeed) {
+    try { saved = await openSavedDeed(saved); }
+    catch (error) { setStorageError(String(error)); return; }
+    const localFileMissing = saved.draft.sources.some(source => !saved.sourceFiles?.[source.id]?.length);
+    const localTemplateMissing = saved.customTemplate && !saved.customTemplate.bytes;
+    if (localTemplateMissing) saved = { ...saved, customTemplate: null, templateMode: 'built-in' };
     const deed = updateSavedDeedTemplate(saved, defaultTemplates);
     if (deed !== saved) void persist(deed).catch(() => {});
     skipRestoreSave.current = true;
@@ -1203,9 +1210,12 @@ export default function WizardApp() {
     setGenerationManifest(deed.generationManifest || null);
     setTemplatesView(false);
     setLibraryView(false);
+    if (localFileMissing || localTemplateMissing) setStorageError('Some source files or the custom template are unavailable on this device. Reattach them if needed.');
   }
 
-  function duplicateSaved(deed: SavedDeed, displayName: string) {
+  async function duplicateSaved(deed: SavedDeed, displayName: string) {
+    try { deed = await openSavedDeed(deed); }
+    catch (error) { setStorageError(String(error)); return; }
     const copy = structuredClone(deed);
     copy.id = crypto.randomUUID();
     copy.draft.id = copy.id;
@@ -1235,7 +1245,7 @@ export default function WizardApp() {
     try {
       await saveQueue.current;
       const deeds = await listSavedDeeds();
-      saveBlob(await createDeedBackup(deeds), `DeedCraft-saved-deeds-${new Date().toISOString().slice(0, 10)}.json`);
+      saveBlob(await createDeedBackup(await Promise.all(deeds.map(openSavedDeed))), `DeedCraft-saved-deeds-${new Date().toISOString().slice(0, 10)}.json`);
       setBackupNotice(`Exported ${deeds.length} saved ${deeds.length === 1 ? 'deed' : 'deeds'} with uploaded files and custom templates.`);
     } catch (error: any) { setStorageError(`Backup could not be exported: ${error?.message || String(error)}`); }
     finally { setBackupBusy(false); }
@@ -1580,7 +1590,7 @@ export default function WizardApp() {
           </a>
         </div>
       </section>
-      <div className="saved-deeds-heading"><div><h2>Saved deeds</h2><p>{savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'} · Stored in this browser</p></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
+      <div className="saved-deeds-heading"><div><h2>Saved deeds</h2><p>{savedDeeds.length} saved {savedDeeds.length === 1 ? 'deed' : 'deeds'} · Synced to your account · Source files stay on this device</p></div><button type="button" className="primary" disabled={creatingDeed} aria-busy={creatingDeed} onClick={() => void createDeed()}><Plus size={16} aria-hidden="true" />{creatingDeed ? 'Preparing…' : 'New deed'}</button></div>
       {storageError && <p className="notice" role="alert">{storageError}</p>}
       {savedDeeds.length > 0 && <div className="paper-library-grid"><section className="paper-library-list"><h2>Your drafts</h2>
       {savedDeeds.length > 0 && <div className="library-toolbar"><label className="deed-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Search saved deeds by name or deed type</span><input type="search" value={deedSearch} onChange={e => setDeedSearch(e.target.value)} placeholder="Search by party name or deed type…" /></label><label className="library-sort"><span>Sort by</span><select aria-label="Sort by" value={deedSort} onChange={e => setDeedSort(e.target.value)}><option value="recent">Recently edited</option><option value="type">Deed type</option></select></label></div>}
@@ -1613,6 +1623,8 @@ export default function WizardApp() {
       <WorkflowNavigation steps={workflowSteps} current={step} completed={vm.doneIds} attention={notices.map(notice => notice.step)} title={deedDefinition.label} onNavigate={goto} onBack={goBack} />
 
       <main id="workspace-main" tabIndex={-1} className="stage">
+        <p role="status">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved to your account' : 'Save failed'}</p>
+        {saveStatus === 'error' && <button type="button" onClick={() => void persist(snapshot()).catch(() => {})}>Retry save</button>}
         {storageError && <p className="notice" role="alert">{storageError}</p>}
         {draft.sources.filter(source => source.error?.includes('Reading was interrupted')).map(source => <div className="notice" key={source.id} role="alert">Upload interrupted: {source.name}. <button type="button" onClick={() => retryUpload(source)}>Retry upload</button></div>)}
         <header className="compact-step-header">

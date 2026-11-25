@@ -1,3 +1,4 @@
+import { requireAccount } from './account-api.mjs';
 // Production server: serves dist/ and mounts the same Anthropic proxy the Vite
 // dev server uses, so the key stays server-side outside dev too.
 //
@@ -49,7 +50,8 @@ const MIME = {
   '.wasm': 'application/wasm',
 };
 
-createServer(async (req, res) => {
+const accountGuard = requireAccount(process.env);
+createServer((req, res) => accountGuard(req, res, async () => {
   if (/^\/api\/applications(?:\/|\?|$)/.test(req.url || '')) return applicationApi(req, res);
   if (req.url?.startsWith('/api/templates')) return templateApi(req, res);
   if (req.url?.startsWith(PROXY_PREFIX)) return proxy(req, res, () => {});
@@ -85,4 +87,7 @@ createServer(async (req, res) => {
       res.end('Not found');
     }
   }
-}).listen(PORT, () => console.log(`DeedCraft on http://localhost:${PORT}`));
+}).catch(() => {
+  if (!res.headersSent) res.writeHead(500);
+  res.end();
+})).listen(PORT, () => console.log(`DeedCraft on http://localhost:${PORT}`));

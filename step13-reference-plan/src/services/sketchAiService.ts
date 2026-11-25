@@ -1,3 +1,4 @@
+import { accountFetch } from '../../../account';
 import { PlanDocument, BoundaryDimensions, PropertyDetails, RoadSideOption, PartyDetails } from '../types';
 import { parseDimension, calculateSqMtrs } from '../utils/dimensionUtils';
 import { withPlanDocumentProperty, type PlanDocumentScope } from '../../../plan-document-input';
@@ -102,7 +103,7 @@ export interface ExtractedSketchData {
 
 export async function analyzeManualSketch(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<ExtractedSketchData> {
   try {
-    const response = await fetch('/api/analyze-sketch', {
+    const response = await accountFetch('/api/analyze-sketch', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -433,7 +434,7 @@ export function applyExtractedDataToPlan(
 
 export async function parseDocumentFile(input: { fileBase64?: string; mimeType?: string; textContent?: string }, scope: PlanDocumentScope, signal: AbortSignal): Promise<ExtractedSketchData> {
   try {
-    const response = await fetch('/api/parse-document', {
+    const response = await accountFetch('/api/parse-document', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

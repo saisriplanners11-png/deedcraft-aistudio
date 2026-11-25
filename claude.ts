@@ -1,3 +1,4 @@
+import { accountFetch } from './account';
 import Anthropic from '@anthropic-ai/sdk';
 
 // The client is pointed at this app's own proxy, not at api.anthropic.com.
@@ -36,6 +37,7 @@ export function getClient(): Anthropic {
       apiKey: 'proxied-server-side',
       baseURL: new URL(PROXY_BASE_URL, window.location.origin).toString(),
       dangerouslyAllowBrowser: true,
+      fetch: (input, init) => accountFetch(input.toString(), init as RequestInit),
       maxRetries: 2,
     });
   }

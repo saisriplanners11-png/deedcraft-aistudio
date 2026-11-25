@@ -1,3 +1,4 @@
+import { accountFetch } from '../../../account';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -182,7 +183,7 @@ export const AiUploadPanel: React.FC<AiUploadPanelProps> = ({
         }))
       );
 
-      const res = await fetch('/api/applications/extract', {
+      const res = await accountFetch('/api/applications/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

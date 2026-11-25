@@ -1,3 +1,4 @@
+import { requireAccount } from './account-api.mjs';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -61,13 +62,19 @@ function referencePlanApi(env: Record<string, string>): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const accountGuard = requireAccount({ ...process.env, ...env });
+  const accountPlugin: Plugin = {
+    name: 'account-guard',
+    configureServer: server => { server.middlewares.use(accountGuard); },
+    configurePreviewServer: server => { server.middlewares.use(accountGuard); },
+  };
   const geminiExtraction = env.EXTRACTION_PROVIDER?.toLowerCase() === 'gemini';
   const geminiModel = env.GEMINI_MODEL || 'gemini-3.6-flash';
   const geminiExtractModel = env.GEMINI_EXTRACT_MODEL || geminiModel;
   const geminiVisionModel = env.GEMINI_VISION_MODEL || geminiModel;
   const geminiVerifyModel = env.GEMINI_VERIFY_MODEL || geminiVisionModel;
   return {
-    plugins: [react(), tailwindcss(), templateLibraryApi(env), aiProxy(env), referencePlanApi(env), applicationApi(env)],
+    plugins: [react(), tailwindcss(), accountPlugin, templateLibraryApi(env), aiProxy(env), referencePlanApi(env), applicationApi(env)],
     define: {
       // Model choice is not a secret, so it can be baked in.
       'process.env.EXTRACT_MODEL': JSON.stringify(geminiExtraction ? geminiExtractModel : (env.EXTRACT_MODEL ?? '')),

@@ -14,6 +14,10 @@ services:
         value: production
       - key: TEMPLATE_STORAGE_BACKEND
         value: supabase
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
