@@ -92,10 +92,10 @@ describe('field mapping', () => {
 
   it('shows one editable assessment/PTIN field in Step 2 and keeps receipt extraction compatibility', () => {
     const options = TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id)!);
-    expect(options.map(option => option.id)).toEqual(['linkDoc', 'rectificationDeed', 'supplementalDeed', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions']);
-    expect(options.find(option => option.id === 'landLayoutLrs')?.fields.map(field => field.id))
+    expect(options.map(option => option.id)).toEqual(['linkDoc', 'rectificationDeed', 'supplementalDeed', 'vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'titleDeed', 'nala', 'houseTax', 'assessment', 'permissions']);
+    expect(options.filter(option => ['vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding'].includes(option.id)).flatMap(option => option.fields).map(field => field.id))
       .toEqual(['vltNo', 'layoutFileNo', 'lrsApplicationNo', 'lrsApplicationDate', 'lrsProceedingNo', 'lrsProceedingDate']);
-    const visibleAssessmentFields = options.flatMap(option => option.fields)
+    const visibleAssessmentFields = options.filter(option => option.id !== 'houseTax').flatMap(option => option.fields)
       .filter(field => !field.hidden && field.label === 'PTIN Number / Assessment Number');
     expect(visibleAssessmentFields).toHaveLength(1);
     expect(visibleAssessmentFields[0].id).toBe('bltNo');

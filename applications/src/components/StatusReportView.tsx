@@ -9,9 +9,15 @@ import {
   Printer,
   Search,
   Trash2,
-  X,
+  ArrowLeft,
 } from 'lucide-react';
-import { FormType, RecordStatus, SavedRecord } from '../types/forms';
+import {
+  extractApplicantOnlyName,
+  FormType,
+  normalizeDateToDDMMYYYY,
+  RecordStatus,
+  SavedRecord,
+} from '../types/forms';
 
 interface StatusReportViewProps {
   records: SavedRecord[];
@@ -64,6 +70,27 @@ const STATUS_META: Record<
 function parseAmount(val: string): number {
   const num = parseFloat(String(val || '').replace(/,/g, ''));
   return Number.isNaN(num) ? 0 : num;
+}
+
+function formatDueDateDDMMYYYY(value: string): string {
+  const normalized = normalizeDateToDDMMYYYY(String(value || ''));
+  if (!normalized) return '';
+  const dmy = normalized.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) {
+    return `${dmy[1].padStart(2, '0')}/${dmy[2].padStart(2, '0')}/${dmy[3]}`;
+  }
+  return normalized;
+}
+
+function toIsoDateInput(value: string): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const dmy = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  }
+  return trimmed;
 }
 
 export const StatusReportView: React.FC<StatusReportViewProps> = ({
@@ -140,7 +167,7 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
     setEditDraft({
       title: rec.title,
       status: rec.status,
-      dueDate: rec.dueDate,
+      dueDate: toIsoDateInput(rec.dueDate),
       feeAmount: rec.feeAmount,
       paidAmount: rec.paidAmount,
       notes: rec.notes,
@@ -183,10 +210,10 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
       return [
         rec.title,
         FORM_LABELS[rec.formType],
-        rec.applicantName,
+        extractApplicantOnlyName(rec.applicantName),
         rec.mobileNo,
         STATUS_META[rec.status].label,
-        rec.dueDate,
+        formatDueDateDDMMYYYY(rec.dueDate),
         rec.feeAmount,
         rec.paidAmount,
         balance > 0 ? String(balance) : '0',
@@ -216,13 +243,13 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900">
-              Application Status Report
+              Application Status &amp; Backend Report
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Track pending, complete, and due applications saved in this browser.
+              Track Pending, Complete, and Due applications saved on your backend server
             </p>
           </div>
-          <div className="no-print flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="no-print flex items-center gap-2.5 shrink-0">
             {records.length > 0 &&
               (confirmClearAll ? (
                 <div className="flex items-center gap-1.5">
@@ -411,7 +438,7 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
                   <tr>
                     <td colSpan={7} className="py-12 px-6 text-center">
                       <p className="text-sm font-medium text-slate-800">
-                        No matching saved applications
+                        No matching applications in backend store
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
                         Save an entry from the Form Builder or adjust your filters.
@@ -448,7 +475,7 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
 
                         <td className="py-3 px-4 align-top max-w-[220px]">
                           <div className="text-xs font-medium text-slate-800 truncate">
-                            {rec.applicantName || '—'}
+                            {extractApplicantOnlyName(rec.applicantName) || '—'}
                           </div>
                           <div className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
                             {rec.mobileNo || '—'}
@@ -456,7 +483,7 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
                         </td>
 
                         <td className="py-3 px-4 align-top text-xs text-slate-700 font-mono tabular-nums whitespace-nowrap">
-                          {rec.dueDate || '—'}
+                          {formatDueDateDDMMYYYY(rec.dueDate) || '—'}
                         </td>
 
                         <td className="py-3 px-4 align-top text-right font-mono tabular-nums whitespace-nowrap">
@@ -551,9 +578,9 @@ export const StatusReportView: React.FC<StatusReportViewProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingRecord(null)}
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                className="applications-back"
               >
-                <X className="h-4 w-4" />
+                <ArrowLeft size={16} aria-hidden="true" /> Back
               </button>
             </div>
 

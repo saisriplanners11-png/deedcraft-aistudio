@@ -526,11 +526,24 @@ export function appStateFor(draft: Draft): AppState {
     if (!(side === 'executant' && draft.gpaExecutantsReplaced)) defaultIfUnset(`${side}Relation`, 'S/O');
   }
   for (const field of ['principalOverride','interestAmount','mortgagePartyMode','bankName','bankBranch','officialDesignation']) derived[field] = values[fieldKey('property', 'primary', field)] || '';
-  if (draft.instrumentId === 'reconveyance' && primarySeller?.values.executantPartyType === 'Bank') {
-    for (const [field, sourceField] of Object.entries({ bankName: 'executantEntityName', bankBranch: 'executantEntityBranchOffice', officialDesignation: 'executantSignatoryDesignation' })) {
-      if (!(fieldKey('property', 'primary', field) in values)) derived[field] = primarySeller.values[sourceField] || '';
+  const partyPeopleByParty = Object.fromEntries(Object.keys(draft.partyPeople || {}).map(key => [key, peopleFor(draft, key, { values, conflicts })]));
+  if (draft.instrumentId === 'reconveyance' && primarySeller) {
+    const partyType = primarySeller.values.executantPartyType;
+    const bankVariant = draft.variantId === definitionFor('reconveyance').variants[0].id;
+    const bankOpening = partyType === 'Bank' || bankVariant || derived.mortgagePartyMode === 'bank-to-person'
+      || (derived.mortgagePartyMode !== 'person-to-person' && !!derived.bankName.trim());
+    if (bankOpening && isEntity(primarySeller.values, 'executant')) {
+      const representatives = partyPeopleByParty[partyKey('executant', primarySeller.id)]?.representatives.filter(person => person.name.trim()) || [];
+      const organizationFields = {
+        bankName: primarySeller.values.executantEntityName,
+        bankBranch: primarySeller.values.executantEntityBranchOffice,
+        officialDesignation: primarySeller.values.executantSignatoryDesignation || (representatives.length === 1 ? representatives[0].designation : ''),
+      };
+      for (const [field, value] of Object.entries(organizationFields)) {
+        if (!(fieldKey('property', 'primary', field) in values)) derived[field] = value || '';
+      }
     }
-    if (!(fieldKey('property', 'primary', 'mortgagePartyMode') in values)) derived.mortgagePartyMode = 'bank-to-person';
+    if (partyType === 'Bank' && !(fieldKey('property', 'primary', 'mortgagePartyMode') in values)) derived.mortgagePartyMode = 'bank-to-person';
   }
   const partyDefaults = (side: 'executant' | 'claimant', values: Record<string, string>) => ({
     ...values,
@@ -548,7 +561,7 @@ export function appStateFor(draft: Draft): AppState {
     scheduleOrder: draft.recordOrder?.property,
     additionalExecutants: orderedSellers.filter(r => r !== primarySeller).map(r => ({ ...r, values: withDerived(partyDefaults('executant', { ...r.values, executionDate: form.executionDate })) })),
     additionalClaimants: orderedBuyers.filter(r => r !== primaryBuyer).map(r => ({ ...r, values: withDerived(partyDefaults('claimant', { ...r.values, executionDate: form.executionDate })) })),
-    partyPeopleByParty: Object.fromEntries(Object.keys(draft.partyPeople || {}).map(key => [key, peopleFor(draft, key, { values, conflicts })])),
+    partyPeopleByParty,
     primaryClaimantId: primaryBuyer?.id || 'primary',
     primaryExecutantId: primarySeller?.id || 'primary',
     additionalLinkDocuments: registeredLinks.slice(1),

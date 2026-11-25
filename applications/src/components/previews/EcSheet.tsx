@@ -159,7 +159,17 @@ export const EcSheet: React.FC<EcSheetProps> = ({ data }) => {
             </tr>
             <tr className="border-b border-black">
               <td className={`px-2 ${propCellPy} border-r border-black text-right`}>Door No:</td>
-              <td className={`px-2 ${propCellPy} border-r border-black`}>{data.doorNo}</td>
+              <td className={`px-2 ${propCellPy} border-r border-black`}>
+                {data.doorNo.trim()
+                  ? data.doorNoType &&
+                    !new RegExp(
+                      `\\(\\s*${data.doorNoType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\)`,
+                      'i'
+                    ).test(data.doorNo)
+                    ? `${data.doorNo.trim()} (${data.doorNoType})`
+                    : data.doorNo.trim()
+                  : ''}
+              </td>
               <td className={`px-2 ${propCellPy} border-r border-black`} colSpan={2}>
                 <div>Plot No: {data.plotNo}</div>
               </td>

@@ -10,10 +10,14 @@ const browser = await chromium.launch({ headless: true, executablePath: process.
 const categories = ['Vacant Plot', 'Open Place', 'Residential', 'Flat', 'Demolished', 'Commercial', 'Agricultural land', 'Part open place'];
 const titleValues = {
   linkDoc: { 'Document type': 'Sale Deed', 'Document number': 'LINK-101', 'Link deed execution date': '2020-05-14', 'Sub-Registrar Office': 'Adilabad [1906]' },
-  landLayoutLrs: { 'V.L.T. number': 'VLT-101', 'Approved layout file number': 'LAY-101', 'LRS 2020 application number': 'LRS-APP-101', 'Application date': '2023-08-23', 'LRS proceeding number': 'LRS-PROC-101', 'Proceeding date': '2024-09-24' },
+  vacantTax: { 'V.L.T. / vacant-land assessment number': 'VLT-101' },
+  approvedLayout: { 'Approved layout file number': 'LAY-101' },
+  lrsApplication: { 'Application number': 'LRS-APP-101', 'Application date': '2023-08-23' },
+  lrsProceeding: { 'Proceeding number': 'LRS-PROC-101', 'Proceeding date': '2024-09-24' },
+  assessment: { 'PTIN Number / Assessment Number': 'ASSESS-101' },
   titleDeed: { 'Title deed number': 'TITLE-101', 'Khata number': 'KHATA-101' },
   nala: { 'NALA order number': 'NALA-101', 'Proceeding date': '2021-06-20' },
-  houseTax: { 'House tax receipt number': 'RECEIPT-101', 'Assessment / PTIN number': 'ASSESS-101', 'Local body': 'Test Municipality', 'Tax paid date': '2025-07-21' },
+  houseTax: { 'House tax receipt number': 'RECEIPT-101', 'Local body': 'Test Municipality', 'Tax paid date': '2025-07-21' },
   permissions: { 'Permission number': 'PERMIT-101', 'Permission date': '2022-07-22', 'Issuing local authority': 'Test Municipality' },
 };
 
@@ -41,13 +45,13 @@ async function scenario(name, category, { titles = false, extraLink = false, par
     }
   };
   const addAllTitleSections = async () => {
-    if (await page.locator('[data-title-point]').count() === 6) return;
+    if (await page.locator('[data-title-point]').count() === 10) return;
     await page.getByRole('button', { name: '+ Add / upload document' }).click();
     for (const label of [
-      'Link Document No.', 'Vacant Land Tax / Approved Layout / LRS', 'Title Deed No.',
-      'Nala Order No.', 'Property Tax / Assessment', 'Permissions / Approved details',
+      'Link Document No.', 'Vacant Land Tax', 'Approved Layout', 'LRS 2020 Application', 'LRS Proceeding', 'Title Deed No.',
+      'Nala Order No.', 'Property Tax Receipt', 'Property Assessment / PTIN', 'Permissions / Approved details',
     ]) await page.getByRole('button', { name: label, exact: true }).click();
-    await page.getByRole('button', { name: 'Continue with 6 documents', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue with 10 documents', exact: true }).click();
   };
   const fillTitle = async (suffix = '101') => {
     for (const [id, fields] of Object.entries(titleValues)) {
@@ -102,8 +106,8 @@ async function scenario(name, category, { titles = false, extraLink = false, par
     await step(2);
     await chooseCategory(category);
     await addAllTitleSections();
-    assert.equal(await page.locator('[data-title-point]').count(), 6, `${name}: expected six title sections`);
-    assert.equal(await page.getByLabel('Assessment / PTIN number', { exact: true }).count(), 1, `${name}: assessment/PTIN should have one editable field in Step 2`);
+    assert.equal(await page.locator('[data-title-point]').count(), 10, `${name}: expected ten title sections`);
+    assert.equal(await title('assessment').getByLabel('PTIN Number / Assessment Number', { exact: true }).count(), 1, `${name}: assessment/PTIN should have one editable field in Step 2`);
     if (titles) await fillTitle();
     if (extraLink) {
       await page.getByRole('button', { name: '+ Add / upload document' }).click();
@@ -119,7 +123,7 @@ async function scenario(name, category, { titles = false, extraLink = false, par
       await fill(title('nala'), 'NALA order number', 'NALA-PARTIAL');
       await fill(title('houseTax'), 'House tax receipt number', 'RECEIPT-PARTIAL');
       await fill(title('houseTax'), 'Local body', 'Partial Municipality');
-      await fill(title('houseTax'), 'Assessment / PTIN number', 'PTIN-PARTIAL');
+      await fill(title('assessment'), 'PTIN Number / Assessment Number', 'PTIN-PARTIAL');
       await fill(title('permissions'), 'Permission number', 'PERMIT-INCOMPLETE');
     }
     await step(3); await fillJurisdiction('101');
@@ -132,7 +136,7 @@ async function scenario(name, category, { titles = false, extraLink = false, par
       await fill(title('linkDoc'), 'Document type', 'Gift Deed');
       await fill(title('linkDoc'), 'Link deed execution date', '2021-04-13');
       await fill(title('linkDoc'), 'Sub-Registrar Office', 'SRO-202');
-      await fill(title('landLayoutLrs'), 'V.L.T. number', 'VLT-202');
+      await fill(title('vacantTax'), 'V.L.T. / vacant-land assessment number', 'VLT-202');
       await step(3); await fillJurisdiction('202');
       await step(4); await fillProperty('202', 'Vacant Plot');
     }

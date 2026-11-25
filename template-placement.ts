@@ -12,7 +12,7 @@ sections[0] = [
   { id: 'setup-property', label: 'Property type', scope: 'property', anchors: [{ id: 'category', label: 'Property type' }, { id: 'flatStage', label: 'Flat completion stage' }] },
   { id: 'setup-deed', label: 'Deed & draft form', scope: 'transaction', anchors: [{ id: 'instrumentId', label: 'Deed type' }, { id: 'variantId', label: 'Draft form' }] },
 ];
-sections[1] = TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id)!).map(option => ({ id: 'link-' + option.id, label: option.label, scope: 'property', anchors: anchors(option.fields) }));
+sections[1] = [...TITLE_SECTION_IDS, 'landLayoutLrs'].map(id => LINK_OPTIONS.find(option => option.id === id)!).map(option => ({ id: 'link-' + option.id, label: option.label, scope: 'property', anchors: anchors(option.fields) }));
 for (const group of GROUPS) {
   const id = group.placementSection || groupIds[group.title];
   if (!id) continue;

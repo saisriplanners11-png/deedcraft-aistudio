@@ -6,7 +6,7 @@ import {
   FolderOpen,
   Search,
   Trash2,
-  X,
+  ArrowLeft,
 } from 'lucide-react';
 import { FormType, RecordStatus, SavedRecord } from '../types/forms';
 
@@ -74,7 +74,7 @@ export const SavedRecordsModal: React.FC<SavedRecordsModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <div>
             <h2 className="text-base font-semibold text-slate-900">
-              Saved Applications
+              Saved Backend Entries
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Reload saved applications or jump to the Status Report
@@ -124,10 +124,10 @@ export const SavedRecordsModal: React.FC<SavedRecordsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close modal"
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              aria-label="Back from saved entries"
+              className="applications-back"
             >
-              <X className="h-4 w-4" />
+              <ArrowLeft size={16} aria-hidden="true" /> Back
             </button>
           </div>
         </div>
@@ -172,7 +172,7 @@ export const SavedRecordsModal: React.FC<SavedRecordsModalProps> = ({
                 No saved applications found
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                Fill out a form and select Save Application to store it with a status.
+                Fill out any form and click &ldquo;Save&rdquo; at the bottom to store it in the backend.
               </p>
             </div>
           ) : (

@@ -1,5 +1,4 @@
-@import "tailwindcss" source(none);
-@source "./";
+@import "tailwindcss";
 
 @layer base {
   :root {
@@ -100,7 +99,7 @@
   }
 
   .print-scale-reset {
-    zoom: 1 !important;
+    transform: none !important;
     width: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -154,4 +153,8 @@
     page-break-after: auto;
     break-after: auto;
   }
+}
+
+.applications-back {
+  @apply inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold hover:bg-slate-100 focus-visible:outline-2;
 }

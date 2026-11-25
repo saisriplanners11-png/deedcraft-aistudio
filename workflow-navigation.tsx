@@ -8,9 +8,10 @@ type WorkflowNavigationProps = {
   attention: number[];
   title: string;
   onNavigate: (step: number) => void;
+  onBack: () => void;
 };
 
-export function WorkflowNavigation({ steps, current, completed, attention, title, onNavigate }: WorkflowNavigationProps) {
+export function WorkflowNavigation({ steps, current, completed, attention, title, onNavigate, onBack }: WorkflowNavigationProps) {
   const [expanded, setExpanded] = useState(() => !window.matchMedia('(max-width: 767px)').matches);
   const contentId = useId();
   const list = useRef<HTMLOListElement>(null);
@@ -61,7 +62,7 @@ export function WorkflowNavigation({ steps, current, completed, attention, title
         </React.Fragment>;
       })}</ol>
       <div className="workflow-mobile-navigation">
-        <button type="button" aria-label="Previous section" disabled={index < 0} onClick={() => onNavigate(index > 0 ? steps[index - 1].id : -1)}><ArrowLeft size={16} aria-hidden="true" /></button>
+        <button type="button" aria-label="Back to last viewed step" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /></button>
         <label htmlFor="mobile-step"><span>Jump to section</span><select id="mobile-step" value={current} onChange={event => onNavigate(Number(event.target.value))}>
           <option value={-1}>Draft overview</option>{steps.map((step, i) => <option key={step.id} value={step.id}>{i + 1}. {step.label}</option>)}
         </select></label>

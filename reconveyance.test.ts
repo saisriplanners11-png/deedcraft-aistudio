@@ -154,6 +154,26 @@ describe('Reconveyance source rendering and workflow', () => {
     set('link','c','mortgageAmount',''); expect(repaymentFor(appStateFor(draft)).errors.length).toBeGreaterThan(0);
     set('link','c','linkOption',''); expect(repaymentFor(appStateFor(draft)).principal).toBe('10.20');
   });
+  it('uses the shared company fields for a bank opening and preserves saved bank particulars', () => {
+    let draft = draftReducer(newDraft(), { type: 'instrument', instrumentId: 'reconveyance' });
+    draft = draftReducer(draft, { type: 'add-person', side: 'executant', record: 'primary', id: 'officer', kind: 'representativeIds' });
+    draft.manual = {
+      ...draft.manual,
+      'executant|primary|executantPartyType': 'Company',
+      'executant|primary|executantEntityName': 'COMPANY BANK',
+      'executant|primary|executantEntityBranchOffice': 'Company Branch',
+      'party-person|officer|personName': 'TEST OFFICER',
+      'party-person|officer|personDesignation': 'Manager',
+    };
+    expect(appStateFor(draft).form).toMatchObject({ bankName: 'COMPANY BANK', bankBranch: 'Company Branch', officialDesignation: 'Manager' });
+    draft.manual['property|primary|bankName'] = 'PREVIOUSLY SAVED BANK';
+    expect(appStateFor(draft).form.bankName).toBe('PREVIOUSLY SAVED BANK');
+
+    const personToPerson = { ...draft, variantId: DEED_DEFINITIONS.reconveyance.variants[1].id, manual: {
+      ...draft.manual, 'property|primary|mortgagePartyMode': 'person-to-person',
+    } };
+    expect(appStateFor(personToPerson).form).toMatchObject({ bankBranch: '', officialDesignation: '' });
+  });
   it('skips payment and valuation requirements and duty estimates', () => {
     const state=mortgageState(); state.payments=[];
     expect(stepsFor(state.deedType).some(step=>step.id===5)).toBe(false);

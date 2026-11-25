@@ -78,3 +78,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+.wizard-app .compact-step-header .workflow-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-bottom: 8px;
+}

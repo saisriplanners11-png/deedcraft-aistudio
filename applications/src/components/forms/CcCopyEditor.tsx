@@ -89,12 +89,15 @@ export const CcCopyEditor: React.FC<CcCopyEditorProps> = ({ data, onChange }) =>
     onChange({ ...data, ...patch });
   };
 
-  const baseBooks = ['1', '2', '3', '4'];
-  const currentBook = data.bookNo.trim();
+  const baseBooks = ['1', '3', '4'];
+  const rawBookNo = data.bookNo.trim();
+  const currentBook = rawBookNo === '2' ? '1' : rawBookNo;
   const bookValues =
     currentBook && !baseBooks.includes(currentBook)
       ? [...baseBooks, currentBook]
       : baseBooks;
+  const currentDocBook = (data.documentBookNo || '').trim();
+  const normalizedDocBook = currentDocBook === '2' ? '' : currentDocBook;
 
   return (
     <div className="space-y-4">
@@ -103,7 +106,14 @@ export const CcCopyEditor: React.FC<CcCopyEditorProps> = ({ data, onChange }) =>
         subtitle="Switch between Certified Copy and Personal Search formats"
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-[1.3fr_0.85fr_1fr] gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-[0.85fr_1.3fr_1fr] gap-2.5">
+        <TextField
+          label="Mobile No."
+          value={data.mobileNo}
+          onChange={(val) => update('mobileNo', val)}
+          placeholder="e.g. 9866255720"
+          compact
+        />
         <SelectField
           label="Application Type"
           value={data.applicationType}
@@ -112,13 +122,6 @@ export const CcCopyEditor: React.FC<CcCopyEditorProps> = ({ data, onChange }) =>
             { value: 'CERTIFIED COPY', label: 'CERTIFIED COPY APPLICATION' },
             { value: 'PERSONAL SEARCH', label: 'PERSONAL SEARCH APPLICATION' },
           ]}
-          compact
-        />
-        <TextField
-          label="Mobile No."
-          value={data.mobileNo}
-          onChange={(val) => update('mobileNo', val)}
-          placeholder="e.g. 0000000000"
           compact
         />
         {(() => {
@@ -298,7 +301,7 @@ export const CcCopyEditor: React.FC<CcCopyEditorProps> = ({ data, onChange }) =>
 
         <SelectField
           label="Book No."
-          value={(data.documentBookNo || '').trim()}
+          value={normalizedDocBook}
           onChange={(val) => {
             if (val) {
               onChange({ ...data, documentBookNo: val, bookNo: val });
@@ -311,9 +314,7 @@ export const CcCopyEditor: React.FC<CcCopyEditorProps> = ({ data, onChange }) =>
             ...Array.from(
               new Set([
                 ...bookValues,
-                ...((data.documentBookNo || '').trim()
-                  ? [(data.documentBookNo || '').trim()]
-                  : []),
+                ...(normalizedDocBook ? [normalizedDocBook] : []),
               ])
             ).map((b) => ({ value: b, label: `BOOK ${b.toUpperCase()}` })),
           ]}
@@ -333,7 +334,7 @@ export const CcCopyEditor: React.FC<CcCopyEditorProps> = ({ data, onChange }) =>
           label="3. Name and Address of Claimant"
           value={data.claimantNameAddress}
           onChange={(val) => update('claimantNameAddress', val)}
-          placeholder="e.g. SAMPLE APPLICANT"
+          placeholder="e.g. JILLA NARENDAR"
           uppercase
         />
       </div>

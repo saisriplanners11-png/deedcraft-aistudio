@@ -6,9 +6,30 @@ import { join, resolve, sep } from 'node:path';
 import assert from 'node:assert/strict';
 import { enclosureFixture } from './repeated-enclosures-fixtures.mjs';
 
+function browserFixture(scope, index) {
+  const records = enclosureFixture(scope, index);
+  const grouped = records.find(record => record.values.linkOption === 'landLayoutLrs').values;
+  const individualFields = {
+    vacantTax: ['vltNo'],
+    approvedLayout: ['layoutFileNo'],
+    lrsApplication: ['lrsApplicationNo', 'lrsApplicationDate'],
+    lrsProceeding: ['lrsProceedingNo', 'lrsProceedingDate'],
+  };
+  return [
+    ...records.filter(record => record.values.linkOption !== 'landLayoutLrs'),
+    ...Object.entries(individualFields).map(([linkOption, fields]) => ({
+      values: { linkOption, ...Object.fromEntries(fields.map(field => [field, grouped[field]])) },
+    })),
+    { values: { linkOption: 'assessment', bltNo: String((scope === 'upload' ? 7200 : 7100) + index) } },
+  ];
+}
+
+const evidenceLabel = field => ({ bltNo: 'PTIN', vltNo: 'V.L.T. No.', houseTaxReceiptNo: 'Receipt No.' })[field] || field;
+
 const directory = await mkdtemp(join(tmpdir(), 'deedcraft-repeat-browser-'));
-const origin = 'http://127.0.0.1:5197';
-const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5197', '--strictPort'], { cwd: new URL('../', import.meta.url), env: { ...process.env, TEMPLATE_STORAGE_BACKEND: 'disk', TEMPLATE_STORAGE_DIR: directory }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+const port = process.env.ENCLOSURE_QA_PORT || '5199';
+const origin = 'http://127.0.0.1:' + port;
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', port, '--strictPort'], { cwd: new URL('../', import.meta.url), env: { ...process.env, TEMPLATE_STORAGE_BACKEND: 'disk', TEMPLATE_STORAGE_DIR: directory }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 let logs = '', browser;
 server.stdout.on('data', chunk => { logs += chunk; }); server.stderr.on('data', chunk => { logs += chunk; });
 try {
@@ -25,7 +46,7 @@ try {
   page.setDefaultTimeout(60000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const trace = [];
-  const uploaded = enclosureFixture('upload', 3);
+  const uploaded = browserFixture('upload', 3);
   await page.route('**/api/anthropic/v1/messages', async route => {
     const body = route.request().postDataJSON();
     const text = body.messages[0].content.filter(part => part.type === 'text').map(part => part.text).join('\n');
@@ -36,7 +57,7 @@ try {
     if (schema.pages) data = { pages: [...new Set([...text.matchAll(/SOURCE PAGE (\d+):/g)].map(match => Number(match[1])))].map(number => ({ number, text, kind: 'deed', drawing: false })) };
     else {
       const fields = schema.candidates.items.properties.field.enum;
-      data = { candidates: Object.entries(fixture?.values || {}).filter(([field]) => fields.includes(field)).map(([field, value]) => ({ field, value, role: 'link', record: 'primary', quote: `${field}: ${value}`, region: 'Printed source label', page: 0, historical: false, handwritten: false })), plan: null, notes: [] };
+      data = { candidates: Object.entries(fixture?.values || {}).filter(([field]) => fields.includes(field)).map(([field, value]) => ({ field, value, role: 'link', record: 'primary', quote: `${evidenceLabel(field)}: ${value}`, region: 'Printed source label', page: 1, historical: false, handwritten: false })), plan: null, notes: [] };
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'repeat-test', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'tool_use', id: 'repeat-tool', name: 'record_transcription', input: data }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } }) });
   });
@@ -54,19 +75,26 @@ try {
     const { TITLE_SECTION_IDS, LINK_OPTIONS } = await import('/fields.ts');
     return TITLE_SECTION_IDS.map(id => LINK_OPTIONS.find(option => option.id === id));
   });
-  for (const option of options) await page.locator('.picker-tile').filter({ hasText: option.label }).click();
-  await page.getByRole('button', { name: 'Continue with 8 documents', exact: true }).click();
+  for (const option of options) await page.getByRole('button', { name: option.label, exact: true }).click();
+  await page.getByRole('button', { name: 'Continue with ' + options.length + ' documents', exact: true }).click();
+  const firstCard = page.locator('[data-title-point="linkDoc"]:focus');
+  assert.equal(await firstCard.count(), 1);
+  assert.ok(await firstCard.getByRole('heading').first().evaluate(node => {
+    const bounds = node.getBoundingClientRect();
+    return bounds.top >= 0 && bounds.bottom <= innerHeight;
+  }), 'Continue should scroll the new card heading into view');
+  const fieldInput = (card, id) => card.locator('[data-deed-field="' + id + '"] input');
   for (const option of options) {
     const cards = page.locator(`[data-title-point="${option.id}"]`);
     for (const index of [1, 2]) {
       if (index === 2) await page.getByRole('button', { name: '+ Add another ' + option.label, exact: true }).click();
-      const values = enclosureFixture('manual', index).find(record => record.values.linkOption === option.id).values;
-      for (const field of option.fields.filter(field => !field.hidden && values[field.id] && !field.derived)) await cards.nth(index - 1).getByLabel(field.label, { exact: false }).fill(values[field.id]);
+      const values = browserFixture('manual', index).find(record => record.values.linkOption === option.id).values;
+      for (const field of option.fields.filter(field => !field.hidden && values[field.id] && !field.derived)) await fieldInput(cards.nth(index - 1), field.id).fill(values[field.id]);
     }
     await page.getByRole('button', { name: '+ Add another ' + option.label, exact: true }).click();
     console.log('Checking upload', option.id);
     const record = uploaded.find(record => record.values.linkOption === option.id);
-    const text = `EVIDENCE-${option.id}-3\n` + Object.entries(record.values).map(([key, value]) => `${key}: ${value}`).join('\n');
+    const text = `EVIDENCE-${option.id}-3\n` + Object.entries(record.values).map(([key, value]) => `${evidenceLabel(key)}: ${value}`).join('\n');
     await cards.nth(2).locator('input[type=file]').first().setInputFiles({ name: `${option.id}-3.txt`, mimeType: 'text/plain', buffer: Buffer.from(text) });
     const primaryField = option.fields.find(field => !field.hidden && !field.derived && record.values[field.id]);
     await page.waitForFunction(({ id, label, value }) => {
@@ -82,19 +110,19 @@ try {
     const close = page.getByRole('button', { name: 'Close', exact: true }); if (await close.isVisible()) await close.click();
     assert.equal(await cards.count(), 3, option.id);
     for (const index of [1, 2]) {
-      const value = enclosureFixture('manual', index).find(record => record.values.linkOption === option.id).values[primaryField.id];
-      assert.equal(await cards.nth(index - 1).getByLabel(primaryField.label, { exact: false }).inputValue(), value);
+      const value = browserFixture('manual', index).find(record => record.values.linkOption === option.id).values[primaryField.id];
+      assert.equal(await fieldInput(cards.nth(index - 1), primaryField.id).inputValue(), value);
     }
   }
   await page.waitForFunction(async () => {
     const { listSavedDeeds } = await import('/saved-deeds.ts');
     const saved = (await listSavedDeeds())[0];
-    return saved?.draft.sources.length === 8 && Object.values(saved.draft.manual).includes('PERMIT-manual-2');
+    return saved?.draft.sources.length === 12 && Object.values(saved.draft.manual).includes('PERMIT-manual-2');
   });
   await page.reload(); await page.getByRole('button', { name: 'Continue / Edit' }).first().click();
   for (const option of options) assert.equal(await page.locator(`[data-title-point="${option.id}"]`).count(), 3);
   const removedIds = [];
-  for (const id of ['landLayoutLrs', 'houseTax']) {
+  for (const id of ['vacantTax', 'houseTax']) {
     const cards = page.locator(`[data-title-point="${id}"]`);
     const retainedIds = [await cards.nth(0).getAttribute('data-record-id'), await cards.nth(2).getAttribute('data-record-id')];
     removedIds.push(await cards.nth(1).getAttribute('data-record-id'));
@@ -102,18 +130,17 @@ try {
     assert.equal(await cards.count(), 2);
     assert.deepEqual(await cards.evaluateAll(cards => cards.map(card => card.getAttribute('data-record-id'))), retainedIds);
     const fieldId = id === 'houseTax' ? 'houseTaxReceiptNo' : 'vltNo';
-    const label = options.find(option => option.id === id).fields.find(field => field.id === fieldId).label;
-    assert.equal(await cards.nth(1).getByLabel(label, { exact: false }).inputValue(), uploaded.find(record => record.values.linkOption === id).values[fieldId]);
+    assert.equal(await fieldInput(cards.nth(1), fieldId).inputValue(), uploaded.find(record => record.values.linkOption === id).values[fieldId]);
   }
   await page.waitForFunction(async ids => {
     const { listSavedDeeds } = await import('/saved-deeds.ts');
     const saved = (await listSavedDeeds())[0];
-    return saved.draft.sources.length === 8 && ids.every(id => !Object.keys(saved.draft.manual).some(key => key.startsWith('link|' + id + '|')));
+    return saved.draft.sources.length === 12 && ids.every(id => !Object.keys(saved.draft.manual).some(key => key.startsWith('link|' + id + '|')));
   }, removedIds);
   await mkdir('tmp/repeated-enclosures-qa', { recursive: true });
-  await page.locator('[data-title-point="landLayoutLrs"]').first().screenshot({ path: 'tmp/repeated-enclosures-qa/independent-land-card.png' });
+  await page.locator('[data-title-point="vacantTax"]').first().screenshot({ path: 'tmp/repeated-enclosures-qa/independent-land-card.png' });
   assert.deepEqual(errors, []);
-  console.log('PASS: all eight Step 2 options accept two independent manual cards plus an uploaded third record; save/reopen preserves all cards and deleting a middle tax/land card keeps both neighbours and their uploads.');
+  console.log('PASS: all twelve Step 2 options accept two independent manual cards plus an uploaded third record; save/reopen preserves all cards and deleting a middle tax/land card keeps both neighbours and their uploads.');
 } finally {
   if (browser) await browser.close();
   server.kill();

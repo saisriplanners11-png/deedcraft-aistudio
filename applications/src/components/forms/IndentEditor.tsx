@@ -1,6 +1,11 @@
 import React from 'react';
-import { IndentFormData, STAMP_CATEGORIES } from '../../types/forms';
-import { FormSection, SelectField, TextField } from './FormControls';
+import { IndentFormData, RelationType, STAMP_CATEGORIES } from '../../types/forms';
+import {
+  DateCalendarField,
+  FormSection,
+  SelectField,
+  TextField,
+} from './FormControls';
 
 interface IndentEditorProps {
   data: IndentFormData;
@@ -32,6 +37,12 @@ export const IndentEditor: React.FC<IndentEditorProps> = ({ data, onChange }) =>
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <TextField
+          label="Mobile No."
+          value={data.mobileNo}
+          onChange={(val) => update('mobileNo', val)}
+          placeholder="e.g. 9866270006"
+        />
         <SelectField
           label="1. Stamp Category"
           value={data.category}
@@ -40,12 +51,6 @@ export const IndentEditor: React.FC<IndentEditorProps> = ({ data, onChange }) =>
             value: c.code,
             label: `${c.label} (${c.code})`,
           }))}
-        />
-        <TextField
-          label="Mobile No."
-          value={data.mobileNo}
-          onChange={(val) => update('mobileNo', val)}
-          placeholder="e.g. 0000000000"
         />
       </div>
 
@@ -82,15 +87,51 @@ export const IndentEditor: React.FC<IndentEditorProps> = ({ data, onChange }) =>
         />
       </div>
 
-      <TextField
-        label="3. Name of Purchaser with Father Name and Resident"
-        value={data.purchaserDetails}
-        onChange={(val) => update('purchaserDetails', val)}
-        placeholder="e.g. SAMPLE PURCHASER S/O SAMPLE PARENT R/O SIRCILLA"
-        multiline
-        rows={2}
-        uppercase
-      />
+      <div className="space-y-1.5">
+        <div className="text-xs font-medium text-slate-700">
+          3. Name of Purchaser with Father Name and Resident
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-[1.38fr_0.64fr_0.93fr_1.05fr] gap-2">
+          <TextField
+            label="Purchaser Name"
+            value={data.purchaserDetails}
+            onChange={(val) => update('purchaserDetails', val)}
+            placeholder="APPLICANT NAME"
+            uppercase
+            compact
+          />
+          <SelectField
+            label="S/W/D/O"
+            value={data.purchaserRelationType || 'S/O'}
+            onChange={(val) =>
+              update('purchaserRelationType', val as RelationType)
+            }
+            options={[
+              { value: 'S/O', label: 'S/O' },
+              { value: 'W/O', label: 'W/O' },
+              { value: 'D/O', label: 'D/O' },
+              { value: 'S/W/D/O', label: 'S/W/D/O' },
+            ]}
+            compact
+          />
+          <TextField
+            label={`${data.purchaserRelationType || 'S/O'} Name`}
+            value={data.purchaserRelationLine || ''}
+            onChange={(val) => update('purchaserRelationLine', val)}
+            placeholder="Optional"
+            uppercase
+            compact
+          />
+          <TextField
+            label="Residence Address"
+            value={data.purchaserResidenceAddress || ''}
+            onChange={(val) => update('purchaserResidenceAddress', val)}
+            placeholder="e.g. SIRCILLA"
+            uppercase
+            compact
+          />
+        </div>
+      </div>
 
       <TextField
         label="4. For Whom with Father Name and Resident"
@@ -105,11 +146,10 @@ export const IndentEditor: React.FC<IndentEditorProps> = ({ data, onChange }) =>
       <FormSection title="Date & Office Reference" />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        <TextField
-          label="Dated"
+        <DateCalendarField
+          label="Application Date"
           value={data.dated}
           onChange={(val) => update('dated', val)}
-          placeholder="DD/MM/YYYY"
         />
         <TextField
           label="Indent No. (Optional — usually filled by office)"

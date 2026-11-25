@@ -459,20 +459,20 @@ export const LINK_OPTIONS: LinkOption[] = [
     { id: 'lrsProceedingNo', label: 'LRS proceeding number', ph: 'LRS Proceeding No.' },
     { id: 'lrsProceedingDate', label: 'Proceeding date', ph: 'Proceeding Date', type: 'date' },
   ] },
-  { id: 'vacantTax', label: 'Vacant Land Tax/Assessment', telugu: '', note: 'Vacant-land tax or assessment identifier for this schedule.', fields: [
+  { id: 'vacantTax', label: 'Vacant Land Tax', telugu: '', note: 'Vacant-land tax or assessment identifier for this schedule.', fields: [
     { id: 'vltNo', label: 'V.L.T. / vacant-land assessment number', ph: ['V.L.T No.', 'V.L.T. No.'] },
   ] },
   { id: 'approvedLayout', label: 'Approved Layout', telugu: '', note: 'Approved layout file number for this schedule.', fields: [
     { id: 'layoutFileNo', label: 'Approved layout file number', ph: 'Layout File No.' },
   ] },
-  { id: 'assessment', label: 'Tax/Assessment Identification', telugu: '', note: 'Enter the property assessment or PTIN identifier once here. A house-tax receipt may fill this value when it is shown on the receipt.', fields: [
+  { id: 'assessment', label: 'Property Assessment / PTIN', telugu: '', note: 'Enter the property assessment or PTIN identifier once here. A house-tax receipt may fill this value when it is shown on the receipt.', fields: [
     { id: 'bltNo', label: 'PTIN Number / Assessment Number', ph: ['P.T.I.No.', 'P.T.I. No.'] },
   ] },
-  { id: 'lrsApplication', label: 'L.R.S.-2020 Application', telugu: '', note: 'Layout regularisation application and date.', fields: [
+  { id: 'lrsApplication', label: 'LRS 2020 Application', telugu: '', note: 'Layout regularisation application and date.', fields: [
     { id: 'lrsApplicationNo', label: 'Application number', ph: 'LRS Application No.' },
     { id: 'lrsApplicationDate', label: 'Application date', ph: 'Application Date', type: 'date' },
   ] },
-  { id: 'lrsProceeding', label: 'L.R.S. Proceeding', telugu: '', note: 'Layout regularisation proceeding and date.', fields: [
+  { id: 'lrsProceeding', label: 'LRS Proceeding', telugu: '', note: 'Layout regularisation proceeding and date.', fields: [
     { id: 'lrsProceedingNo', label: 'Proceeding number', ph: 'LRS Proceeding No.' },
     { id: 'lrsProceedingDate', label: 'Proceeding date', ph: 'Proceeding Date', type: 'date' },
   ] },
@@ -492,7 +492,7 @@ export const LINK_OPTIONS: LinkOption[] = [
     ],
   },
   {
-    id: 'houseTax', label: 'Property Tax / Assessment', telugu: 'ఇంటి పన్ను రసీదు',
+    id: 'houseTax', label: 'Property Tax Receipt', telugu: 'ఇంటి పన్ను రసీదు',
     note: 'Enter the receipt and the property assessment/PTIN separately. Do not use a demand or receipt number as the assessment number.',
     fields: [
       { id: 'houseTaxReceiptNo', label: 'House tax receipt number', ph: 'House Tax Receipt' },
@@ -543,7 +543,7 @@ export const LINK_OPTIONS: LinkOption[] = [
     ],
   },
 ];
-export const TITLE_SECTION_IDS = ['linkDoc', 'rectificationDeed', 'supplementalDeed', 'landLayoutLrs', 'titleDeed', 'nala', 'houseTax', 'permissions'] as const;
+export const TITLE_SECTION_IDS = ['linkDoc', 'rectificationDeed', 'supplementalDeed', 'vacantTax', 'approvedLayout', 'lrsApplication', 'lrsProceeding', 'titleDeed', 'nala', 'houseTax', 'assessment', 'permissions'] as const;
 
 /** Flat list of every field, in step order. De-duplicated: `linkDoc`'s core four are the same fields already in GROUPS. */
 export const PROPERTY_DIRECTIONS = ['North', 'South', 'East', 'West'] as const;

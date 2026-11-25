@@ -7,8 +7,14 @@ import {
   MvHouseRow,
   MvOpenFormData,
   MvOpenRow,
+  RelationType,
 } from '../../types/forms';
-import { FormSection, SelectField, TextField } from './FormControls';
+import {
+  DateCalendarField,
+  FormSection,
+  SelectField,
+  TextField,
+} from './FormControls';
 
 export type MarketValueMode = 'mvOpen' | 'mvHouse';
 
@@ -43,6 +49,9 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
         | 'district'
         | 'courtName'
         | 'plaintiffNameAddress'
+        | 'plaintiffRelationType'
+        | 'plaintiffRelationLine'
+        | 'plaintiffResidenceAddress'
         | 'applicantNameAddress'
         | 'place'
         | 'date'
@@ -87,6 +96,9 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
         district: mvOpen.district,
         courtName: mvOpen.courtName,
         plaintiffNameAddress: mvOpen.plaintiffNameAddress,
+        plaintiffRelationType: mvOpen.plaintiffRelationType || 'S/O',
+        plaintiffRelationLine: mvOpen.plaintiffRelationLine || '',
+        plaintiffResidenceAddress: mvOpen.plaintiffResidenceAddress || '',
         applicantNameAddress: mvOpen.applicantNameAddress,
         place: mvOpen.place,
         date: mvOpen.date,
@@ -126,6 +138,9 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
         district: mvHouse.district,
         courtName: mvHouse.courtName,
         plaintiffNameAddress: mvHouse.plaintiffNameAddress,
+        plaintiffRelationType: mvHouse.plaintiffRelationType || 'S/O',
+        plaintiffRelationLine: mvHouse.plaintiffRelationLine || '',
+        plaintiffResidenceAddress: mvHouse.plaintiffResidenceAddress || '',
         applicantNameAddress: mvHouse.applicantNameAddress,
         place: mvHouse.place,
         date: mvHouse.date,
@@ -247,6 +262,12 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <TextField
+          label="Mobile No."
+          value={activeCommon.mobileNo}
+          onChange={(val) => updateCommon({ mobileNo: val })}
+          placeholder={isHouse ? 'e.g. 9000782299' : 'e.g. 9866255720'}
+        />
         <SelectField
           label="Property Type"
           value={mode}
@@ -255,12 +276,6 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
             { value: 'mvOpen', label: 'VACANT PLOT' },
             { value: 'mvHouse', label: 'RESIDENTIAL' },
           ]}
-        />
-        <TextField
-          label="Mobile No."
-          value={activeCommon.mobileNo}
-          onChange={(val) => updateCommon({ mobileNo: val })}
-          placeholder="10-digit mobile number"
         />
       </div>
 
@@ -563,14 +578,53 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
 
       <FormSection title="Plaintiff & Applicant Details" />
 
-      <TextField
-        label="4. Name and full address of the Plaintiff to the suit"
-        value={activeCommon.plaintiffNameAddress}
-        onChange={(val) => updateCommon({ plaintiffNameAddress: val })}
-        placeholder="Full name, S/O or W/O, and residential address"
-        multiline
-        rows={2}
-      />
+      <div className="space-y-1.5">
+        <div className="text-xs font-medium text-slate-700">
+          4. Name and full address of the Plaintiff to the suit
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-[1.38fr_0.64fr_0.93fr_1.05fr] gap-2">
+          <TextField
+            label="Plaintiff Name"
+            value={activeCommon.plaintiffNameAddress}
+            onChange={(val) => updateCommon({ plaintiffNameAddress: val })}
+            placeholder="PLAINTIFF NAME"
+            uppercase
+            compact
+          />
+          <SelectField
+            label="S/W/D/O"
+            value={activeCommon.plaintiffRelationType || 'S/O'}
+            onChange={(val) =>
+              updateCommon({ plaintiffRelationType: val as RelationType })
+            }
+            options={[
+              { value: 'S/O', label: 'S/O' },
+              { value: 'W/O', label: 'W/O' },
+              { value: 'D/O', label: 'D/O' },
+              { value: 'S/W/D/O', label: 'S/W/D/O' },
+            ]}
+            compact
+          />
+          <TextField
+            label={`${activeCommon.plaintiffRelationType || 'S/O'} Name`}
+            value={activeCommon.plaintiffRelationLine || ''}
+            onChange={(val) => updateCommon({ plaintiffRelationLine: val })}
+            placeholder="Optional"
+            uppercase
+            compact
+          />
+          <TextField
+            label="Residence Address"
+            value={activeCommon.plaintiffResidenceAddress || ''}
+            onChange={(val) =>
+              updateCommon({ plaintiffResidenceAddress: val })
+            }
+            placeholder="e.g. SIRCILLA"
+            uppercase
+            compact
+          />
+        </div>
+      </div>
 
       <TextField
         label="5. Name and full address of the Applicant (if other than Plaintiff)"
@@ -588,11 +642,10 @@ export const MarketValueEditor: React.FC<MarketValueEditorProps> = ({
           onChange={(val) => updateCommon({ place: val })}
           placeholder="Sircilla."
         />
-        <TextField
-          label="Date"
+        <DateCalendarField
+          label="Application Date"
           value={activeCommon.date}
           onChange={(val) => updateCommon({ date: val })}
-          placeholder="DD/MM/YYYY"
         />
       </div>
     </div>

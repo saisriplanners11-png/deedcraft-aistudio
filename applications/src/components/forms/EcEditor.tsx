@@ -1,7 +1,22 @@
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { EcAgriRow, EcFormData, EcLinkDocument, RelationType } from '../../types/forms';
-import { FormSection, SelectField, TextField } from './FormControls';
+import {
+  EC_DOOR_NO_TYPE_OPTIONS,
+  EcAgriRow,
+  EcDoorNoType,
+  EcFormData,
+  EcLinkDocument,
+  formatTypedDateDDMMYYYY,
+  normalizeDateToDDMMYYYY,
+  RelationType,
+  subtractOneDayDDMMYYYY,
+} from '../../types/forms';
+import {
+  DateCalendarField,
+  FormSection,
+  SelectField,
+  TextField,
+} from './FormControls';
 
 interface EcEditorProps {
   data: EcFormData;
@@ -100,6 +115,15 @@ export const EcEditor: React.FC<EcEditorProps> = ({ data, onChange }) => {
         subtitle="CARD Application for Encumbrance Certificate (E.C.)"
       />
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <TextField
+          label="Mobile No."
+          value={data.mobileNo}
+          onChange={(val) => update('mobileNo', val)}
+          placeholder="e.g. 9866255720"
+        />
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-[1.38fr_0.64fr_0.93fr_1.05fr] gap-2">
         <TextField
           label="Name of the Applicant"
@@ -139,15 +163,6 @@ export const EcEditor: React.FC<EcEditorProps> = ({ data, onChange }) => {
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        <TextField
-          label="Mobile No."
-          value={data.mobileNo}
-          onChange={(val) => update('mobileNo', val)}
-          placeholder="e.g. 0000000000"
-        />
-      </div>
-
       <FormSection
         title="Description of Property (House / Open Plot)"
         subtitle="Leave blank if applying strictly for agricultural land"
@@ -174,12 +189,18 @@ export const EcEditor: React.FC<EcEditorProps> = ({ data, onChange }) => {
         />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <TextField
           label="Door No."
           value={data.doorNo}
           onChange={(val) => update('doorNo', val)}
           placeholder="e.g. 3-7-114"
+        />
+        <SelectField
+          label="H.No. Type"
+          value={data.doorNoType || ''}
+          onChange={(val) => update('doorNoType', val as EcDoorNoType)}
+          options={EC_DOOR_NO_TYPE_OPTIONS}
         />
         <TextField
           label="Plot No."
@@ -438,20 +459,28 @@ export const EcEditor: React.FC<EcEditorProps> = ({ data, onChange }) => {
         <TextField
           label="Period of Search From"
           value={data.periodFrom}
-          onChange={(val) => update('periodFrom', val)}
+          onChange={(val) => update('periodFrom', formatTypedDateDDMMYYYY(val))}
+          onBlur={() => update('periodFrom', normalizeDateToDDMMYYYY(data.periodFrom))}
           placeholder="e.g. 01/01/1983"
         />
         <TextField
           label="Period of Search To"
           value={data.periodTo}
-          onChange={(val) => update('periodTo', val)}
+          onChange={(val) => update('periodTo', formatTypedDateDDMMYYYY(val))}
+          onBlur={() => update('periodTo', normalizeDateToDDMMYYYY(data.periodTo))}
           placeholder="DD/MM/YYYY"
         />
-        <TextField
+        <DateCalendarField
           label="Application Date"
           value={data.date}
-          onChange={(val) => update('date', val)}
-          placeholder="DD/MM/YYYY"
+          onChange={(val) => {
+            const prevDay = subtractOneDayDDMMYYYY(val);
+            if (prevDay) {
+              onChange({ ...data, date: val, periodTo: prevDay });
+            } else {
+              update('date', val);
+            }
+          }}
         />
       </div>
     </div>
