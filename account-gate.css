@@ -75,3 +75,21 @@
   .dc-auth-intro p { margin: 0; }
   .dc-field-row { grid-template-columns: 1fr; }
 }
+
+.dc-account-bar { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding:12px 24px; border-bottom:1px solid #dce6df; background:#f7faf8; color:#22382e; font:14px/1.4 system-ui,sans-serif; }
+.dc-account-email { margin-right:6px; overflow-wrap:anywhere; min-width:0; }
+.dc-account-button, .dc-profile-nav > *, .dc-auth .dc-profile-signout { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:10px 16px; border-radius:10px; font:600 14px/1.4 system-ui,sans-serif; cursor:pointer; transition:background-color 150ms,border-color 150ms; }
+.dc-account-button { border:1px solid #c9d8cf; background:white; color:#24523e; }
+.dc-account-profile:hover { background:#eaf2ed; border-color:#96b5a3; }
+.dc-account-signout { color:#9a3932; border-color:#e4cbc8; }
+.dc-account-signout:hover { background:#fff0ed; border-color:#c88982; }
+.dc-account-button:disabled { opacity:.55; cursor:wait; }
+.dc-account-button:focus-visible { outline:3px solid #9a5912; outline-offset:3px; }
+.dc-account-notice { flex-basis:100%; text-align:right; }
+.dc-profile-nav { display:flex; justify-content:space-between; gap:12px; margin-bottom:28px; }
+.dc-auth .dc-profile-nav > * { width:auto; text-decoration:none; border:1px solid #ccd9d0; }
+.dc-profile-nav a:hover { background:#eef6ef; }
+.dc-auth .dc-profile-signout { color:white; background:#ffffff12; border-color:#ffffff66; }
+.dc-auth .dc-profile-signout:hover { background:#ffffff24; }
+@media(max-width:650px) { .dc-account-bar { padding:10px 16px; gap:8px; } .dc-account-email { flex-basis:100%; text-align:right; font-size:13px; } }
+@media(prefers-reduced-motion:reduce) { .dc-account-button, .dc-profile-nav > *, .dc-auth .dc-profile-signout { transition:none; } }

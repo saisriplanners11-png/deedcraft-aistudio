@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowLeft, House, LogOut } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { auth } from './account';
 import { accountReady, POLICY_VERSION, profileFor, type AccountProfile } from './account-profile';
@@ -35,14 +36,18 @@ export function AccountProfileForm({ user, onDone }: { user: User; onDone: () =>
   return <main className="dc-auth dc-profile">
     <section className="dc-auth-intro">
       <div className="dc-auth-brand"><span aria-hidden="true">D</span> DeedCraft</div>
-      <div><h2>Your account details.</h2><p>Verify your email and complete your profile to open your workspace.</p></div>
-      <button type="button" disabled={busy} onClick={() => void perform(async () => {
+      <div><h2>Your account details.</h2><p>Manage your contact details, communication address and email.</p></div>
+      <button className="dc-profile-signout" type="button" disabled={busy} onClick={() => void perform(async () => {
         const { error } = await auth.auth.signOut();
         if (error) throw error;
         return '';
-      })}>Sign out</button>
+      })}><LogOut size={18} aria-hidden="true" /> Sign out</button>
     </section>
     <section className="dc-auth-panel" aria-labelledby="dc-profile-title">
+      <nav className="dc-profile-nav" aria-label="Profile navigation">
+        <button type="button" onClick={onDone}><ArrowLeft size={18} aria-hidden="true" /> Back</button>
+        <a href="/"><House size={18} aria-hidden="true" /> Home</a>
+      </nav>
       <h1 id="dc-profile-title">Your profile</h1>
       <section className="dc-verification" aria-labelledby="dc-email-title">
         <h3 id="dc-email-title">Email verification</h3>
@@ -107,7 +112,7 @@ export function AccountProfileForm({ user, onDone }: { user: User; onDone: () =>
         <label className="dc-auth-checkbox"><input type="checkbox" required checked={accepted} onChange={event => setAccepted(event.target.checked)} />
           <span>I accept the <a href="/?policy=terms" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="/?policy=privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span>
         </label>
-        <button disabled={busy}>Save profile and continue</button>
+        <button disabled={busy}>Save profile</button>
       </form>
       <button type="button" disabled={busy} onClick={() => void perform(async () => {
         const updated = await refreshUser();

@@ -1,8 +1,9 @@
 import './account-gate.css';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { LogOut, UserRound } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { auth } from './account';
-import { accountReady, POLICY_VERSION } from './account-profile';
+import { POLICY_VERSION } from './account-profile';
 import { AccountProfileForm } from './account-profile-form';
 import { AccountPolicies } from './account-policies';
 
@@ -15,9 +16,15 @@ export function AccountGate({ children }: { children: ReactNode }) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
   const [accepted, setAccepted] = useState(false);
+  const accountId = useRef<string | null>(null);
   useEffect(() => {
     const listener = auth?.auth.onAuthStateChange((event, next) => {
       if (event === 'PASSWORD_RECOVERY') setMode('Update password');
+      if (accountId.current !== (next?.user.id ?? null)) {
+        setEditingProfile(false);
+        setNotice('');
+        accountId.current = next?.user.id ?? null;
+      }
       setActive(next);
     });
     return () => listener?.data.subscription.unsubscribe();
@@ -41,16 +48,20 @@ export function AccountGate({ children }: { children: ReactNode }) {
 
   if (!auth) return <main>DeedCraft account service needs configuration.</main>;
   if (active === undefined) return <main role="status">Checking your session…</main>;
-  if (active && mode !== 'Update password' && (editingProfile || !accountReady(active.user))) {
+  if (active && mode !== 'Update password' && editingProfile) {
     return <AccountProfileForm key={active.user.id} user={active.user} onDone={() => setEditingProfile(false)} />;
   }
   if (active && mode !== 'Update password') return <div key={active.user.id}>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '8px 16px', alignItems: 'center' }}>
-      <span>{active.user.email}</span>
-      <button disabled={busy} onClick={() => setEditingProfile(true)}>Account settings</button>
-      <button disabled={busy} onClick={() => void run(() => auth.auth.signOut())}>Sign out</button>
-      {notice && <span role="status">{notice}</span>}
-    </div>
+    <nav className="dc-account-bar" aria-label="Account">
+      <span className="dc-account-email">{active.user.email}</span>
+      <button className="dc-account-button dc-account-profile" disabled={busy} onClick={() => setEditingProfile(true)}>
+        <UserRound size={18} aria-hidden="true" /> <span>Profile</span>
+      </button>
+      <button className="dc-account-button dc-account-signout" disabled={busy} onClick={() => void run(() => auth.auth.signOut())}>
+        <LogOut size={18} aria-hidden="true" /> <span>{busy ? 'Signing out…' : 'Sign out'}</span>
+      </button>
+      {notice && <span className="dc-account-notice" role="status">{notice}</span>}
+    </nav>
     {children}
   </div>;
 
