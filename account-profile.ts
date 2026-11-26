@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 
-export const POLICY_VERSION = '2026-11-26.2';
+export const POLICY_VERSION = '2026-11-26.3';
 export type AccountProfile = {
   fullName: string;
   mobileNumber: string;

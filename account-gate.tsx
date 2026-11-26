@@ -1,11 +1,12 @@
 import './account-gate.css';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LogOut, UserRound } from 'lucide-react';
+import { LogOut, UserRound, ShieldCheck } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { auth } from './account';
 import { POLICY_VERSION } from './account-profile';
 import { AccountProfileForm } from './account-profile-form';
 import { AccountPolicies } from './account-policies';
+import { AccountAdmin } from './account-admin';
 
 export function AccountGate({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<Session | null | undefined>(undefined);
@@ -16,12 +17,15 @@ export function AccountGate({ children }: { children: ReactNode }) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
   const [accepted, setAccepted] = useState(false);
+  const [admin, setAdmin] = useState<boolean | undefined>(undefined);
+  const adminPage = new URLSearchParams(location.search).get('admin') === '1';
   const accountId = useRef<string | null>(null);
   useEffect(() => {
     const listener = auth?.auth.onAuthStateChange((event, next) => {
       if (event === 'PASSWORD_RECOVERY') setMode('Update password');
       if (accountId.current !== (next?.user.id ?? null)) {
         setEditingProfile(false);
+        setAdmin(undefined);
         setNotice('');
         accountId.current = next?.user.id ?? null;
       }
@@ -29,6 +33,14 @@ export function AccountGate({ children }: { children: ReactNode }) {
     });
     return () => listener?.data.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let current = true;
+    if (active) void auth!.rpc('is_account_admin').then(({ data, error }) => {
+      if (current) setAdmin(!error && data === true);
+    });
+    return () => { current = false; };
+  }, [active?.user.id, active?.access_token]);
 
   const policy = new URLSearchParams(location.search).get('policy');
   if (policy === 'terms' || policy === 'privacy') return <AccountPolicies kind={policy} />;
@@ -51,8 +63,13 @@ export function AccountGate({ children }: { children: ReactNode }) {
   if (active && mode !== 'Update password' && editingProfile) {
     return <AccountProfileForm key={active.user.id} user={active.user} onDone={() => setEditingProfile(false)} />;
   }
+  if (active && mode !== 'Update password' && adminPage) {
+    if (admin === undefined) return <main role="status">Checking administrator access…</main>;
+    if (!admin) return <main className="dc-policy"><h1>Administrator access required</h1><p>This account does not have access to the admin dashboard.</p><a href="/">Return to your workspace</a><p><button disabled={busy} onClick={() => void run(() => auth.auth.signOut())}>Sign out to use an admin account</button></p></main>;
+  }
   if (active && mode !== 'Update password') return <div key={active.user.id}>
     <nav className="dc-account-bar" aria-label="Account">
+      {admin && <a className="dc-account-button dc-account-profile" href="/?admin=1"><ShieldCheck size={18} aria-hidden="true" /> Admin dashboard</a>}
       <span className="dc-account-email">{active.user.email}</span>
       <button className="dc-account-button dc-account-profile" disabled={busy} onClick={() => setEditingProfile(true)}>
         <UserRound size={18} aria-hidden="true" /> <span>Profile</span>
@@ -62,7 +79,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       </button>
       {notice && <span className="dc-account-notice" role="status">{notice}</span>}
     </nav>
-    {children}
+    {adminPage ? <AccountAdmin onBack={() => location.assign('/')} /> : children}
   </div>;
 
   return <main className="dc-auth">
@@ -73,7 +90,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       <p>Draft details sync to your account. Source files stay on the device where you add them.</p>
     </section>
     <section className="dc-auth-panel" aria-labelledby="dc-auth-title">
-    <h1 id="dc-auth-title">{mode}</h1>
+    <h1 id="dc-auth-title">{adminPage && mode === 'Sign in' ? 'Admin sign in' : mode}</h1>
     <p>{mode === 'Create account' ? 'Create your account, verify your email, then complete your profile.' :
       mode === 'Verify email' ? 'Open the link in your email, then sign in to complete your profile.' :
       mode === 'Reset password' ? 'We’ll email you a link to choose a new password.' :
@@ -124,6 +141,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       {verificationEmail && <p>Verification pending for {verificationEmail}. Correct the email field and register again if it was mistyped.</p>}
       {email && mode !== 'Verify email' && <button disabled={busy} onClick={() => void run(() => auth.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: redirect } }), 'Check your email for the verification link.')}>Resend verification email</button>}
     </div>}
+    {!adminPage && <p><a href="/?admin=1">Administrator sign in</a></p>}
     <p role="status" className="dc-auth-notice">{notice}</p>
     </section>
   </main>;
