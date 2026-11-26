@@ -51,9 +51,27 @@
 .dc-auth-actions { margin-top: 12px; }
 .dc-auth .dc-auth-notice { margin: 14px 0 0; }
 .dc-auth-notice:empty { display: none; }
+.dc-auth .dc-auth-checkbox { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; }
+.dc-auth .dc-auth-checkbox input { width: 20px; height: 20px; min-height: 20px; margin-top: 3px; flex-shrink: 0; }
+.dc-auth a { color: #24523e; text-decoration: underline; text-underline-offset: 3px; }
+.dc-auth fieldset { min-width: 0; padding: 16px; border: 1px solid #d4ddd3; border-radius: 8px; display: grid; gap: 12px; }
+.dc-auth legend { font-weight: 600; padding: 0 4px; }
+.dc-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dc-field-row > label { min-width: 0; }
+.dc-verification { border-bottom: 1px solid #d4ddd3; margin-bottom: 24px; padding-bottom: 24px; }
+.dc-verification h3 { margin: 0 0 8px; font-size: 18px; }
+.dc-verification p { overflow-wrap: anywhere; }
+.dc-verification form { margin-top: 12px; }
+.dc-verification summary { cursor: pointer; padding: 12px 0; min-height: 44px; }
+.dc-profile .dc-auth-panel > button { margin-top: 12px; }
+.dc-policy { max-width: 780px; margin: 32px auto; padding: 24px; font: 16px/1.7 system-ui, sans-serif; color: #22382e; background: #fff; }
+.dc-policy h1 { font: 40px/1.15 Georgia, serif; }
+.dc-policy h2 { font-size: 21px; margin-top: 28px; }
+.dc-policy a { color: #24523e; overflow-wrap: anywhere; }
 @media (max-width: 650px) {
   .dc-auth { grid-template-columns: 1fr; }
   .dc-auth-intro { gap: 16px; }
   .dc-auth-intro h2 { font-size: 30px; }
   .dc-auth-intro p { margin: 0; }
+  .dc-field-row { grid-template-columns: 1fr; }
 }
