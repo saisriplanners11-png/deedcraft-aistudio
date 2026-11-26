@@ -2,7 +2,7 @@
 
 Apply `supabase/account-admin-v1.sql` after the account-drafts migration. It adds a private admin membership table, read-only admin RPCs and a server-generated last-save timestamp. Existing owner RLS is unchanged. No service key is shipped to the browser.
 
-The admin entry point is `/?admin=1`. It uses the existing Supabase email/password or Google login. Ordinary accounts receive an access-denied screen; all data RPCs independently check membership inside PostgreSQL. User-editable metadata never grants access.
+The admin entry point is `/?admin=1`. Confirmed administrators land there automatically after sign-in or when opening the main app. My workspace opens `/?workspace=1` explicitly; authenticated links to application/plan tools remain usable. The chart data table lists dates newest first while the graph retains chronological order. It uses the existing Supabase email/password or Google login. Ordinary accounts receive an access-denied screen; all data RPCs independently check membership inside PostgreSQL. User-editable metadata never grants access.
 
 Apply `supabase/account-admin-enrollment-v1.sql` once to reserve the user-authorised admin address, sampath.gundlapelli@gmail.com. An existing confirmed account is assigned immediately; otherwise registration and email confirmation activate the role. Unconfirmed registration does not grant access. The reservation is consumed on assignment. Do not rerun this enrollment file after intentionally revoking this admin.
 

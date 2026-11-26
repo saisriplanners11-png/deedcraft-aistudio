@@ -19,12 +19,15 @@ export function AccountGate({ children }: { children: ReactNode }) {
   const [accepted, setAccepted] = useState(false);
   const [admin, setAdmin] = useState<boolean | undefined>(undefined);
   const adminPage = new URLSearchParams(location.search).get('admin') === '1';
+  const [workspaceRequested, setWorkspaceRequested] = useState(() =>
+    new URLSearchParams(location.search).get('workspace') === '1' || !['/', '/index.html'].includes(location.pathname));
   const accountId = useRef<string | null>(null);
   useEffect(() => {
     const listener = auth?.auth.onAuthStateChange((event, next) => {
       if (event === 'PASSWORD_RECOVERY') setMode('Update password');
       if (accountId.current !== (next?.user.id ?? null)) {
         setEditingProfile(false);
+        if (next && event === 'SIGNED_IN') setWorkspaceRequested(false);
         setAdmin(undefined);
         setNotice('');
         accountId.current = next?.user.id ?? null;
@@ -43,6 +46,11 @@ export function AccountGate({ children }: { children: ReactNode }) {
   }, [active?.user.id, active?.access_token]);
 
   const policy = new URLSearchParams(location.search).get('policy');
+  const redirectAdmin = !!active && admin === true && !workspaceRequested && !adminPage
+    && mode !== 'Update password' && policy !== 'terms' && policy !== 'privacy';
+  useEffect(() => {
+    if (redirectAdmin) location.replace('/?admin=1');
+  }, [redirectAdmin]);
   if (policy === 'terms' || policy === 'privacy') return <AccountPolicies kind={policy} />;
 
   const redirect = location.origin + location.pathname;
@@ -60,6 +68,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
 
   if (!auth) return <main>DeedCraft account service needs configuration.</main>;
   if (active === undefined) return <main role="status">Checking your session…</main>;
+  if (active && mode !== 'Update password' && (admin === undefined || redirectAdmin)) return <main role="status">Opening your workspace…</main>;
   if (active && mode !== 'Update password' && editingProfile) {
     return <AccountProfileForm key={active.user.id} user={active.user} onDone={() => setEditingProfile(false)} />;
   }
@@ -79,7 +88,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       </button>
       {notice && <span className="dc-account-notice" role="status">{notice}</span>}
     </nav>
-    {adminPage ? <AccountAdmin onBack={() => location.assign('/')} /> : children}
+    {adminPage ? <AccountAdmin onBack={() => location.assign('/?workspace=1')} /> : children}
   </div>;
 
   return <main className="dc-auth">
